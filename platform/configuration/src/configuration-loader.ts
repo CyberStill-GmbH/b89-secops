@@ -12,6 +12,7 @@ import {
 } from './configuration.types.js';
 import { selectProfile } from './profiles/index.js';
 import { rejectUnknownB89Variables } from './schema/environment.schema.js';
+import { validateAssistantEnvironment } from './schema/assistant.schema.js';
 import { parseAccess, type AccessConfig } from './schema/access.schema.js';
 import { parseDetectionContext, type DetectionContextConfig } from './schema/detection.schema.js';
 import { parseIngestionConfig, type IngestionConfig } from './schema/ingestion.schema.js';
@@ -47,7 +48,9 @@ function deepFreeze<T>(value: T, seen = new WeakSet<object>()): T {
 
 function profileFrom(environment: EnvironmentInput) {
   rejectUnknownB89Variables(environment);
-  return selectProfile(environment['B89_PROFILE']);
+  const profile = selectProfile(environment['B89_PROFILE']);
+  validateAssistantEnvironment(environment, profile);
+  return profile;
 }
 
 function createResolver(provider: SecretProvider, profile: ReturnType<typeof selectProfile>) {

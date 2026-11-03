@@ -8,6 +8,11 @@
  * - Pensamiento adaptativo (por omisión en los modelos actuales) y profundidad con `effort`; no se
  *   usan `temperature`, prefill ni `tool_choice` forzado (no soportados en estos modelos).
  * - Una negativa del modelo (`refusal`) se devuelve como tal; el dominio la comunica sin inventar.
+ * - Minimización: además de la seudonimización del dominio, todo texto saliente (sistema, preguntas,
+ *   resultados de herramientas) pasa por `scrubCredentials`. El razonamiento firmado (`thinking`) se
+ *   reenvía intacto: alterarlo invalidaría su firma.
+ * - Robustez: `timeout` por intento (`B89_BUNNY_TIMEOUT_MS`) y 2 reintentos con backoff exponencial
+ *   del SDK ante 408/409/429/5xx o error de red. Nunca se registran prompts ni respuestas.
  */
 
 import Anthropic from '@anthropic-ai/sdk';
@@ -22,6 +27,7 @@ import type {
 } from '@b89/assistant';
 
 import type { AssistantConfig } from './assistant-config.js';
+import { scrubCredentials, scrubCredentialsJson } from './outbound-scrub.js';
 
 type EnabledConfig = Extract<AssistantConfig, { enabled: true }>;
 
@@ -37,7 +43,11 @@ export interface MessagesClient {
 
 export function createMessagesClient(config: EnabledConfig): MessagesClient {
   if (config.provider === 'anthropic') {
-    return new Anthropic({ apiKey: config.apiKey, maxRetries: 1 }) as unknown as MessagesClient;
+    return new Anthropic({
+      apiKey: config.apiKey,
+      maxRetries: 2,
+      timeout: config.timeoutMs,
+    }) as unknown as MessagesClient;
   }
   return new AnthropicBedrockMantle({
     awsRegion: config.awsRegion,
@@ -46,13 +56,20 @@ export function createMessagesClient(config: EnabledConfig): MessagesClient {
 }
 
 function toParam(message: ConversationMessage): Anthropic.MessageParam {
-  if (typeof message.content === 'string') return { role: message.role, content: message.content };
+  if (typeof message.content === 'string') {
+    return { role: message.role, content: scrubCredentials(message.content) };
+  }
   return {
     role: message.role,
     content: message.content.map((block): Anthropic.ContentBlockParam => {
-      if (block.type === 'text') return { type: 'text', text: block.text };
+      if (block.type === 'text') return { type: 'text', text: scrubCredentials(block.text) };
       if (block.type === 'tool_use') {
-        return { type: 'tool_use', id: block.id, name: block.name, input: block.input };
+        return {
+          type: 'tool_use',
+          id: block.id,
+          name: block.name,
+          input: scrubCredentialsJson(block.input),
+        };
       }
       if (block.type === 'thinking') {
         return { type: 'thinking', thinking: block.thinking, signature: block.signature };
@@ -62,7 +79,7 @@ function toParam(message: ConversationMessage): Anthropic.MessageParam {
       return {
         type: 'tool_result',
         tool_use_id: block.tool_use_id,
-        content: block.content,
+        content: scrubCredentials(block.content),
         ...(block.is_error ? { is_error: true } : {}),
       };
     }),
@@ -91,7 +108,13 @@ export function createClaudeModel(
         {
           model: config.model,
           max_tokens: request.maxTokens,
-          system: [{ type: 'text', text: request.system, cache_control: { type: 'ephemeral' } }],
+          system: [
+            {
+              type: 'text',
+              text: scrubCredentials(request.system),
+              cache_control: { type: 'ephemeral' },
+            },
+          ],
           messages: request.messages.map(toParam),
           tools: request.tools.map((tool) => ({
             name: tool.name,

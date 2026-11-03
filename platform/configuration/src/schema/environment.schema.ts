@@ -2,6 +2,7 @@ import { configurationError } from '../configuration.errors.js';
 import type { EnvironmentInput } from '../configuration.types.js';
 import { CONFIGURATION_LIMITS } from '../limits.js';
 import type { ConfigurationProfile } from '../profiles/index.js';
+import { ASSISTANT_VARIABLES } from './assistant.schema.js';
 
 export const KNOWN_B89_VARIABLES = new Set([
   'B89_PROFILE',
@@ -103,6 +104,8 @@ export const KNOWN_B89_VARIABLES = new Set([
   'B89_ALERT_MAIL_SENDER',
   'B89_VAPID_PRIVATE_KEY',
   'B89_VAPID_PRIVATE_KEY_REF',
+  // Bunny (asistente IA): ver assistant.schema.ts.
+  ...ASSISTANT_VARIABLES,
 ]);
 
 export function rejectUnknownB89Variables(

@@ -1,5 +1,10 @@
 export { KNOWN_B89_VARIABLES } from './environment.schema.js';
 export {
+  ASSISTANT_PROVIDERS,
+  ASSISTANT_VARIABLES,
+  validateAssistantEnvironment,
+} from './assistant.schema.js';
+export {
   DETECTION_CONTEXT_LIMITS,
   parseDetectionContext,
   type DetectionContextConfig,

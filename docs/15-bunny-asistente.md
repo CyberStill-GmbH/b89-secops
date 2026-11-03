@@ -60,11 +60,12 @@ flowchart LR
 | Variable | Valor | Nota |
 | --- | --- | --- |
 | `B89_BUNNY_ENABLED` | `true` | Apagado por defecto: sin él no existe el endpoint ni el botón |
-| `B89_BUNNY_PROVIDER` | `bedrock` (defecto) o `anthropic` | |
-| `B89_BUNNY_MODEL` | `claude-opus-5-5` (defecto) | En Bedrock se antepone `anthropic.` |
+| `B89_BUNNY_PROVIDER` | `bedrock` (defecto) o `anthropic` | Nodo AWS PowerUser (sin IAM para Bedrock): `anthropic` |
+| `B89_BUNNY_MODEL` | `claude-opus-5-5` en Bedrock; `claude-sonnet-5-5` con `anthropic` | En Bedrock se antepone `anthropic.` |
 | `B89_BUNNY_EFFORT` | `medium` (defecto) | `low`…`max`; más esfuerzo = más tokens |
 | `B89_BUNNY_REDACT_PII` | `true` (defecto) | Seudonimización |
-| `B89_BUNNY_API_KEY` | secreto | Solo con `anthropic` |
+| `B89_BUNNY_API_KEY` | secreto | Solo con `anthropic`. En el despliegue AWS se toma de `B89_CLAUDE_API` (`/opt/b89/secrets/services.env`) y vive solo en `/opt/b89/secrets/api.env` (0600) |
+| `B89_BUNNY_TIMEOUT_MS` | `20000` (defecto) | 1000–120000; tiempo por intento HTTP; el SDK reintenta 2 veces con backoff |
 | `B89_BUNNY_RATE_LIMIT` | `20` | Preguntas por persona cada 10 min |
 | `B89_BUNNY_HISTORY_ENABLED` | `true` (defecto) | Historial de conversaciones; `false`: el chat no guarda y `/conversations` responde 404 |
 | `B89_BUNNY_RETENTION_DAYS` | `90` (defecto) | 1–365; las conversaciones sin actividad más antiguas se borran |
@@ -165,3 +166,13 @@ botón solo aparece si la API lo habilita y la persona tiene permisos de lectura
 - **[propuesto]** Streaming de respuestas (requiere URL de función con streaming; API Gateway HTTP las
   almacena completas), límite de tasa global, retroalimentación (👍/👎) con backend, herramienta para
   *proponer* —nunca ejecutar— una acción de B89 Respond, y la opción `fallbacks` del proveedor ante rechazos del modelo.
+
+## Validación al arrancar y minimización
+
+`platform/configuration` reconoce todas las variables `B89_BUNNY_*` (`schema/assistant.schema.ts`) y las
+valida al arrancar: un valor inválido o `B89_BUNNY_PROVIDER=anthropic` sin clave falla con
+`CONFIG_VALUE_INVALID`/`CONFIG_REQUIRED_VALUE_MISSING` sin mostrar el valor. Proveedores admitidos:
+`bedrock` y `anthropic` (DeepSeek se descartó). Además de la seudonimización de correos e IPv4, el
+adaptador elimina credenciales evidentes (Bearer/Basic, JWT, claves AWS/GitHub/Slack/`sk-…`, claves
+privadas, `password=`/`token:`/`api_key=`) de todo texto saliente (`apps/api/src/assistant/outbound-scrub.ts`);
+el razonamiento firmado se reenvía intacto. Nunca se registran prompts ni respuestas.

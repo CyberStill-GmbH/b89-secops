@@ -40,6 +40,9 @@ export type {
 export { SecretValue } from './configuration.types.js';
 export { CONFIGURATION_LIMITS, REDACTED_VALUE } from './limits.js';
 export {
+  ASSISTANT_PROVIDERS,
+  ASSISTANT_VARIABLES,
+  KNOWN_B89_VARIABLES,
   DEMO_ADMIN_LOGIN_MAX_WINDOW_MS,
   DEMO_DEPLOYMENT_IDENTITY,
   DETECTION_CONTEXT_LIMITS,
