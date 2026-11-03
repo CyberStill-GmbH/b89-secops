@@ -7,8 +7,8 @@ en [`docs/03-evaluacion-de-componentes.md`](../docs/03-evaluacion-de-componentes
 > **Alcance:** esta matriz describe el código y procedimientos del overlay, no el estado
 > instalado de los recursos cloud. Sus estados históricos se refieren al flujo AWS; no
 > certifican recursos activos en AWS ni en Azure. Para EUS2, usar el
-> [runbook vigente](../docs/cloud/azure/runbook-demo-eus2.md) y el
-> [perfil SIEM y sus compuertas](../docs/cloud/azure/eus2-siem-profile-readiness.md).
+> [runbook vigente](../docs/archive/azure/runbook-demo-eus2.md) y el
+> [perfil SIEM y sus compuertas](../docs/archive/azure/eus2-siem-profile-readiness.md).
 > La secuencia de abajo es específica de `infra/aws` y no se usa para desplegar Azure.
 
 | Carpeta                      | Qué cambia de Wazuh                                                                                                      | Se aplica con                                                             | Estado                                        |

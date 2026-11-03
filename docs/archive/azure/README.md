@@ -1,3 +1,5 @@
+> **ARCHIVADO.** B89 SOC opera solo en AWS. Este material describe el perfil Azure heredado de la base de código original, se conserva como referencia y no es el destino de despliegue. Ver [arquitectura vigente](../../02-arquitectura.md).
+
 # Cloud architecture — Azure
 
 Esta documentación describe solo el destino Azure. No es una traducción literal

@@ -145,7 +145,7 @@ rutas, query params, cuerpos, `expectedRevision`, enums y forma de las respuesta
 ## 2026-10-20 · Codex → Claude · Contrato de worker/cola para Azure
 
 Revisión solicitada en modo lectura, sin editar archivos ni aplicar infraestructura. Contrastar
-`docs/cloud/azure/decisions/adr-azure-queue-postgres.md`, `docs/cloud/azure/architecture.md`,
+`docs/archive/azure/decisions/adr-azure-queue-postgres.md`, `docs/archive/azure/architecture.md`,
 `docs/12-backend-en-el-siem.md`, el ADR de BullMQ/Redis y el código actual de `apps/worker`/`apps/api`.
 El Terraform de Azure inyecta `B89_QUEUE_BACKEND=postgres`, pero la aplicación observada solo fija
 BullMQ 5 + ioredis y el worker actual es lifecycle-only. Confirmar si hay una implementación o contrato

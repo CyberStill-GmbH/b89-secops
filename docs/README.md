@@ -26,8 +26,8 @@ hay que actualizar los tests que los referencian.
 
 ## Arquitectura cloud
 
-- [Destino Azure EUS2, límites, perfil Terraform y gates de despliegue](cloud/azure/target-architecture-demo-eus2.md)
-- [Índice de arquitectura Azure y estado verificado](cloud/azure/README.md)
+- [Destino Azure EUS2, límites, perfil Terraform y gates de despliegue](archive/azure/target-architecture-demo-eus2.md)
+- [Índice de arquitectura Azure y estado verificado](archive/azure/README.md)
 
 ## Reglas de esta documentación
 

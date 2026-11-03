@@ -71,4 +71,4 @@ CI ejecuta el contrato Node, `krakend check` sobre la plantilla Azure y `terrafo
 - [Microsoft: DNS privado para entornos ACA internos](https://learn.microsoft.com/en-us/azure/container-apps/private-endpoints-with-dns)
 - [`docs/10-decisiones.md` A8](../../10-decisiones.md)
 - [`infra/azure/modules/krakend_gateway`](../../../infra/azure/modules/krakend_gateway/README.md)
-- [`docs/cloud/azure/target-architecture-demo-eus2.md`](target-architecture-demo-eus2.md)
+- [`docs/archive/azure/target-architecture-demo-eus2.md`](target-architecture-demo-eus2.md)

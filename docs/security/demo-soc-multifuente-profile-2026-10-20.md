@@ -60,10 +60,10 @@ propuesto debajo y no equivale a una aceptación de despliegue.
   publicada no certifica que estén cargadas o enlazadas todas las referencias del
   perfil. Esta revisión no cambia credenciales, autenticación ni DNS.
 
-Fuentes y criterios: [readiness operativa de Azure — 2026-10-26](../cloud/azure/operational-readiness-2026-10-26.md),
-[preparación y acceptance de EUS2](../cloud/azure/eus2-siem-profile-readiness.md#acceptance-evidence-required-after-deployment),
-[runbook EUS2](../cloud/azure/runbook-demo-eus2.md),
-[bundle publicado](../cloud/azure/siem-release-bundle.md),
+Fuentes y criterios: [readiness operativa de Azure — 2026-10-26](../archive/azure/operational-readiness-2026-10-26.md),
+[preparación y acceptance de EUS2](../archive/azure/eus2-siem-profile-readiness.md#acceptance-evidence-required-after-deployment),
+[runbook EUS2](../archive/azure/runbook-demo-eus2.md),
+[bundle publicado](../archive/azure/siem-release-bundle.md),
 [inventario de fuentes](../reference/source-inventory.yaml),
 [decisiones vigentes](../10-decisiones.md),
 [perfil de detección AD](active-directory-detection-profile.md),

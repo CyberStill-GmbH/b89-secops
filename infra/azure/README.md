@@ -2,8 +2,8 @@
 
 Este root es independiente de `infra/aws`: usa una suscripción, state, identidad,
 red y secretos propios. No importa ni cambia recursos AWS o DNS. La arquitectura
-documentada para el destino Azure se rige por [`docs/cloud/azure/architecture.md`](../../docs/cloud/azure/architecture.md),
-con [`arquitectura objetivo EUS2`](../../docs/cloud/azure/target-architecture-demo-eus2.md),
+documentada para el destino Azure se rige por [`docs/archive/azure/architecture.md`](../../docs/archive/azure/architecture.md),
+con [`arquitectura objetivo EUS2`](../../docs/archive/azure/target-architecture-demo-eus2.md),
 `docs/10-decisiones.md` y `docs/12-backend-en-el-siem.md` como fuentes de producto. El
 perfil no secreto `profiles/demo-eus2.tfvars` es el que consume el workflow aislado EUS2;
 por sí solo mantiene los hosts SIEM y B89 Respond deshabilitados.
@@ -88,7 +88,7 @@ USD 200/mes es un umbral de alertas, **no** un tope de facturación ni una regla
 apagado o `destroy`. La estimación vigente de cómputo Wazuh + PostgreSQL supera
 ese umbral y no incluye todos los discos, backup, Valkey, red, observabilidad,
 ACR ni la VM/almacenamiento de B89 Respond. Revisar
-[viabilidad de costo](../../docs/cloud/azure/cost-feasibility-2026-10-20.md)
+[viabilidad de costo](../../docs/archive/azure/cost-feasibility-2026-10-20.md)
 y cotizar la arquitectura completa antes del plan.
 
 La decisión A11 fija snapshots y evidencia en S3 y excluye Azure. No usar Blob
@@ -129,9 +129,9 @@ Key Vault, no los valores de secretos.
 
 ## Secuencia propuesta
 
-1. Revisar [`arquitectura Azure`](../../docs/cloud/azure/architecture.md),
-   [`paridad IaC`](../../docs/cloud/azure/terraform-parity-review-2026-10-19.md)
-   y [`costo`](../../docs/cloud/azure/cost-feasibility-2026-10-20.md).
+1. Revisar [`arquitectura Azure`](../../docs/archive/azure/architecture.md),
+   [`paridad IaC`](../../docs/archive/azure/terraform-parity-review-2026-10-19.md)
+   y [`costo`](../../docs/archive/azure/cost-feasibility-2026-10-20.md).
 2. Preparar el bootstrap y state backend; confirmar identidad OIDC, acceso al
    state y permisos acotados. Generar plan remoto nuevo y revisar cada cambio.
 3. Completar instalación del host SIEM, `b89-core`, el proxy Indexer y el módulo privado KrakenD, Valkey y
@@ -156,5 +156,5 @@ Azure todavía debe decidir destino/retención conforme a residencia. No afirmar
 Log Analytics recibe logs de aplicación ni que Wazuh procesa conectores hasta ver
 una prueba real.
 
-Ver el [diagrama de destino Azure](../../docs/cloud/azure/diagrams/b89-azure.mmd)
-y el [runbook Azure](../../docs/cloud/azure/runbook-preparacion-y-corte.md).
+Ver el [diagrama de destino Azure](../../docs/archive/azure/diagrams/b89-azure.mmd)
+y el [runbook Azure](../../docs/archive/azure/runbook-preparacion-y-corte.md).
