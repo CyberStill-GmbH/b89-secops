@@ -480,8 +480,7 @@ test('runtime images must be complete and pinned to the configured ACR by SHA-25
 test('Key Vault references must be versioned IDs and may not contain values', () => {
   const ids = {
     api: {
-      B89_ENTRA_CLIENT_SECRET:
-        'https://b89.vault.azure.net/secrets/entra-client-secret/version123',
+      B89_ENTRA_CLIENT_SECRET: 'https://b89.vault.azure.net/secrets/entra-client-secret/version123',
     },
   };
   assert.doesNotThrow(() =>
@@ -538,7 +537,10 @@ test('B89 Respond requires SIEM, six registry digests, and Compose whose hash ma
         validateDeploymentInputs(
           baseEnv({
             TF_VAR_siem_host: JSON.stringify(siemHost()),
-            TF_VAR_b89_respond_host: JSON.stringify({ ...b89-respond, private_ip_address: privateIpAddress }),
+            TF_VAR_b89_respond_host: JSON.stringify({
+              ...b89Respond,
+              private_ip_address: privateIpAddress,
+            }),
           }),
         ),
       /usable Azure host address in the reserved B89 Respond subnet/u,
@@ -587,7 +589,8 @@ test('B89 Respond cannot be enabled without SIEM and literal Compose credentials
     },
   };
   assert.throws(
-    () => validateDeploymentInputs(baseEnv({ TF_VAR_b89_respond_host: JSON.stringify(b89Respond) })),
+    () =>
+      validateDeploymentInputs(baseEnv({ TF_VAR_b89_respond_host: JSON.stringify(b89Respond) })),
     /requires a configured siem_host/u,
   );
   assert.throws(
