@@ -102,6 +102,9 @@ server {
   }
 
   location ^~ /b89/ {
+    # El login de b89_ops fija su propia Referrer-Policy (same-origin) y X-Content-Type-Options:
+    # un add_header aquí evita heredar los del server (duplicados y en conflicto). Solo HSTS.
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     proxy_pass http://b89_osd;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-For $remote_addr;
