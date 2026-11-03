@@ -19,7 +19,7 @@
  * Nunca toca comparaciones (`app_name === "Shuffle Tools"`), asignaciones de datos
  * (`environment = "Shuffle"`), claves, imports, URLs ni identificadores, porque cambiarlos rompería
  * la lógica y la compatibilidad con el backend de Shuffle.
- * Colores: mapa fijo naranja Shuffle → ámbar B89 en todo el código (mantiene coherentes las
+ * Colores: mapa fijo naranja Shuffle → Coral/Fucsia de B89 en todo el código (mantiene coherentes las
  * comparaciones con el color por defecto).
  */
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -33,18 +33,23 @@ const ts = createRequire(resolve(here, '../../package.json'))('typescript');
 
 export const BRAND = 'B89 Respond';
 
-/** Naranja de Shuffle → ámbar B89 (#c49a5a) y sus tonos, por luminosidad equivalente. */
+/**
+ * Naranja de Shuffle → paleta oficial de B89 (docs/brand/b89-visual-identity.md): el naranja
+ * principal pasa al Coral `#FF5841` y el rosado de Shuffle al Fucsia `#FF5899`. Los tonos de apoyo
+ * son variantes de luminosidad del Coral para estados hover/activo y fondos suaves; la paleta de
+ * marca no se usa para severidad ni estado.
+ */
 export const COLOR_MAP = {
-  '#ff8544': '#c49a5a',
-  '#f86a3e': '#c49a5a',
-  '#f85a3e': '#b5874a',
-  '#ff6600': '#c49a5a',
-  '#ec517c': '#d6b27a',
-  '#ff955c': '#d4ad74',
-  '#ff7c35': '#b5874a',
-  '#ff8d4f': '#d1aa70',
-  '#cc5f1f': '#8c6a38',
-  '#ffe8dc': '#f3eadc',
+  '#ff8544': '#ff5841',
+  '#f86a3e': '#ff5841',
+  '#f85a3e': '#e64a35',
+  '#ff6600': '#ff5841',
+  '#ec517c': '#ff5899',
+  '#ff955c': '#ff7a66',
+  '#ff7c35': '#ff6a52',
+  '#ff8d4f': '#ff7561',
+  '#cc5f1f': '#c8402c',
+  '#ffe8dc': '#ffe5e0',
 };
 
 const VISIBLE_ATTRS = new Set([

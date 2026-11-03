@@ -2,17 +2,21 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { comparedLiterals, recolor, retext } from './rebrand.mjs';
 
-test('recolor cambia el naranja de Shuffle por el ámbar B89 sin importar mayúsculas', () => {
+test('recolor cambia el naranja de Shuffle por el Coral y Fucsia de B89 sin importar mayúsculas', () => {
   assert.equal(
     recolor('color: "#FF8544"; b: "#f85a3e"; c: "#123456"'),
-    'color: "#c49a5a"; b: "#b5874a"; c: "#123456"',
+    'color: "#ff5841"; b: "#e64a35"; c: "#123456"',
   );
+});
+
+test('recolor lleva el rosado de Shuffle al Fucsia de la paleta oficial', () => {
+  assert.equal(recolor('x: "#EC517C"'), 'x: "#ff5899"');
 });
 
 test('recolor mantiene coherentes las comparaciones con el color por defecto', () => {
   assert.equal(
     recolor('brand !== "#ff8544" ? brand : "#ff8544"'),
-    'brand !== "#c49a5a" ? brand : "#c49a5a"',
+    'brand !== "#ff5841" ? brand : "#ff5841"',
   );
 });
 

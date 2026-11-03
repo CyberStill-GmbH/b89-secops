@@ -56,8 +56,8 @@ cat >"$FE/public/source/index.html" <<HTML
 <body style="background:#080808;color:#f4f4f5;font-family:system-ui;max-width:640px;margin:48px auto;line-height:1.6">
 <h1>B89 Respond · código fuente</h1>
 <p>B89 Respond es una versión modificada de Shuffle ${SHUFFLE_TAG} (commit ${SHUFFLE_SHA}), distribuida bajo la
-<a style="color:#c49a5a" href="LICENSE">GNU Affero General Public License v3.0</a>.</p>
-<p>Código fuente correspondiente de esta versión: <a style="color:#c49a5a" href="${src_name}">${src_name}</a>.</p>
+<a style="color:#ff5841" href="LICENSE">GNU Affero General Public License v3.0</a>.</p>
+<p>Código fuente correspondiente de esta versión: <a style="color:#ff5841" href="${src_name}">${src_name}</a>.</p>
 <p>Modificaciones de B89: tema, marca y textos (overlay <code>b89-respond/</code> de b89-secops, ${B89_SHA}).</p>
 </body></html>
 HTML
