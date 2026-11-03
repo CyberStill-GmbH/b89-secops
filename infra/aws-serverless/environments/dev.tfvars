@@ -3,7 +3,7 @@ project     = "b89"
 environment = "dev"
 aws_region  = "us-east-1"
 
-allowed_admin_cidrs = ["203.0.113.10/32"]
+allowed_admin_cidrs = ["38.250.148.109/32"]
 agent_cidrs         = []
 alert_email         = ""
 monthly_budget_usd  = 250
