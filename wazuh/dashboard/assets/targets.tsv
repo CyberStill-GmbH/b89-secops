@@ -14,9 +14,9 @@ svg/b89_mark_on_light.svg	dashboard	src/core/server/core_app/assets/logos/wazuh_
 svg/b89_wordmark_on_dark.svg	dashboard	src/core/server/core_app/assets/logos/wazuh_dashboards.svg
 svg/b89_wordmark_on_dark.svg	dashboard	src/core/server/core_app/assets/logos/wazuh_dashboards_on_dark.svg
 svg/b89_wordmark_on_light.svg	dashboard	src/core/server/core_app/assets/logos/wazuh_dashboards_on_light.svg
-svg/b89_spinner_on_dark.svg	dashboard	src/core/server/core_app/assets/logos/spinner.svg
-svg/b89_spinner_on_dark.svg	dashboard	src/core/server/core_app/assets/logos/spinner_on_dark.svg
-svg/b89_spinner_on_light.svg	dashboard	src/core/server/core_app/assets/logos/spinner_on_light.svg
+svg/b89_splash.svg	dashboard	src/core/server/core_app/assets/logos/spinner.svg
+svg/b89_splash.svg	dashboard	src/core/server/core_app/assets/logos/spinner_on_dark.svg
+svg/b89_splash.svg	dashboard	src/core/server/core_app/assets/logos/spinner_on_light.svg
 svg/b89_mark_on_dark.svg	dashboard	src/core/server/core_app/assets/logos/icon_dark.svg
 svg/b89_mark_on_light.svg	dashboard	src/core/server/core_app/assets/logos/icon_light.svg
 svg/b89_wordmark_on_dark.svg	dashboard	src/core/server/core_app/assets/wazuh_logo.svg
