@@ -1,5 +1,12 @@
 # B89 Respond host (Azure, isolated module)
 
+> **Nota (legado):** las menciones a Azure describen el perfil heredado de QAPAQ SecOps, archivado en
+> [`docs/archive/azure`](../../../../docs/archive/azure/README.md). B89 SOC opera solo en AWS ([02](../../../../docs/02-arquitectura.md)); lo técnico
+> que sigue aquí vale como referencia del perfil heredado, no como runbook vigente.
+
+> **Nota (heredado):** Shuffle y su webhook son el estado heredado de B89 Respond. El diseño vigente es
+> Step Functions ([13](../../../../docs/13-b89-respond.md), [14](../../../../docs/14-b89-respond-conexion-b89.md)); este material se reemplaza (fase M5).
+
 This module is wired into `infra/azure/main.tf` as an optional host, disabled while `b89_respond_host` is
 `null`. When enabled, it creates one private Ubuntu VM, an attached persistent data disk, a private
 IP, a narrowly scoped NSG, a managed identity with `AcrPull` on one registry, per-secret Key Vault

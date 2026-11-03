@@ -1,5 +1,12 @@
 # Paquete de detección B89 para lanzamiento
 
+> **Nota (legado):** las menciones a Azure describen el perfil heredado de QAPAQ SecOps, archivado en
+> [`docs/archive/azure`](../../../docs/archive/azure/README.md). B89 SOC opera solo en AWS ([02](../../../docs/02-arquitectura.md)); lo técnico
+> que sigue aquí vale como referencia del perfil heredado, no como runbook vigente.
+
+> **Nota (heredado):** Shuffle y su webhook son el estado heredado de B89 Respond. El diseño vigente es
+> Step Functions ([13](../../../docs/13-b89-respond.md), [14](../../../docs/14-b89-respond-conexion-b89.md)); este material se reemplaza (fase M5).
+
 Estado: **preconfigurado en Git; no instalado en un Manager real**. El catálogo
 mantiene 30 casos priorizados. Las reglas locales de este paquete consumen un
 contrato JSON plano `integration=b89-provider`; los adapters Sophos/Cato/Entra

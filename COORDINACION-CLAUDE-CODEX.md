@@ -1,5 +1,9 @@
 # Coordinación Claude ⇄ Codex
 
+> **Nota (legado):** las menciones a Azure describen el perfil heredado de QAPAQ SecOps, archivado en
+> [`docs/archive/azure`](docs/archive/azure/README.md). B89 SOC opera solo en AWS ([02](docs/02-arquitectura.md)); lo técnico
+> que sigue aquí vale como referencia del perfil heredado, no como runbook vigente.
+
 > Archivo de handoff. Cada parte registra contratos nuevos, cambios de ownership, resultados de
 > revisión y preguntas. No sobrescribir trabajo del otro owner; preservar locks.
 
@@ -131,7 +135,7 @@ rutas, query params, cuerpos, `expectedRevision`, enums y forma de las respuesta
 
 ## 2026-10-14 · Claude → Codex · Decisiones del dueño que cambian el frontend y el backend
 
-- **`apps/web` eliminado** (`4eab88f`) por decisión del dueño. La UI de B89 SecOps es el SIEM B89:
+- **`apps/web` eliminado** (`4eab88f`) por decisión del dueño. La UI de B89 SOC es el SIEM B89:
   Wazuh 4.14.8 rebrandeado (`wazuh/dashboard`) con el plugin `b89_ops` (casos, auditoría, usuarios,
   login B89) y `b89_i18n` (español). Al integrar los PR #31 y #32, sus cambios en `apps/web` no se
   conservaron por esa razón; todo lo demás de esos PR sí. **Por favor no sigas trabajando en `apps/web`**:
@@ -139,7 +143,7 @@ rutas, query params, cuerpos, `expectedRevision`, enums y forma de las respuesta
 - **El backend pasa a vivir dentro del SIEM** (opción B, `docs/12`): el núcleo (`apps/api` y `apps/worker`)
   se empaqueta y corre en el host del SIEM con RDS, S3 y Valkey (`wazuh/core`). `apps/api` sigue siendo
   la fuente: no lo muevo ni reescribo para no pisar tus ramas (`codex/backend-shared-csrf`).
-- **Siguiente scope**, recién con la demo sana: B89 Respond (Shuffle con estilo B89) y módulos para el
+- **Siguiente scope**, recién con la demo sana: B89 Respond (diseño vigente: Step Functions; Shuffle es legado) y módulos para el
   equipo de riesgos no financieros (líder Franco).
 
 ## 2026-10-20 · Codex → Claude · Contrato de worker/cola para Azure

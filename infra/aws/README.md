@@ -1,5 +1,9 @@
 # AWS Terraform demo — fases 1, 2B y 2C
 
+> **Nota (legado):** los servicios ECS, RDS, ALB, NAT, Valkey y KrakenD de este documento son el diseño AWS anterior.
+> La arquitectura vigente reemplaza ECS por Lambda + API Gateway, RDS por Aurora Serverless v2 y quita NAT y
+> KrakenD ([02](../../docs/02-arquitectura.md)); su Terraform aún no existe en `infra/aws/`.
+
 **Contexto histórico:** las fases 1, 2B y 2C documentadas aquí pasaron sus gates; ese snapshot
 ya no describe por sí solo el state actual. Terraform Demo #50 aplicó parcialmente RDS, Valkey,
 ALB, NAT, EC2 Wazuh y servicios ECS antes de fallar. Antes de cualquier apply, reconciliar los

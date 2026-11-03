@@ -1,4 +1,11 @@
-# Migración de Wazuh a B89 SecOps en AWS
+# Migración de Wazuh a B89 SOC en AWS
+
+> **Contexto heredado de QAPAQ SecOps; vigente solo lo que recoge [docs/10-decisiones.md](../10-decisiones.md).**
+> Se conserva como historia; la arquitectura vigente es serverless sobre AWS ([02](../02-arquitectura.md)).
+
+> **Nota (legado):** los servicios ECS, RDS, ALB, NAT, Valkey y KrakenD de este documento son el diseño AWS anterior.
+> La arquitectura vigente reemplaza ECS por Lambda + API Gateway, RDS por Aurora Serverless v2 y quita NAT y
+> KrakenD ([02](../02-arquitectura.md)); su Terraform aún no existe en `infra/aws/`.
 
 ## Estado
 

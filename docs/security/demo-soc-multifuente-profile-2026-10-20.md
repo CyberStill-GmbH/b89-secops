@@ -1,5 +1,12 @@
 # Perfil multifuente para la demo SOC B89
 
+> **Nota (legado):** las menciones a Azure describen el perfil heredado de QAPAQ SecOps, archivado en
+> [`docs/archive/azure`](../archive/azure/README.md). B89 SOC opera solo en AWS ([02](../02-arquitectura.md)); lo técnico
+> que sigue aquí vale como referencia del perfil heredado, no como runbook vigente.
+
+> **Nota (heredado):** Shuffle y su webhook son el estado heredado de B89 Respond. El diseño vigente es
+> Step Functions ([13](../13-b89-respond.md), [14](../14-b89-respond-conexion-b89.md)); este material se reemplaza (fase M5).
+
 **Estado del diseño original:** propuesta fechada 2026-10-20; no aprobada como política
 del tenant. **Revisión del inventario:** 2026-10-27, con última evidencia cloud fechada
 2026-10-26. **Versión objetivo:** Wazuh 4.14.8 / OpenSearch Dashboards 2.19.6; el
@@ -79,10 +86,10 @@ flowchart LR
   E -->|Sophos Endpoint/XDR| S[Sophos Central]
   S -->|SIEM API read-only, cursor| C1[B89 Sophos adapter]
   C[Cato SASE] -->|eventsFeed read-only, marker| C2[B89 Cato adapter]
-  W -->|alertas + provenance| Q[B89 SecOps]
+  W -->|alertas + provenance| Q[B89 SOC]
   C1 -->|SecurityEvent 1.0.0| Q
   C2 -->|SecurityEvent 1.0.0| Q
-  Q -->|alerta allowlisted, metadata mínima| A[B89 Respond / Shuffle]
+  Q -->|alerta allowlisted, metadata mínima| A[B89 Respond]
   A -->|enriquecimiento read-only| Q
   Q -->|notificación crítica por outbox| T[Teams Workflows]
   Q -. aprobación dual para acción .-> S

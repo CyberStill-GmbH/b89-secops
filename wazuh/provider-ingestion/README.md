@@ -1,5 +1,9 @@
 # Sophos Central y Cato → Wazuh B89
 
+> **Nota (legado):** las menciones a Azure describen el perfil heredado de QAPAQ SecOps, archivado en
+> [`docs/archive/azure`](../../docs/archive/azure/README.md). B89 SOC opera solo en AWS ([02](../../docs/02-arquitectura.md)); lo técnico
+> que sigue aquí vale como referencia del perfil heredado, no como runbook vigente.
+
 Este módulo opcional incorpora dos fuentes de entrada directamente en el overlay Wazuh, según A15. Consume APIs de solo lectura y escribe JSONL por proveedor; Wazuh las incorpora mediante `<localfile log_format="json">`. Los eventos y archivos de ingesta quedan separados por fuente, mientras el manager y sus logs internos conservan sus rutas propias.
 
 ## Estado y límites

@@ -1,33 +1,35 @@
 # Documentación B89 SecOps
 
-Diez documentos cortos reemplazan los ~200 anteriores (sprints, informes de avance, auditorías
-C-0X, 31 ADR solapados, specs de pantallas). El histórico completo sigue en git:
-`git show 050f9fa:docs/<ruta>`.
+La documentación principal consolida producto, arquitectura, operación y decisiones de **B89 SOC**,
+la plataforma SOC serverless de la fintech B89 sobre AWS. El material histórico heredado de QAPAQ
+SecOps (sprints, informes, auditorías C-0X y ADR previos) sigue en git: `git show 050f9fa:docs/<ruta>`.
 
 | # | Documento | Pregunta que responde |
 | - | --- | --- |
-| 01 | [Producto](01-producto.md) | Qué es B89 y qué añade sobre Wazuh |
-| 02 | [Arquitectura](02-arquitectura.md) | Cómo encajan las piezas y qué salió del diseño |
+| 01 | [Producto](01-producto.md) | Qué es B89 SOC y qué añade sobre Wazuh |
+| 02 | [Arquitectura](02-arquitectura.md) | Cómo encajan las piezas serverless y el núcleo Wazuh |
 | 03 | [Evaluación de componentes](03-evaluacion-de-componentes.md) | Qué se conserva, qué se migra y qué se retira, y por qué no hay fork del manager |
-| 04 | [Identidad y acceso](04-identidad-y-acceso.md) | Login Entra único para la consola y el dashboard |
-| 05 | [Datos y retención](05-datos-y-retencion.md) | Hot/warm/cold, evidencia y auditoría |
-| 06 | [Operación](06-operacion.md) | AWS, costos, observabilidad, despliegue |
-| 07 | [Detección, ML y SOAR](07-deteccion-ml-y-soar.md) | Correlación, anomalías y respuesta gobernada |
+| 04 | [Identidad y acceso](04-identidad-y-acceso.md) | Login Entra único (Cognito) para la consola y el dashboard |
+| 05 | [Datos y retención](05-datos-y-retencion.md) | Hot/warm/cold, evidencia y auditoría inmutable |
+| 06 | [Operación](06-operacion.md) | AWS, costos, observabilidad, backups y despliegue |
+| 07 | [Detección, ML y SOAR](07-deteccion-ml-y-soar.md) | Correlación, anomalías y respuesta gobernada (B89 Respond) |
 | 08 | [Frontend unificado](08-frontend-unificado.md) | El dashboard de Wazuh como shell y B89 dentro |
-| 09 | [Plan de lanzamiento](09-plan-de-lanzamiento.md) | Fases, criterios de aceptación y orden |
-| 10 | [Decisiones](10-decisiones.md) | Registro único de decisiones vigentes |
-| 11 | [Caché y colas](11-cache-y-colas.md) | Dónde Valkey es fundamental, lazy loading y en qué puntos van las colas |
-| 12 | [Backend dentro del SIEM](12-backend-en-el-siem.md) | Cómo pasa la API B89 al SIEM B89 y cuándo se elimina |
+| 09 | [Plan de lanzamiento](09-plan-de-lanzamiento.md) | Fases serverless, criterios de aceptación y orden |
+| 10 | [Decisiones](10-decisiones.md) | Registro único de decisiones vigentes (incluye B1–B9 del fork) |
+| 11 | [Colas y caché](11-cache-y-colas.md) | SQS, EventBridge Scheduler y dónde queda Valkey |
+| 12 | [Backend en Lambda](12-backend-en-el-siem.md) | Cómo la API B89 deja ECS y qué fases quedan |
+| 13 | [B89 Respond](13-b89-respond.md) | Diseño de la respuesta gobernada sobre Step Functions y estado heredado de Shuffle |
+| 14 | [B89 Respond y B89 Core](14-b89-respond-conexion-b89.md) | Contrato entre el catálogo, las aprobaciones y la ejecución |
 
-`reference/` guarda las decisiones integradas de Codex (ADR-028 a 030 en `reference/decisiones/`, B89 Cases
-B89, la arquitectura resiliente y el rollout de Terraform) y los archivos que el código o la CI leen (catálogo de errores, inventario de
-fuentes, guía de extensión de proveedores, baseline de toolchain y gates de release). Si se mueven,
-hay que actualizar los tests que los referencian.
+`reference/` guarda las decisiones heredadas (ADR-028 a 030 en `reference/decisiones/`, B89 Cases, la
+arquitectura resiliente y el rollout de Terraform) y los archivos que el código o la CI leen
+(catálogo de errores, inventario de fuentes, guía de extensión de proveedores, baseline de toolchain
+y gates de release). Si se mueven, hay que actualizar los tests que los referencian.
 
 ## Arquitectura cloud
 
-- [Destino Azure EUS2, límites, perfil Terraform y gates de despliegue](archive/azure/target-architecture-demo-eus2.md)
-- [Índice de arquitectura Azure y estado verificado](archive/azure/README.md)
+- [AWS serverless: topología, costos y gates](cloud/aws/architecture.md)
+- [Archivo: perfil Azure heredado](archive/azure/README.md). B89 opera solo en AWS; no es destino de despliegue.
 
 ## Reglas de esta documentación
 

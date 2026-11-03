@@ -1,5 +1,8 @@
 # Baseline SOC B89: Wazuh, Sophos Central y Cato
 
+> **Nota (heredado):** Shuffle y su webhook son el estado heredado de B89 Respond. El diseño vigente es
+> Step Functions ([13](../13-b89-respond.md), [14](../14-b89-respond-conexion-b89.md)); este material se reemplaza (fase M5).
+
 **Estado:** propuesta técnica para revisión; no aplicada en las consolas de los
 proveedores. **Ámbito:** endpoints corporativos, servidores y telemetría de red de
 la financiera. **Principio:** Sophos protege y contiene endpoint; Cato protege el

@@ -2,8 +2,9 @@
 
 **B89 Cases** es el espacio de trabajo en equipo para investigar señales que
 requieren atención, coordinar decisiones y conservar el aprendizaje sobre
-incidentes de seguridad. Forma parte de B89 SecOps; no es un SIEM separado ni
-una fuente alternativa de alertas.
+incidentes de seguridad. Forma parte de B89 SOC; no es un SIEM separado ni
+una fuente alternativa de alertas. Corre como Lambda sobre Aurora Serverless v2
+(`modules/soc`; ver [02](../02-arquitectura.md)).
 
 ## Propósito
 
@@ -15,7 +16,7 @@ actividad que permita reconstruir lo ocurrido.
 Su diseño toma como referencia los patrones de colaboración de TheHive —casos,
 observables, tareas y trabajo en equipo— sin copiar su interfaz, vocabulario,
 modelo de datos ni código. La identidad visual, permisos, estados y contratos
-pertenecen a B89 SecOps.
+pertenecen a B89 SOC.
 
 ## Recorrido de una investigación
 
@@ -31,7 +32,8 @@ pertenecen a B89 SecOps.
    acciones correlacionadas. Cada persona ve solo objetos y datos autorizados por
    su rol y scope.
 5. **Responder:** desde una alerta o el expediente se revisa el catálogo de
-   automatizaciones disponibles. Una ejecución requiere permiso, versión,
+   acciones de **B89 Respond** (máquinas de estados de Step Functions,
+   [13](../13-b89-respond.md)). Una ejecución requiere permiso, versión,
    parámetros y aprobación según impacto; su resultado se refleja en el mismo
    historial.
 6. **Cerrar y aprender:** se registra resolución, fundamento, hallazgos y
@@ -59,16 +61,15 @@ El repositorio ya incluye una base de investigación de incidentes con estado,
 alertas relacionadas, tareas, bitácora de notas y timeline. B89 Cases organiza y
 extiende esa capacidad como experiencia del producto. Sus siguientes entregas
 deben verificar permisos por objeto, concurrencia, evidencia, referencias a
-fuentes, historial, recuperación y conexión al catálogo SOAR.
+fuentes, historial, recuperación y conexión al catálogo de B89 Respond.
 
 La revisión de incidentes y el aprendizaje operativo se incorporan por etapas.
 El nombre B89 Cases no afirma que la experiencia completa, la retención histórica o la
-integración SOAR estén ya desplegadas; cada etapa requiere pruebas y evidencia.
+integración con B89 Respond estén ya desplegadas; cada etapa requiere pruebas y evidencia.
 
 ## Documentación relacionada
 
-- [Visión y decisión de producto](../adr/029-b89-secops-product-direction.md).
-- [Arquitectura resiliente](../architecture/b89-secops-resilient-architecture.md).
-- [Flujo de incidentes actual](../frontend-design/incidentes-investigacion.md).
-- [Matriz de roles](../requirements/04-rbac-matrix.md).
-- [Roadmap](../roadmap.md).
+- [Arquitectura](../02-arquitectura.md) y [decisiones vigentes](../10-decisiones.md).
+- [B89 Respond](../13-b89-respond.md) y [su conexión con B89 SOC](../14-b89-respond-conexion-b89.md).
+- [Dirección de producto (ADR-029, heredado)](decisiones/029-b89-secops-product-direction.md).
+- [Arquitectura resiliente (heredado)](b89-secops-resilient-architecture.md).

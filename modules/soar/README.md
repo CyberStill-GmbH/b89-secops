@@ -1,4 +1,4 @@
-# SOAR
+# SOAR (B89 Respond)
 
 Ownership MVP: outbox y notificación CRITICAL a Microsoft Teams con reintentos,
 fallback y acuse en B89. El consumer se compone en el runtime; el dominio no se

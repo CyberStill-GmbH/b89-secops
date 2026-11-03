@@ -7,6 +7,23 @@ no se crean archivos nuevos.
 Estados: **Vigente**, **Gate** (decidida, pero falta evidencia antes de producción) y
 **Abierta**.
 
+## Decisiones B89 (fork serverless, 2026-11-02)
+
+Estas decisiones definen B89 SOC frente a la base heredada de QAPAQ SecOps. Detalle en
+[02](02-arquitectura.md).
+
+| ID | Decisión | Estado |
+| --- | --- | --- |
+| B1 | **Serverless por defecto en AWS.** La API, el SOAR, las colas y el estado corren en Lambda, Step Functions, SQS, EventBridge y Aurora Serverless v2. La única excepción es el núcleo Wazuh | Vigente, implementación propuesta |
+| B2 | **B89 Respond = Step Functions** con aprobación humana (`waitForTaskToken`). Se retira Shuffle | Vigente, implementación propuesta |
+| B3 | La API lee el Indexer por la ruta privada de VPC; se retira KrakenD | Propuesta |
+| B4 | SQS + EventBridge Scheduler reemplazan BullMQ y el worker persistente | Propuesta |
+| B5 | Wazuh Manager + Indexer + Dashboard en **un nodo EC2 Graviton** (ASG `min=max=1`), sin NAT, con snapshots EBS y de Indexer a S3. No se usa OpenSearch Serverless porque Wazuh no es compatible | Vigente, implementación propuesta |
+| B6 | Auditoría y evidencia en S3 Object Lock (compliance) replicadas a una cuenta de archivo de logs separada | Propuesta |
+| B7 | Tres cuentas AWS (`b89-soc-workload`, `b89-log-archive`, `b89-security-tooling`) | Propuesta |
+| B8 | B89 opera **solo en AWS**. El perfil Azure queda archivado en [`archive/azure`](archive/azure/README.md) | Vigente |
+| B9 | Marcas: **B89 SOC** (producto), **B89 Respond** (respuesta), **B89 Cases** (casos). Dominio y logo definitivos pendientes de B89 | Vigente |
+
 ## Negocio (detalle en [01](01-producto.md#decisiones-de-negocio-que-se-conservan))
 
 | ID | Decisión | Estado | Origen |
@@ -21,7 +38,8 @@ Estados: **Vigente**, **Gate** (decidida, pero falta evidencia antes de producci
 | N8 | No publicar SLO, EPS ni KPIs sin medición | Vigente | ADR-016 |
 | N9 | Una sola sesión activa por persona. Un login nuevo reemplaza la sesión anterior en la consola y en el dashboard | Vigente (falta hacerla atómica) | ADR-017 |
 | N11 | **Auditable para ISO 27001 y ciberseguridad SBS.** Se conserva toda la evidencia (RDS, S3, auditoría con cadena hash y snapshots) y el diseño se ajustará a sus controles | Vigente (próximo scope) | 2026-10-14 (dueño) |
-| N10 | Un cambio aprobado de rol o una baja de acceso revoca las sesiones y exige nuevo login | Gate: flujo de roles todavía no desplegado; grant y revocación viven en stores distintos; verificar `remaining = 0` y corte en el Dashboard antes de producción | ADR-017, 2026-10-13 |
+| N10 | Un cambio aprobado de rol o una baja de acceso revoca las sesiones y exige nuevo login | Gate: flujo de roles todavía no desplegado; grant y revocación viven en stores distintos; verificar `remaining = 0` y corte en el Dashboard antes de producción | ADR-017, 2026-10-13 |
+| N12 | PCI-DSS solo si B89 procesa datos de tarjeta: enmascarar PAN antes de indexar y retener logs 12 meses (3 en línea). Detalle en [01](01-producto.md) | Gate: confirmar con B89 | 2026-11-02 |
 
 ## Arquitectura
 
@@ -34,16 +52,16 @@ Estados: **Vigente**, **Gate** (decidida, pero falta evidencia antes de producci
 | A5 | **Sin fork del manager ni del Indexer de Wazuh.** El overlay B89 se versiona en `wazuh/` sobre la versión oficial fijada | Vigente | 2026-10-13 |
 | A6 | **B89 SecOps ES Wazuh con identidad B89.** La UI de Wazuh 4.14.8 (OSD 2.19.6) se rebrandea de principio a fin como overlay versionado en `wazuh/dashboard/` (parches mínimos, assets B89, plugins separados `b89_ops` y `b89_i18n`). **`apps/web` se descarta** | Vigente | 2026-10-13 (dueño) |
 | A7 | **El login TS de B89 es la identidad del dashboard** (nginx `auth_request` más proxy auth). OIDC nativo de OSD queda solo como fallback | Vigente | 2026-10-13 |
-| A8 | KrakenD **se mantiene mientras lo use la ingesta** (API → Indexer) y el ALB. Se retira solo cuando la API lea el Indexer por el proxy nginx. No se agregan capas nuevas | Vigente (revisada) | 2026-10-13 |
-| A9 | **Valkey vuelve como pieza de resiliencia** (2026-10-14, decisión del dueño): caché con lazy loading e invalidación explícita, estado efímero compartido entre réplicas y colas BullMQ consumidas por el worker. Postgres sigue siendo la verdad; sin Valkey, el sistema degrada a su comportamiento actual. Diseño en [11](11-cache-y-colas.md). Valkey creado en AWS con `noeviction` | Vigente | 2026-10-14 |
+| A8 | ~~KrakenD se mantiene mientras lo use la ingesta~~ **Sustituida por B3.** La API lee el Indexer por la ruta privada de VPC y `platform/gateway` se retira cuando esa ruta tenga paridad | Sustituida (B3) | 2026-10-13, revisada para B89 |
+| A9 | Valkey como pieza de resiliencia: caché con lazy loading e invalidación explícita y estado efímero compartido. **Para B89 las colas BullMQ pasan a SQS (B4)**; Valkey queda opcional como ElastiCache Serverless o DynamoDB TTL. Postgres sigue siendo la verdad. Diseño en [11](11-cache-y-colas.md) | Vigente, ajustada por B4 | 2026-10-14 |
 | A10 | **Retirar Grafana, Loki y Prometheus.** CloudWatch para métricas de infraestructura. Logs de API y ALB a Wazuh (cumple N1) | Vigente | 2026-10-13 (sustituye ADR-025 en lo de observabilidad) |
 | A11 | Retención hot/warm/cold con ISM y snapshots a S3 (no Azure) | Vigente (gate N7 para el borrado) | 2026-10-13 (sustituye ADR-008/018 en el mecanismo) |
 | A12 | ML con OpenSearch Anomaly Detection. Python solo si un caso medido supera a RCF | Vigente | 2026-10-13 (sustituye ADR-007) |
-| A13 | **El SOAR propio de B89 no se construye.** **B89 Respond es Shuffle rebrandeado**: ejecuta workflows y workers en una red privada; **B89 Core gobierna** catálogo/versiones, capacidades, SoD, aprobaciones, idempotencia, auditoría y estado. La UI solo se publica detrás de la ruta `/b89-respond/*` que valida la sesión B89. Ningún analista invoca el webhook directamente. B89 Respond va después del lanzamiento del SIEM B89; Teams con acuse humano sigue en B89 Core. | Próximo scope; IaC Azure aislado preparado, sin root wiring ni despliegue | 2026-10-13 (dueño), precisión Azure 2026-10-20 |
+| A13 | **El SOAR propio de B89 no se construye como producto aparte; B89 Respond es la capa de respuesta gobernada.** Heredado de QAPAQ: Shuffle rebrandeado. **Vigente para B89 (B2): se implementa sobre Step Functions** y **B89 Core gobierna** catálogo/versiones, capacidades, SoD, aprobaciones, idempotencia, auditoría y estado. Ningún analista invoca la ejecución directamente. | Vigente; implementación Step Functions propuesta | 2026-10-13 (QAPAQ), B89 2026-11-02 |
 | A14 | Ingesta push (`custom-b89`) más pull de reconciliación | Vigente (fase 2) | 2026-10-13 |
 | A15 | Fuentes nuevas por módulos de Wazuh, no por adaptadores TS | Vigente | 2026-10-13 |
 | A16 | Lanzamiento sobre **Wazuh 4.14.8** (lo que corre en AWS). La imagen anterior queda como histórico: AMI `ami-096d5a424506d1999` (`b89-secops-wazuh-historico-4.14.8-20261013`). Wazuh 5 llega como cluster nuevo cuando haya GA | Vigente | 2026-10-13 (dueño) |
-| A22 | **El backend B89 vive dentro del SIEM** (opción B): el núcleo corre como servicio del host del SIEM junto al dashboard, con RDS, S3 y Valkey. Se retiran los servicios ECS de la API y el worker tras la paridad ([12](12-backend-en-el-siem.md)) | Vigente, en implementación | 2026-10-14 (dueño) |
+| A22 | ~~El backend vive dentro del SIEM (opción B)~~ **Sustituida por B1/B5.** El backend B89 corre en Lambda, no en el host del SIEM ni en ECS | Sustituida | 2026-10-14, revisada para B89 |
 | A17 | CI, candidato, publicación y despliegue separados. Imágenes inmutables `git-<sha>` | Vigente | ADR-023 |
 | A18 | **Sin capas de complejidad nuevas.** Se reutiliza lo que hay: host Wazuh como edge, API y Postgres actuales y long-poll; nada de SSE, colas nuevas ni servicios extra para el lanzamiento | Vigente | 2026-10-13 (dueño) |
 | A19 | **UI en español** con el plugin `b89_i18n`: glosario curado más la API Translator on-device de Chrome. **Nunca** se usa un servicio de traducción externo (N1/N2) | Vigente | 2026-10-13 |
@@ -58,7 +76,7 @@ Estados: **Vigente**, **Gate** (decidida, pero falta evidencia antes de producci
 | U-004 | Matriz de retención firmada | Legal/Compliance | Firma más pruebas de purga |
 | U-017 | KPIs de negocio del MVP | Product Owner | Fórmula, fuente y owner aprobados |
 | U-018 | CIDR de la red confiable, proxies y claims de passkey | Identity/Infra | E2E dentro, fuera y por proxy |
-| U-022 | ¿Aceptar Shuffle (AGPL, sin modificar) o usar StackStorm (Apache-2.0)? | Legal | Dictamen |
+| U-022 | Resuelta por B2: B89 Respond usa Step Functions, sin Shuffle (AGPL) ni StackStorm. Queda abierto solo el retiro del código heredado de Shuffle | Platform | Se elimina `b89-respond/` heredado |
 | U-023 | ¿Migración de datos 4.x → 5.x por snapshot? (las RC se contradicen) | Platform | Prueba en sandbox |
 
 ## Decisiones de Codex integradas (PR #31, 2026-10-13)

@@ -1,5 +1,9 @@
 # Detecciones endpoint B89 sobre Wazuh
 
+> **Nota (legado):** las menciones a Azure describen el perfil heredado de QAPAQ SecOps, archivado en
+> [`docs/archive/azure`](../../../docs/archive/azure/README.md). B89 SOC opera solo en AWS ([02](../../../docs/02-arquitectura.md)); lo técnico
+> que sigue aquí vale como referencia del perfil heredado, no como runbook vigente.
+
 **Estado: candidata; quedará en el próximo bundle Azure, pero aún no está instalada en un Manager ni observada en endpoints B89.**
 
 Este paquete incorpora una adaptación acotada de la idea de SigmaHQ “Suspicious Outlook

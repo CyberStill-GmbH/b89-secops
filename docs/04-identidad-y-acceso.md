@@ -1,29 +1,40 @@
 # 04 · Identidad y acceso
 
+> Estado: la lógica de `modules/access` (OIDC PKCE, sesión, roles, Graph delta) es **hecha y
+> probada con tests**, sin verificar contra Cognito ni AWS real. **Cognito federado con Entra, las
+> Lambdas de identidad y el borde CloudFront son propuestos** ([02](02-arquitectura.md)). Los
+> requisitos de la SBS (autenticación fuerte, separación de funciones, trazabilidad) se confirman
+> con B89.
+
 ## Modelo
 
-- **Entra ID decide quién es la persona y si puede entrar** (grupo SOC y app roles).
+- **Entra ID decide quién es la persona y si puede entrar** (grupo SOC, app roles y MFA).
   **B89 decide qué puede hacer**: capacidades, scope, SoD y auditoría.
-- **Un solo login para todo.** El login TypeScript existente protege la consola de casos **y**
-  el dashboard de Wazuh. No hay usuarios locales de Wazuh para personas. Los usuarios internos
-  quedan solo para servicios (`b89_reader` y `wazuh-wui`) y para el break-glass.
+- **Cognito (user pool) es el único emisor de tokens de B89** y se federa con Entra por OIDC. La
+  API B89 (Lambda) valida los tokens de Cognito y mantiene la sesión opaca. Las personas no
+  tienen contraseña local en Cognito: se autentican en Entra.
+- **Un solo login para todo.** El mismo login protege la consola de casos **y** el dashboard de
+  Wazuh. No hay usuarios locales de Wazuh para personas. Los usuarios internos quedan solo para
+  servicios (`b89_reader` y `wazuh-wui`) y para el break-glass.
+- **MFA obligatorio, aplicado en Entra** (Conditional Access). La regla "passkey fuera de la red"
+  vive en la API (`network.ts`) y exige que el claim `amr` de Entra llegue hasta ella a través de
+  Cognito (mapeo de atributos o Lambda `pre-token-generation`): **por validar en la integración**.
 
-## Excepción temporal del demo: MFA/passkey
+## Excepción temporal de MFA/passkey de la demo anterior
 
-**Activa solo en `b89-secops-demo` hasta 2026-10-17 03:40 UTC (2026-10-16 22:40, hora Lima).**
-`B89_DEMO_MFA_EXCEPTION_UNTIL` permite completar el login a identidades que ya superaron
-la validación OIDC y tienen capabilities B89 aunque el token no pruebe MFA/passkey. No altera
-MFA, Security Defaults ni Conditional Access de Entra. El código limita la excepción al tenant,
-client ID y callback de B89, exige vencimiento de máximo 30 días y acorta la sesión a ese
-vencimiento. Es un bypass temporal para la demo: una contraseña robada podría bastar para entrar.
+`B89_DEMO_MFA_EXCEPTION_UNTIL` (en `apps/api/src/main.ts` y el esquema de configuración) permitía
+completar el login sin prueba de MFA/passkey con vencimiento acotado. La fecha de la demo anterior
+(2026-10-17) **ya venció**. En B89 SOC no se propaga: no se define la variable en ningún entorno
+nuevo y se evalúa retirar el código en la fase 1 ([09](09-plan-de-lanzamiento.md)).
 
 ## Flujo
 
 ```mermaid
 sequenceDiagram
   participant B as Navegador
-  participant N as nginx edge
-  participant Q as B89 API
+  participant N as nginx edge (nodo Wazuh)
+  participant Q as B89 API (Lambda)
+  participant C as Cognito
   participant E as Entra ID
   participant D as Wazuh Dashboard
   participant I as Wazuh Indexer
@@ -32,9 +43,11 @@ sequenceDiagram
   Q-->>N: 401
   N-->>B: 302 /b89/login?nextUrl=/app/wz-home (plugin b89_ops)
   B->>Q: GET /api/auth/start?returnTo=/app/wz-home
-  B->>E: Authorization Code + PKCE
-  E-->>B: /api/auth/callback?code&state
-  B->>Q: callback → valida id_token, amr/passkey, grupo, roles
+  B->>C: Authorization Code + PKCE
+  C->>E: federación OIDC (MFA en Entra)
+  E-->>C: id_token
+  C-->>B: /api/auth/callback?code&state
+  B->>Q: callback → valida token de Cognito, amr/passkey, grupo, roles
   Q-->>B: Set-Cookie b89_session (HttpOnly) → 302 return
   B->>N: GET /app/wz-home
   N->>Q: introspect
@@ -43,23 +56,28 @@ sequenceDiagram
   D->>I: misma identidad (proxy auth, noop backend)
 ```
 
+El tráfico entra por CloudFront + WAF: `/api` va a API Gateway HTTP (Lambda) y `/` al dashboard.
+Con Lambda la API no tiene memoria entre invocaciones, por lo que **el estado del login (handshake
+OIDC, lockout, CSRF) y la sesión van a Aurora y Secrets Manager**, no a memoria (ver Pendientes).
+
 ## Piezas
 
 | Pieza | Estado | Archivo |
 | --- | --- | --- |
 | OIDC PKCE, `state`/`nonce`, validación RS256, `amr` y passkey fuera de la red | Hecho, 79 tests | `modules/access/src/{oidc-handshake,id-token,sign-in,network}.ts` |
-| Sesión opaca (30 min de inactividad, 8 h absolutas, hash en Postgres) | Hecho | `modules/access/src/session.ts` |
+| Sesión opaca (30 min de inactividad, 8 h absolutas, hash en Postgres) | Hecho (Postgres = Aurora, propuesto) | `modules/access/src/session.ts` |
 | `GET /api/auth/introspect` → 204 con `x-b89-user` y `x-b89-roles` | Trabajo en curso **sin commitear en `main`** | `apps/api/src/soc/auth.controller.ts` |
+| User pool de Cognito, proveedor OIDC de Entra y app client | Propuesto (sin Terraform aún) |
 | nginx `auth_request` | Propuesto en esta rama | `wazuh/edge/b89-edge.conf` |
 | Security plugin `proxy` (Indexer y Dashboard) | Propuesto en esta rama | `wazuh/indexer/security/`, `wazuh/dashboard/opensearch_dashboards.b89.yml` |
-| Revocación al salir del grupo (Graph delta) | Hecho | `apps/api/src/runtime/directory-sync.ts` |
+| Revocación al salir del grupo (Graph delta) | Hecho. Se ejecuta con EventBridge Scheduler + Lambda y además llama a `AdminUserGlobalSignOut` de Cognito (propuesto) | `apps/api/src/runtime/directory-sync.ts` |
 
 ## Por qué proxy auth y no OIDC nativo de OSD
 
 | Criterio | OIDC nativo de OSD | B89 como proxy de identidad |
 | --- | --- | --- |
 | Passkey obligatoria fuera de la red | No | Sí (`network.ts`) |
-| Revocación al salir del grupo SOC | Solo al expirar el token | Inmediata: cada request pasa por `introspect` |
+| Revocación al salir del grupo SOC | Solo al expirar el token | Rápida (≤ 5 s por la caché del edge): cada request pasa por `introspect` |
 | Revocación administrativa de sesión | No | Sí, en `/api/admin/sessions` |
 | Auditoría del acceso | Logs de OSD | Cadena hash B89 |
 | Esfuerzo | Solo configuración | Configuración más el endpoint, que ya existe |
@@ -148,20 +166,22 @@ de cambio, no escribe grants directamente ni modifica miembros/estado de cuenta 
 
 ## Pendientes y riesgos
 
-0. **IP del cliente detrás del edge (corregido en esta rama).** El edge del host Wazuh llegaba a
-   la API por el ALB **público** (`/b89-api/`). La API veía la EIP del host como cliente, fuera de
-   la cadena de proxies confiables (`10.0.0.0/16`), así que la política de red trataba a todos como
-   externos y exigía passkey. Ahora el edge usa Cloud Map dentro de la VPC (reglas
-   `public_proxy_to_api` y `api_from_public_proxy`, salida `b89_edge_api_origin`), y la API ve la
-   IP real del usuario.
+0. **IP del cliente detrás del edge.** La política de red depende de ver la IP real del usuario. Con
+   CloudFront y API Gateway la IP llega en `X-Forwarded-For` / `requestContext.http.sourceIp`; la
+   API debe confiar solo en el salto de CloudFront (lista de prefijos gestionada) o tratará a todos
+   como externos y exigirá passkey. Se resolvió en la topología anterior con Cloud Map; el
+   equivalente serverless es **propuesto** y se prueba en la fase 1.
 
 1. **Stores en memoria.** El handshake OIDC, el lockout y la clave CSRF se crean en memoria al
-   arrancar (`secops-runtime.ts:246-275`). Con más de una réplica, o tras un reinicio, el login y
-   el CSRF fallan. Hay que moverlos a Postgres y a Secrets Manager antes de escalar la API.
-2. **Coste del `introspect`.** Cada request del dashboard dispara uno. nginx lo cachea 5 s por
-   cookie (`proxy_cache`). Una revocación tarda como máximo 5 s en aplicarse.
+   arrancar (`secops-runtime.ts:246-275`). En Lambda, cada invocación puede caer en un contenedor
+   distinto: el login y el CSRF **fallarían**. Moverlos a Aurora y Secrets Manager es **bloqueante**
+   para el despliegue serverless.
+2. **Coste del `introspect`.** Cada request del dashboard dispara una invocación de Lambda y una
+   lectura de Aurora. nginx lo cachea 5 s por cookie (`proxy_cache`). Una revocación tarda como
+   máximo 5 s en aplicarse. Si Aurora escala a cero, la primera invocación tras inactividad añade
+   segundos de latencia: en producción conviene un mínimo de ACU mayor a cero (ver [06](06-operacion.md)).
 3. **Cabeceras de confianza.** nginx **borra** las `x-proxy-*` que manda el cliente. El Indexer
    solo acepta proxy auth desde `internalProxies` (127.0.0.1).
-4. **Redirect URI.** La app de Entra necesita registrar `https://<dominio-soc>/api/auth/callback`.
+4. **Redirect URI.** La app de Entra registra el endpoint de Cognito (`https://<dominio-cognito>/oauth2/idpresponse`) y el app client de Cognito registra `https://<dominio-soc>/api/auth/callback`. Dominio placeholder: `b89.example`.
 5. **Sin step-up.** No hay reautenticación para acciones sensibles (aprobar SOAR, conceder roles).
    Hay que añadir `max_age`/`prompt=login` en la fase 3.

@@ -1,5 +1,9 @@
 # Ingeniería de detección B89: incorporación de reglas abiertas y control de falsos positivos
 
+> **Nota (legado):** las menciones a Azure describen el perfil heredado de QAPAQ SecOps, archivado en
+> [`docs/archive/azure`](../archive/azure/README.md). B89 SOC opera solo en AWS ([02](../02-arquitectura.md)); lo técnico
+> que sigue aquí vale como referencia del perfil heredado, no como runbook vigente.
+
 **Estado:** método y backlog de detección para revisión; no equivale a políticas
 instaladas en Azure ni a una certificación del tenant. La base de detección es el
 ruleset versionado de Wazuh. Las reglas locales B89 de Microsoft 365 viven en
@@ -12,7 +16,7 @@ se modifica el ruleset upstream directamente.
 |---|---|---|
 | Rules/decoders oficiales de Wazuh | Primera capa de decodificación y detección para fuentes ya recogidas. Wazuh mantiene estos archivos por versión. | No editar `/var/ossec/ruleset`; crear archivos locales versionados bajo `/var/ossec/etc/rules` y validar contra la versión exacta del Manager. |
 | SigmaHQ | Fuente de hipótesis portables para Windows, Linux, identidad, cloud y hunting. | Comenzar por reglas genéricas `stable`/`testing` de severidad alta/crítica; traducir campos y lógica al decoder real de Wazuh; no copiar reglas masivamente ni importar búsquedas sin validar cobertura. La licencia de sus reglas es DRL 1.1: conservar atribución/avisos requeridos y registrar origen/revisión antes de redistribuir. |
-| Wazuh Active Response y playbooks Shuffle | Referencias para la automatización operativa. | Usar B89 Respond/Shuffle para secuencias gobernadas. Active Response tiene efectos directos en endpoint; mantener deshabilitado para estas detecciones hasta obtener aprobación de cada acción, alcance, rollback y evidencia de sandbox. |
+| Wazuh Active Response y playbooks de B89 Respond (antes Shuffle) | Referencias para la automatización operativa. | Usar B89 Respond (máquinas de estados de Step Functions; Shuffle es legado) para secuencias gobernadas. Active Response tiene efectos directos en endpoint; mantener deshabilitado para estas detecciones hasta obtener aprobación de cada acción, alcance, rollback y evidencia de sandbox. |
 
 No se ha convertido ni cargado un paquete Sigma en el Manager. La conversión automática
 no es una prueba de equivalencia: los nombres de campos, normalización, severidad y

@@ -1,26 +1,35 @@
 # 08 · Frontend unificado
 
+> Leyenda: **[verificado]**, **[sin verificar]** (existe en el repo, no probado en AWS) y
+> **[propuesto]**. Arquitectura general en [02](02-arquitectura.md).
+
 ## Decisión
 
 El **dashboard de Wazuh es el shell**. Lo que ya hace bien no se rehace: Discover, dashboards,
 agentes, vulnerabilidades, FIM, MITRE, reglas y gestión de índices. B89 aporta casos, gobierno
-y cambios en vivo **dentro** del mismo shell, como plugin nativo de OpenSearch Dashboards.
+y cambios en vivo **dentro** del mismo shell, como plugin nativo de OpenSearch Dashboards (`b89_ops`).
 
-## Estado real (revisado el 2026-10-22)
+**Servido tras CloudFront [propuesto]:** el borde único es CloudFront + WAF. `/` va al Dashboard
+(origen: el nodo Wazuh en EC2, por NLB/ALB privado con origen restringido a CloudFront) y `/api`
+va a API Gateway HTTP → Lambda. El navegador sigue viendo un solo origen, así que la sesión
+(cookie, CSRF) funciona *same-origin* como hoy. Ni el Dashboard ni el Indexer se exponen a
+Internet.
+
+## Estado del repositorio (revisado el 2026-10-22; migración a AWS propuesta)
 
 La fuente versionada del frontend de demo es el overlay `wazuh/dashboard/` de este repositorio,
 compilado contra **Wazuh 4.14.8 / OpenSearch Dashboards 2.19.6**. El repositorio externo
 `b89-dashboard` y su base Wazuh 5.x / OSD 3.x son una línea de migración separada: no se mezclan
 en el artefacto actual por incompatibilidad de plugins y protocolos.
 
-| Pieza | Dónde | Estado |
+| Pieza | Dónde | Estado (código) |
 | --- | --- | --- |
 | Marca B89 y navegación de Wazuh | `wazuh/dashboard/patches/`, `assets/`, `plugins/b89_ops` | Overlay fijado a OSD 2.19.6 |
 | Login B89 y rutas de dashboard | `plugins/b89_ops/server` y `wazuh/edge/` | Se conserva el flujo de identidad existente |
 | Vistas SOC: alertas, incidentes, notificaciones, auditoría, usuarios/sesiones y fuentes | `plugins/b89_ops/public/components/` | Compiladas dentro del dashboard |
 | Solicitud y aprobación de roles | `plugins/b89_ops/public/components/access_view.tsx` + `apps/api/src/soc/admin-role-grants.controller.ts` | En rama de trabajo; pendiente PR, CI y despliegue |
 | Cliente de la API (same-origin, cookie, CSRF, contrato) | `plugins/b89_ops/public/api/` y `common/api_contract.ts` | CSRF se obtiene de la sesión B89 |
-| Edge nginx y Security plugin (proxy auth) | `wazuh/edge/` y `wazuh/indexer/security/` | Fuente del despliegue en este repo |
+| Edge nginx y Security plugin (proxy auth) | `wazuh/edge/` y `wazuh/indexer/security/` | Fuente del despliegue en este repo. En AWS, CloudFront hace de borde público; nginx queda solo como proxy auth local del nodo [propuesto] |
 
 **`apps/web` se eliminó** (`4eab88f`): sus vistas viven en el plugin `b89_ops`.
 
@@ -66,14 +75,18 @@ en el artefacto actual por incompatibilidad de plugins y protocolos.
    `wazuh-dashboard-notifications`) usa ese prefijo. Si colisiona, se restringe la regla de nginx
    a las rutas exactas de B89 (`/api/notifications` y `/api/notifications/<uuid>/acknowledge`) o
    se renombra la ruta del backend.
-3. **Dos edges.** `b89/deploy/nginx/b89-dashboard.conf` (fork) y `wazuh/edge/b89-edge.conf`
-   (este repo) ya están alineados en allowlist y rutas públicas. El del fork todavía apunta a KrakenD
-   (`127.0.0.1:8080`); el de este repo va directo a la API y cachea `introspect` 5 s. **Fuente de
-   verdad:** el despliegue vive en `wazuh/` (este repo), y el fork conserva solo código.
+3. **Dos edges.** `b89/deploy/nginx/b89-dashboard.conf` (fork, apunta a KrakenD) y
+   `wazuh/edge/b89-edge.conf` (este repo, directo a la API). **Fuente de verdad:** `wazuh/` en este
+   repo; el fork conserva solo código. En AWS [propuesto] el borde público es CloudFront (rutas `/` y
+   `/api`) y la allowlist de prefijos `/api/*` se traslada a sus *behaviors*; KrakenD se retira.
 4. **Roles distintos.** El fork da `wazuh-archives-*` (raw) también al analista. Este repo lo
    reserva al líder (minimización, N2). Hay que unificar en `wazuh/indexer/security/`.
 5. **Sin cambios en vivo.** El plugin carga al montar y no consume `/api/changes`, así que la cola
    no se actualiza sola.
+6. **Proxy auth con la API en Lambda [propuesto].** Cada petición al Dashboard dispara
+   `GET /api/auth/introspect`. Con Lambda añade latencia y arranques en frío: se mantiene el
+   caché de 5 s en el edge del nodo y se evalúa concurrencia provisionada para esa ruta. La
+   revocación en ≤ 5 s debe re-medirse en este camino ([04](04-identidad-y-acceso.md)).
 
 ## Vínculos entre SIEM y casos
 
@@ -83,8 +96,14 @@ Wazuh, un *field formatter* del plugin abre `/app/b89-alerts?id=<id>`.
 
 ## Cambios en vivo
 
-- **Backend hoy:** long-poll `GET /api/changes?after=<cursor>` (2,5 s, por secuencia de auditoría).
-- **Fase 2:** sin KrakenD (que cortaba a 4 s), `GET /api/changes/stream` como **SSE**, con fallback
-  al long-poll. El plugin lo usa para refrescar la cola y los casos, para el contador del header y
-  para avisos `core.notifications.toasts` con las alertas P1 en cualquier pantalla.
+- **Backend hoy:** long-poll `GET /api/changes?after=<cursor>` (2,5 s, por secuencia de auditoría)
+  en `apps/api/src/soc/changes.controller.ts` [sin verificar en Lambda].
+- **En Lambda [propuesto]:** el long-poll de 2,5 s cabe en el límite de API Gateway HTTP (30 s) y
+  se mantiene, pero cada espera ocupa una invocación. El SSE `GET /api/changes/stream` **no es
+  viable** sobre API Gateway HTTP (no hace *streaming* de respuesta). Opciones a decidir en
+  [10](10-decisiones.md): Lambda Function URL con *response streaming* detrás de CloudFront, o
+  API Gateway WebSocket. Hasta decidir, se queda el long-poll. Sin Valkey, el long-poll consulta la
+  secuencia de auditoría con un intervalo mayor al de 400 ms actual ([11](11-cache-y-colas.md)).
+- El plugin lo usaría para refrescar la cola y los casos, el contador del header y avisos
+  `core.notifications.toasts` con las alertas P1 en cualquier pantalla (aún no lo consume).
 - OSD por sí mismo solo tiene *auto-refresh* por intervalo en Discover y en los dashboards.

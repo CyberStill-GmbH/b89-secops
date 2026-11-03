@@ -1,9 +1,11 @@
-# b89-respond/ — B89 Respond (Shuffle con identidad B89)
+# b89-respond/ — overlay de frontend Shuffle (B89 Respond heredado)
+
+> **Nota (heredado):** Shuffle y su webhook son el estado heredado de B89 Respond. El diseño vigente es
+> Step Functions ([13](../docs/13-b89-respond.md), [14](../docs/14-b89-respond-conexion-b89.md)); este material se reemplaza (fase M5).
 
 El frontend se construye para alojarse en la ruta `/b89-respond/` detrás de la sesión B89. La autenticación propia de B89 Respond conserva el control de acceso a sus funciones.
 
-Overlay versionado sobre **Shuffle v2.3.0** ([`upstream.lock`](upstream.lock)). Plan completo, tradeoffs
-y fases en [`docs/13-b89-respond.md`](../docs/13-b89-respond.md).
+Overlay versionado sobre **Shuffle v2.3.0** ([`upstream.lock`](upstream.lock)). Diseño vigente (Step Functions) y plan de migración en [`docs/13-b89-respond.md`](../docs/13-b89-respond.md).
 
 | Ruta                                                               | Qué cambia de Shuffle                                                                                                                                                                                                                                     |
 | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

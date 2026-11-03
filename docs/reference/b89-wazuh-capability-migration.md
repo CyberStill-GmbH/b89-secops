@@ -1,6 +1,12 @@
-# Inventario de capacidades diferenciales de B89 SecOps
+# Inventario de capacidades diferenciales de B89 SOC
 
-> **La arquitectura objetivo descrita en la versión original de este plan fue sustituida por [ADR-029](../adr/029-b89-secops-product-direction.md).** B89 SecOps conserva su backend y la consola B89 como producto; Wazuh sigue siendo el motor integrado. Este inventario conserva el análisis de capacidades y brechas, pero cualquier referencia a portar el dominio de B89 al servidor/plugin del Wazuh Dashboard debe interpretarse como propuesta histórica, no como decisión vigente.
+> **Contexto heredado de QAPAQ SecOps; vigente solo lo que recoge [docs/10-decisiones.md](../10-decisiones.md).**
+> Se conserva como historia; la arquitectura vigente es serverless sobre AWS ([02](../02-arquitectura.md)).
+
+> **Nota (heredado):** Shuffle y su webhook son el estado heredado de B89 Respond. El diseño vigente es
+> Step Functions ([13](../13-b89-respond.md), [14](../14-b89-respond-conexion-b89.md)); este material se reemplaza (fase M5).
+
+> **La arquitectura objetivo descrita en la versión original de este plan fue sustituida por [ADR-029](decisiones/029-b89-secops-product-direction.md).** B89 SOC conserva su backend y la consola B89 como producto; Wazuh sigue siendo el motor integrado. Este inventario conserva el análisis de capacidades y brechas, pero cualquier referencia a portar el dominio de B89 al servidor/plugin del Wazuh Dashboard debe interpretarse como propuesta histórica, no como decisión vigente.
 
 Fecha: 2026-10-13. Este documento compara las capacidades descritas y servidas por
 `b89-secops` con las del plugin Wazuh local (`wazuh-dashboard-plugins` 5.1.0) y fija
@@ -54,7 +60,7 @@ B89 o de estar disponibles tras el puente. Shuffle, gestión de evidencia con ga
 antifraude y MISP propio son gates/no equivalencias, no funcionalidades terminadas.
 
 El inventario funcional real de B89 está en
-[`docs/frontend-design/01-inventario-backend.md`](../frontend-design/01-inventario-backend.md).
+`docs/frontend-design/01-inventario-backend.md` (no conservado en este repo).
 La clasificación de producto en `docs/requirements/01-capability-map.md` no representa
 por sí sola el estado de implementación.
 
@@ -100,7 +106,7 @@ plugins usan el mismo branding. Las funciones se construyen como apps nativas co
 EUI/Wazuh existentes.
 
 El primer cambio local reemplaza favicon/PWA y logos de la plataforma, fija el título
-B89 SecOps, activa el tema oscuro y limita el selector de autenticación del Dashboard a OpenID en
+B89 SOC, activa el tema oscuro y limita el selector de autenticación del Dashboard a OpenID en
 `/workspace/b89-dashboard` (`feat/b89-branding`). El login está en
 `/workspace/b89-wazuh-security-dashboard-plugin` (`feat/b89-entra-login`). Ninguno se
 ha publicado ni ha pasado build integrado todavía. La guía de vistas B89 se migra una

@@ -1,5 +1,9 @@
 # B89 core runtime builds
 
+> **Nota (legado):** las menciones a Azure describen el perfil heredado de QAPAQ SecOps, archivado en
+> [`docs/archive/azure`](../../docs/archive/azure/README.md). B89 SOC opera solo en AWS ([02](../../docs/02-arquitectura.md)); lo técnico
+> que sigue aquí vale como referencia del perfil heredado, no como runbook vigente.
+
 `build.sh` conserva el artefacto actual de AWS y fija el bundle global de CA de RDS. Para el
 artefacto Azure, ejecutar desde un runner Linux con `ca-certificates` instalado:
 

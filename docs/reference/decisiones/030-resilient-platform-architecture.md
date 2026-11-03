@@ -1,4 +1,11 @@
-# ADR-030 — Arquitectura resiliente y escalamiento progresivo de B89 SecOps
+# ADR-030 — Arquitectura resiliente y escalamiento progresivo de B89 SOC
+
+> **Contexto heredado de QAPAQ SecOps; vigente solo lo que recoge [docs/10-decisiones.md](../../10-decisiones.md).**
+> Se conserva como historia; la arquitectura vigente es serverless sobre AWS ([02](../../02-arquitectura.md)).
+
+> **Nota (legado):** los servicios ECS, RDS, ALB, NAT, Valkey y KrakenD de este documento son el diseño AWS anterior.
+> La arquitectura vigente reemplaza ECS por Lambda + API Gateway, RDS por Aurora Serverless v2 y quita NAT y
+> KrakenD ([02](../../02-arquitectura.md)); su Terraform aún no existe en `infra/aws/`.
 
 - Estado: Accepted como arquitectura objetivo; implementación por etapas y con gates.
 - Fecha: 2026-10-13.
@@ -7,7 +14,7 @@
 
 ## Contexto
 
-B89 SecOps debe procesar señales de seguridad sin trasladar picos de carga a
+B89 SOC debe procesar señales de seguridad sin trasladar picos de carga a
 Wazuh, las fuentes externas, la base operacional o la experiencia del analista.
 El repositorio ya establece una aplicación modular con API, worker y web; una
 cola Redis/BullMQ para trabajos recuperables; almacenamiento operacional y de
@@ -47,7 +54,7 @@ fronteras:
    en PostgreSQL la admisión, deduplicación, checkpoint, inbox/outbox y auditoría
    requerida. Cada consumidor puede reintentarse de forma idempotente. Un fallo de
    Redis permite reconciliar jobs desde el registro durable sin perder evidencia.
-5. **B89 SecOps Core:** normaliza señales al contrato canónico, enriquece,
+5. **B89 SOC Core:** normaliza señales al contrato canónico, enriquece,
    deduplica con cautela, correlaciona, prioriza y crea alertas/casos conforme a las
    políticas del SOC. Wazuh mantiene la recolección, agentes, decoders y detecciones
    nativas; el Core no replica su ruleset. El Wazuh Indexer se consulta con mínimo
@@ -159,8 +166,7 @@ ello cada réplica y tier necesita owner, métricas, pruebas, presupuesto y runb
 
 ## Referencias
 
-[ADR-020 — continuidad](020-operations-and-continuity.md) ·
-[ADR-026 — KrakenD](026-on-premises-krakend-provider-api-gateway.md) ·
+ADR-020 (continuidad) y ADR-026 (KrakenD) no se conservan en este repo; KrakenD está retirado ([02](../../02-arquitectura.md)) ·
 [ADR-029 — producto](029-b89-secops-product-direction.md) ·
-[Arquitectura completa](../architecture/b89-secops-resilient-architecture.md) ·
+[Arquitectura completa (heredada)](../b89-secops-resilient-architecture.md) ·
 [C4 deployment](../diagrams/15-resilient-deployment.mmd).

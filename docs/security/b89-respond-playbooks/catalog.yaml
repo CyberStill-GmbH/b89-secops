@@ -1,3 +1,8 @@
+# Catálogo de playbooks de B89 Respond (diseño; no importado en ninguna instancia).
+# Destino: cada playbook es una máquina de estados de AWS Step Functions invocada por la B89 API con
+# nombre de ejecución = executionKey y aprobación humana por waitForTaskToken (docs/13 y docs/14).
+# Los bloques engine y webhook describen el estado HEREDADO basado en Shuffle v2.3.0, que se reemplaza.
+# Las claves e IDs de este archivo no cambian en la migración.
 schemaVersion: 1
 catalogId: b89-b89-respond-initial-soc
 status: design-only

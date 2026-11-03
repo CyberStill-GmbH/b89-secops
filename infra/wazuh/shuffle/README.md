@@ -1,7 +1,10 @@
-# Integración Wazuh → B89 Respond/Shuffle
+# Integración Wazuh → webhook de Shuffle (heredado de B89 Respond)
+
+> **Nota (heredado):** Shuffle y su webhook son el estado heredado de B89 Respond. El diseño vigente es
+> Step Functions ([13](../../../docs/13-b89-respond.md), [14](../../../docs/14-b89-respond-conexion-b89.md)); este material se reemplaza (fase M5).
 
 Adaptador de salida para el backend **Wazuh Manager 4.x**. El Manager POSTea
-metadatos mínimos de alertas filtradas a un webhook HTTPS de Shuffle/B89 Respond; no
+metadatos mínimos de alertas filtradas a un webhook HTTPS de Shuffle; no
 ejecuta Active Response ni llama a Teams directamente. **Este camino solo inicia
 triage de lectura**: no es el despachador canónico de acciones, no incluye
 evidencia/IOC y no puede ejecutar workflows con efectos. El despacho gobernado de
@@ -60,7 +63,7 @@ outbox B89 (ADR-022) para evitar doble envío.
 
 ## Integración de interfaz
 
-La menor fricción es incluir `B89 Respond / Shuffle` en el menú del Dashboard y servir
+La menor fricción es incluir `B89 Respond` en el menú del Dashboard y servir
 `/b89-respond/*` a través del edge existente con `auth_request` de la sesión B89. Usar
 link navegable en el mismo origen; no iframe ni acceso público. La app requiere
 además un mecanismo de SSO confiable para no dejar un login local distinto. La

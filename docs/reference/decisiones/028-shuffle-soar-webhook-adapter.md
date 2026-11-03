@@ -1,5 +1,11 @@
 # ADR-028 · Shuffle como motor SOAR no-code
 
+> **Contexto heredado de QAPAQ SecOps; vigente solo lo que recoge [docs/10-decisiones.md](../../10-decisiones.md).**
+> Se conserva como historia; la arquitectura vigente es serverless sobre AWS ([02](../../02-arquitectura.md)).
+
+> **Nota (heredado):** Shuffle y su webhook son el estado heredado de B89 Respond. El diseño vigente es
+> Step Functions ([13](../../13-b89-respond.md), [14](../../14-b89-respond-conexion-b89.md)); este material se reemplaza (fase M5).
+
 - Estado: aceptada como decisión de producto; integración técnica pendiente.
 - Alcance: orquestación de playbooks con Shuffle en la edición B89 Wazuh.
 - No modifica la fuente de verdad de incidentes, permisos ni auditoría.

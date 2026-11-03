@@ -1,8 +1,11 @@
-# ADR-029 — B89 SecOps como plataforma SIEM/XDR y espacio de trabajo SOC
+# ADR-029 — B89 SOC como plataforma SIEM/XDR y espacio de trabajo SOC
+
+> **Contexto heredado de QAPAQ SecOps; vigente solo lo que recoge [docs/10-decisiones.md](../../10-decisiones.md).**
+> Se conserva como historia; la arquitectura vigente es serverless sobre AWS ([02](../../02-arquitectura.md)).
 
 > **Nota (2026-10-14):** la parte de «consola propia B89» de esta decisión fue reemplazada por la
-> instrucción posterior del dueño: B89 SecOps usa la UI de Wazuh rebrandeada de principio a fin
-> (`docs/10-decisiones.md`, A6). Siguen vigentes B89 Cases, Shuffle y la visión SIEM/XDR.
+> instrucción posterior del dueño: B89 SOC usa la UI de Wazuh rebrandeada de principio a fin
+> (`docs/10-decisiones.md`, A6). Siguen vigentes B89 Cases, B89 Respond (antes Shuffle) y la visión SIEM/XDR.
 
 
 - Estado: Accepted.
@@ -13,7 +16,7 @@
 
 ## Contexto
 
-B89 SecOps se había descrito en algunos documentos principalmente como la consola
+B89 SOC se había descrito en algunos documentos principalmente como la consola
 que complementa las alertas de Wazuh, y la adaptación de Wazuh Dashboard llegó a
 presentarse como la interfaz final del producto. Esa descripción reduce el propósito
 de B89 a una pantalla y deja en segundo plano sus responsabilidades de SIEM/XDR,
@@ -28,13 +31,13 @@ motor SIEM ni confiar la autorización de negocio a la interfaz.
 
 ## Decisión
 
-B89 SecOps es el producto SOC central de la Financiera B89: una plataforma SIEM/XDR
+B89 SOC es el producto SOC central de la Financiera B89: una plataforma SIEM/XDR
 que integra recolección y detección de Wazuh con normalización, investigación,
 coordinación operativa, respuesta gobernada y aprendizaje continuo. Wazuh es un
 componente tecnológico del producto —motor de agentes, ingesta, reglas y alertas—,
-no el nombre ni el límite de B89 SecOps.
+no el nombre ni el límite de B89 SOC.
 
-La experiencia final pertenece a B89 SecOps. Después del MVP no se mantendrá un
+La experiencia final pertenece a B89 SOC. Después del MVP no se mantendrá un
 Wazuh Dashboard independiente como consola principal del SOC. La consola B89 podrá
 reutilizar componentes y capacidades compatibles de OpenSearch Dashboards/Wazuh
 donde aporten valor, pero navegación, identidad de producto, flujos de investigación,
@@ -44,7 +47,7 @@ mientras la consola equivalente de B89 cubre los casos operativos requeridos; su
 retirada dependerá de paridad comprobada y no de una fecha supuesta.
 
 **B89 Cases** es el espacio colaborativo de investigación y gestión de incidentes
-dentro de B89 SecOps, inspirado en los flujos de trabajo de TheHive. Permite que un
+dentro de B89 SOC, inspirado en los flujos de trabajo de TheHive. Permite que un
 equipo revise señales que ameritan atención, asigne responsables, coordine tareas,
 registre notas y evidencia con procedencia, mantenga una línea de tiempo auditable,
 documente decisiones y preserve el resultado como antecedente histórico reutilizable.
@@ -97,7 +100,7 @@ validada, ownership y evidencia operativa.
 
 ## Consecuencias y guardas
 
-- Los requisitos y documentación del producto describirán B89 SecOps como
+- Los requisitos y documentación del producto describirán B89 SOC como
   plataforma; Wazuh y Shuffle se documentarán como componentes integrados.
 - Se actualizarán progresivamente los documentos que todavía asignan al Wazuh
   Dashboard el papel de consola final. El plan de adaptación visual de ese Dashboard
@@ -124,7 +127,6 @@ soporte, seguridad o costo cambia la selección de componentes.
 
 ## Referencias
 
-[ADR-024 — Vertical del primer MVP](024-microsoft-365-wazuh-mvp-vertical.md) ·
-[ADR-028 — Shuffle como motor SOAR](028-shuffle-soar-webhook-adapter.md) ·
-[Sistema](../architecture/system-context.md) ·
-[Motor Wazuh/OpenSearch](../architecture/wazuh-engine-and-opensearch.md).
+ADR-024 — Vertical del primer MVP (no conservado en este repo) ·
+[ADR-028 — Shuffle como motor SOAR (heredado)](028-shuffle-soar-webhook-adapter.md) ·
+[Arquitectura vigente](../../02-arquitectura.md).
