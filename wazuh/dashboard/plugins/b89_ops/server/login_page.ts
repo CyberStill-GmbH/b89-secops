@@ -324,6 +324,8 @@ export function renderLoginPage(options: LoginPageOptions): string {
 <link rel="icon" type="image/png" sizes="32x32" href="${ui}/favicons/favicon-32x32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="${ui}/favicons/apple-touch-icon.png">
 <link rel="manifest" href="${ui}/favicons/manifest.json">
+<link rel="preload" as="image" type="image/webp" href="${brand}/b89_login_hero.webp" media="(min-width: 1001px)">
+<link rel="preload" as="image" type="image/webp" href="${brand}/b89_login_hero_sm.webp" media="(max-width: 1000px)">
 <title>Iniciar sesión · B89 SOC</title>
 <style nonce="${nonce}">${css}</style>
 </head>

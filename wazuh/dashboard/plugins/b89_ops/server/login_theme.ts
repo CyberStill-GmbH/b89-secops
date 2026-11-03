@@ -83,7 +83,7 @@ img,svg{display:block;max-width:100%}
 
 @media (max-width:1000px){
   .login-shell{grid-template-columns:minmax(0,1fr);grid-template-rows:auto 1fr}
-  .login-hero{order:-1;min-height:220px;background-position:66% center}
+  .login-hero{order:-1;min-height:220px;background:url(__UI__/b89_login_hero_sm.webp) 66% center/cover no-repeat,linear-gradient(115deg,var(--b89-pink),var(--b89-rose) 38%,var(--b89-orange))}
   .login-side{padding:28px 24px 32px}
 }
 @media (max-width:600px){
