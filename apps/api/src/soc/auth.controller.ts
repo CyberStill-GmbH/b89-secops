@@ -10,7 +10,7 @@
  * técnico. El error viaja como código público del catálogo, nunca como motivo interno.
  */
 
-import { Controller, Get, Inject, Post, Query, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Post, Query, Req, Res } from '@nestjs/common';
 import type { IncomingRequest, OutgoingReply } from '../http/http-contracts.js';
 
 import { ApiError, signInDenialCode } from '../http/api-error.js';
@@ -35,6 +35,21 @@ import type { SecOpsRuntime } from '../runtime/secops-runtime.js';
  */
 function proxyHeaderValue(value: string): string {
   return value.replace(/[^A-Za-z0-9._@+-]/gu, '');
+}
+
+/** Rechaza una petición que el navegador marca de otro sitio o cuyo `Origin` no es el propio. */
+function sameSiteRequest(request: IncomingRequest): boolean {
+  const single = (value: string | readonly string[] | undefined) =>
+    Array.isArray(value) ? value[0] : (value as string | undefined);
+  if (single(request.headers['sec-fetch-site']) === 'cross-site') return false;
+  const origin = single(request.headers.origin);
+  if (origin === undefined) return true;
+  const host = single(request.headers['x-forwarded-host']) ?? single(request.headers.host);
+  try {
+    return host !== undefined && new URL(origin).host === host;
+  } catch {
+    return false;
+  }
 }
 
 @Controller('api/auth')
@@ -105,6 +120,74 @@ export class AuthController {
       .header('cache-control', 'no-store')
       .header('referrer-policy', 'no-referrer')
       .header('location', withSupersededNotice(returnTo, result.value.supersededSessions.length))
+      .send();
+  }
+
+  /**
+   * Acceso con usuario y contraseña desde el formulario del login. Responde como el callback:
+   * 303 al destino con la cookie de sesión, o al mismo destino con el código público del
+   * catálogo. Funciona como `application/x-www-form-urlencoded` (sin JavaScript) y como JSON.
+   *
+   * Como todavía no hay sesión que lleve un token CSRF, el formulario se protege contra el
+   * *login CSRF* (que otro sitio inicie sesión a la víctima con la cuenta del atacante)
+   * rechazando peticiones de otro sitio por `Sec-Fetch-Site` y por `Origin`.
+   */
+  @Post('password')
+  public async password(
+    @Body() body: { username?: unknown; password?: unknown; returnTo?: unknown } | undefined,
+    @Req() request: IncomingRequest,
+    @Res() reply: OutgoingReply,
+  ) {
+    const correlationId = correlationIdOf(request);
+    const returnTo = safeReturnTo(body?.returnTo);
+    const fail = async (code: string) => {
+      await reply
+        .status(303)
+        .header('cache-control', 'no-store')
+        .header('referrer-policy', 'no-referrer')
+        .header('location', withAuthError(returnTo, code, correlationId))
+        .send();
+    };
+    if (!sameSiteRequest(request)) {
+      await fail('REQUEST_NOT_VERIFIED');
+      return;
+    }
+    const username = typeof body?.username === 'string' ? body.username : '';
+    const password = typeof body?.password === 'string' ? body.password : '';
+    if (username.length === 0 || password.length === 0) {
+      await fail('AUTH_FAILED');
+      return;
+    }
+    const result = await this.runtime.passwordSignIn(
+      { username, password, returnTo },
+      originOf(request),
+      correlationId,
+    );
+    const flowCookie = result.flow
+      ? expiredOidcFlowCookie(result.flow.state, this.runtime.secureCookies)
+      : '';
+    if (!result.ok) {
+      if (flowCookie) reply.header('set-cookie', flowCookie);
+      await fail(signInDenialCode(result.failure.reason));
+      return;
+    }
+    setSessionCookie(
+      reply,
+      result.value.session.id,
+      this.runtime.secureCookies,
+      Math.floor(
+        (result.value.session.absoluteExpiresAt.getTime() - this.runtime.now().getTime()) / 1000,
+      ),
+      [flowCookie].filter(Boolean),
+    );
+    await reply
+      .status(303)
+      .header('cache-control', 'no-store')
+      .header('referrer-policy', 'no-referrer')
+      .header(
+        'location',
+        withSupersededNotice(result.flow.returnTo, result.value.supersededSessions.length),
+      )
       .send();
   }
 

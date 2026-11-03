@@ -81,6 +81,7 @@ export class B89OpsServerPlugin implements Plugin<void, void> {
             notice,
             nonce,
             destinationLabel: config.login.destinationLabel,
+            passwordEnabled: config.login.passwordEnabled,
           }),
           headers: {
             ...NO_STORE_HEADERS,

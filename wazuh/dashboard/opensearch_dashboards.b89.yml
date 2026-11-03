@@ -22,6 +22,7 @@ b89_ops.enabled: true
 b89_ops.apiPrefix: '/api'
 b89_ops.login.enabled: true
 b89_ops.login.defaultNextUrl: '/app/b89-alerts'
+b89_ops.login.passwordEnabled: true
 b89_ops.login.destinationLabel: 'B89'
 
 # --- Marca B89 (assets reemplazados en el paquete; el menú de ayuda lo cambia el parche 0002) ---

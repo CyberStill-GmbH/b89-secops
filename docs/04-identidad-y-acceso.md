@@ -72,6 +72,34 @@ OIDC, lockout, CSRF) y la sesión van a Aurora y Secrets Manager**, no a memoria
 | Security plugin `proxy` (Indexer y Dashboard) | Propuesto en esta rama | `wazuh/indexer/security/`, `wazuh/dashboard/opensearch_dashboards.b89.yml` |
 | Revocación al salir del grupo (Graph delta) | Hecho. Se ejecuta con EventBridge Scheduler + Lambda y además llama a `AdminUserGlobalSignOut` de Cognito (propuesto) | `apps/api/src/runtime/directory-sync.ts` |
 
+## Acceso con usuario y contraseña
+
+La pantalla de acceso (`/b89/login`, plugin `b89_ops`) ofrece dos entradas: **Continuar con
+Microsoft Entra** y un formulario de **usuario y contraseña** (`b89_ops.login.passwordEnabled`).
+El formulario envía `POST /api/auth/password` y, tras comprobar la credencial, entra por el mismo
+`completeSignIn` que Entra. No es un camino paralelo: límite de tasa, Smart Lockout por (cuenta,
+origen), política de red, roles, sesión única y auditoría son idénticos.
+
+| Aspecto | Comportamiento |
+| --- | --- |
+| MFA | Se aplica la política vigente: dentro de la red basta MFA y **fuera se exige passkey**. Una contraseña sola no la cumple, así que fuera de la red este acceso se rechaza con `PASSKEY_REQUIRED` |
+| No enumeración | Contraseña errónea, usuario inexistente y cuenta bloqueada devuelven el mismo `AUTH_FAILED` |
+| Login CSRF | Se rechazan peticiones con `Sec-Fetch-Site: cross-site` o `Origin` ajeno |
+| Credenciales | La página no las guarda; el formulario las envía directo a la API por POST, nunca por URL |
+| Sin JavaScript | Funciona (formulario HTML estándar); el JS solo añade mostrar/ocultar contraseña y estados de carga |
+
+Estado:
+
+- **Hecho y verificado (pruebas, no AWS):** el flujo con el emisor local de desarrollo
+  (`apps/api/test/bff.spec.ts`, 8 casos). Las personas sintéticas usan `LOCAL_DEV_PASSWORD`, que
+  solo existe fuera del perfil de producción.
+- **Propuesto, no implementado:** el verificador de producción. Con identidad de producción no hay
+  verificador configurado y el endpoint rechaza todo con `AUTH_FAILED`, por lo que conviene
+  **`b89_ops.login.passwordEnabled: false`** hasta tenerlo. La opción prevista es Cognito (usuarios
+  nativos con MFA obligatorio) detrás del mismo puerto, lo que exige además un segundo paso de
+  código MFA en la pantalla y que Cognito emita `amr`. Alta de usuarios, política de contraseñas y
+  recuperación quedan por diseñar.
+
 ## Por qué proxy auth y no OIDC nativo de OSD
 
 | Criterio | OIDC nativo de OSD | B89 como proxy de identidad |

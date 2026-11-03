@@ -123,9 +123,17 @@ import { CONNECTED_SOURCE_SIGNAL_CATALOG } from './signal-catalog.js';
  * del proveedor. `stage` dice dónde se cortó y `code` el motivo técnico (p. ej. el AADSTS del
  * intercambio o la validación del ID token que falló).
  */
+/** Identificadores del handshake interno de un acceso con contraseña (para limpiar su cookie). */
+export interface PasswordFlow {
+  readonly state: string;
+  readonly browserBinding: string;
+  readonly returnTo: string;
+}
+
 export interface SignInDiagnostic {
   readonly reason: SignInDenialReason;
-  readonly stage: 'rate_limit' | 'callback' | 'network' | 'token_exchange' | 'jwks' | 'decision';
+  readonly stage:
+    'rate_limit' | 'callback' | 'network' | 'token_exchange' | 'jwks' | 'decision' | 'password';
   readonly code?: string;
   readonly correlationId: string;
 }
@@ -684,6 +692,79 @@ export class SecOpsRuntime {
     const pending = this.handshakePeek(state);
     if (!pending) throw new Error('STATE_UNKNOWN');
     return this.localIssuer.issueCode(username, pending.nonce, this.now());
+  }
+
+  /**
+   * Acceso con usuario y contraseña. No es un camino paralelo: tras comprobar la credencial
+   * se entra por el mismo `completeSignIn` que usa Entra, de modo que límite de tasa, bloqueo,
+   * política de red (MFA dentro, passkey fuera), roles, sesión única y auditoría son idénticos.
+   *
+   * Hoy solo existe el verificador del emisor local (desarrollo y pruebas). Con identidad de
+   * producción no hay verificador configurado y el acceso se rechaza sin distinguir el motivo.
+   */
+  public async passwordSignIn(
+    input: { readonly username: string; readonly password: string; readonly returnTo: string },
+    origin: RequestOrigin,
+    correlationId: string,
+  ): Promise<
+    | { readonly ok: true; readonly value: SignInSuccess; readonly flow: PasswordFlow }
+    | { readonly ok: false; readonly failure: SignInFailure; readonly flow?: PasswordFlow }
+  > {
+    const at = this.now();
+    const network = evaluateNetwork(origin, this.networkPolicy);
+    const originKey = network.clientIp ?? 'unknown';
+    const issuer = this.localIssuer;
+    if (!issuer) {
+      return this.denied('TOKEN_INVALID', originKey, correlationId, at, network.clientIp, {
+        stage: 'password',
+        code: 'PASSWORD_LOGIN_UNAVAILABLE',
+      });
+    }
+    // Mismo cupo por origen que el callback de Entra: un script no puede probar contraseñas
+    // más rápido que un atacante contra el flujo OIDC (a cambio, un acceso consume dos).
+    const rate = consumeRateLimit(
+      await this.rateLimits.get(`auth:${originKey}`),
+      `auth:${originKey}`,
+      at,
+    );
+    await this.rateLimits.save(rate.state);
+    if (!rate.allowed) {
+      return this.denied('RATE_LIMITED', originKey, correlationId, at, network.clientIp, {
+        stage: 'rate_limit',
+      });
+    }
+    const username = input.username.trim().toLowerCase().slice(0, 254);
+    const subjectKey = `password:${username}`;
+    const counter =
+      (await this.attempts.get(subjectKey, originKey)) ?? emptyCounter(subjectKey, originKey, at);
+    if (!evaluateLockout(counter, at).allowed) {
+      return this.denied('LOCKED_OUT', originKey, correlationId, at, network.clientIp, {
+        stage: 'password',
+        code: 'LOCKED_OUT',
+      });
+    }
+    const principal = issuer.verifyPassword(username, input.password.slice(0, 256));
+    if (!principal) {
+      await this.attempts.save(registerFailure(counter, at));
+      return this.denied('TOKEN_INVALID', originKey, correlationId, at, network.clientIp, {
+        stage: 'password',
+        code: 'BAD_CREDENTIALS',
+      });
+    }
+    const begun = await this.beginSignIn(origin, input.returnTo);
+    const flow: PasswordFlow = {
+      state: begun.state,
+      browserBinding: begun.browserBinding,
+      returnTo: this.takeReturnTo(begun.state, begun.browserBinding),
+    };
+    const code = this.localAuthorize(principal.username, begun.state);
+    const result = await this.completeSignIn(
+      { state: begun.state, code, browserBinding: begun.browserBinding },
+      origin,
+      correlationId,
+    );
+    if (result.ok) await this.attempts.save(registerSuccess(counter, at));
+    return { ...result, flow };
   }
 
   private readonly pendingNonces = new Map<string, { nonce: string }>();

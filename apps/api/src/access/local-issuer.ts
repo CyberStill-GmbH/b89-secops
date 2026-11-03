@@ -9,10 +9,23 @@
  * entre una herramienta de desarrollo y una puerta trasera.
  */
 
-import { createSign, generateKeyPairSync, randomUUID, type KeyObject } from 'node:crypto';
+import {
+  createHash,
+  createSign,
+  generateKeyPairSync,
+  randomUUID,
+  timingSafeEqual,
+  type KeyObject,
+} from 'node:crypto';
 import type { JsonWebKey } from '@b89/access';
 
 export const LOCAL_ISSUER_KID = 'b89-local-dev';
+
+/**
+ * Contraseña de las personas sintéticas del entorno local. Es un dato público de desarrollo:
+ * el emisor se niega a existir en el perfil de producción, así que nunca protege nada real.
+ */
+export const LOCAL_DEV_PASSWORD = 'b89-dev-password';
 
 export interface LocalPrincipal {
   readonly subjectId: string;
@@ -89,6 +102,18 @@ export class LocalDevelopmentIssuer {
     this.jwks = [
       { kid: LOCAL_ISSUER_KID, kty: 'RSA', n: jwk.n, e: jwk.e, alg: 'RS256', use: 'sig' },
     ];
+  }
+
+  /**
+   * Comprueba usuario y contraseña de una persona sintética. Tiempo constante respecto al
+   * contenido de la contraseña y misma ruta de cálculo para usuarios existentes e
+   * inexistentes: el resultado no confirma si la cuenta existe.
+   */
+  public verifyPassword(username: string, password: string): LocalPrincipal | undefined {
+    const principal = LOCAL_PRINCIPALS[username.trim().toLowerCase()];
+    const digest = (value: string) => createHash('sha256').update(value, 'utf8').digest();
+    const matches = timingSafeEqual(digest(password), digest(LOCAL_DEV_PASSWORD));
+    return principal && matches ? principal : undefined;
   }
 
   /** Simula la pantalla de Entra: entrega un código ligado al usuario y al `nonce`. */

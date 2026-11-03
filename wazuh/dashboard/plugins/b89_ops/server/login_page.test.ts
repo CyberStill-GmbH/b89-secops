@@ -87,28 +87,58 @@ describe('renderLoginPage', () => {
     basePath: '/dash',
     apiPrefix: '/api',
     nonce: 'abc123',
-    destinationLabel: 'B89 SecOps',
+    destinationLabel: 'B89 SOC',
   };
 
-  it('el único control lleva al BFF con el destino codificado', () => {
-    const html = renderLoginPage({
-      ...base,
-      nextUrl: '/dash/app/home?x=1',
-      notice: { code: null, correlationId: null, superseded: false, loggedOut: false },
-    });
+  const clean = { code: null, correlationId: null, superseded: false, loggedOut: false };
+
+  it('ofrece Entra con el destino codificado y el formulario de usuario y contraseña', () => {
+    const html = renderLoginPage({ ...base, nextUrl: '/dash/app/home?x=1', notice: clean });
     expect(html).toContain('href="/api/auth/start?returnTo=%2Fdash%2Fapp%2Fhome%3Fx%3D1"');
     expect(html).toContain('Continuar con Microsoft Entra');
-    // La única mención es la atribución de licencias (NOTICE), no la marca.
+    expect(html).toContain('<form id="b89-password-form"');
+    expect(html).toContain('method="post" action="/api/auth/password"');
+    expect(html).toContain('name="username"');
+    expect(html).toContain('autocomplete="current-password"');
+    expect(html).toContain('name="returnTo" value="/dash/app/home?x=1"');
+    // El destino viaja codificado en la URL de Entra y escapado en el campo oculto.
+    expect(html).toContain('Bienvenido a B89 SOC');
+  });
+
+  it('la contraseña nunca se escribe en la página ni viaja por la URL', () => {
+    const html = renderLoginPage({ ...base, nextUrl: '/dash/app/home', notice: clean });
+    expect(html).toMatch(/<input id="b89-password" name="password" type="password"/u);
+    expect(html).not.toMatch(/action="[^"]*\?/u);
+    expect(html).toContain('method="post"');
+  });
+
+  it('con passwordEnabled=false solo queda el acceso con Entra', () => {
+    const html = renderLoginPage({
+      ...base,
+      passwordEnabled: false,
+      nextUrl: '/dash/app/home',
+      notice: clean,
+    });
+    expect(html).not.toContain('b89-password-form');
+    expect(html).not.toContain('name="password"');
+    expect(html).toContain('Continuar con Microsoft Entra');
+  });
+
+  it('cumple la CSP: solo script y estilos con nonce y nada inline', () => {
+    const html = renderLoginPage({ ...base, nextUrl: '/dash/app/home', notice: clean });
     expect(html).toContain(ATTRIBUTION);
     expect(html.split(ATTRIBUTION).join('')).not.toMatch(/wazuh|opensearch/iu);
     expect(html).toContain('<style nonce="abc123">');
     expect(html).toContain('<script nonce="abc123">');
     expect(html).not.toMatch(/<script(?![^>]*nonce="abc123")/u);
-    expect(html).not.toMatch(/ style="/u); // nada inline fuera del nonce (CSP)
-    // Mismo arte que HeroArt.tsx: máscara original de la Q y analista.
-    expect(html).toContain('/dash/ui/b89/b89_q_mask.png');
-    expect(html).toContain('/dash/ui/b89/b89_analyst.webp');
-    expect(html).toContain('class="auth-splash"');
+    expect(html).not.toMatch(/ style="/u);
+  });
+
+  it('usa la ilustración y la paleta de marca', () => {
+    const html = renderLoginPage({ ...base, nextUrl: '/dash/app/home', notice: clean });
+    expect(html).toContain('/dash/ui/b89/b89_login_hero.webp');
+    expect(html).toContain('#fb38a2');
+    expect(html).toContain('#fd8b22');
   });
 
   it('muestra el mensaje público del catálogo como alerta, nunca el código crudo', () => {
@@ -145,7 +175,7 @@ describe('aviso de cookies', () => {
     basePath: '',
     apiPrefix: '/api',
     nonce: 'n',
-    destinationLabel: 'B89 SecOps',
+    destinationLabel: 'B89 SOC',
     nextUrl: '/app/home',
     notice: { code: null, correlationId: null, superseded: false, loggedOut: false },
   });

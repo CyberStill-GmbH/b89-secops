@@ -3,12 +3,16 @@
  */
 
 /**
- * Login B89 SecOps servido por el dashboard (sustituye al formulario de Wazuh).
+ * Login B89 SOC servido por el dashboard (sustituye al formulario de Wazuh).
  *
- * Es la misma pantalla de `b89-secops/apps/web` (login.css + HeroArt), renderizada en el
- * servidor: el único control es un enlace a `/api/auth/start` (funciona sin JavaScript), que lleva
- * a Microsoft Entra ID por el BFF de B89 (PKCE, nonce, admisión Accesos_SOC, MFA/passkey).
- * El dashboard nunca ve credenciales ni tokens.
+ * Dos formas de entrar, ambas por el BFF de B89 y ambas con la misma admisión (red, bloqueo,
+ * MFA/passkey y rol Accesos_SOC):
+ *
+ * - **Microsoft Entra ID**: enlace a `/api/auth/start` (PKCE, nonce).
+ * - **Usuario y contraseña**: formulario `POST /api/auth/password`, que funciona sin
+ *   JavaScript y se puede desactivar con `b89_ops.login.passwordEnabled`.
+ *
+ * El dashboard nunca guarda credenciales ni tokens: el formulario las envía directamente a la API.
  */
 
 import {
@@ -19,7 +23,7 @@ import {
   BRAND_ASSETS_PATH,
   LOGIN_PATH,
 } from '../common';
-import { LOGIN_STYLES } from './login_styles.generated';
+import { LOGIN_THEME } from './login_theme';
 
 const MAX_NEXT_URL_LENGTH = 512;
 const PROBE_ORIGIN = 'https://next-url.b89.invalid';
@@ -133,6 +137,8 @@ export interface LoginPageOptions {
   readonly notice: SignInNotice;
   readonly nonce: string;
   readonly destinationLabel: string;
+  /** Muestra el formulario de usuario y contraseña (por defecto, sí). */
+  readonly passwordEnabled?: boolean;
 }
 
 /**
@@ -163,13 +169,16 @@ function message(notice: SignInNotice): { readonly text: string; readonly alert:
     };
   }
   if (notice.loggedOut) return { text: 'Sesión cerrada.', alert: false };
-  return { text: 'Usa tu cuenta institucional para continuar.', alert: false };
+  return { text: '', alert: false };
 }
 
 const MICROSOFT_MARK =
   '<svg aria-hidden="true" class="microsoft-mark" viewBox="0 0 18 18">' +
   '<path fill="#f25022" d="M0 0h8v8H0z"/><path fill="#7fba00" d="M10 0h8v8h-8z"/>' +
   '<path fill="#00a4ef" d="M0 10h8v8H0z"/><path fill="#ffb900" d="M10 10h8v8h-8z"/></svg>';
+
+const EYE_ICON =
+  '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
 
 /** Icono Cookie (Phosphor, duotone) del aviso de cookies de b89-secops. */
 const COOKIE_ICON =
@@ -218,17 +227,42 @@ transform:translateY(100%);opacity:0;transition:transform 320ms cubic-bezier(0.1
 @media (prefers-reduced-motion:reduce){.b89-cookie-notice.b89-cookie-bar,.b89-cookie-bar.is-leaving{transition:none}}
 `;
 
-function loginScript(): string {
-  return `(function () {
-  var link = document.getElementById('b89-entra');
-  var label = document.getElementById('b89-entra-label');
-  var status = document.getElementById('b89-auth-message');
-  link.addEventListener('click', function () {
-    link.setAttribute('aria-disabled', 'true');
-    label.textContent = 'Conectando con Microsoft Entra…';
-    if (status.getAttribute('role') !== 'alert') status.textContent = 'Conectando de forma segura…';
-  });
+function passwordScript(): string {
+  return `  var form = document.getElementById('b89-password-form');
+  if (form) {
+    var input = document.getElementById('b89-password');
+    var toggle = document.getElementById('b89-password-toggle');
+    toggle.addEventListener('click', function () {
+      var show = input.type === 'password';
+      input.type = show ? 'text' : 'password';
+      toggle.setAttribute('aria-pressed', show ? 'true' : 'false');
+      toggle.setAttribute('aria-label', show ? 'Ocultar contraseña' : 'Mostrar contraseña');
+    });
+    form.addEventListener('submit', function () {
+      var submit = document.getElementById('b89-password-submit');
+      submit.disabled = true;
+      submit.textContent = 'Verificando…';
+      pending('Verificando tus credenciales…');
+    });
+  }`;
+}
 
+function loginScript(passwordEnabled: boolean): string {
+  return `(function () {
+  var status = document.getElementById('b89-auth-message');
+  function pending(text) {
+    if (status && status.getAttribute('role') !== 'alert') status.textContent = text;
+  }
+  var link = document.getElementById('b89-entra');
+  if (link) {
+    var label = document.getElementById('b89-entra-label');
+    link.addEventListener('click', function () {
+      link.setAttribute('aria-disabled', 'true');
+      label.textContent = 'Conectando con Microsoft Entra…';
+      pending('Conectando de forma segura…');
+    });
+  }
+${passwordEnabled ? passwordScript() : ''}
   var key = ${JSON.stringify(COOKIE_ACK_KEY)};
   var bar = document.getElementById('b89-cookie-notice');
   var accepted = false;
@@ -253,82 +287,72 @@ function loginScript(): string {
 })();`;
 }
 
-/**
- * Misma maqueta que `apps/web/src/app/application.tsx` (pantalla de acceso), `HeroArt.tsx`
- * (panel de marca) y `B89Splash.tsx` (splash de la Q). Estilos: login_styles.generated.ts,
- * sincronizado verbatim desde b89-secops.
- */
+/** Pantalla de acceso: formulario a la izquierda y la ilustración de marca como panel. */
 export function renderLoginPage(options: LoginPageOptions): string {
   const { basePath, apiPrefix, nextUrl, notice, nonce, destinationLabel } = options;
+  const passwordEnabled = options.passwordEnabled ?? true;
   const start = `${apiPrefix}/auth/start?returnTo=${encodeURIComponent(nextUrl)}`;
   const status = message(notice);
   const ui = `${basePath}/ui`;
   const brand = `${basePath}${BRAND_ASSETS_PATH}`;
-  const css = LOGIN_STYLES.split('__UI__').join(brand) + COOKIE_BAR_CSS;
+  const css = LOGIN_THEME.split('__UI__').join(brand) + COOKIE_BAR_CSS;
+  const entraButton = `<a id="b89-entra" class="btn btn-entra" href="${escapeHtml(start)}">${MICROSOFT_MARK}<span id="b89-entra-label">Continuar con Microsoft Entra</span></a>`;
+  const passwordForm = `<form id="b89-password-form" class="login-form" method="post" action="${escapeHtml(`${apiPrefix}/auth/password`)}" autocomplete="on">
+      <input type="hidden" name="returnTo" value="${escapeHtml(nextUrl)}">
+      <div class="field">
+        <label for="b89-username">Usuario</label>
+        <input id="b89-username" name="username" type="text" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="nombre@b89.example" maxlength="254" required>
+      </div>
+      <div class="field">
+        <label for="b89-password">Contraseña</label>
+        <div class="password-field">
+          <input id="b89-password" name="password" type="password" autocomplete="current-password" placeholder="Tu contraseña" maxlength="256" required>
+          <button id="b89-password-toggle" class="password-toggle" type="button" aria-label="Mostrar contraseña" aria-pressed="false">${EYE_ICON}</button>
+        </div>
+      </div>
+      <button id="b89-password-submit" class="btn btn-primary" type="submit">Iniciar sesión</button>
+    </form>
+    <div class="login-divider" role="separator"><span>o</span></div>
+    ${entraButton}`;
   return `<!doctype html>
 <html lang="es">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#080808">
+<meta name="theme-color" content="#fb38a2">
 <meta name="referrer" content="no-referrer">
 <link rel="icon" type="image/png" sizes="32x32" href="${ui}/favicons/favicon-32x32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="${ui}/favicons/apple-touch-icon.png">
 <link rel="manifest" href="${ui}/favicons/manifest.json">
-<title>Iniciar sesión · B89 SecOps</title>
+<title>Iniciar sesión · B89 SOC</title>
 <style nonce="${nonce}">${css}</style>
 </head>
 <body>
-<div class="auth-splash" aria-hidden="true"><span class="auth-splash-mark"></span></div>
-<main class="auth-screen">
-  <header class="auth-topbar">
-    <span class="brand-destination">Estás iniciando sesión en ${escapeHtml(destinationLabel)}</span>
-  </header>
-  <section class="login-core" aria-labelledby="login-title">
-    <h1 id="login-title">Inicia sesión en tu cuenta</h1>
-    <p class="login-subtitle">Acceso institucional</p>
-    <div class="login-action-group">
-      <a id="b89-entra" class="entra-button entra-button-enabled" href="${escapeHtml(start)}">${MICROSOFT_MARK}<span id="b89-entra-label">Continuar con Microsoft Entra</span></a>
+<main class="login-shell">
+  <section class="login-side">
+    <header class="login-brand">
+      <span class="brand-badge" aria-hidden="true">B89</span>
+      <span class="brand-name">SOC</span>
+      <span class="login-destination">Estás iniciando sesión en ${escapeHtml(destinationLabel)}</span>
+    </header>
+    <div class="login-core" aria-labelledby="login-title">
+      <h1 id="login-title">Bienvenido a B89 SOC</h1>
+      <p class="login-subtitle">${
+        passwordEnabled
+          ? 'Ingresa con tu usuario o con tu cuenta institucional.'
+          : 'Ingresa con tu cuenta institucional.'
+      }</p>
+      ${passwordEnabled ? passwordForm : `<div class="login-only-entra">${entraButton}</div>`}
       <p id="b89-auth-message" class="auth-message${status.alert ? ' auth-message-error' : ''}" role="${
         status.alert ? 'alert' : 'status'
       }">${escapeHtml(status.text)}</p>
     </div>
+    <footer class="auth-footer">
+      <span>El acceso requiere una identidad autorizada y verificación multifactor.</span>
+      <span class="auth-attribution">${escapeHtml(ATTRIBUTION)}</span>
+    </footer>
   </section>
-  <footer class="auth-footer">
-    <span>El acceso requiere una identidad corporativa autorizada.</span>
-    <span class="auth-attribution">${escapeHtml(ATTRIBUTION)}</span>
-  </footer>
-  <aside class="brand-panel" aria-label="Identidad visual B89">
-    <div class="login-light-amber hero-light-amber" aria-hidden="true"></div>
-    <div class="login-light-core hero-light-core" aria-hidden="true"></div>
-    <div class="hero-fade" aria-hidden="true"></div>
-    <div class="hero-grain" aria-hidden="true"></div>
-    <img class="hero-analyst" src="${brand}/b89_analyst.webp" alt="" aria-hidden="true">
-    <svg class="login-glass-mark" viewBox="0 0 447 447" role="img" aria-label="Emblema Q de B89">
-      <defs>
-        <linearGradient id="b89-glass-fill" x1="0%" y1="52%" x2="100%" y2="45%">
-          <stop offset="0%" stop-color="#d8dce0" stop-opacity="0.035"/>
-          <stop offset="42%" stop-color="#d8dce0" stop-opacity="0.06"/>
-          <stop offset="72%" stop-color="#f2dcb7" stop-opacity="0.13"/>
-          <stop offset="100%" stop-color="#fff0d1" stop-opacity="0.19"/>
-        </linearGradient>
-        <linearGradient id="b89-glass-reflection" x1="24%" y1="100%" x2="82%" y2="0%">
-          <stop offset="0%" stop-color="#fff8e9" stop-opacity="0"/>
-          <stop offset="54%" stop-color="#fff8e9" stop-opacity="0"/>
-          <stop offset="61%" stop-color="#fff8e9" stop-opacity="0.035"/>
-          <stop offset="65%" stop-color="#fff8e9" stop-opacity="0.15"/>
-          <stop offset="69%" stop-color="#fff8e9" stop-opacity="0.055"/>
-          <stop offset="75%" stop-color="#fff8e9" stop-opacity="0"/>
-          <stop offset="100%" stop-color="#fff8e9" stop-opacity="0"/>
-        </linearGradient>
-        <mask id="b89-q-shape" x="0" y="0" width="447" height="447" maskUnits="userSpaceOnUse" mask-type="alpha">
-          <image href="${brand}/b89_q_mask.png" width="447" height="447" preserveAspectRatio="none"/>
-        </mask>
-      </defs>
-      <rect width="447" height="447" fill="url(#b89-glass-fill)" mask="url(#b89-q-shape)"/>
-      <rect width="447" height="447" fill="url(#b89-glass-reflection)" mask="url(#b89-q-shape)"/>
-    </svg>
-  </aside>
+  <aside class="login-hero" role="img" aria-label="Ilustración de B89: el conejo analista y el planeta vigilan el panel de seguridad"></aside>
 </main>
 <aside id="b89-cookie-notice" class="b89-cookie-notice b89-cookie-bar" aria-labelledby="cookie-notice-title" hidden>
   <div class="b89-cookie-notice__mark" aria-hidden="true">${COOKIE_ICON}</div>
@@ -350,7 +374,7 @@ export function renderLoginPage(options: LoginPageOptions): string {
   </div>
   <button id="b89-cookie-close" class="b89-cookie-close" type="button" aria-label="Cerrar aviso de cookies">${CLOSE_ICON}</button>
 </aside>
-<script nonce="${nonce}">${loginScript()}</script>
+<script nonce="${nonce}">${loginScript(passwordEnabled)}</script>
 </body>
 </html>`;
 }
@@ -387,7 +411,7 @@ export function renderLogoutPage({ basePath, apiPrefix, nonce }: LogoutPageOptio
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title>Cerrando sesión · B89 SecOps</title>
+<title>Cerrando sesión · B89 SOC</title>
 <style nonce="${nonce}">html,body{margin:0;height:100%;background:#080808;color:#8f8f95;font:13px/20px 'Segoe UI',Inter,ui-sans-serif,system-ui,sans-serif}main{display:grid;height:100%;place-items:center}</style>
 </head>
 <body>

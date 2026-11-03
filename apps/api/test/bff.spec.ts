@@ -1999,3 +1999,114 @@ describe('Sprint 5 · avisos al dispositivo · /api/me/push', () => {
       expect(item.url).toMatch(/^https:\/\/.+\/(alerts|incidents)\//u);
   });
 });
+
+describe('acceso con usuario y contraseña', () => {
+  const PASSWORD = 'b89-dev-password';
+
+  function submit(
+    fields: Record<string, string>,
+    headers: Record<string, string> = {},
+    remoteAddress = officeIp,
+  ) {
+    return server().inject({
+      method: 'POST',
+      url: '/api/auth/password',
+      remoteAddress,
+      headers: { 'content-type': 'application/x-www-form-urlencoded', ...headers },
+      payload: new URLSearchParams(fields).toString(),
+    });
+  }
+
+  it('con credenciales válidas abre sesión y vuelve al destino pedido', async () => {
+    const response = await submit({
+      username: 'analista@b89.example',
+      password: PASSWORD,
+      returnTo: '/app/b89-alerts',
+    });
+    expect(response.statusCode).toBe(303);
+    // Puede añadir el aviso de sesión reemplazada si otra prueba abrió una antes.
+    expect(new URL(response.headers.location as string, 'http://local').pathname).toBe(
+      '/app/b89-alerts',
+    );
+    const cookie = cookiePair(response, 'b89_session=');
+    expect(cookie).not.toBe('');
+    const session = await server().inject({
+      method: 'GET',
+      url: '/api/auth/session',
+      headers: { cookie },
+      remoteAddress: officeIp,
+    });
+    expect(session.statusCode).toBe(200);
+    expect(JSON.parse(session.body).roles).toEqual(['b89.soc.analyst']);
+  });
+
+  it('también acepta JSON', async () => {
+    const response = await server().inject({
+      method: 'POST',
+      url: '/api/auth/password',
+      remoteAddress: officeIp,
+      payload: { username: 'Analista@B89.example', password: PASSWORD },
+    });
+    expect(response.statusCode).toBe(303);
+    expect(cookiePair(response, 'b89_session=')).not.toBe('');
+  });
+
+  it('una contraseña errónea y un usuario inexistente son indistinguibles', async () => {
+    const wrong = await submit({ username: 'analista@b89.example', password: 'no-es' });
+    const unknown = await submit({ username: 'nadie@b89.example', password: PASSWORD });
+    for (const response of [wrong, unknown]) {
+      expect(response.statusCode).toBe(303);
+      expect(cookiePair(response, 'b89_session=')).toBe('');
+      expect(authErrorOf(response)).toBe('AUTH_FAILED');
+    }
+  });
+
+  it('sin rol asignado no entra aunque la contraseña sea correcta', async () => {
+    const response = await submit({ username: 'sinrol@b89.example', password: PASSWORD });
+    expect(cookiePair(response, 'b89_session=')).toBe('');
+    expect(authErrorOf(response)).toBe('AUTH_FAILED');
+  });
+
+  it('fuera de la red exige passkey: la contraseña sola no basta', async () => {
+    const response = await submit(
+      { username: 'analista@b89.example', password: PASSWORD },
+      {},
+      REMOTE_IP,
+    );
+    expect(cookiePair(response, 'b89_session=')).toBe('');
+    expect(authErrorOf(response)).not.toBeNull();
+  });
+
+  it('bloquea tras varios intentos fallidos aunque luego llegue la contraseña correcta', async () => {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await submit({ username: 'auditor@b89.example', password: 'incorrecta' });
+    }
+    const response = await submit({ username: 'auditor@b89.example', password: PASSWORD });
+    expect(cookiePair(response, 'b89_session=')).toBe('');
+    expect(authErrorOf(response)).toBe('AUTH_FAILED');
+  });
+
+  it('rechaza peticiones de otro sitio (login CSRF)', async () => {
+    const crossSite = await submit(
+      { username: 'analista@b89.example', password: PASSWORD },
+      { 'sec-fetch-site': 'cross-site' },
+    );
+    const foreignOrigin = await submit(
+      { username: 'analista@b89.example', password: PASSWORD },
+      { origin: 'https://evil.example', host: 'soc.b89.example' },
+    );
+    for (const response of [crossSite, foreignOrigin]) {
+      expect(cookiePair(response, 'b89_session=')).toBe('');
+      expect(authErrorOf(response)).toBe('REQUEST_NOT_VERIFIED');
+    }
+  });
+
+  it('no permite un destino fuera del origen', async () => {
+    const response = await submit({
+      username: 'analista@b89.example',
+      password: PASSWORD,
+      returnTo: 'https://evil.example/',
+    });
+    expect(new URL(response.headers.location as string, 'http://local').pathname).toBe('/');
+  });
+});

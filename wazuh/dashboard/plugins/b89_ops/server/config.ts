@@ -32,6 +32,8 @@ export const configSchema = schema.object({
     enabled: schema.boolean({ defaultValue: true }),
     /** Destino tras iniciar sesión cuando no hay `nextUrl`. */
     defaultNextUrl: schema.string({ defaultValue: '/app/b89-alerts' }),
+    /** Muestra el formulario de usuario y contraseña junto al acceso con Entra. */
+    passwordEnabled: schema.boolean({ defaultValue: true }),
     /** Texto de la barra superior del login («Estás iniciando sesión en …»). */
     destinationLabel: schema.string({ defaultValue: 'B89' }),
   }),
