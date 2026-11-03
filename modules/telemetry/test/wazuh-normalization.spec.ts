@@ -53,6 +53,28 @@ function alert(overrides: Record<string, unknown> = {}, suffix = '01'): WazuhAle
 }
 
 describe('C-12 normalización de alertas Wazuh', () => {
+  it('acepta el instante tal como lo indexa Wazuh (zona ±HHMM sin dos puntos)', () => {
+    const outcome = normalizeWazuhAlert(
+      alert({ timestamp: '2026-11-03T18:52:19.984+0000' }),
+      context,
+    );
+
+    expect(outcome.status).toBe('normalized');
+    if (outcome.status !== 'normalized') return;
+    expect(outcome.event.occurredAt).toBe('2026-11-03T18:52:19.984Z');
+  });
+
+  it('convierte la zona ±HHMM al instante UTC correcto', () => {
+    const outcome = normalizeWazuhAlert(
+      alert({ timestamp: '2026-11-03T13:52:19.984-0500' }),
+      context,
+    );
+
+    expect(outcome.status).toBe('normalized');
+    if (outcome.status !== 'normalized') return;
+    expect(outcome.event.occurredAt).toBe('2026-11-03T18:52:19.984Z');
+  });
+
   it('convierte una alerta válida en un documento que cumple el contrato', () => {
     const outcome = normalizeWazuhAlert(alert(), context);
 
@@ -149,6 +171,7 @@ describe('C-12 rechazo seguro con código estable', () => {
     ['sin instante de ocurrencia', { timestamp: undefined }, 'MISSING_TIMESTAMP'],
     ['con instante sin zona horaria', { timestamp: '2026-09-30T11:59:00' }, 'INVALID_TIMESTAMP'],
     ['con instante imposible', { timestamp: '2026-02-31T11:59:00Z' }, 'INVALID_TIMESTAMP'],
+    ['con zona de tres dígitos', { timestamp: '2026-09-30T11:59:00+000' }, 'INVALID_TIMESTAMP'],
     ['sin regla', { rule: undefined }, 'MISSING_RULE'],
     [
       'con nivel fuera de escala',

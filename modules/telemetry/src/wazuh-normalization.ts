@@ -110,6 +110,15 @@ export interface PageNormalizationResult {
 const RFC3339_WITH_ZONE =
   /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(?:[Zz]|[+-]\d{2}:\d{2})$/u;
 
+/**
+ * Wazuh indexa `timestamp` con la zona sin dos puntos (`2026-11-03T18:52:19.984+0000`), que
+ * no es RFC3339 estricto. Se canoniza a `±HH:MM` antes de validar; cualquier otra forma sigue
+ * rechazándose.
+ */
+function canonicalWazuhTimestamp(value: string): string {
+  return value.replace(/([+-])(\d{2})(\d{2})$/u, '$1$2:$3');
+}
+
 const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31] as const;
 
 /**
@@ -388,12 +397,14 @@ export function normalizeWazuhAlert(
     );
   }
 
-  const timestamp = source['timestamp'];
-  if (timestamp === undefined) {
+  const rawTimestamp = source['timestamp'];
+  if (rawTimestamp === undefined) {
     return quarantine(
       reason('MISSING_TIMESTAMP', 'La alerta no declara instante de ocurrencia.', '/timestamp'),
     );
   }
+  const timestamp =
+    typeof rawTimestamp === 'string' ? canonicalWazuhTimestamp(rawTimestamp) : rawTimestamp;
   if (
     typeof timestamp !== 'string' ||
     !isRealCalendarInstant(timestamp) ||
