@@ -50,7 +50,7 @@
     "@qapaq/configuration": "workspace:*",
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
-    "pg": "8.23.0"
+    "pg": "8.23.1"
   },
   "devDependencies": {
     "@aws-sdk/client-secrets-manager": "3.1138.0",
