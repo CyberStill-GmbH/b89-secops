@@ -5,9 +5,16 @@
  * el cuerpo de la respuesta de Entra.
  */
 
+import { inspect } from 'node:util';
+
 import { describe, expect, it } from 'vitest';
 
-import { EntraClientCredentialsTokenSource } from '../src/runtime/workload-token.js';
+import { SecretValue } from '@b89/configuration';
+
+import {
+  EntraClientCredentialsTokenSource,
+  StaticGatewayTokenSource,
+} from '../src/runtime/workload-token.js';
 
 const TOKEN = 'eyJ.sintetico.token-de-prueba-para-workload';
 
@@ -61,5 +68,26 @@ describe('token de workload por client credentials', () => {
     const error = await instance.token().catch((caught: unknown) => caught as Error);
     expect(error).toMatchObject({ code: 'TOKEN_REQUEST_FAILED' });
     expect(String(error.message)).not.toContain('interno');
+  });
+});
+
+describe('token estático del gateway (B89_WAZUH_GATEWAY_AUTH=static-token)', () => {
+  const STATIC = 'q3Vx9ZkL2mN8pR4tW7yB1cE5gH0jA6sD/uF+oI3eKw=';
+
+  it('entrega el mismo token en cada llamada, sin red', async () => {
+    const source = new StaticGatewayTokenSource(new SecretValue(STATIC));
+    expect(await source.token()).toBe(STATIC);
+    expect(await source.token()).toBe(STATIC);
+  });
+
+  it('no expone el token al serializar, convertir a texto ni inspeccionar', () => {
+    const source = new StaticGatewayTokenSource(new SecretValue(STATIC));
+    expect(JSON.stringify({ source })).not.toContain(STATIC);
+    expect(String(source)).toBe('[REDACTED]');
+    expect(inspect(source, { depth: 5, showHidden: true })).not.toContain(STATIC);
+  });
+
+  it('rechaza un secreto vacío', () => {
+    expect(() => new StaticGatewayTokenSource(new SecretValue('  '))).toThrow();
   });
 });

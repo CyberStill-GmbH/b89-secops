@@ -96,3 +96,32 @@ export class EntraClientCredentialsTokenSource {
     return record.access_token;
   }
 }
+
+/**
+ * Token estático del gateway (`B89_WAZUH_GATEWAY_AUTH=static-token`): para un solo nodo sin
+ * Entra. Misma forma que `EntraClientCredentialsTokenSource.token`, así el cliente C-28 no
+ * cambia. El valor queda en un campo privado y solo sale por `token()`; la instancia se
+ * serializa e inspecciona como `[REDACTED]`.
+ */
+export class StaticGatewayTokenSource {
+  readonly #secret: { reveal(): string };
+
+  public constructor(secret: { reveal(): string }) {
+    if (!secret.reveal().trim()) throw new WorkloadTokenError('TOKEN_RESPONSE_INVALID');
+    this.#secret = secret;
+  }
+
+  public token = (): Promise<string> => Promise.resolve(this.#secret.reveal());
+
+  public toJSON(): string {
+    return '[REDACTED]';
+  }
+
+  public toString(): string {
+    return '[REDACTED]';
+  }
+
+  public [Symbol.for('nodejs.util.inspect.custom')](): string {
+    return 'StaticGatewayTokenSource [REDACTED]';
+  }
+}

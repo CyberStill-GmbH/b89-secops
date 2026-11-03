@@ -108,6 +108,11 @@ export function createWazuhEventProvider(options: {
   readonly sourceId: string;
   readonly gatewayBaseUrl: string;
   readonly accessToken: () => Promise<string>;
+  /**
+   * `true` con un token estático (no vence): solo HTTPS, o HTTP a loopback. Sin la excepción
+   * de HTTP hacia `*.b89.internal`, que solo vale para tokens de workload de vida corta.
+   */
+  readonly tlsOrLoopbackOnly?: boolean;
 }): SecurityEventProvider {
   return createWazuhSecurityEventProvider({
     sourceId: options.sourceId,
@@ -123,7 +128,9 @@ export function createWazuhEventProvider(options: {
       cursorSigningKey: randomBytes(32).toString('hex'),
       cursorTtlMs: 10 * 60_000,
       maximumResponseBytes: 10 * 1024 * 1024,
-      allowPrivateServiceHttp: true,
+      ...(options.tlsOrLoopbackOnly === true
+        ? { allowPrivateServiceHttp: false, allowInsecureLocalhost: true }
+        : { allowPrivateServiceHttp: true }),
     },
     compileFilters: compileWazuhEventFilters,
     activityField: OFFICE365_SUBSCRIPTION_FIELD,

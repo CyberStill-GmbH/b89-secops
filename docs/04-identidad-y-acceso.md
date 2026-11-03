@@ -213,6 +213,45 @@ usuario.
    sesiones `demo-admin:*` que quedaran en PostgreSQL se revocan en su siguiente uso.
 3. Antes de producción: retirar el código (gate de [N13](10-decisiones.md)).
 
+## Ingesta de Wazuh sin Entra (token estático del gateway)
+
+La demo de un solo nodo (identidad fija `DEMO_DEPLOYMENT_IDENTITY`, login solo con la cuenta
+demo) no puede emitir tokens de workload de Entra, y sin ellos el API no podía leer alertas. El
+modo `static-token` lo resuelve sin abrir otro camino al Indexer: el API sigue hablando solo con
+las dos rutas C-28 (`GET /wazuh/_cluster/health`, `POST /wazuh/_search`) de un gateway, y ese
+gateway es quien guarda la credencial read-only del Indexer. Código:
+`platform/configuration/src/schema/ingestion.schema.ts`, `apps/api/src/runtime/workload-token.ts`
+(`StaticGatewayTokenSource`) y `platform/gateway/static-token/wazuh-gateway.conf.template`.
+Pruebas: `platform/configuration/test/ingestion-config.spec.ts`,
+`apps/api/test/workload-token.spec.ts`, `apps/api/test/ingestion-static-token.spec.ts`.
+
+| Variable (API) | Contenido |
+| --- | --- |
+| `B89_INGESTION_SOURCE` | `wazuh` |
+| `B89_WAZUH_GATEWAY_AUTH` | `static-token`. Ausente = `entra` (comportamiento anterior, exige `B89_INGESTION_GATEWAY_SCOPE` y el client secret) |
+| `B89_WAZUH_GATEWAY_BASE_URL` | `https://<gateway>:8443` (raíz, sin ruta ni credenciales). HTTP solo hacia loopback, en cualquier perfil |
+| `B89_WAZUH_GATEWAY_ACCESS_TOKEN` | Secreto (archivo 0600 / secreto del orquestador). Alternativa: `B89_WAZUH_GATEWAY_ACCESS_TOKEN_REF=secret://environment/<VARIABLE>`; no ambos |
+
+Generar el token: `openssl rand -base64 48 | tr -d '\n'` (64 caracteres). El arranque **falla**
+si el modo tiene otro valor, falta el token, el token mide menos de 32 o más de 512 caracteres,
+tiene menos de 16 caracteres distintos o sale del alfabeto b64token (`A-Za-z0-9._~+/-`, `=` solo
+al final), si la URL es HTTP fuera de loopback, o si se declaran a la vez el token y su `_REF`.
+El valor vive en un `SecretValue` (se serializa como `[REDACTED]`), no aparece en errores ni logs
+y con este modo el cliente pierde la excepción de HTTP hacia `*.b89.internal`.
+
+**Gateway.** `platform/gateway/static-token/wazuh-gateway.conf.template` es una plantilla para la
+imagen oficial de nginx: compara el bearer de forma exacta y sensible a mayúsculas (401 si no
+coincide), acepta solo los dos métodos y rutas (403 otro método, 404 otra ruta, 400 con query
+string), fija el índice `wazuh-alerts-*`, inyecta Basic del usuario `b89_reader` (rol
+`b89_alerts_read`: `read` sobre `wazuh-alerts-*` y `cluster_monitor`, de
+`wazuh/access/apply-access.sh`), verifica el Indexer contra su CA y tiene `access_log off`. Su
+puerto no se publica: solo la red interna de Docker del API.
+
+**Modelo de amenaza.** Es un secreto compartido sin vencimiento: quien lo obtenga puede lanzar
+búsquedas de solo lectura sobre `wazuh-alerts-*` desde la red interna hasta que se rote. El
+alcance lo limita el rol read-only del Indexer, no el token. Rotar = generar otro valor, cambiarlo
+en el API y en el gateway y reiniciar ambos. Antes de producción real se vuelve a `entra`.
+
 ## Por qué proxy auth y no OIDC nativo de OSD
 
 | Criterio | OIDC nativo de OSD | B89 como proxy de identidad |

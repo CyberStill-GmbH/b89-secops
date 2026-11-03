@@ -47,6 +47,8 @@ export {
   GROUP_OWNER_ROLE,
   IDENTITY_MODES,
   INGESTION_SOURCES,
+  STATIC_GATEWAY_TOKEN_MINIMUM_LENGTH,
+  WAZUH_GATEWAY_AUTH_MODES,
 } from './schema/index.js';
 export type {
   AccessConfig,
@@ -57,6 +59,7 @@ export type {
   GrantableRole,
   IngestionConfig,
   IngestionSource,
+  WazuhGatewayAuthMode,
   RoleGrantsConfig,
   KnownBenignRule,
 } from './schema/index.js';

@@ -13,9 +13,12 @@ export {
 } from './access.schema.js';
 export {
   INGESTION_SOURCES,
+  STATIC_GATEWAY_TOKEN_MINIMUM_LENGTH,
+  WAZUH_GATEWAY_AUTH_MODES,
   parseIngestionConfig,
   type IngestionConfig,
   type IngestionSource,
+  type WazuhGatewayAuthMode,
 } from './ingestion.schema.js';
 export {
   GRANTABLE_ROLES,

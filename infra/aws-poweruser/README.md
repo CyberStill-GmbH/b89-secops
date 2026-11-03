@@ -40,6 +40,35 @@ Credenciales generadas (en el host, solo root):
 - Login del dashboard (Security plugin): `admin` / `INDEXER_ADMIN_PASSWORD` de `/opt/b89/secrets/compose.env`.
 - Administrador demo del API B89: `admin@b89.io` / `/opt/b89/secrets/demo-admin-password.txt`.
 
+## Ingesta de alertas de Wazuh (sin Entra)
+
+El API viene con `B89_INGESTION_SOURCE=disabled`. Para que lea alertas sin Entra (la identidad
+demo no emite tokens de workload) se usa el modo `static-token`: el API envía un bearer estático
+a un gateway nginx interno (`platform/gateway/static-token/wazuh-gateway.conf.template`) que
+inyecta la credencial read-only `b89_reader` hacia el Indexer. Detalle y modelo de amenaza en
+[docs/04](../../docs/04-identidad-y-acceso.md#ingesta-de-wazuh-sin-entra-token-estático-del-gateway).
+
+Generar el token en el host (una vez; rotarlo = repetir y reiniciar API y gateway):
+
+```bash
+openssl rand -base64 48 | tr -d '\n'
+```
+
+| Dónde                         | Variable                                           | Valor                                                                                                         |
+| ----------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `/opt/b89/config/api.env`     | `B89_INGESTION_SOURCE`                             | `wazuh`                                                                                                       |
+| `/opt/b89/config/api.env`     | `B89_WAZUH_GATEWAY_AUTH`                           | `static-token`                                                                                                |
+| `/opt/b89/config/api.env`     | `B89_WAZUH_GATEWAY_BASE_URL`                       | `https://<servicio del gateway>:8443` (nombre cubierto por su certificado, firmado por `/opt/b89/pki/ca.pem`) |
+| `/opt/b89/secrets/api.env`    | `B89_WAZUH_GATEWAY_ACCESS_TOKEN`                   | el token generado                                                                                             |
+| entorno del gateway (secreto) | `B89_WAZUH_GATEWAY_ACCESS_TOKEN`                   | el mismo token                                                                                                |
+| entorno del gateway (secreto) | `WAZUH_INDEXER_BASIC_AUTH_B64`                     | `base64("b89_reader:<contraseña>")`                                                                           |
+| entorno del gateway           | `WAZUH_INDEXER_UPSTREAM`, `WAZUH_INDEXER_TLS_NAME` | `wazuh.indexer:9200`, nombre del certificado del Indexer                                                      |
+
+Opcionales del API: `B89_INGESTION_SOURCE_ID` (por defecto `wazuh-indexer`),
+`B89_INGESTION_INTERVAL` (`60s`) y `B89_INGESTION_INITIAL_LOOKBACK_MINUTES` (`60`). No hacen falta
+`B89_INGESTION_GATEWAY_SCOPE` ni el client secret de Entra. El servicio del gateway y el usuario
+`b89_reader` en el Indexer se agregan al compose del nodo; su puerto no se publica.
+
 ## Lo que este modo NO tiene (y por qué)
 
 Todo lo que necesita una identidad IAM para el host o un rol de servicio:

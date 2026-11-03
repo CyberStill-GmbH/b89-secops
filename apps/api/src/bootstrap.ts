@@ -37,7 +37,10 @@ import {
   OFFICE365_SUBSCRIPTIONS,
   WAZUH_DATASET,
 } from './runtime/wazuh-ingestion.js';
-import { EntraClientCredentialsTokenSource } from './runtime/workload-token.js';
+import {
+  EntraClientCredentialsTokenSource,
+  StaticGatewayTokenSource,
+} from './runtime/workload-token.js';
 import {
   createRoleGrantResolver,
   isRoleRosterFresh,
@@ -243,24 +246,38 @@ export async function buildApi(
   }
   const lifecycle = new ApiLifecycle(emit);
   emit('starting');
-  // Sprint 5 · fases 0 y 1: la ingesta necesita el client secret para el token de workload;
-  // `wazuh` sin secreto es un error de despliegue y no arranca.
-  if (ingestionConfig.source === 'wazuh' && !clientSecret) {
+  // Sprint 5 · fases 0 y 1: con `entra`, la ingesta necesita el client secret para el token de
+  // workload; `wazuh` sin secreto es un error de despliegue y no arranca. Con `static-token`
+  // (un solo nodo sin Entra) el bearer ya viene validado por la configuración.
+  if (
+    ingestionConfig.source === 'wazuh' &&
+    ingestionConfig.gatewayAuth === 'entra' &&
+    !clientSecret
+  ) {
     throw new Error('INGESTION_CLIENT_SECRET_MISSING');
   }
   const eventProvider =
-    ingestionConfig.source === 'wazuh' && clientSecret
-      ? createWazuhEventProvider({
-          sourceId: ingestionConfig.sourceId,
-          gatewayBaseUrl: ingestionConfig.gatewayBaseUrl,
-          accessToken: new EntraClientCredentialsTokenSource({
-            tenantId: access.tenantId,
-            clientId: access.clientId,
-            clientSecret,
-            scope: ingestionConfig.gatewayScope,
-          }).token,
-        })
-      : undefined;
+    ingestionConfig.source !== 'wazuh'
+      ? undefined
+      : ingestionConfig.gatewayAuth === 'static-token'
+        ? createWazuhEventProvider({
+            sourceId: ingestionConfig.sourceId,
+            gatewayBaseUrl: ingestionConfig.gatewayBaseUrl,
+            accessToken: new StaticGatewayTokenSource(ingestionConfig.gatewayAccessToken).token,
+            tlsOrLoopbackOnly: true,
+          })
+        : clientSecret
+          ? createWazuhEventProvider({
+              sourceId: ingestionConfig.sourceId,
+              gatewayBaseUrl: ingestionConfig.gatewayBaseUrl,
+              accessToken: new EntraClientCredentialsTokenSource({
+                tenantId: access.tenantId,
+                clientId: access.clientId,
+                clientSecret,
+                scope: ingestionConfig.gatewayScope,
+              }).token,
+            })
+          : undefined;
   // La fuente se declara siempre: sin ingesta aparece como `disabled`, no como hueco.
   const monitor = sourceHealthMonitor({
     key: {
