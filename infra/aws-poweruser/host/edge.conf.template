@@ -1,0 +1,67 @@
+# Edge B89 del nodo PowerUser (nginx en contenedor). Semántica de wazuh/edge/b89-edge.conf:
+# rutas del API B89 → api:3000; el resto → Wazuh Dashboard con marca B89.
+# Variables (envsubst en deploy-host.sh): ${SOC_HOSTNAME}
+
+resolver 127.0.0.11 valid=30s ipv6=off;
+
+server {
+  listen 80;
+  server_name ${SOC_HOSTNAME};
+  server_tokens off;
+  location /.well-known/acme-challenge/ { root /var/www/certbot; }
+  location / { return 301 https://$host$request_uri; }
+}
+
+server {
+  listen 443 ssl;
+  http2 on;
+  server_name ${SOC_HOSTNAME};
+  ssl_certificate     /etc/letsencrypt/live/${SOC_HOSTNAME}/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/${SOC_HOSTNAME}/privkey.pem;
+  ssl_protocols TLSv1.2 TLSv1.3;
+  server_tokens off;
+
+  add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+  add_header X-Content-Type-Options "nosniff" always;
+  add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+  client_max_body_size 50m;
+  proxy_http_version 1.1;
+  proxy_set_header Connection "";
+
+  set $b89_api http://api:3000;
+  set $b89_osd https://wazuh.dashboard:5601;
+
+  location ~ ^/(api/(auth|alerts|incidents|changes|sources|operations|audit|admin|me|assistant)(/|$)|health/) {
+    proxy_pass $b89_api;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header Sec-Fetch-Site $http_sec_fetch_site;
+    proxy_set_header x-proxy-user "";
+    proxy_set_header x-proxy-roles "";
+    proxy_buffering off;
+    proxy_read_timeout 65s;
+  }
+
+  location ~ "^/api/notifications(/[0-9a-fA-F-]{36}/acknowledge)?$" {
+    proxy_pass $b89_api;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header Sec-Fetch-Site $http_sec_fetch_site;
+    proxy_set_header x-proxy-user "";
+    proxy_set_header x-proxy-roles "";
+  }
+
+  location / {
+    proxy_pass $b89_osd;
+    proxy_ssl_verify off;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header x-proxy-user "";
+    proxy_set_header x-proxy-roles "";
+    proxy_read_timeout 120s;
+  }
+}

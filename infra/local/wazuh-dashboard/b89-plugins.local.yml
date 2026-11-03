@@ -1,0 +1,7 @@
+# Se añade a opensearch_dashboards.local.yml SOLO si la imagen lleva los plugins B89
+# (las claves b89_* hacen fallar el arranque si el plugin no está instalado).
+b89_ops.enabled: true
+b89_ops.apiPrefix: '/api'
+b89_ops.p1Watch: false
+b89_ops.bunny.enabled: false
+b89_ops.login.enabled: false
