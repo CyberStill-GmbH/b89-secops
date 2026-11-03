@@ -21,7 +21,7 @@ data "aws_cloudfront_response_headers_policy" "security_headers" {
 }
 
 locals {
-  custom_domain  = var.domain_name != "" && var.certificate_arn != ""
+  custom_domain  = var.domain_name != "" && (var.certificate_arn != "" || local.managed_certificate)
   api_origin_id  = "b89-http-api"
   api_origin_dns = replace(aws_apigatewayv2_api.http.api_endpoint, "https://", "")
   waf_rate_limit = 1000
@@ -74,15 +74,15 @@ resource "aws_cloudfront_distribution" "main" {
 
   viewer_certificate {
     cloudfront_default_certificate = !local.custom_domain
-    acm_certificate_arn            = local.custom_domain ? var.certificate_arn : null
+    acm_certificate_arn            = local.custom_domain ? local.edge_certificate_arn : null
     ssl_support_method             = local.custom_domain ? "sni-only" : null
     minimum_protocol_version       = local.custom_domain ? "TLSv1.2_2021" : "TLSv1"
   }
 
   lifecycle {
     precondition {
-      condition     = (var.domain_name == "") == (var.certificate_arn == "")
-      error_message = "domain_name y certificate_arn deben definirse juntos."
+      condition     = var.domain_name == "" || var.certificate_arn != "" || var.route53_zone_name != ""
+      error_message = "domain_name requiere certificate_arn o route53_zone_name (certificado gestionado)."
     }
   }
 }

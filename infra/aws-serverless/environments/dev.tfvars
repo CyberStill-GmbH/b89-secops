@@ -4,9 +4,13 @@ environment = "dev"
 aws_region  = "us-east-1"
 
 allowed_admin_cidrs = ["38.250.148.109/32"]
-agent_cidrs         = []
-alert_email         = ""
-monthly_budget_usd  = 250
+
+# URL pública: zona security.b89.io de la cuenta (certificado ACM y alias gestionados).
+route53_zone_name  = "security.b89.io"
+domain_name        = "dev.security.b89.io"
+agent_cidrs        = []
+alert_email        = ""
+monthly_budget_usd = 250
 
 az_count                        = 2
 enable_interface_endpoints      = true

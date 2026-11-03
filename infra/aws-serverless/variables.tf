@@ -480,6 +480,12 @@ variable "certificate_arn" {
   }
 }
 
+variable "route53_zone_name" {
+  description = "Zona pública de Route 53 que contiene domain_name. Si se define, Terraform emite el certificado ACM (validación DNS) y crea los alias hacia CloudFront."
+  type        = string
+  default     = ""
+}
+
 variable "cognito_domain_prefix" {
   description = "Prefijo del dominio hospedado de Cognito (vacío = <project>-<environment>-<sufijo>)."
   type        = string
