@@ -21,6 +21,7 @@ MSYS_NO_PATHCONV=1 docker run --rm --user 1000:1000 -e HOME=/home/node \
   -e WAZUH_DASHBOARD_REPO="$WAZUH_DASHBOARD_REPO" -e OSD_VERSION="$OSD_VERSION" \
   -e NODE_OPTIONS=--max-old-space-size=4096 \
   -v b89-osd-build:/work \
+  -v "$(to_docker_path "$HERE")":/tools:ro \
   -v "$(to_docker_path "$REPO/wazuh/dashboard/plugins")":/src:ro \
   -v "$(to_docker_path "$HERE/plugins-dist")":/out \
   "node:${NODE_VERSION}" bash -euo pipefail -c '
@@ -37,6 +38,7 @@ MSYS_NO_PATHCONV=1 docker run --rm --user 1000:1000 -e HOME=/home/node \
     for name in b89_ops b89_i18n; do
       rm -rf "osd/plugins/$name"; mkdir -p "osd/plugins/$name"
       (cd "/src/$name" && tar --exclude=node_modules --exclude=build --exclude=target -cf - .) | (cd "osd/plugins/$name" && tar -xf -)
+      node /tools/strip-numeric-separators.cjs "osd/plugins/$name"
       id="$(node -p "require(\"/work/osd/plugins/$name/opensearch_dashboards.json\").id")"
       (cd "osd/plugins/$name" && OPENSEARCH_DASHBOARDS_VERSION="$OSD_VERSION" node ../../scripts/plugin_helpers build --opensearch-dashboards-version "$OSD_VERSION")
       cp "osd/plugins/$name/build/$id-$OSD_VERSION.zip" /out/

@@ -17,6 +17,9 @@ services:
 
   wazuh.indexer:
     image: wazuh/wazuh-indexer:4.14.8
+    # Solo desde este equipo: el indexer confía en x-proxy-user/x-proxy-roles del dashboard.
+    ports: !override
+      - '127.0.0.1:9200:9200'
 
   wazuh.dashboard:
     image: b89/wazuh-dashboard-local:4.14.8
@@ -28,6 +31,11 @@ services:
         WAZUH_VERSION: 4.14.8
     # Sin puerto en el host: la única entrada es el edge (https://localhost).
     ports: !reset []
+    # IP fija: es el ÚNICO origen al que el indexer acepta proxy auth (xff.internalProxies,
+    # infra/local/edge/apply-indexer-security.sh). Cambiarla obliga a reaplicar ese script.
+    networks:
+      default:
+        ipv4_address: 172.30.89.10
     volumes:
       - ${B89_REPO:-../../../../b89-secops}/infra/local/wazuh-dashboard/opensearch_dashboards.b89.local.yml:/usr/share/wazuh-dashboard/config/opensearch_dashboards.yml
     healthcheck:
@@ -37,7 +45,7 @@ services:
       retries: 20
       start_period: 120s
 
-  # Edge B89 (copia local de wazuh/edge/b89-edge.conf). La API B89 corre en el host (puerto 3000).
+  # Edge B89 (copia local de wazuh/edge/b89-edge.conf). La API B89 corre en el host (puerto 3089, edge/api.local.env).
   b89-edge:
     image: nginx:1.27-alpine
     restart: always
@@ -50,3 +58,13 @@ services:
       - 'host.docker.internal:host-gateway'
     depends_on:
       - wazuh.dashboard
+    networks:
+      default:
+        ipv4_address: 172.30.89.20
+
+# Subred fija para poder fijar la IP del dashboard (cambiarla exige `docker compose down`).
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.30.89.0/24

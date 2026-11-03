@@ -6,7 +6,7 @@
 #   bash infra/local/edge/apply-indexer-security.sh
 #
 # Diferencia con producción: el que afirma identidad ante el indexer es el contenedor del
-# dashboard (red Docker 172.16.0.0/12), no 127.0.0.1. Copia de seguridad en
+# dashboard, con IP fija 172.30.89.10 (compose.wazuh-dashboard-b89.yaml), no 127.0.0.1. Copia de seguridad en
 # infra/local/edge/.security-backup/<fecha> (se restaura con: securityadmin -cd <dir>).
 # Variables: INDEXER_CONTAINER (single-node-wazuh.indexer-1), INDEXER_ADMIN_PASSWORD (SecretPassword).
 set -euo pipefail
@@ -46,8 +46,8 @@ ours = yaml.safe_load(open(f'{sec}/config.b89.yml', encoding='utf-8'))
 dyn = live.setdefault('config', {}).setdefault('dynamic', {})
 http = dict(ours['config']['dynamic']['http'])
 http['xff'] = dict(http['xff'])
-# Local: el dashboard llega desde la red Docker, no desde 127.0.0.1.
-http['xff']['internalProxies'] = r'127\.0\.0\.1|172\.(1[6-9]|2[0-9]|3[01])\.\d{1,3}\.\d{1,3}'
+# Local: solo el contenedor del dashboard (IP fija en el override de compose).
+http['xff']['internalProxies'] = r'172\.30\.89\.10'
 dyn.setdefault('http', {}).update(http)
 authc = dyn.setdefault('authc', {})
 authc['b89_proxy_auth_domain'] = ours['config']['dynamic']['authc']['b89_proxy_auth_domain']

@@ -28,12 +28,12 @@ patch('styles.js', [
   [
     'contenedor grande',
     /\.loadingLogoContainer \{\s*height: 100px; \/\* Wazuh \*\/\s*padding: 10px 10px 10px 10px;/,
-    '.loadingLogoContainer {\n            height: min(66vh, 520px);\n            padding: 0;',
+    '.loadingLogoContainer {\n            height: min(52vh, 400px);\n            padding: 0;',
   ],
   [
     'logo ancho',
     /(\.loadingLogo \{\s*height: 100%;\s*)max-width: 100%;/,
-    '$1max-width: 92vw;\n            width: auto;',
+    '$1max-width: 90vw;\n            width: auto;',
   ],
   [
     'barra de progreso B89',

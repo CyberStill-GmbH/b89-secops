@@ -32,10 +32,7 @@ RUN set -eu; \
       rm -f "$f.br" "$f.gz"; \
     done; \
     "$R/node/bin/node" /tmp/b89/patch-splash.cjs "$R/src/core/server/rendering/views";     chown -R wazuh-dashboard:wazuh-dashboard "$R/src/core/server/core_app/assets" "$R/plugins/wazuh/public/assets/images" "$R/plugins/securityDashboards/target/public"; \
-    for zip in /tmp/b89/plugins/*.zip; do \
-      [ -f "$zip" ] || continue; \
-      echo "Instalando plugin $(basename "$zip")"; \
-      su -s /bin/sh wazuh-dashboard -c "$R/bin/opensearch-dashboards-plugin install file://$zip"; \
-    done; \
-    rm -rf /tmp/b89
+    rm -rf /tmp/b89/assets;     chown -R wazuh-dashboard:wazuh-dashboard /tmp/b89
 USER wazuh-dashboard
+# Los plugins se instalan como el usuario del servicio (la imagen no trae `su`).
+RUN set -eu;     for zip in /tmp/b89/plugins/*.zip; do       [ -f "$zip" ] || continue;       echo "Instalando plugin $(basename "$zip")";       /usr/share/wazuh-dashboard/bin/opensearch-dashboards-plugin install "file://$zip";     done;     ls /usr/share/wazuh-dashboard/plugins
