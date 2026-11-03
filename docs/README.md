@@ -1,8 +1,8 @@
 # Documentación B89 SecOps
 
 La documentación principal consolida producto, arquitectura, operación y decisiones de **B89 SOC**,
-la plataforma SOC serverless de la fintech B89 sobre AWS. El material histórico heredado de QAPAQ
-SecOps (sprints, informes, auditorías C-0X y ADR previos) sigue en git: `git show 050f9fa:docs/<ruta>`.
+la plataforma SOC serverless de la fintech B89 sobre AWS. El material histórico heredado de la base de código
+original (sprints, informes, auditorías C-0X y ADR previos) sigue en git: `git show 050f9fa:docs/<ruta>`.
 
 | # | Documento | Pregunta que responde |
 | - | --- | --- |
@@ -20,6 +20,9 @@ SecOps (sprints, informes, auditorías C-0X y ADR previos) sigue en git: `git sh
 | 12 | [Backend en Lambda](12-backend-en-el-siem.md) | Cómo la API B89 deja ECS y qué fases quedan |
 | 13 | [B89 Respond](13-b89-respond.md) | Diseño de la respuesta gobernada sobre Step Functions y estado heredado de Shuffle |
 | 14 | [B89 Respond y B89 Core](14-b89-respond-conexion-b89.md) | Contrato entre el catálogo, las aprobaciones y la ejecución |
+| 15 | [Bunny](15-bunny-asistente.md) | El asistente de IA integrado: qué lee, con qué permisos, privacidad y configuración |
+
+La referencia visual del frontend B89 está en [Identidad visual B89](brand/b89-visual-identity.md); incluye tipografía, paleta, logo y la biblioteca recortada de mascotas e ilustraciones.
 
 `reference/` guarda las decisiones heredadas (ADR-028 a 030 en `reference/decisiones/`, B89 Cases, la
 arquitectura resiliente y el rollout de Terraform) y los archivos que el código o la CI leen

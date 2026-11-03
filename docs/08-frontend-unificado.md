@@ -3,6 +3,12 @@
 > Leyenda: **[verificado]**, **[sin verificar]** (existe en el repo, no probado en AWS) y
 > **[propuesto]**. Arquitectura general en [02](02-arquitectura.md).
 
+## Sistema visual B89
+
+![Monograma oficial B89 del formato de presentación 2026](brand/assets/logo/b89-mark-gradient.png)
+
+La guía [Identidad visual B89 - Frontend](brand/b89-visual-identity.md) fija Satoshi Medium/Bold, la paleta oficial de siete colores, variantes de logotipo, Remi y Mundi, y la galería de ilustraciones recortadas de la presentación. El frontend solo muestra los recursos gráficos oficiales de B89.
+
 ## Decisión
 
 El **dashboard de Wazuh es el shell**. Lo que ya hace bien no se rehace: Discover, dashboards,

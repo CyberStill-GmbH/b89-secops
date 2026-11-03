@@ -29,6 +29,11 @@ export const LOCAL_DEV_PASSWORD = 'b89-dev-password';
 
 export interface LocalPrincipal {
   readonly subjectId: string;
+  /**
+   * `oid` sintético con formato GUID, como el de Entra: la sesión durable lo guarda en
+   * `access_sessions.subject_oid`, cuyo CHECK exige ese formato.
+   */
+  readonly objectId: string;
   readonly username: string;
   readonly displayName: string;
   readonly roles: readonly string[];
@@ -39,6 +44,7 @@ export interface LocalPrincipal {
 export const LOCAL_PRINCIPALS: Readonly<Record<string, LocalPrincipal>> = Object.freeze({
   'analista@b89.example': {
     subjectId: 'local-analyst-1',
+    objectId: '00000000-0000-4000-8000-b89000000001',
     username: 'analista@b89.example',
     displayName: 'Ana Lista',
     roles: ['b89.soc.analyst'],
@@ -46,6 +52,7 @@ export const LOCAL_PRINCIPALS: Readonly<Record<string, LocalPrincipal>> = Object
   },
   'lider@b89.example': {
     subjectId: 'local-lead-1',
+    objectId: '00000000-0000-4000-8000-b89000000002',
     username: 'lider@b89.example',
     displayName: 'Luis Líder',
     roles: ['b89.soc.lead'],
@@ -53,6 +60,7 @@ export const LOCAL_PRINCIPALS: Readonly<Record<string, LocalPrincipal>> = Object
   },
   'auditor@b89.example': {
     subjectId: 'local-auditor-1',
+    objectId: '00000000-0000-4000-8000-b89000000003',
     username: 'auditor@b89.example',
     displayName: 'Aída Auditora',
     roles: ['b89.auditor'],
@@ -60,6 +68,7 @@ export const LOCAL_PRINCIPALS: Readonly<Record<string, LocalPrincipal>> = Object
   },
   'admin@b89.example': {
     subjectId: 'local-platform-admin-1',
+    objectId: '00000000-0000-4000-8000-b89000000004',
     username: 'admin@b89.example',
     displayName: 'Ada Admin',
     roles: ['b89.platform.admin'],
@@ -67,6 +76,7 @@ export const LOCAL_PRINCIPALS: Readonly<Record<string, LocalPrincipal>> = Object
   },
   'sinrol@b89.example': {
     subjectId: 'local-norole-1',
+    objectId: '00000000-0000-4000-8000-b89000000005',
     username: 'sinrol@b89.example',
     displayName: 'Sin Rol',
     roles: [],
@@ -139,7 +149,7 @@ export class LocalDevelopmentIssuer {
       iss: this.options.issuer,
       aud: this.options.audience,
       sub: principal.subjectId,
-      oid: principal.subjectId,
+      oid: principal.objectId,
       tid: this.options.tenantId,
       iat: seconds,
       nbf: seconds,

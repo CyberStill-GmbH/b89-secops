@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/reference/assets/b89-logo.svg" alt="B89 SOC" width="320" />
+  <img src="docs/brand/assets/logo/b89-mark-gradient.png" alt="Monograma oficial B89" width="160" />
 </p>
 
 # B89 SecOps
@@ -10,8 +10,7 @@ gobernada, auditoría inmutable, gestión de acceso con revocación inmediata y 
 La investigación colaborativa es **B89 Cases** y la automatización de respuesta es **B89 Respond**
 (AWS Step Functions, con aprobación humana antes de cada acción).
 
-> Este repositorio es un derivado de QAPAQ SecOps adaptado a B89. El renombrado de marca ya está en
-> el código; el despliegue serverless descrito abajo es el **destino de diseño** y aún no tiene
+> La marca B89 ya está aplicada en el código; el despliegue serverless descrito abajo es el **destino de diseño** y aún no tiene
 > Terraform completo en `infra/aws/` (ver [plan de lanzamiento](docs/09-plan-de-lanzamiento.md)).
 
 ## Arquitectura en breve
@@ -26,13 +25,17 @@ La investigación colaborativa es **B89 Cases** y la automatización de respuest
 
 Detalle y diagrama en [docs/02-arquitectura.md](docs/02-arquitectura.md).
 
+## Identidad visual
+
+La tipografía, la paleta, las mascotas y los logotipos aprobados para el frontend están documentados en la [guía visual B89](docs/brand/b89-visual-identity.md).
+
 ## Marca
 
 | Nombre          | Qué es                                                                    |
 | --------------- | ------------------------------------------------------------------------- |
 | **B89 SOC**     | La plataforma completa                                                    |
-| **B89 Cases**   | Casos, tareas y continuidad de investigación (antes «Ayni Qapaq»)         |
-| **B89 Respond** | Respuesta gobernada sobre Step Functions (antes «Ankay», que era Shuffle) |
+| **B89 Cases**   | Casos, tareas y continuidad de investigación         |
+| **B89 Respond** | Respuesta gobernada sobre Step Functions (hoy sobre Step Functions; el código heredado usa Shuffle) |
 
 ## Estructura
 
