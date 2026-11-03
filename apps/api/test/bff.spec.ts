@@ -13,6 +13,7 @@ import { SecurityEventProviderError } from '@b89/connectors';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 
 import { buildApi } from '../src/bootstrap.js';
+import { SlidingWindowLimiter } from '../src/assistant/assistant-service.js';
 import type { EventsReader } from '../src/runtime/events-reader.js';
 import { wazuhRecordToEvent } from '../src/runtime/wazuh-ingestion.js';
 import type { InMemoryAttemptStore } from '@b89/soar';
@@ -2108,5 +2109,150 @@ describe('acceso con usuario y contraseña', () => {
       returnTo: 'https://evil.example/',
     });
     expect(new URL(response.headers.location as string, 'http://local').pathname).toBe('/');
+  });
+});
+
+describe('Bunny · asistente de IA', () => {
+  const usage = { inputTokens: 10, outputTokens: 5 };
+
+  /** Modelo falso: pide una herramienta y responde con lo que esa herramienta devolvió. */
+  function fakeAssistant(toolName: string, input: Record<string, unknown> = {}) {
+    const seen: string[] = [];
+    runtime.assistant = {
+      config: {
+        enabled: true,
+        provider: 'anthropic',
+        model: 'claude-opus-5-5',
+        effort: 'medium',
+        redactPii: true,
+        apiKey: 'test',
+        rateLimit: { max: 3, windowMs: 60_000 },
+      },
+      limiter: new SlidingWindowLimiter(3, 60_000),
+      model: {
+        async complete(request) {
+          const last = request.messages[request.messages.length - 1];
+          const resultBlock = Array.isArray(last?.content)
+            ? last.content.find((block) => block.type === 'tool_result')
+            : undefined;
+          if (!resultBlock || resultBlock.type !== 'tool_result') {
+            seen.push(...request.tools.map((tool) => tool.name));
+            return {
+              content: [{ type: 'tool_use', id: 'tu_1', name: toolName, input }],
+              stopReason: 'tool_use',
+              usage,
+            };
+          }
+          return {
+            content: [{ type: 'text', text: `Resultado: ${resultBlock.content.slice(0, 400)}` }],
+            stopReason: 'end_turn',
+            usage,
+          };
+        },
+      },
+    };
+    return seen;
+  }
+
+  async function ask(
+    session: { cookie: string; csrf: string },
+    message: string,
+    extra: Record<string, string> = {},
+  ) {
+    return server().inject({
+      method: 'POST',
+      url: '/api/assistant/chat',
+      remoteAddress: officeIp,
+      headers: { cookie: session.cookie, 'x-csrf-token': session.csrf, ...extra },
+      payload: { message, page: '/app/b89-alerts' },
+    });
+  }
+
+  it('sin B89_BUNNY_ENABLED no existe', async () => {
+    runtime.assistant = undefined;
+    const analyst = await signIn('analista@b89.example');
+    expect((await ask(analyst, 'hola')).statusCode).toBe(404);
+    const config = await server().inject({
+      method: 'GET',
+      url: '/api/assistant/config',
+      headers: { cookie: analyst.cookie },
+      remoteAddress: officeIp,
+    });
+    expect(JSON.parse(config.body).enabled).toBe(false);
+  });
+
+  it('lee el SOC con la sesión de la persona y ve solo las herramientas de su rol', async () => {
+    await ingest('01890f47-7abc-7def-8abc-00000000b001');
+    const seen = fakeAssistant('list_alerts', { priority: 'P1' });
+    const analyst = await signIn('analista@b89.example');
+    const response = await ask(analyst, '¿Qué alertas P1 hay?');
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    expect(body.reply).toContain('DATOS DEL SOC');
+    expect(body.steps).toEqual([{ tool: 'list_alerts', label: 'Buscando alertas', ok: true }]);
+    expect(body.citations.length).toBeGreaterThan(0);
+    // Un analista no tiene permisos de auditoría ni de administración de usuarios.
+    expect(seen).toContain('list_alerts');
+    expect(seen).not.toContain('audit_events');
+    expect(seen).not.toContain('list_users');
+  });
+
+  it('una herramienta fuera del rol sigue bloqueada por la API', async () => {
+    fakeAssistant('audit_events');
+    const analyst = await signIn('analista@b89.example');
+    const body = JSON.parse((await ask(analyst, 'auditoría')).body);
+    // El modelo la pidió aunque no se le ofreció: se rechaza como herramienta desconocida.
+    expect(body.steps).toEqual([
+      { tool: 'audit_events', label: 'Herramienta desconocida', ok: false },
+    ]);
+  });
+
+  it('exige el token CSRF y valida el cuerpo', async () => {
+    fakeAssistant('list_alerts');
+    const analyst = await signIn('analista@b89.example');
+    const noCsrf = await server().inject({
+      method: 'POST',
+      url: '/api/assistant/chat',
+      remoteAddress: officeIp,
+      headers: { cookie: analyst.cookie },
+      payload: { message: 'hola' },
+    });
+    expect(noCsrf.statusCode).toBe(403);
+    const invalid = await server().inject({
+      method: 'POST',
+      url: '/api/assistant/chat',
+      remoteAddress: officeIp,
+      headers: { cookie: analyst.cookie, 'x-csrf-token': analyst.csrf },
+      payload: { message: 12 },
+    });
+    expect(invalid.statusCode).toBe(422);
+  });
+
+  it('limita las preguntas por persona y audita cada una sin guardar el texto', async () => {
+    fakeAssistant('whoami');
+    const analyst = await signIn('analista@b89.example');
+    for (let index = 0; index < 3; index += 1) {
+      expect((await ask(analyst, `pregunta ${index}`)).statusCode).toBe(200);
+    }
+    expect((await ask(analyst, 'una más')).statusCode).toBe(429);
+    const events = await runtime.audit.read({
+      tenantId: runtime.tenantId,
+      from: new Date(Date.now() - 3_600_000),
+      to: new Date(Date.now() + 3_600_000),
+      pageSize: 200,
+      cursor: null,
+      action: 'assistant.ask',
+      actorId: null,
+      resourceType: null,
+      resourceId: null,
+      outcome: [],
+      includeSensitive: false,
+    });
+    const asks = events.events;
+    // La auditoría es compartida entre pruebas: al menos las 3 de esta persona.
+    expect(asks.length).toBeGreaterThanOrEqual(3);
+    expect(
+      JSON.stringify(asks, (_key, value) => (typeof value === 'bigint' ? String(value) : value)),
+    ).not.toContain('pregunta');
   });
 });

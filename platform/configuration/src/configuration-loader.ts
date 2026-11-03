@@ -19,6 +19,10 @@ import { parseRoleGrants, type RoleGrantsConfig } from './schema/role-grants.sch
 import { parseDirectoryConfig, type DirectoryConfig } from './schema/directory.schema.js';
 import { parseAlertMailSender, parseTeamsWorkflowUrl } from './schema/notifications.schema.js';
 import {
+  parseDemoAdminLogin,
+  type DemoAdminLoginConfig,
+} from './schema/demo-admin-login.schema.js';
+import {
   parseApi,
   parseControlPlaneSecretConfig,
   parseFullEnvironment,
@@ -94,6 +98,19 @@ export function loadApiConfig(environment: EnvironmentInput): ApiConfig {
 export function loadAccessConfig(environment: EnvironmentInput): AccessConfig {
   const profile = profileFrom(environment);
   return deepFreeze(parseAccess(environment, profile));
+}
+
+/**
+ * Excepción demo de contraseña del administrador (temporal, apagada por defecto). `now` es el
+ * instante de arranque: el vencimiento no puede quedar a más de 30 días de él.
+ */
+export function loadDemoAdminLoginConfig(
+  environment: EnvironmentInput,
+  now: Date,
+): DemoAdminLoginConfig {
+  const profile = profileFrom(environment);
+  const access = parseAccess(environment, profile);
+  return deepFreeze(parseDemoAdminLogin(environment, profile, access, now));
 }
 
 /**

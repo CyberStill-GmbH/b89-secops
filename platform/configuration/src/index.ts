@@ -9,6 +9,7 @@ export {
   loadApiConfig,
   loadControlPlaneSecretConfig,
   loadConfigurationAndStart,
+  loadDemoAdminLoginConfig,
   loadDetectionContextConfig,
   loadDirectoryConfig,
   loadEntityRefKey,
@@ -39,6 +40,8 @@ export type {
 export { SecretValue } from './configuration.types.js';
 export { CONFIGURATION_LIMITS, REDACTED_VALUE } from './limits.js';
 export {
+  DEMO_ADMIN_LOGIN_MAX_WINDOW_MS,
+  DEMO_DEPLOYMENT_IDENTITY,
   DETECTION_CONTEXT_LIMITS,
   GRANTABLE_ROLES,
   GROUP_OWNER_ROLE,
@@ -47,6 +50,7 @@ export {
 } from './schema/index.js';
 export type {
   AccessConfig,
+  DemoAdminLoginConfig,
   DetectionContextConfig,
   IdentityMode,
   DirectoryConfig,

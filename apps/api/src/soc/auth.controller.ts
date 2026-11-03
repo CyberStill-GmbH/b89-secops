@@ -171,14 +171,18 @@ export class AuthController {
       await fail(signInDenialCode(result.failure.reason));
       return;
     }
+    // La sesión de la excepción demo siempre viaja `Secure` y `SameSite=Strict`, sea cual sea el
+    // perfil: es la cuenta más privilegiada y entra solo con contraseña.
+    const demoAdmin = this.runtime.isDemoAdminSubject(result.value.session.subjectId);
     setSessionCookie(
       reply,
       result.value.session.id,
-      this.runtime.secureCookies,
+      demoAdmin || this.runtime.secureCookies,
       Math.floor(
         (result.value.session.absoluteExpiresAt.getTime() - this.runtime.now().getTime()) / 1000,
       ),
       [flowCookie].filter(Boolean),
+      demoAdmin ? 'Strict' : 'Lax',
     );
     await reply
       .status(303)

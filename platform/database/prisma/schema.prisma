@@ -695,3 +695,22 @@ model AccessRoleRequest {
   @@map("access_role_requests")
 }
 
+
+// Historial de conversaciones de Bunny (asistente de IA). Una fila por conversación con sus
+// mensajes en `jsonb`: un turno se agrega con una sola escritura (compare-and-set sobre
+// `message_count`). Aislamiento por (tenant, dueño) en cada consulta; borrado real (el runtime
+// recibe DELETE solo sobre esta tabla en `post-migrate.sql`). Topes y CHECK en la migración.
+model AssistantConversation {
+  id           String   @id @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Text
+  ownerId      String   @map("owner_id") @db.Text
+  title        String   @db.Text
+  createdAt    DateTime @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @map("updated_at") @db.Timestamptz(3)
+  messageCount Int      @map("message_count")
+  messages     Json     @db.JsonB
+
+  @@index([tenantId, ownerId, updatedAt(sort: Desc), id(sort: Desc)], map: "assistant_conversations_owner_idx")
+  @@index([tenantId, updatedAt], map: "assistant_conversations_retention_idx")
+  @@map("assistant_conversations")
+}

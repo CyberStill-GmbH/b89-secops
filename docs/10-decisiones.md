@@ -23,6 +23,7 @@ Estas decisiones definen B89 SOC frente a la base heredada. Detalle en
 | B7 | Tres cuentas AWS (`b89-soc-workload`, `b89-log-archive`, `b89-security-tooling`) | Propuesta |
 | B8 | B89 opera **solo en AWS**. El perfil Azure queda archivado en [`archive/azure`](archive/azure/README.md) | Vigente |
 | B9 | Marcas: **B89 SOC** (producto), **B89 Respond** (respuesta), **B89 Cases** (casos). Dominio y logo definitivos pendientes de B89 | Vigente |
+| B10 | **Bunny**, el asistente de IA integrado (Claude por Bedrock o API de Anthropic), de **solo lectura** y con los permisos de la persona; datos personales seudonimizados; apagado por defecto. Detalle en [15](15-bunny-asistente.md). El proveedor `anthropic` directo exige dictamen de Legal (N1/N2) | Vigente, sin probar contra el proveedor real |
 
 ## Negocio (detalle en [01](01-producto.md#decisiones-de-negocio-que-se-conservan))
 
@@ -38,8 +39,9 @@ Estas decisiones definen B89 SOC frente a la base heredada. Detalle en
 | N8 | No publicar SLO, EPS ni KPIs sin medición | Vigente | ADR-016 |
 | N9 | Una sola sesión activa por persona. Un login nuevo reemplaza la sesión anterior en la consola y en el dashboard | Vigente (falta hacerla atómica) | ADR-017 |
 | N11 | **Auditable para ISO 27001 y ciberseguridad SBS.** Se conserva toda la evidencia (RDS, S3, auditoría con cadena hash y snapshots) y el diseño se ajustará a sus controles | Vigente (próximo scope) | 2026-10-14 (dueño) |
-| N10 | Un cambio aprobado de rol o una baja de acceso revoca las sesiones y exige nuevo login | Gate: flujo de roles todavía no desplegado; grant y revocación viven en stores distintos; verificar `remaining = 0` y corte en el Dashboard antes de producción | ADR-017, 2026-10-13 |
+| N10 | Un cambio aprobado de rol o una baja de acceso revoca las sesiones y exige nuevo login | Gate: flujo de roles todavía no desplegado; grant y revocación viven en stores distintos; verificar `remaining = 0` y corte en el Dashboard antes de producción | ADR-017, 2026-10-13 |
 | N12 | PCI-DSS solo si B89 procesa datos de tarjeta: enmascarar PAN antes de indexar y retener logs 12 meses (3 en línea). Detalle en [01](01-producto.md) | Gate: confirmar con B89 | 2026-11-02 |
+| N13 | **Excepción temporal solo para la demo:** una cuenta administrativa sintética (`b89.platform.admin`, `amr: ['pwd']`) entra con usuario y contraseña (hash scrypt), sesión servidor-side en cookie `HttpOnly; Secure; SameSite=Strict` y JWT RS256 validado por el mismo pipeline. Apagada por defecto, vence como máximo a 30 días del arranque y la sesión dura ≤ 8 h. Detalle y modelo de amenaza en [04](04-identidad-y-acceso.md#excepción-demo-contraseña-del-administrador) | Gate: **debe retirarse antes de producción** (código y variables `B89_DEMO_ADMIN_*`). Dueño: dueño del producto (cguevara). Fecha límite: el `B89_DEMO_ADMIN_LOGIN_UNTIL` de la demo, nunca después de 2026-12-03 | 2026-11-03 (dueño) |
 
 ## Arquitectura
 

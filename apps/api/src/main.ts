@@ -107,6 +107,14 @@ export async function main(): Promise<void> {
     // Solo el modo (`memory` o `postgres`), nunca datos de conexión.
     log(`soc.persistence.${runtime.persistence}`);
     log(`ingestion.source.${runtime.ingestion}`);
+    // Advertencia visible: la excepción demo de contraseña rebaja la política de autenticación.
+    if (runtime.demoAdminLoginUntil) {
+      const until = runtime.demoAdminLoginUntil.toISOString();
+      log('auth.demo_admin_password.active', undefined, {
+        warning: `excepción demo de contraseña ACTIVA hasta ${until}`,
+        until,
+      });
+    }
     process.on('SIGINT', onSignal);
     process.on('SIGTERM', onSignal);
     process.on('uncaughtException', onException);

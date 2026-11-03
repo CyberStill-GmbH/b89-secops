@@ -111,6 +111,13 @@ describe.skipIf(!databaseUrl)('C-1 · roles de mínimo privilegio', () => {
     await expect(run(runtimeUrl, 'DELETE FROM access_sessions')).rejects.toThrow(/permission/iu);
   });
 
+  it('el historial de Bunny es la única tabla con DELETE (sin TRUNCATE)', async () => {
+    await expect(run(runtimeUrl, 'DELETE FROM assistant_conversations')).resolves.toBeDefined();
+    await expect(run(runtimeUrl, 'TRUNCATE assistant_conversations')).rejects.toThrow(
+      /permission/iu,
+    );
+  });
+
   it('el runtime no puede DDL', async () => {
     await expect(run(runtimeUrl, 'CREATE TABLE intruso (id int)')).rejects.toThrow(/permission/iu);
     await expect(run(runtimeUrl, 'ALTER TABLE soc_alerts ADD COLUMN x int')).rejects.toThrow(

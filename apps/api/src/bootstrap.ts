@@ -8,6 +8,7 @@ import {
   loadRoleGrantsConfig,
   loadTeamsWorkflowUrl,
   loadAlertMailSender,
+  loadDemoAdminLoginConfig,
   loadVapidPrivateKey,
   loadSocPersistenceConfig,
   type DetectionContextConfig,
@@ -19,8 +20,12 @@ import type { SessionStore } from '@b89/access';
 import type { AttemptStore } from '@b89/soar';
 import type { SocPersistence } from '@b89/soc';
 import { composeApi } from './composition-root.js';
+import { createAssistantService } from './assistant/assistant-service.js';
+import { assistantConversationStoreFor } from './assistant/conversation-history.js';
+import type { InjectingServer } from './assistant/internal-client.js';
 import { ApiLifecycle, type ApiEvent } from './lifecycle.js';
 import { resolveApiSecretEnvironment } from './runtime/secret-environment.js';
+import { DemoAdminLogin } from './access/demo-admin-credentials.js';
 import { entityRefFactory } from './runtime/entity-refs.js';
 import { deriveCsrfKey } from './http/csrf.js';
 import type { ProcessInfo } from './soc/operations-health.js';
@@ -197,6 +202,21 @@ export async function buildApi(
   const environment = await resolveApiSecretEnvironment(unresolvedEnvironment);
   const config = loadApiConfig(environment);
   const access = loadAccessConfig(environment);
+  // Excepción demo de contraseña del administrador (temporal, apagada por defecto). El arranque
+  // falla si el perfil no la admite, si vence a más de 30 días o si el hash no es un scrypt
+  // válido. El texto del hash solo vive en el entorno resuelto y en este constructor.
+  const demoAdminConfig = loadDemoAdminLoginConfig(environment, new Date());
+  const demoAdminLogin = demoAdminConfig.enabled
+    ? new DemoAdminLogin({
+        username: demoAdminConfig.username,
+        passwordHash: demoAdminConfig.passwordHash.reveal(),
+        until: demoAdminConfig.until,
+        issuer: 'urn:b89:demo-admin-password',
+        audience: access.clientId,
+        tenantId: access.tenantId,
+        profile: config.profile,
+      })
+    : undefined;
   const detection = loadDetectionContextConfig(environment);
   const persistenceConfig = loadSocPersistenceConfig(environment);
   const entityRefKey = loadEntityRefKey(environment);
@@ -307,6 +327,7 @@ export async function buildApi(
   const runtime: SecOpsRuntime = new SecOpsRuntime({
     access,
     ...(demoMfaExceptionUntil ? { demoMfaExceptionUntil } : {}),
+    ...(demoAdminLogin ? { demoAdminLogin } : {}),
     profile: config.profile,
     detectionContext: detectionContextFrom(detection),
     ...(entityRefSecret
@@ -395,6 +416,20 @@ export async function buildApi(
         }
       : {}),
   });
+  // Bunny (asistente de IA): solo existe con B89_BUNNY_ENABLED=true; sin él, el endpoint no responde.
+  // Su historial va a PostgreSQL cuando el SOC es durable (pool propio y mínimo); si no, a memoria.
+  const assistantConversations = await assistantConversationStoreFor(
+    environment,
+    persistenceConfig.mode === 'postgres'
+      ? {
+          connectionString: connectionStringFor(persistenceConfig),
+          connectionTimeoutMs: persistenceConfig.postgres.connectionTimeoutMs,
+          statementTimeoutMs: persistenceConfig.postgres.statementTimeoutMs,
+          maxConnections: 2,
+        }
+      : undefined,
+  );
+  runtime.assistant = createAssistantService(environment, undefined, assistantConversations);
   const ingestion =
     eventProvider && ingestionConfig.source === 'wazuh'
       ? createWazuhIngestion({
@@ -464,6 +499,8 @@ export async function buildApi(
         })
       : undefined;
   const application = await composeApi(config, lifecycle, runtime);
+  // Bunny lee el SOC por esta misma API (inject de Fastify, sin red) con la sesión de la persona.
+  runtime.internalServer = application.getHttpAdapter().getInstance() as unknown as InjectingServer;
   let listening: Promise<unknown> | undefined;
   const stop = () =>
     lifecycle.shutdown(async () => {
@@ -481,6 +518,7 @@ export async function buildApi(
       await durable?.directory.close();
       await durable?.push.close();
       await durable?.roleAdministration.close();
+      await assistantConversations?.close();
     }, API_SHUTDOWN_TIMEOUT_MS);
   return {
     application,
@@ -491,6 +529,8 @@ export async function buildApi(
     persistence: runtime.soc.kind,
     /** Fuente de ingesta efectiva, para el registro de arranque. */
     ingestion: ingestionConfig.source,
+    /** Vencimiento de la excepción demo de contraseña, para la advertencia del arranque. */
+    demoAdminLoginUntil: demoAdminLogin?.until,
     async start() {
       try {
         if (lifecycle.state !== 'starting') throw new Error('STARTUP_CANCELLED');

@@ -4,7 +4,8 @@
 -- una vez por ambiente y cada vez que se rotan las contraseñas. Es idempotente.
 --
 --   b89_migrator     dueño del esquema y de las tablas: aplica migraciones (DDL).
---   b89_soc_runtime  login del API: DML sin DELETE ni TRUNCATE y sin DDL.
+--   b89_soc_runtime  login del API: DML sin DELETE ni TRUNCATE y sin DDL (única excepción:
+--                    DELETE en `assistant_conversations`, concedido en `post-migrate.sql`).
 --
 -- Las contraseñas llegan como settings de sesión (`b89.migrator_password`,
 -- `b89.runtime_password`) porque CREATE/ALTER ROLE no aceptan parámetros enlazados; se

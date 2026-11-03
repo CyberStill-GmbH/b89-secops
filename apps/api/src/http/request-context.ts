@@ -105,13 +105,18 @@ export function setSessionCookie(
   secure: boolean,
   maxAgeSeconds: number,
   additionalCookies: readonly string[] = [],
+  /**
+   * `Strict` para la sesión de la excepción demo de contraseña: el formulario es del mismo
+   * origen y no hay redirect entre sitios que la necesite en `Lax` (ver docs/04).
+   */
+  sameSite: 'Lax' | 'Strict' = 'Lax',
 ): void {
   reply.header('set-cookie', [
     [
       `${SESSION_COOKIE}=${encodeURIComponent(sessionId)}`,
       'Path=/',
       'HttpOnly',
-      'SameSite=Lax',
+      `SameSite=${sameSite}`,
       `Max-Age=${maxAgeSeconds}`,
       ...(secure ? ['Secure'] : []),
     ].join('; '),

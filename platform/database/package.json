@@ -33,6 +33,11 @@
       "types": "./src/push-stores.ts",
       "development": "./src/push-stores.ts",
       "default": "./dist/src/push-stores.js"
+    },
+    "./assistant-conversation-stores": {
+      "types": "./src/assistant-conversation-stores.ts",
+      "development": "./src/assistant-conversation-stores.ts",
+      "default": "./dist/src/assistant-conversation-stores.js"
     }
   },
   "scripts": {

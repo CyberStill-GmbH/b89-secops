@@ -13,6 +13,8 @@ const API_SECRET_REFERENCES = [
   ['B89_ENTITY_REF_KEY_REF', 'B89_ENTITY_REF_KEY'],
   ['B89_TEAMS_WORKFLOW_URL_REF', 'B89_TEAMS_WORKFLOW_URL'],
   ['B89_VAPID_PRIVATE_KEY_REF', 'B89_VAPID_PRIVATE_KEY'],
+  // Excepción demo: el hash scrypt de la contraseña también es material sensible.
+  ['B89_DEMO_ADMIN_PASSWORD_HASH_REF', 'B89_DEMO_ADMIN_PASSWORD_HASH'],
 ] as const;
 
 const KEY_VAULT_PROVIDER_TYPE = 'azure-key-vault';

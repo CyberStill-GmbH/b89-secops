@@ -24,6 +24,12 @@ BEGIN
       REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON public._prisma_migrations FROM b89_soc_runtime;
       GRANT SELECT ON public._prisma_migrations TO b89_soc_runtime;
     END IF;
+    -- Historial de Bunny: única tabla con borrado real (la persona borra lo suyo y la retención
+    -- purga lo inactivo). DELETE sí; TRUNCATE no.
+    IF to_regclass('public.assistant_conversations') IS NOT NULL THEN
+      GRANT DELETE ON public.assistant_conversations TO b89_soc_runtime;
+      REVOKE TRUNCATE ON public.assistant_conversations FROM b89_soc_runtime;
+    END IF;
   END IF;
 END
 $hardening$;

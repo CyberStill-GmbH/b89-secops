@@ -99,6 +99,119 @@ Estado:
   nativos con MFA obligatorio) detrás del mismo puerto, lo que exige además un segundo paso de
   código MFA en la pantalla y que Cognito emita `amr`. Alta de usuarios, política de contraseñas y
   recuperación quedan por diseñar.
+- **Excepción temporal de la demo:** una única cuenta administrativa sintética puede entrar por
+  este formulario mientras esté vigente; ver la sección siguiente.
+
+## Excepción demo: contraseña del administrador
+
+Excepción **temporal y consciente** a la política (MFA dentro de la red, passkey fuera), pedida por
+el dueño solo para la demo ([N13](10-decisiones.md)). Una única cuenta administrativa sintética
+entra por el formulario de usuario y contraseña (`POST /api/auth/password`). Código:
+`apps/api/src/access/demo-admin-credentials.ts`, `secops-runtime.ts` (`passwordSignIn`,
+`completeSignInWith`, `resolveActor`) y `platform/configuration/src/schema/demo-admin-login.schema.ts`.
+Pruebas: `apps/api/test/demo-admin-login.spec.ts`.
+
+### Activación (apagada por defecto)
+
+| Variable | Contenido |
+| --- | --- |
+| `B89_DEMO_ADMIN_LOGIN_ENABLED` | `true` para activarla; ausente o `false` = no existe |
+| `B89_DEMO_ADMIN_LOGIN_UNTIL` | Vencimiento obligatorio, ISO 8601 UTC (`…Z`), como máximo 30 días desde el arranque |
+| `B89_DEMO_ADMIN_USERNAME` | Usuario en minúsculas (`[a-z0-9._@+-]`, 3–64) |
+| `B89_DEMO_ADMIN_PASSWORD_HASH` | Hash scrypt; en AWS como secreto de ECS (`api_extra_secrets` → Secrets Manager). En Azure, `B89_DEMO_ADMIN_PASSWORD_HASH_REF` (Key Vault) |
+
+El hash se genera con `node scripts/dev/hash-demo-admin-password.mjs` (pide la contraseña dos
+veces sin eco, o la lee por stdin; exige ≥ 14 caracteres e imprime solo el hash
+`$scrypt$ln=16,r=8,p=1$<sal>$<clave>`). La contraseña en claro nunca va a variables, tfvars, logs
+ni respuestas.
+
+El arranque **falla** con `ConfigurationError` si: la bandera tiene otro valor, falta o está mal
+formado el vencimiento, vence a más de 30 días, falta el usuario o el hash, el hash no es scrypt o
+sus parámetros son débiles (N < 2^15, r < 8, sal < 16 bytes, clave < 32 bytes) o el perfil no la
+admite. Al arrancar con la excepción activa, el log emite
+`auth.demo_admin_password.active` con «excepción demo de contraseña ACTIVA hasta …».
+
+**Perfil.** `development` y `test` la admiten. **La demo de AWS corre con `B89_PROFILE=production`**
+(`infra/aws/modules/runtime/main.tf`); el código solo tiene tres perfiles. Por eso, en
+`production` la excepción se admite **solo** si la identidad configurada es exactamente la del
+despliegue demo (tenant, client y redirect de `infra/aws/environments/demo.tfvars`, la misma
+atadura que la antigua excepción de MFA). Cualquier otro despliegue de producción no arranca
+(`CONFIG_VALUE_INVALID` en `B89_DEMO_ADMIN_LOGIN_ENABLED`, `reason: DEMO_ADMIN_LOGIN_NOT_ALLOWED_IN_PROFILE`).
+
+### Qué concede y qué no
+
+- **Una persona sintética fija:** `sub = demo-admin:<16 hex de sha256(usuario)>`, sin `oid` (no
+  cruza con el padrón de Entra ni hereda grants ni asignaciones del deploy), rol
+  `b89.platform.admin` y nada más, `amr: ['pwd']` (no se inventa MFA). No crea cuentas ni abre
+  sesión como ninguna otra persona: el emisor demo solo firma ese `sub`, y un token de Entra o
+  del emisor local con prefijo `demo-admin:` se rechaza.
+- **Decisión separada:** `decideSignIn` sigue rechazando por `MFA_REQUIRED`; la excepción solo
+  la convierte en admisión para ese sujeto, con la excepción vigente, **desde la red permitida**
+  (`inside`), sin bloqueo y con exactamente el rol admin. Fuera de la red o con una cadena de
+  proxies no confiable se sigue denegando.
+- **Sesión:** vida absoluta `min(8 h, UNTIL)`, inactividad de 30 min, sesión única y revocación
+  (logout, administración) como cualquier otra. `GET /api/auth/session` e `/introspect` no
+  cambian.
+- **Vencimiento sin reinicio:** pasado `UNTIL`, la ruta se comporta como si no hubiera verificador
+  demo y `resolveActor` revoca (`identity_revoked`) cualquier sesión `demo-admin:*` si la
+  excepción no está configurada, vigente y es de ese mismo sujeto (cubre también un reinicio con
+  la bandera apagada y sesiones durables en PostgreSQL).
+
+### JWT + cookie HttpOnly sin perder revocación
+
+Tras comprobar la contraseña, el runtime abre un handshake normal (`state`, `nonce`, PKCE,
+vínculo con el navegador), el emisor demo entrega un código de un solo uso (60 s, ligado a
+`nonce` y `code_verifier`) y su canje devuelve un **JWT RS256** (`iss=urn:b89:demo-admin-password`,
+`aud`, `tid`, `sub`, `iat`, `nbf`, `exp` ≤ 5 min y ≤ `UNTIL`, `jti`, `nonce`, `amr`, `roles`)
+firmado con una clave RSA generada en memoria en cada arranque. Ese JWT lo valida **el mismo
+`validateIdToken`** que el `id_token` de Entra (firma, emisor, audiencia, tenant, ventana, `nonce`)
+contra el JWKS propio del emisor demo; el emisor esperado y las claves nunca se mezclan con los de
+Entra. Así no existe un camino de autenticación paralelo menos estricto.
+
+El JWT **no sale del proceso**: la persona recibe solo `b89_session` (id opaco) con
+`HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age ≤ 8 h`, siempre `Secure` aunque el perfil no
+lo sea. La API no acepta el JWT como bearer ni como cookie (probado): la autoridad sigue siendo la
+sesión servidor-side, que se revoca en el acto. Un JWT autocontenido entregado al navegador sería
+válido hasta su `exp` aunque se revocara la cuenta; por eso se usa solo como prueba de identidad
+dentro del canje. `SameSite=Strict` no rompe el flujo porque el formulario, la respuesta 303 y el
+destino son del mismo origen; el costo es que un enlace desde otro sitio (Teams, correo) llega sin
+la cookie en la primera navegación y pide volver a entrar.
+
+### Protecciones
+
+Límite de tasa general por origen (30/min, compartido con el callback), **tope propio** de 10
+intentos por origen cada 15 min (aunque se roten usuarios) y máximo 4 verificaciones scrypt
+simultáneas (`RATE_LIMITED`), Smart Lockout por (cuenta, origen), protección contra login-CSRF
+(`Sec-Fetch-Site`/`Origin`), `Cache-Control: no-store`, respuesta 303 sin cuerpo con código
+público del catálogo. Usuario inexistente, contraseña errónea y cuenta bloqueada responden igual
+(`AUTH_FAILED`) y cuestan lo mismo: siempre se calcula el scrypt con la sal configurada (también
+antes de mirar el bloqueo) y se compara en tiempo constante. Cada intento queda en la cadena de
+auditoría como `access.sign_in` con motivo `demo_admin_password_login` (éxito) o
+`demo_admin_denied` (fallo, con `metadata.denial` = motivo técnico), sin contraseña, hash ni
+usuario.
+
+### Modelo de amenaza honesto
+
+- **Es un factor único.** Quien obtenga la contraseña (phishing, reutilización, hombro) es
+  administrador de la plataforma hasta el vencimiento, desde cualquier IP de
+  `B89_ACCESS_ALLOWED_CIDRS` (en la demo de AWS, `0.0.0.0/0`). Mitigaciones: contraseña larga y
+  única, vencimiento corto, tope de intentos, bloqueo, auditoría y revocación. No hay MFA.
+- **Fuerza bruta distribuida:** el tope y el bloqueo son por origen; muchas IPs suman intentos.
+  scrypt (N = 2^16) encarece cada uno, y el tope global de concurrencia protege la CPU, pero
+  también permite que un atacante sature el login de esta cuenta durante un rato.
+- **Estado en memoria:** tope de intentos, bloqueo y códigos viven en el proceso; con varias
+  réplicas o un reinicio se reparten o se pierden (igual que el resto del login hoy).
+- **Atadura por identidad, no por perfil:** en `production` la excepción depende de que el
+  tenant/client/redirect sean los de la demo. Si un despliegue real reutilizara esa misma
+  identidad, la excepción podría activarse allí; por eso debe retirarse antes de producción.
+
+### Cómo se apaga
+
+1. Inmediato y sin reinicio: llega `B89_DEMO_ADMIN_LOGIN_UNTIL` (o se revoca la sesión en
+   `/api/admin/sessions`).
+2. Definitivo: quitar `B89_DEMO_ADMIN_*` del entorno y el secreto del hash, y redesplegar. Las
+   sesiones `demo-admin:*` que quedaran en PostgreSQL se revocan en su siguiente uso.
+3. Antes de producción: retirar el código (gate de [N13](10-decisiones.md)).
 
 ## Por qué proxy auth y no OIDC nativo de OSD
 
