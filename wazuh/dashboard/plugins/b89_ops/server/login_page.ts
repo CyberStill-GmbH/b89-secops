@@ -139,6 +139,8 @@ export interface LoginPageOptions {
   readonly destinationLabel: string;
   /** Muestra el formulario de usuario y contraseña (por defecto, sí). */
   readonly passwordEnabled?: boolean;
+  /** Muestra el acceso con Microsoft Entra (por defecto, sí). Al menos uno de los dos queda activo. */
+  readonly entraEnabled?: boolean;
 }
 
 /**
@@ -248,13 +250,8 @@ function passwordScript(): string {
   }`;
 }
 
-function loginScript(passwordEnabled: boolean): string {
-  return `(function () {
-  var status = document.getElementById('b89-auth-message');
-  function pending(text) {
-    if (status && status.getAttribute('role') !== 'alert') status.textContent = text;
-  }
-  var link = document.getElementById('b89-entra');
+function entraScript(): string {
+  return `  var link = document.getElementById('b89-entra');
   if (link) {
     var label = document.getElementById('b89-entra-label');
     link.addEventListener('click', function () {
@@ -262,7 +259,16 @@ function loginScript(passwordEnabled: boolean): string {
       label.textContent = 'Conectando con Microsoft Entra…';
       pending('Conectando de forma segura…');
     });
+  }`;
+}
+
+function loginScript(passwordEnabled: boolean, entraEnabled: boolean): string {
+  return `(function () {
+  var status = document.getElementById('b89-auth-message');
+  function pending(text) {
+    if (status && status.getAttribute('role') !== 'alert') status.textContent = text;
   }
+${entraEnabled ? entraScript() : ''}
 ${passwordEnabled ? passwordScript() : ''}
   var key = ${JSON.stringify(COOKIE_ACK_KEY)};
   var bar = document.getElementById('b89-cookie-notice');
@@ -291,7 +297,9 @@ ${passwordEnabled ? passwordScript() : ''}
 /** Pantalla de acceso: formulario a la izquierda y la ilustración de marca como panel. */
 export function renderLoginPage(options: LoginPageOptions): string {
   const { basePath, apiPrefix, nextUrl, notice, nonce, destinationLabel } = options;
-  const passwordEnabled = options.passwordEnabled ?? true;
+  const entraEnabled = options.entraEnabled ?? true;
+  // Nunca una pantalla sin forma de entrar: sin Entra, el formulario se muestra siempre.
+  const passwordEnabled = (options.passwordEnabled ?? true) || !entraEnabled;
   const start = `${apiPrefix}/auth/start?returnTo=${encodeURIComponent(nextUrl)}`;
   const status = message(notice);
   const ui = `${basePath}/ui`;
@@ -312,22 +320,25 @@ export function renderLoginPage(options: LoginPageOptions): string {
         </div>
       </div>
       <button id="b89-password-submit" class="btn btn-primary" type="submit">Iniciar sesión</button>
-    </form>
+    </form>${
+      entraEnabled
+        ? `
     <div class="login-divider" role="separator"><span>o</span></div>
-    ${entraButton}`;
+    ${entraButton}`
+        : ''
+    }`;
   return `<!doctype html>
 <html lang="es">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#101014">
-<meta name="referrer" content="no-referrer">
+<meta name="referrer" content="same-origin">
 <link rel="icon" type="image/png" sizes="32x32" href="${ui}/favicons/favicon-32x32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="${ui}/favicons/apple-touch-icon.png">
 <link rel="manifest" href="${ui}/favicons/manifest.json">
 <link rel="stylesheet" href="${brand}/fonts/satoshi.css">
 <link rel="preload" as="image" type="image/webp" href="${brand}/b89_login_hero.webp" media="(min-width: 1001px)">
-<link rel="preload" as="image" type="image/webp" href="${brand}/b89_login_hero_sm.webp" media="(max-width: 1000px)">
 <title>Iniciar sesión · B89 SOC</title>
 <style nonce="${nonce}">${css}</style>
 </head>
@@ -342,9 +353,11 @@ export function renderLoginPage(options: LoginPageOptions): string {
     <div class="login-core" aria-labelledby="login-title">
       <h1 id="login-title">Bienvenido a B89 SOC</h1>
       <p class="login-subtitle">${
-        passwordEnabled
-          ? 'Ingresa con tu usuario o con tu cuenta institucional.'
-          : 'Ingresa con tu cuenta institucional.'
+        !passwordEnabled
+          ? 'Ingresa con tu cuenta institucional.'
+          : entraEnabled
+            ? 'Ingresa con tu usuario o con tu cuenta institucional.'
+            : 'Ingresa con tu usuario y contraseña.'
       }</p>
       ${passwordEnabled ? passwordForm : `<div class="login-only-entra">${entraButton}</div>`}
       <p id="b89-auth-message" class="auth-message${status.alert ? ' auth-message-error' : ''}" role="${
@@ -378,7 +391,7 @@ export function renderLoginPage(options: LoginPageOptions): string {
   </div>
   <button id="b89-cookie-close" class="b89-cookie-close" type="button" aria-label="Cerrar aviso de cookies">${CLOSE_ICON}</button>
 </aside>
-<script nonce="${nonce}">${loginScript(passwordEnabled)}</script>
+<script nonce="${nonce}">${loginScript(passwordEnabled, entraEnabled)}</script>
 </body>
 </html>`;
 }

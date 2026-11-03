@@ -25,7 +25,8 @@ import {
 
 const NO_STORE_HEADERS = {
   'cache-control': 'no-store',
-  'referrer-policy': 'no-referrer',
+  // same-origin: con no-referrer Chrome envía Origin: null en el POST del login y la API lo rechaza.
+  'referrer-policy': 'same-origin',
   'x-content-type-options': 'nosniff',
   'x-frame-options': 'DENY',
 };
@@ -82,6 +83,7 @@ export class B89OpsServerPlugin implements Plugin<void, void> {
             nonce,
             destinationLabel: config.login.destinationLabel,
             passwordEnabled: config.login.passwordEnabled,
+            entraEnabled: config.login.entraEnabled,
           }),
           headers: {
             ...NO_STORE_HEADERS,
