@@ -312,19 +312,19 @@ model AuditEvent {
 // C-16 — candidato de detección. La unicidad por clave de idempotencia es lo que
 // hace que repetir la promoción no cree un segundo candidato.
 model DetectionCandidate {
-  id             String   @id @db.Uuid
-  tenantId       String   @map("tenant_id") @db.Text
-  eventRecordId  String   @map("event_record_id") @db.Uuid
-  eventUid       String   @map("event_uid") @db.Text
-  idempotencyKey String   @map("idempotency_key") @db.Text
-  priority       String   @db.Text
-  score          Int
-  reasons        Json     @db.JsonB
-  rulesetId      String   @map("ruleset_id") @db.Text
-  rulesetVersion String   @map("ruleset_version") @db.Text
-  title          String   @db.Text
-  occurredAt     DateTime @map("occurred_at") @db.Timestamptz(3)
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  id              String   @id @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Text
+  eventRecordId   String   @map("event_record_id") @db.Uuid
+  eventUid        String   @map("event_uid") @db.Text
+  idempotencyKey  String   @map("idempotency_key") @db.Text
+  priority        String   @db.Text
+  score           Int
+  reasons         Json     @db.JsonB
+  rulesetId       String   @map("ruleset_id") @db.Text
+  rulesetVersion  String   @map("ruleset_version") @db.Text
+  title           String   @db.Text
+  occurredAt      DateTime @map("occurred_at") @db.Timestamptz(3)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   // C-16 1.1.0 — índice de correlación por entidad.
   entityKeys      String[] @default([]) @map("entity_keys") @db.Text
   signal          String?  @db.Text
@@ -340,23 +340,23 @@ model DetectionCandidate {
 
 // C-17 — alerta SOC. `revision` sostiene el compare-and-set del dominio.
 model SocAlert {
-  id            String    @id @db.Uuid
-  tenantId      String    @map("tenant_id") @db.Text
-  candidateId   String    @unique(map: "soc_alerts_candidate_key") @map("candidate_id") @db.Uuid
-  eventRecordId String    @map("event_record_id") @db.Uuid
-  title         String    @db.Text
-  priority      String    @db.Text
-  score         Int
-  reasons       Json      @db.JsonB
-  status        String    @db.Text
-  assigneeId    String?   @map("assignee_id") @db.Text
-  verdict       String?   @db.Text
-  triageNote    String?   @map("triage_note") @db.Text
-  incidentId    String?   @map("incident_id") @db.Uuid
-  occurredAt    DateTime  @map("occurred_at") @db.Timestamptz(3)
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt     DateTime  @map("updated_at") @db.Timestamptz(3)
-  revision      Int
+  id              String   @id @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Text
+  candidateId     String   @unique(map: "soc_alerts_candidate_key") @map("candidate_id") @db.Uuid
+  eventRecordId   String   @map("event_record_id") @db.Uuid
+  title           String   @db.Text
+  priority        String   @db.Text
+  score           Int
+  reasons         Json     @db.JsonB
+  status          String   @db.Text
+  assigneeId      String?  @map("assignee_id") @db.Text
+  verdict         String?  @db.Text
+  triageNote      String?  @map("triage_note") @db.Text
+  incidentId      String?  @map("incident_id") @db.Uuid
+  occurredAt      DateTime @map("occurred_at") @db.Timestamptz(3)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @map("updated_at") @db.Timestamptz(3)
+  revision        Int
   // C-16 1.1.0 — copia de la correlación del candidato para consultar sin join.
   entityKeys      String[] @default([]) @map("entity_keys") @db.Text
   // D-10b — referencias opacas de las mismas entidades: lo único que viaja en URLs.
@@ -441,7 +441,7 @@ model IncidentTask {
   cancellationReason String?   @map("cancellation_reason") @db.Text
   revision           Int
 
-  incident SocIncident @relation(fields: [incidentId], references: [id], onDelete: Restrict, map: "incident_tasks_incident_fk")
+  incident SocIncident @relation(fields: [incidentId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "incident_tasks_incident_fk")
 
   @@index([tenantId, incidentId, createdAt(sort: Desc)], map: "incident_tasks_incident_idx")
   @@map("incident_tasks")
@@ -457,8 +457,8 @@ model IncidentNote {
   createdAt      DateTime @map("created_at") @db.Timestamptz(3)
   correctsNoteId String?  @map("corrects_note_id") @db.Uuid
 
-  incident    SocIncident    @relation(fields: [incidentId], references: [id], onDelete: Restrict, map: "incident_notes_incident_fk")
-  corrects    IncidentNote?  @relation("NoteCorrections", fields: [correctsNoteId], references: [id], onDelete: Restrict, map: "incident_notes_corrects_fk")
+  incident    SocIncident    @relation(fields: [incidentId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "incident_notes_incident_fk")
+  corrects    IncidentNote?  @relation("NoteCorrections", fields: [correctsNoteId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "incident_notes_corrects_fk")
   correctedBy IncidentNote[] @relation("NoteCorrections")
 
   @@index([tenantId, incidentId, createdAt(sort: Desc)], map: "incident_notes_incident_idx")
@@ -468,22 +468,22 @@ model IncidentNote {
 // C-20 — intento de notificación. `client_request_id` es estable entre reintentos
 // para que el destino pueda deduplicar un envío ambiguo.
 model NotificationAttempt {
-  id              String    @id @db.Uuid
-  tenantId        String    @map("tenant_id") @db.Text
-  messageId       String    @map("message_id") @db.Uuid
-  idempotencyKey  String    @map("idempotency_key") @db.Text
-  clientRequestId String    @map("client_request_id") @db.Text
-  channel         String    @db.Text
-  status          String    @db.Text
-  attemptCount    Int       @map("attempt_count")
-  availableAt     DateTime  @map("available_at") @db.Timestamptz(3)
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime  @map("updated_at") @db.Timestamptz(3)
-  lastFailureCode String?   @map("last_failure_code") @db.Text
-  lastFailureClass String?  @map("last_failure_class") @db.Text
-  sentAt          DateTime? @map("sent_at") @db.Timestamptz(3)
-  acknowledgedAt  DateTime? @map("acknowledged_at") @db.Timestamptz(3)
-  acknowledgedBy  String?   @map("acknowledged_by") @db.Text
+  id               String    @id @db.Uuid
+  tenantId         String    @map("tenant_id") @db.Text
+  messageId        String    @map("message_id") @db.Uuid
+  idempotencyKey   String    @map("idempotency_key") @db.Text
+  clientRequestId  String    @map("client_request_id") @db.Text
+  channel          String    @db.Text
+  status           String    @db.Text
+  attemptCount     Int       @map("attempt_count")
+  availableAt      DateTime  @map("available_at") @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @map("updated_at") @db.Timestamptz(3)
+  lastFailureCode  String?   @map("last_failure_code") @db.Text
+  lastFailureClass String?   @map("last_failure_class") @db.Text
+  sentAt           DateTime? @map("sent_at") @db.Timestamptz(3)
+  acknowledgedAt   DateTime? @map("acknowledged_at") @db.Timestamptz(3)
+  acknowledgedBy   String?   @map("acknowledged_by") @db.Text
 
   @@unique([tenantId, idempotencyKey], map: "notification_attempts_idempotency_key")
   @@index([status, availableAt, id], map: "notification_attempts_pending_idx")
@@ -514,6 +514,7 @@ model AccessSession {
   revision          Int
 
   @@index([tenantId, subjectId, state], map: "access_sessions_subject_idx")
+  @@index([tenantId, subjectOid, state], map: "access_sessions_oid_idx")
   @@index([tenantId, lastSeenAt(sort: Desc)], map: "access_sessions_tenant_seen_idx")
   @@map("access_sessions")
 }
@@ -694,7 +695,6 @@ model AccessRoleRequest {
   @@index([tenantId, status, createdAt(sort: Desc)], map: "access_role_requests_status_idx")
   @@map("access_role_requests")
 }
-
 
 // Historial de conversaciones de Bunny (asistente de IA). Una fila por conversación con sus
 // mensajes en `jsonb`: un turno se agrega con una sola escritura (compare-and-set sobre
