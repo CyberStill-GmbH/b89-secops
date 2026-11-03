@@ -129,7 +129,7 @@ export function deleteAllConversations(api: B89ApiClient): Promise<void> {
 export function formatWhen(iso: string, now: Date = new Date()): string {
   const then = new Date(iso);
   if (Number.isNaN(then.getTime())) return '';
-  const minutes = Math.floor((now.getTime() - then.getTime()) / 60_000);
+  const minutes = Math.floor((now.getTime() - then.getTime()) / 60000); // sin separador `_`: el webpack 4 de OSD 2.19 no lo parsea
   if (minutes < 1) return 'ahora';
   if (minutes < 60) return `hace ${minutes} min`;
   const hours = Math.floor(minutes / 60);
