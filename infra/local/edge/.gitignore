@@ -2,3 +2,4 @@ api.local.env
 certs/
 .security-backup/
 respond.local.env
+gateway/

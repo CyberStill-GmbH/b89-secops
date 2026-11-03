@@ -82,7 +82,7 @@ services:
         hard: 65536
     volumes:
       - shuffle-db:/usr/share/opensearch/data
-    mem_limit: 1g
+    mem_limit: 1536m
     restart: unless-stopped
 
 volumes:

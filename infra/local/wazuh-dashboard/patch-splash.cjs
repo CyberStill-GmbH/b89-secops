@@ -28,12 +28,53 @@ patch('styles.js', [
   [
     'contenedor grande',
     /\.loadingLogoContainer \{\s*height: 100px; \/\* Wazuh \*\/\s*padding: 10px 10px 10px 10px;/,
-    '.loadingLogoContainer {\n            height: min(52vh, 400px);\n            padding: 0;',
+    '.loadingLogoContainer {\n            height: min(28vh, 180px);\n            padding: 0;',
   ],
   [
     'logo ancho',
     /(\.loadingLogo \{\s*height: 100%;\s*)max-width: 100%;/,
-    '$1max-width: 90vw;\n            width: auto;',
+    '$1max-width: min(70vw, 280px);\n            width: auto;',
+  ],
+  [
+    'overlay del splash (patch 0001, commit 5733a77)',
+    '          @keyframes osdProgress {',
+    `          .b89SplashOverlay {
+            position: fixed;
+            inset: 0;
+            z-index: 100000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #ffffff;
+            pointer-events: none;
+            animation: b89SplashHold 2200ms ease-out forwards;
+          }
+
+          .b89SplashOverlayImg {
+            height: min(28vh, 180px);
+            max-width: min(70vw, 280px);
+            width: auto;
+          }
+
+          @keyframes b89SplashHold {
+            0%, 78% {
+              opacity: 1;
+              visibility: visible;
+            }
+
+            100% {
+              opacity: 0;
+              visibility: hidden;
+            }
+          }
+
+          @media (prefers-reduced-motion: reduce) {
+            .b89SplashOverlay {
+              animation-duration: 1200ms;
+            }
+          }
+
+          @keyframes osdProgress {`,
   ],
   [
     'barra de progreso B89',
@@ -49,4 +90,10 @@ patch('template.js', [
     '',
   ],
   ['mask-icon', 'color: "#003553"', 'color: "#101014"'],
+  [
+    'overlay del splash (patch 0001, commit 5733a77)',
+    /(\(0, _react\.createElement\)\('osd-injected-metadata', \{\s*data: JSON\.stringify\(injectedMetadata\)\s*\}\),)/,
+    '$1 /*#__PURE__*/_react.default.createElement("div", { className: "b89SplashOverlay", "aria-hidden": "true" }, ' +
+      '/*#__PURE__*/_react.default.createElement("img", { className: "b89SplashOverlayImg", src: logos.AnimatedMark.url, alt: "", loading: "eager" })),',
+  ],
 ]);

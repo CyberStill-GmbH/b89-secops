@@ -38,6 +38,7 @@ services:
         ipv4_address: 172.30.89.10
     volumes:
       - ${B89_REPO:-../../../../b89-secops}/infra/local/wazuh-dashboard/opensearch_dashboards.b89.local.yml:/usr/share/wazuh-dashboard/config/opensearch_dashboards.yml
+      - ${B89_REPO:-../../../../b89-secops}/infra/local/wazuh-dashboard/wazuh.local.yml:/usr/share/wazuh-dashboard/data/wazuh/config/wazuh.yml
     healthcheck:
       test: ['CMD-SHELL', 'curl -fs -o /dev/null http://localhost:5601/b89/login || exit 1']
       interval: 15s
@@ -56,6 +57,7 @@ services:
       - ${B89_REPO:-../../../../b89-secops}/infra/local/edge/certs:/etc/nginx/certs:ro
     extra_hosts:
       - 'host.docker.internal:host-gateway'
+      - 'b89-api-host:192.168.65.254'  # IPv4 del host en Docker Desktop; host-gateway también añade IPv6 inalcanzable
     depends_on:
       - wazuh.dashboard
     networks:

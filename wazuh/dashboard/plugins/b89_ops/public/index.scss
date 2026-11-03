@@ -412,3 +412,78 @@ $b89BreakpointTablet: 1023px;
     border-radius: 0 !important;
   }
 }
+
+// B89 Respond (SOAR) embebido: ocupa todo el alto disponible bajo la cabecera del dashboard.
+.b89RespondApp {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - #{$ouiHeaderHeightCompensation});
+}
+
+.b89Respond {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.b89RespondBar {
+  display: flex;
+  align-items: center;
+  gap: $ouiSizeM;
+  padding: $ouiSizeS $ouiSizeL;
+  border-bottom: $ouiBorderThin;
+}
+
+.b89RespondTitle {
+  font-weight: 700;
+}
+
+.b89RespondHint {
+  color: $ouiTextSubduedColor;
+  flex: 1 1 auto;
+}
+
+.b89RespondLink,
+.b89RespondRetry {
+  color: $ouiLinkColor;
+  font-weight: 600;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.b89RespondFrame {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: #080808;
+}
+
+.b89RespondNotice {
+  padding: $ouiSizeXL $ouiSizeL;
+  text-align: center;
+
+  h2 {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: $ouiSizeS;
+  }
+}
+
+.b89RespondSpinner {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  border: 3px solid $ouiColorLightShade;
+  border-top-color: #ff5841;
+  border-radius: 50%;
+  animation: b89RespondSpin 0.8s linear infinite;
+}
+
+@keyframes b89RespondSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}

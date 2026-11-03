@@ -81,6 +81,18 @@ export const B89_APPS = [
 
 export type B89View = (typeof B89_APPS)[number]['view'];
 
+/**
+ * B89 Respond (SOAR) embebido: app propia del menú B89 que enmarca `/b89-respond/` (mismo
+ * origen, detrás de la sesión B89 en el edge). No es una vista de la consola: no usa la API B89.
+ */
+export const RESPOND_APP = {
+  id: 'b89-respond',
+  title: 'SOAR',
+  icon: 'b89-respond.svg',
+  order: 5,
+} as const;
+export const RESPOND_PATH = '/b89-respond/';
+
 /** Destino por defecto tras iniciar sesión (y `uiSettings.overrides.defaultRoute`). */
 export const DEFAULT_LANDING = '/app/b89-alerts';
 
