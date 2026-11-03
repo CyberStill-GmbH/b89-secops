@@ -1,4 +1,4 @@
-# Perfil defensivo de Active Directory para QAPAQ SecOps
+# Perfil defensivo de Active Directory para B89 SecOps
 
 Estado: **propuesta lista para evaluación en laboratorio; pendiente de despliegue y
 prueba con el AD autorizado**. El paquete Wazuh separado vive en
@@ -53,7 +53,7 @@ personales, tokens o secretos y establecer retención/acceso.
 - La ausencia de eventos no significa estado saludable. Comparar heartbeat del agente,
   último evento del canal y retraso de ingesta; el estado queda `unknown/degraded`
   cuando no haya telemetría suficiente.
-- Automatización Ankay puede abrir un caso/adjuntar contexto después de normalizar y
+- Automatización B89 Respond puede abrir un caso/adjuntar contexto después de normalizar y
   deduplicar alertas. Cualquier contención requiere aprobación y prueba con reversa;
   estas reglas no invocan playbooks ni Active Response.
 

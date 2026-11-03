@@ -12,11 +12,11 @@ on:
         type: string
         required: true
       dashboard_run_id:
-        description: Successful qapaq-dashboard-azure.yml run on release_sha
+        description: Successful b89-dashboard-azure.yml run on release_sha
         type: string
         required: true
       core_run_id:
-        description: Successful qapaq-core-azure.yml run on release_sha
+        description: Successful b89-core-azure.yml run on release_sha
         type: string
         required: true
 
@@ -41,7 +41,7 @@ env:
 
 jobs:
   assemble:
-    name: Assemble pinned Wazuh and QAPAQ install candidate
+    name: Assemble pinned Wazuh and B89 install candidate
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -49,7 +49,7 @@ jobs:
       actions: read
       contents: read
     steps:
-      - name: Checkout QAPAQ release scripts
+      - name: Checkout B89 release scripts
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -118,8 +118,8 @@ jobs:
               }
           }
           validate_run "$PREREQUISITES_RUN_ID" '.github/workflows/azure-siem-prerequisites-experimental.yml'
-          validate_run "$DASHBOARD_RUN_ID" '.github/workflows/qapaq-dashboard-azure.yml'
-          validate_run "$CORE_RUN_ID" '.github/workflows/qapaq-core-azure.yml'
+          validate_run "$DASHBOARD_RUN_ID" '.github/workflows/b89-dashboard-azure.yml'
+          validate_run "$CORE_RUN_ID" '.github/workflows/b89-core-azure.yml'
 
       - name: Download verified Manager, Indexer and Filebeat prerequisite artifacts
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -129,25 +129,25 @@ jobs:
           run-id: ${{ inputs.prerequisites_run_id }}
           github-token: ${{ github.token }}
 
-      - name: Download QAPAQ dashboard package
+      - name: Download B89 dashboard package
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: qapaq-dashboard-${{ inputs.release_sha }}
+          name: b89-dashboard-${{ inputs.release_sha }}
           path: ${{ runner.temp }}/dashboard
           run-id: ${{ inputs.dashboard_run_id }}
           github-token: ${{ github.token }}
 
-      - name: Download QAPAQ core archive
+      - name: Download B89 core archive
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: qapaq-core-azure-${{ inputs.release_sha }}
+          name: b89-core-azure-${{ inputs.release_sha }}
           path: ${{ runner.temp }}/core
           run-id: ${{ inputs.core_run_id }}
           github-token: ${{ github.token }}
 
       - name: Verify artifact hashes and exact package revisions
         env:
-          QAPAQ_SHA: ${{ inputs.release_sha }}
+          B89_SHA: ${{ inputs.release_sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -171,14 +171,14 @@ jobs:
           jq -e --arg sha "$WAZUH_INDEXER_SHA" --arg osd "$OSD_COMPAT_VERSION" --arg actual "$(sha256sum "$indexer_pkg" | cut -d' ' -f1)" '.status == "experimental" and .sourceCommit == $sha and .debVersion == "4.14.8-1" and .openSearchDashboardsCompatibility == $osd and .sha256 == $actual' "$indexer/provenance.json" >/dev/null
           jq -e --arg version "$FILEBEAT_VERSION" --arg sha "$FILEBEAT_SHA256" --arg module "$FILEBEAT_MODULE_SHA256" '.status == "experimental" and .packageVersion == $version and .packageSha256 == $sha and .moduleSha256 == $module and .aptMetadataSignatureVerified == true and .templateSourceCommit == env.WAZUH_MANAGER_SHA' "$filebeat/provenance.json" >/dev/null
           (cd "$RUNNER_TEMP/dashboard" && sha256sum -c SHA256SUMS)
-          grep -Fxq "commit=$QAPAQ_SHA" "$RUNNER_TEMP/dashboard/package-metadata.txt"
+          grep -Fxq "commit=$B89_SHA" "$RUNNER_TEMP/dashboard/package-metadata.txt"
           dashboard_pkg="$(find "$RUNNER_TEMP/dashboard" -maxdepth 1 -name '*.deb' -print -quit)"
           [[ "$(sha256sum "$dashboard_pkg" | cut -d' ' -f1)" == "$(awk -F= '$1 == "sha256" {print $2}' "$RUNNER_TEMP/dashboard/package-metadata.txt")" ]]
           (cd "$RUNNER_TEMP/core" && sha256sum -c SHA256SUMS)
-          core_release="$(find "$RUNNER_TEMP/core" -maxdepth 1 -type f -name 'qapaq-core-*.tar.gz' -print -quit)"
+          core_release="$(find "$RUNNER_TEMP/core" -maxdepth 1 -type f -name 'b89-core-*.tar.gz' -print -quit)"
           [[ -n "$core_release" ]]
           core_top="$(tar -tzf "$core_release" | sed -n '1s,/.*,,p')"
-          [[ "$core_top" == "qapaq-core-${QAPAQ_SHA:0:12}" ]]
+          [[ "$core_top" == "b89-core-${B89_SHA:0:12}" ]]
 
       - name: Checkout the official Wazuh installation assistant at a verified immutable commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -220,7 +220,7 @@ jobs:
             https://packages.wazuh.com/key/GPG-KEY-WAZUH --output "$RUNNER_TEMP/GPG-KEY-WAZUH"
           echo "$WAZUH_SIGNING_KEY_SHA256  $RUNNER_TEMP/GPG-KEY-WAZUH" | sha256sum --check --status
 
-      - name: Assemble offline Wazuh QAPAQ bundle and verify bootstrap contract
+      - name: Assemble offline Wazuh B89 bundle and verify bootstrap contract
         env:
           RELEASE_SHA: ${{ inputs.release_sha }}
         shell: bash
@@ -230,7 +230,7 @@ jobs:
           indexer="$(find "$RUNNER_TEMP/prerequisites/azure-siem-indexer-4.14.8-experimental" -maxdepth 1 -name 'wazuh-indexer_*.deb' -print -quit)"
           filebeat="$(find "$RUNNER_TEMP/prerequisites/azure-siem-filebeat-7.10.2-2-experimental" -maxdepth 1 -name 'filebeat_*.deb' -print -quit)"
           dashboard="$(find "$RUNNER_TEMP/dashboard" -maxdepth 1 -name '*.deb' -print -quit)"
-          core="$(find "$RUNNER_TEMP/core" -maxdepth 1 -type f -name 'qapaq-core-*.tar.gz' -print -quit)"
+          core="$(find "$RUNNER_TEMP/core" -maxdepth 1 -type f -name 'b89-core-*.tar.gz' -print -quit)"
           module="$(find "$RUNNER_TEMP/prerequisites/azure-siem-filebeat-7.10.2-2-experimental" -maxdepth 1 -name 'wazuh-filebeat-0.5.tar.gz' -print -quit)"
           template="$(find "$RUNNER_TEMP/prerequisites/azure-siem-filebeat-7.10.2-2-experimental" -maxdepth 1 -name 'wazuh-template.json' -print -quit)"
           python3 wazuh/azure-release/assemble_release.py \
@@ -243,13 +243,13 @@ jobs:
             --install-script "$GITHUB_WORKSPACE/wazuh/azure-release/install.sh" \
             --verify-credentials-script "$GITHUB_WORKSPACE/wazuh/azure-release/verify_wazuh_credentials_tar.py" \
             --repo-root "$GITHUB_WORKSPACE" \
-            --output-dir "$RUNNER_TEMP/siem-release" --qapaq-commit "$RELEASE_SHA" \
+            --output-dir "$RUNNER_TEMP/siem-release" --b89-commit "$RELEASE_SHA" \
             --manager-commit "$WAZUH_MANAGER_SHA" --indexer-commit "$WAZUH_INDEXER_SHA"
-          bundle="$(find "$RUNNER_TEMP/siem-release" -maxdepth 1 -name 'qapaq-siem-*.tar.gz' -print -quit)"
+          bundle="$(find "$RUNNER_TEMP/siem-release" -maxdepth 1 -name 'b89-siem-*.tar.gz' -print -quit)"
           python3 - "$GITHUB_WORKSPACE/infra/azure/modules/siem_host/bootstrap-siem.py" "$bundle" "$RELEASE_SHA" <<'PY'
           import hashlib, json, pathlib, sys, tarfile, tempfile
           bootstrap = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
-          assert '"managerDeb", "indexerDeb", "filebeatDeb", "qapaqDashboardDeb", "qapaqCoreArchive"' in bootstrap
+          assert '"managerDeb", "indexerDeb", "filebeatDeb", "b89DashboardDeb", "b89CoreArchive"' in bootstrap
           with tarfile.open(sys.argv[2], "r:gz") as archive:
               roots = {p.parts[0] for p in (pathlib.PurePosixPath(n) for n in archive.getnames()) if p.parts}
               assert len(roots) == 1
@@ -257,12 +257,12 @@ jobs:
               root = manifest_name.rsplit("/", 1)[0]
               manifest = json.load(archive.extractfile(manifest_name))
               assert manifest["status"] == "installable-candidate"
-              assert manifest["qapaqCommit"] == sys.argv[3]
+              assert manifest["b89Commit"] == sys.argv[3]
               assert manifest["detectionPack"]["activation"] == "rules-installed-provider-connectors-remain-opt-in"
               assert set(manifest["detectionPack"]["rules"]) == {
-                  "wazuh/launch-detections/rules/qapaq_launch_provider_rules.xml",
-                  "wazuh/endpoint/rules/qapaq_endpoint_rules.xml",
-                  "wazuh/active-directory/rules/qapaq_active_directory_rules.xml",
+                  "wazuh/launch-detections/rules/b89_launch_provider_rules.xml",
+                  "wazuh/endpoint/rules/b89_endpoint_rules.xml",
+                  "wazuh/active-directory/rules/b89_active_directory_rules.xml",
               }
               assert "wazuh/launch-detections/catalog.json" in manifest["files"]
               assert "wazuh/launch-detections/install_detection_rules.py" in manifest["files"]
@@ -287,7 +287,7 @@ jobs:
       - name: Upload reviewable candidate bundle; no cloud publication
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: qapaq-siem-installable-candidate-${{ inputs.release_sha }}
+          name: b89-siem-installable-candidate-${{ inputs.release_sha }}
           path: ${{ runner.temp }}/siem-release/
           if-no-files-found: error
           compression-level: 0
@@ -298,13 +298,13 @@ jobs:
           RELEASE_SHA: ${{ inputs.release_sha }}
         run: |
           {
-            echo '## Azure QAPAQ SIEM release candidate'
-            printf '%s\n' "- QAPAQ source commit: \`$RELEASE_SHA\` (all source artifacts are validated against this commit)."
+            echo '## Azure B89 SIEM release candidate'
+            printf '%s\n' "- B89 source commit: \`$RELEASE_SHA\` (all source artifacts are validated against this commit)."
             echo '- Produces the exact Blob bundle contract consumed by `siem_host`.'
-            echo '- Installs pinned official Wazuh Manager, Indexer, Filebeat, QAPAQ Dashboard and QAPAQ core from offline artifacts.'
-            echo '- Installs the versioned QAPAQ AD, endpoint and provider detection rules; applying DC agent collection profiles and Sophos/Cato connectors remains opt-in and requires owner approval/provider acceptance.'
+            echo '- Installs pinned official Wazuh Manager, Indexer, Filebeat, B89 Dashboard and B89 core from offline artifacts.'
+            echo '- Installs the versioned B89 AD, endpoint and provider detection rules; applying DC agent collection profiles and Sophos/Cato connectors remains opt-in and requires owner approval/provider acceptance.'
             echo '- The release artifact includes the Windows, Domain Controller and Sysmon agent profiles as `candidate-disabled` reference files; the installer never copies or applies them.'
             echo '- No Azure login, Key Vault read, Blob publication, Terraform apply, DNS change or deployment occurs in this workflow.'
-            echo '- First boot still requires the one-line base64 `wazuh-install-files.tar.b64` Key Vault secret, all QAPAQ core secret refs, private network and firewall allowlist.'
+            echo '- First boot still requires the one-line base64 `wazuh-install-files.tar.b64` Key Vault secret, all B89 core secret refs, private network and firewall allowlist.'
             echo '- The bundle contains optional Sophos Central and Cato eventsFeed collectors in the Wazuh overlay. They remain inactive unless Key Vault references, tenant/account configuration and explicit egress are supplied; CI packaging is not tenant acceptance.'
           } >> "$GITHUB_STEP_SUMMARY"

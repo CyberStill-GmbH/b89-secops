@@ -11,7 +11,7 @@ variable "soc_database_enabled" {
 }
 
 variable "migrator_image_digest" {
-  description = "Digest de la imagen qapaq-secops-migrator del mismo commit que el API. Null mientras no exista."
+  description = "Digest de la imagen b89-secops-migrator del mismo commit que el API. Null mientras no exista."
   type        = string
   default     = null
   nullable    = true

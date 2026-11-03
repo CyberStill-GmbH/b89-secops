@@ -10,8 +10,8 @@ cambio de DNS o modificación de Terraform de recursos persistentes.
 | Recurso | Al detener | Datos y reversión |
 | --- | --- | --- |
 | ECS API, KrakenD y worker | Cambia `desired_count` a 0 mediante `UpdateService` por servicio; espera que no queden tareas activas | Reanudación a 1 tarea por servicio. Se detiene primero el worker y se inicia al final |
-| RDS `qapaq-secops-demo-postgres` | `stop-db-instance` después de drenar ECS | Conserva instancia y almacenamiento. RDS puede reiniciar automáticamente tras 7 días seguidos detenida; no es apagado permanente |
-| EC2 Wazuh `qapaq-secops-demo-wazuh` | `stop-instances`, nunca `terminate` | Conserva los volúmenes EBS cifrados y adjuntos, EIP, interfaz de red y DNS. RAM y cualquier almacenamiento instance-store no persisten |
+| RDS `b89-secops-demo-postgres` | `stop-db-instance` después de drenar ECS | Conserva instancia y almacenamiento. RDS puede reiniciar automáticamente tras 7 días seguidos detenida; no es apagado permanente |
+| EC2 Wazuh `b89-secops-demo-wazuh` | `stop-instances`, nunca `terminate` | Conserva los volúmenes EBS cifrados y adjuntos, EIP, interfaz de red y DNS. RAM y cualquier almacenamiento instance-store no persisten |
 | State, S3, Secrets Manager, KMS, ECR | Sin cambios | Se verifica que el bucket de state, los tres buckets configurados y el conjunto de nombres de secretos sigan presentes; el workflow no lee valores de secretos |
 | Valkey, ALB, NAT Gateway, VPC endpoints, Route 53 | Sin cambios | No tienen una pausa reversible compatible con este procedimiento o sostienen cola/rutas/egress. Seguirán generando cargos mientras existan |
 
@@ -23,15 +23,15 @@ Las referencias de trabajos pendientes permanecen en Valkey; el worker permanece
 reanudar. La arquitectura documenta PostgreSQL/outbox como fuente duradera y Valkey como transporte.
 Al reanudar, el workflow inicia RDS y Wazuh, espera salud de infraestructura y levanta API,
 KrakenD y worker en ese orden apropiado para dependencias. Revisar después el dashboard y la
-ingesta M365 desde QAPAQ; `instance-status-ok` de EC2 no garantiza por sí solo que cada proceso
+ingesta M365 desde B89; `instance-status-ok` de EC2 no garantiza por sí solo que cada proceso
 de aplicación ya haya completado su bootstrap.
 
 ## Ejecución
 
 1. En GitHub, abre **Actions → AWS Demo Cost Control → Run workflow**.
 2. Selecciona `main`.
-3. Para detener, usa `operation=stop` y escribe exactamente `STOP-QAPAQ-DEMO`.
-4. Para reanudar, usa `operation=resume` y escribe exactamente `RESUME-QAPAQ-DEMO`.
+3. Para detener, usa `operation=stop` y escribe exactamente `STOP-B89-DEMO`.
+4. Para reanudar, usa `operation=resume` y escribe exactamente `RESUME-B89-DEMO`.
 5. Espera el resultado y revisa el resumen del job. Un fallo a mitad de parada requiere revisar
    el estado de los tres servicios, RDS y EC2 antes de relanzar. El workflow es idempotente en
    estados ya detenidos o ya reanudados.
@@ -63,7 +63,7 @@ El workflow comprueba:
 - ECS en `desired=running=pending=0` tras detener y estable en una tarea por servicio tras reanudar.
 - RDS existente y `stopped` o `available` según operación.
 - Wazuh en EC2 `stopped` o con estado de instancia saludable al reanudar.
-- Mismos nombres de secretos QAPAQ demo antes y después, sin recuperar sus valores.
+- Mismos nombres de secretos B89 demo antes y después, sin recuperar sus valores.
 - Bucket remoto de Terraform y buckets S3 raw/evidence/artifacts accesibles.
 - Mismos EBS de Wazuh, cifrados y adjuntos después de la parada.
 

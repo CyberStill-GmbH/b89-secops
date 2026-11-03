@@ -11,11 +11,11 @@ locals {
   github_audience = "api://AzureADTokenExchange"
   deployment_role_id = uuidv5(
     "url",
-    "qapaq-secops:demo-eus2:secret-seeder:group-deployment",
+    "b89-secops:demo-eus2:secret-seeder:group-deployment",
   )
   vault_role_id = uuidv5(
     "url",
-    "qapaq-secops:demo-eus2:secret-seeder:vault-secrets",
+    "b89-secops:demo-eus2:secret-seeder:vault-secrets",
   )
 }
 
@@ -38,9 +38,9 @@ resource "azurerm_federated_identity_credential" "github" {
 # grants only deployment lifecycle/metadata actions and resource-group metadata read.
 resource "azurerm_role_definition" "group_deployment" {
   role_definition_id = local.deployment_role_id
-  name               = "QAPAQ EUS2 Secret Seeder Deployment"
+  name               = "B89 EUS2 Secret Seeder Deployment"
   scope              = var.resource_group_id
-  description        = "Create and inspect ARM deployments in the EUS2 QAPAQ resource group for the protected create-only Key Vault seeder workflow."
+  description        = "Create and inspect ARM deployments in the EUS2 B89 resource group for the protected create-only Key Vault seeder workflow."
 
   permissions {
     actions = [
@@ -63,9 +63,9 @@ resource "azurerm_role_definition" "group_deployment" {
 # dataActions/getSecret: this identity can create/read ARM metadata, never fetch values.
 resource "azurerm_role_definition" "vault_secret_metadata" {
   role_definition_id = local.vault_role_id
-  name               = "QAPAQ EUS2 Secret Seeder Vault"
+  name               = "B89 EUS2 Secret Seeder Vault"
   scope              = var.resource_group_id
-  description        = "Read Key Vault metadata and create/read ARM secret resources in the single EUS2 QAPAQ vault. No data-plane access."
+  description        = "Read Key Vault metadata and create/read ARM secret resources in the single EUS2 B89 vault. No data-plane access."
 
   permissions {
     actions = [

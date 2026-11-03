@@ -22,13 +22,13 @@ FROM alpine:3.23@sha256:85fe1e81d6758c208f3e1eed4338a1997e19d4be002d4dd32d3100c9
 RUN apk upgrade --no-cache --no-interactive && apk add --no-cache ca-certificates tzdata \
   && adduser -u 1000 -S -D -H krakend && mkdir /etc/krakend && chown 1000:1000 /etc/krakend
 COPY --from=build /src/krakend /usr/bin/krakend
-COPY --chown=1000:1000 --chmod=0555 entrypoint.sh /usr/local/bin/qapaq-krakend-entrypoint
+COPY --chown=1000:1000 --chmod=0555 entrypoint.sh /usr/local/bin/b89-krakend-entrypoint
 USER 1000:1000
 WORKDIR /etc/krakend
 COPY --chown=1000:1000 krakend.tmpl /etc/krakend/krakend.tmpl
 COPY --chown=1000:1000 krakend-azure-ingestion.tmpl /etc/krakend/krakend-azure-ingestion.tmpl
 ENV FC_ENABLE=1
 # El entrypoint solo materializa la CA del Indexer cuando llega como secreto (Sprint 5).
-ENTRYPOINT ["/usr/local/bin/qapaq-krakend-entrypoint"]
+ENTRYPOINT ["/usr/local/bin/b89-krakend-entrypoint"]
 CMD ["run", "-c", "/etc/krakend/krakend.tmpl"]
 EXPOSE 8080 8090

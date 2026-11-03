@@ -1,0 +1,51 @@
+---
+name: b89-soc-engineering
+description: Use for B89 SecOps product, SOC workflow, UI, backend integration, release-readiness, or cloud test work in this repository.
+---
+
+# B89 SOC engineering
+
+Before changing code or plans, read `COORDINACION-CLAUDE-CODEX.md`, inspect `git status`,
+check file locks there, and read the applicable decision in `docs/10-decisiones.md`, component doc, API/design
+contract and the acceptance rules in `docs/09-plan-de-lanzamiento.md`. Follow the latest user
+instruction if it updates an older coordination entry.
+
+## Codex ownership
+
+- Own frontend, web API client, UX states, accessibility, design references and
+  documentation unless the coordination file assigns a different task.
+- Ask Claude to review backend-dependent contracts in the coordination Markdown. Do not
+  edit files locked by Claude or infer consent from a UI request.
+- Keep pages truthful to deployed endpoints and session capabilities. Hide unsupported
+  actions; distinguish empty, unknown, degraded and failed. Do not add mock product data,
+  fake health, unmeasured KPIs, filler copy, no-op controls or an implied remediation.
+- Preserve the existing B89 dark/graphite system and restrained amber selection. Avoid
+  `react-icons` and uncurated icon dumps. Use the maintained `@phosphor-icons/react`
+  library for interface/channel marks where it improves recognition, importing only the
+  named icons used by the screen; keep B89's own mark project-owned and avoid implying
+  a provider integration unless the backend contract reports it.
+- Learn workflows from open source SOC/SOAR projects, but do not copy their code/UI
+  wholesale. Check license and attribution before reusing code or assets.
+
+## Integration and release
+
+- In Entra Admin, expose only members of the configured SOC admission group. Entra is
+  identity/admission; B89 grants capabilities. No Graph calls from React, tenant-wide
+  directory search, self-approval, or unauthorized changes to Entra membership.
+- Wazuh owns agent/manager/rule operations. B89 owns analyst ownership, investigation,
+  cases, evidence, approved actions and cross-pipeline audit. Never call the Indexer from
+  the browser or accept user-supplied OpenSearch DSL.
+- Real provider acceptance needs the authorized provider and synthetic test activity;
+  fake/stub results are not release evidence. Record command, SHA, environment, versions,
+  redacted results and remaining blockers.
+- Use AWS only for the explicitly requested demo/integration scope. Reconcile remote
+  Terraform state and inspect the exact plan before apply; stop for unexpected destroys,
+  public exposure or cost outside the documented budget. Never use production Entra/M365
+  without its authorized test boundary.
+
+## Source of truth
+
+- Sprint owners and gates: `docs/09-plan-de-lanzamiento.md`.
+- Screen/capability status and anti-patterns: `docs/08-frontend-unificado.md`.
+- Frontend behavior: `docs/08-frontend-unificado.md` (Wazuh dashboard shell + `/soc`).
+- Coordination/locks: `COORDINACION-CLAUDE-CODEX.md`.

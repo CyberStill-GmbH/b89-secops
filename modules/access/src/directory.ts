@@ -1,7 +1,7 @@
 /**
  * Sprint 5 · fase 3 — padrón del grupo de admisión (entra-soc-user-admin.md, S5-D6, S5-D7).
  *
- * Entra decide **quién puede entrar** (miembros del grupo) y **quién es dueño** del grupo; QAPAQ
+ * Entra decide **quién puede entrar** (miembros del grupo) y **quién es dueño** del grupo; B89
  * decide **qué puede hacer** cada uno. Este módulo modela el padrón sin nombrar al proveedor
  * (C-23): el adapter de Microsoft Graph vive en el composition root.
  *

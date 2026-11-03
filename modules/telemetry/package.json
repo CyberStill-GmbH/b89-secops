@@ -1,5 +1,5 @@
 {
-  "name": "@qapaq/telemetry",
+  "name": "@b89/telemetry",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -22,11 +22,11 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1138.0",
-    "@qapaq/contracts": "workspace:*",
-    "@qapaq/database": "workspace:*"
+    "@b89/contracts": "workspace:*",
+    "@b89/database": "workspace:*"
   },
   "devDependencies": {
-    "@qapaq/testing": "workspace:*",
+    "@b89/testing": "workspace:*",
     "@types/node": "24.13.6",
     "typescript": "6.0.3",
     "vitest": "5.0.1"

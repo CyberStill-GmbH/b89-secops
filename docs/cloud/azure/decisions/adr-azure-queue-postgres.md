@@ -26,8 +26,8 @@ PostgreSQL.
 ## Propuesta
 
 Para el stack Azure usar BullMQ v6 `createPostgresBackend` con PostgreSQL 13+
-(el Terraform fija PostgreSQL 16) y una base `qapaq_jobs` separada de
-`qapaq_secops`. Aplicación y worker seleccionan el backend mediante una
+(el Terraform fija PostgreSQL 16) y una base `b89_jobs` separada de
+`b89_secops`. Aplicación y worker seleccionan el backend mediante una
 configuración Azure explícita. AWS mantiene su backend/versión actual hasta una
 migración independiente aprobada.
 
@@ -77,5 +77,5 @@ no contiene credenciales, contenido raw ni estado de auditoría.
 La guía oficial de BullMQ describe este backend y su factory
 [`createPostgresBackend`](https://docs.bullmq.io/guide/postgresql). También
 advierte medir pools/conexiones y que el backend Redis sigue siendo el default
-más probado. No hay evidencia de runtime QAPAQ usando ese backend todavía; por
+más probado. No hay evidencia de runtime B89 usando ese backend todavía; por
 eso esta decisión sigue Proposed.

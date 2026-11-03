@@ -6,7 +6,7 @@ it('starts without polling, emits readiness once, and closes idempotently', asyn
   const emit = vi.fn();
   const timer = vi.spyOn(globalThis, 'setInterval');
   const timeout = vi.spyOn(globalThis, 'setTimeout');
-  const worker = buildWorker({ QAPAQ_PROFILE: 'test' }, emit);
+  const worker = buildWorker({ B89_PROFILE: 'test' }, emit);
   try {
     expect(worker.ready).toBe(false);
     worker.start();

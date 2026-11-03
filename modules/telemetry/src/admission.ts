@@ -5,7 +5,7 @@ import type {
   AdmissionCommand,
   AdmissionReceipt,
   RawObjectProof,
-} from '@qapaq/database/admission-contract';
+} from '@b89/database/admission-contract';
 
 /** Structural subset of the public C-10 ProviderRecord; intentionally provider-neutral. */
 export interface TelemetryProviderRecord {

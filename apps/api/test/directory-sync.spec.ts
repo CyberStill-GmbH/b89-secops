@@ -14,9 +14,9 @@ import {
   type DirectoryPerson,
   type DirectoryReader,
   type MemberDeltaPage,
-} from '@qapaq/access';
+} from '@b89/access';
 
-import { capabilitiesForRoles, openSession } from '@qapaq/access';
+import { capabilitiesForRoles, openSession } from '@b89/access';
 
 import { buildApi } from '../src/bootstrap.js';
 import { cachedOwnerSource, createDirectorySyncPass } from '../src/runtime/directory-sync.js';
@@ -33,7 +33,7 @@ const NOW = new Date('2026-10-12T21:00:00.000Z');
 const person = (oid: string, name: string): DirectoryPerson => ({
   oid,
   displayName: name,
-  upn: `${name.toLowerCase()}@qapaq-lab.example`,
+  upn: `${name.toLowerCase()}@b89-lab.example`,
   accountEnabled: true,
 });
 
@@ -257,7 +257,7 @@ describe('adapter de Microsoft Graph', () => {
         json({
           id: ANA,
           displayName: 'Ana',
-          userPrincipalName: 'ana@qapaq-lab.example',
+          userPrincipalName: 'ana@b89-lab.example',
           accountEnabled: true,
         }),
     });
@@ -269,7 +269,7 @@ describe('adapter de Microsoft Graph', () => {
         person: {
           oid: ANA,
           displayName: 'Ana',
-          upn: 'ana@qapaq-lab.example',
+          upn: 'ana@b89-lab.example',
           accountEnabled: true,
         },
       },
@@ -292,7 +292,7 @@ describe('adapter de Microsoft Graph', () => {
           first = false;
           return json({ error: { code: 'Authorization_RequestDenied' } }, 403);
         }
-        return json({ id: ANA, displayName: 'Ana', userPrincipalName: 'ana@qapaq-lab.example' });
+        return json({ id: ANA, displayName: 'Ana', userPrincipalName: 'ana@b89-lab.example' });
       },
     });
     const page = await reader.readMemberDelta(GROUP, null);
@@ -326,10 +326,10 @@ describe('adapter de Microsoft Graph', () => {
           return new Response(JSON.stringify({ value }), { status: 200 });
         }) as unknown as typeof fetch,
       });
-    expect(await reply([{ id: GROUP.toUpperCase() }]).resolveGroupId('QAPAQ-SecOps-Users')).toBe(
+    expect(await reply([{ id: GROUP.toUpperCase() }]).resolveGroupId('B89-SecOps-Users')).toBe(
       GROUP,
     );
-    expect(seen[0]).toContain("displayName eq 'QAPAQ-SecOps-Users'");
+    expect(seen[0]).toContain("displayName eq 'B89-SecOps-Users'");
     await expect(reply([]).resolveGroupId('No-Existe')).rejects.toMatchObject({
       code: 'DIRECTORY_RESPONSE_INVALID',
     });
@@ -348,7 +348,7 @@ describe('adapter de Microsoft Graph', () => {
         () =>
           json({
             value: [
-              { id: DUENO, displayName: 'Dueno', userPrincipalName: 'dueno@qapaq-lab.example' },
+              { id: DUENO, displayName: 'Dueno', userPrincipalName: 'dueno@b89-lab.example' },
             ],
             '@odata.nextLink': `https://graph.microsoft.com/v1.0/groups/${GROUP}/owners/page2`,
           }),
@@ -407,7 +407,7 @@ describe('pérdida de acceso por cambios en el padrón', () => {
     let stop: () => Promise<void>;
 
     beforeAll(async () => {
-      const built = await buildApi({ QAPAQ_PROFILE: 'test' }, () => {});
+      const built = await buildApi({ B89_PROFILE: 'test' }, () => {});
       runtime = built.runtime;
       stop = built.stop;
     });
@@ -424,9 +424,9 @@ describe('pérdida de acceso por cambios en el padrón', () => {
             subjectId,
             oid,
             tenantId,
-            roles: ['qapaq.soc.analyst'],
+            roles: ['b89.soc.analyst'],
             scopes: ['soc.read'],
-            capabilities: capabilitiesForRoles(['qapaq.soc.analyst']),
+            capabilities: capabilitiesForRoles(['b89.soc.analyst']),
             amr: ['pwd', 'mfa'],
             clientIp: '10.20.0.15',
           },

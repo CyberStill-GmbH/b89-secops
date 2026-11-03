@@ -10,10 +10,7 @@ export async function safeCleanup(
 ): Promise<string[]> {
   const remaining: string[] = [];
   for (const resource of resources) {
-    if (
-      resource.labels['qapaq.test'] !== 'true' ||
-      resource.labels['qapaq.test.run-id'] !== runId
-    ) {
+    if (resource.labels['b89.test'] !== 'true' || resource.labels['b89.test.run-id'] !== runId) {
       remaining.push(resource.id);
       continue;
     }

@@ -1,6 +1,6 @@
 resource "aws_db_subnet_group" "this" {
   name        = "${var.project}-${var.environment}-data"
-  description = "Private data subnets for QAPAQ SECOPS demo PostgreSQL."
+  description = "Private data subnets for B89 SECOPS demo PostgreSQL."
   subnet_ids  = var.subnet_ids
 
   tags = {
@@ -12,7 +12,7 @@ resource "aws_db_subnet_group" "this" {
 resource "aws_db_parameter_group" "this" {
   name        = "${var.project}-${var.environment}-postgres18"
   family      = "postgres18"
-  description = "Require TLS for every QAPAQ SECOPS demo PostgreSQL connection."
+  description = "Require TLS for every B89 SECOPS demo PostgreSQL connection."
 
   parameter {
     name         = "rds.force_ssl"
@@ -31,8 +31,8 @@ resource "aws_db_instance" "this" {
   engine                      = "postgres"
   engine_version              = var.engine_version
   instance_class              = var.instance_class
-  db_name                     = "qapaq_secops"
-  username                    = "qapaq_admin"
+  db_name                     = "b89_secops"
+  username                    = "b89_admin"
   manage_master_user_password = true
   port                        = 5432
 

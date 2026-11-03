@@ -3,26 +3,26 @@
 ## Decisión
 
 El **dashboard de Wazuh es el shell**. Lo que ya hace bien no se rehace: Discover, dashboards,
-agentes, vulnerabilidades, FIM, MITRE, reglas y gestión de índices. QAPAQ aporta casos, gobierno
+agentes, vulnerabilidades, FIM, MITRE, reglas y gestión de índices. B89 aporta casos, gobierno
 y cambios en vivo **dentro** del mismo shell, como plugin nativo de OpenSearch Dashboards.
 
 ## Estado real (revisado el 2026-10-22)
 
 La fuente versionada del frontend de demo es el overlay `wazuh/dashboard/` de este repositorio,
 compilado contra **Wazuh 4.14.8 / OpenSearch Dashboards 2.19.6**. El repositorio externo
-`qapaq-dashboard` y su base Wazuh 5.x / OSD 3.x son una línea de migración separada: no se mezclan
+`b89-dashboard` y su base Wazuh 5.x / OSD 3.x son una línea de migración separada: no se mezclan
 en el artefacto actual por incompatibilidad de plugins y protocolos.
 
 | Pieza | Dónde | Estado |
 | --- | --- | --- |
-| Marca QAPAQ y navegación de Wazuh | `wazuh/dashboard/patches/`, `assets/`, `plugins/qapaq_ops` | Overlay fijado a OSD 2.19.6 |
-| Login QAPAQ y rutas de dashboard | `plugins/qapaq_ops/server` y `wazuh/edge/` | Se conserva el flujo de identidad existente |
-| Vistas SOC: alertas, incidentes, notificaciones, auditoría, usuarios/sesiones y fuentes | `plugins/qapaq_ops/public/components/` | Compiladas dentro del dashboard |
-| Solicitud y aprobación de roles | `plugins/qapaq_ops/public/components/access_view.tsx` + `apps/api/src/soc/admin-role-grants.controller.ts` | En rama de trabajo; pendiente PR, CI y despliegue |
-| Cliente de la API (same-origin, cookie, CSRF, contrato) | `plugins/qapaq_ops/public/api/` y `common/api_contract.ts` | CSRF se obtiene de la sesión QAPAQ |
+| Marca B89 y navegación de Wazuh | `wazuh/dashboard/patches/`, `assets/`, `plugins/b89_ops` | Overlay fijado a OSD 2.19.6 |
+| Login B89 y rutas de dashboard | `plugins/b89_ops/server` y `wazuh/edge/` | Se conserva el flujo de identidad existente |
+| Vistas SOC: alertas, incidentes, notificaciones, auditoría, usuarios/sesiones y fuentes | `plugins/b89_ops/public/components/` | Compiladas dentro del dashboard |
+| Solicitud y aprobación de roles | `plugins/b89_ops/public/components/access_view.tsx` + `apps/api/src/soc/admin-role-grants.controller.ts` | En rama de trabajo; pendiente PR, CI y despliegue |
+| Cliente de la API (same-origin, cookie, CSRF, contrato) | `plugins/b89_ops/public/api/` y `common/api_contract.ts` | CSRF se obtiene de la sesión B89 |
 | Edge nginx y Security plugin (proxy auth) | `wazuh/edge/` y `wazuh/indexer/security/` | Fuente del despliegue en este repo |
 
-**`apps/web` se eliminó** (`4eab88f`): sus vistas viven en el plugin `qapaq_ops`.
+**`apps/web` se eliminó** (`4eab88f`): sus vistas viven en el plugin `b89_ops`.
 
 ## Contrato frontend ↔ backend (verificado contra `apps/api`)
 
@@ -38,8 +38,8 @@ en el artefacto actual por incompatibilidad de plugins y protocolos.
 | `GET /admin/users`, `GET /admin/sessions`, `POST /admin/sessions/:ref/revoke {reason, expectedRevision}` | `admin-*.controller.ts` | ✓ |
 | `GET /sources/health` → `{checkedAt, sources}` | `sources-health.controller.ts` | ✓ |
 | Login `/api/auth/start?returnTo=`, retorno con `authError`, `correlationId` y `sessionNotice=superseded` | `auth.controller.ts`, `return-to.ts` | ✓ `safeReturnTo` acepta rutas del dashboard |
-| Logout: `/qapaq/logout` → `GET /auth/session` (CSRF) → `POST /auth/logout` | `auth.controller.ts:152` | ✓ |
-| Proxy auth: `GET /api/auth/introspect` → 204 con `x-qapaq-user` y `x-qapaq-roles` | `apps/api/src/soc/auth.controller.ts`, edge y Security plugin | Verificar con el runbook de release en el entorno objetivo; el build no prueba identidad en vivo |
+| Logout: `/b89/logout` → `GET /auth/session` (CSRF) → `POST /auth/logout` | `auth.controller.ts:152` | ✓ |
+| Proxy auth: `GET /api/auth/introspect` → 204 con `x-b89-user` y `x-b89-roles` | `apps/api/src/soc/auth.controller.ts`, edge y Security plugin | Verificar con el runbook de release en el entorno objetivo; el build no prueba identidad en vivo |
 | Administración de roles: grant, solicitud, bandeja y aprobación | `/api/admin/users/:oid/role-grant`, `/api/admin/users/:oid/role-requests`, `/api/admin/role-requests` | En esta rama; no afirmar que está desplegado hasta aprobación del PR y migración de BD |
 
 **Endpoints del backend que el plugin todavía no usa:**
@@ -57,16 +57,16 @@ en el artefacto actual por incompatibilidad de plugins y protocolos.
 ## Riesgos detectados
 
 1. **Compatibilidad de versión.** Mantener el artefacto de demo fijado a Wazuh 4.14.8 / OSD 2.19.6.
-   La migración al repositorio `qapaq-dashboard` y a Wazuh 5.x / OSD 3.x requiere una rama y un
+   La migración al repositorio `b89-dashboard` y a Wazuh 5.x / OSD 3.x requiere una rama y un
    ciclo de compatibilidad propios, con sus plugins recompilados y pruebas de integración; no forma
    parte del build de demo actual.
 2. **Colisiones de rutas `/api/*`.** OSD, el plugin de Wazuh y los plugins incluidos usan sus
-   propias `/api/*`. El edge enruta a QAPAQ solo una allowlist de prefijos. **Hay que verificar
+   propias `/api/*`. El edge enruta a B89 solo una allowlist de prefijos. **Hay que verificar
    `/api/notifications`:** el plugin *Notifications* de OSD (que el fork incluye vía
    `wazuh-dashboard-notifications`) usa ese prefijo. Si colisiona, se restringe la regla de nginx
-   a las rutas exactas de QAPAQ (`/api/notifications` y `/api/notifications/<uuid>/acknowledge`) o
+   a las rutas exactas de B89 (`/api/notifications` y `/api/notifications/<uuid>/acknowledge`) o
    se renombra la ruta del backend.
-3. **Dos edges.** `qapaq/deploy/nginx/qapaq-dashboard.conf` (fork) y `wazuh/edge/qapaq-edge.conf`
+3. **Dos edges.** `b89/deploy/nginx/b89-dashboard.conf` (fork) y `wazuh/edge/b89-edge.conf`
    (este repo) ya están alineados en allowlist y rutas públicas. El del fork todavía apunta a KrakenD
    (`127.0.0.1:8080`); el de este repo va directo a la API y cachea `introspect` 5 s. **Fuente de
    verdad:** el despliegue vive en `wazuh/` (este repo), y el fork conserva solo código.
@@ -77,9 +77,9 @@ en el artefacto actual por incompatibilidad de plugins y protocolos.
 
 ## Vínculos entre SIEM y casos
 
-Desde una alerta QAPAQ se abre Discover filtrado por entidad y ventana
+Desde una alerta B89 se abre Discover filtrado por entidad y ventana
 (`app/data-explorer/discover#?_q=(query:'data.office365.UserId:"…"')`). Desde un documento de
-Wazuh, un *field formatter* del plugin abre `/app/qapaq-alerts?id=<id>`.
+Wazuh, un *field formatter* del plugin abre `/app/b89-alerts?id=<id>`.
 
 ## Cambios en vivo
 

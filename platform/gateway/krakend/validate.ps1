@@ -20,8 +20,8 @@ try {
       -e OIDC_JWKS_URL=https://identity.example.invalid/jwks `
       -e OIDC_DISABLE_JWK_SECURITY=false `
       -e OIDC_ISSUER=https://identity.example.invalid/ `
-      -e OIDC_AUDIENCE=qapaq-provider-gateway `
-      -e QAPAQ_CORE_CLIENT_ID=00000000-0000-0000-0000-000000000003 `
+      -e OIDC_AUDIENCE=b89-provider-gateway `
+      -e B89_CORE_CLIENT_ID=00000000-0000-0000-0000-000000000003 `
       -e WAZUH_INDEXER_URL=https://wazuh-indexer.example.invalid:9200 `
       -e WAZUH_INDEXER_CA_FILE= `
       -e WAZUH_BASIC_AUTH_B64=validation-only `
@@ -38,8 +38,8 @@ try {
       -e OIDC_JWKS_URL=https://identity.example.invalid/jwks `
       -e OIDC_DISABLE_JWK_SECURITY=false `
       -e OIDC_ISSUER=https://identity.example.invalid/ `
-      -e OIDC_AUDIENCE=qapaq-provider-gateway `
-      -e QAPAQ_CORE_CLIENT_ID=00000000-0000-0000-0000-000000000003 `
+      -e OIDC_AUDIENCE=b89-provider-gateway `
+      -e B89_CORE_CLIENT_ID=00000000-0000-0000-0000-000000000003 `
       -e WAZUH_INDEXER_URL=https://wazuh-indexer.example.invalid:9200 `
       -e WAZUH_INDEXER_CA_FILE= `
       -e WAZUH_BASIC_AUTH_B64=validation-only `

@@ -11,7 +11,7 @@
 | ECS: worker | ✓ (stub) | **Se retira** | −9 |
 | RDS Postgres 18.6 `db.t4g.micro` | ✓ | Igual | — |
 | ElastiCache Valkey `cache.t4g.micro` | ✓ (sin uso) | **Se retira** | −12 |
-| EC2 Wazuh all-in-one `t3.xlarge` (4.14.8) | ✓ | Igual, más el edge nginx con `auth_request` y la marca QAPAQ | — |
+| EC2 Wazuh all-in-one `t3.xlarge` (4.14.8) | ✓ | Igual, más el edge nginx con `auth_request` y la marca B89 | — |
 | S3 de snapshots del Indexer | — | **Nuevo** (KMS, `standard_ia`) | +1–5 según volumen |
 | S3 de evidencia con Object Lock | Versionado sin lock | **Nuevo bucket** con Object Lock (el lock no se puede activar sobre el bucket actual) | +<1 |
 | EC2 Shuffle `t3.medium` (fase 3) | — | Nuevo, privado | +30 |
@@ -30,15 +30,15 @@ desplegar ni mantener un stack paralelo.
 
 | Señal | Fuente | Dónde se ve |
 | --- | --- | --- |
-| Logs JSON de la API (con `correlationId`) | CloudWatch Logs `/qapaq-secops/demo/api` | Los ingiere el módulo **AWS de Wazuh** (`cloudwatchlogs`) → `wazuh-alerts-*`. Configuración en `wazuh/manager/ossec.qapaq-integrations.xml.tmpl`; reglas QAPAQ sobre esos eventos en `wazuh/manager/rules/` (fase 1, con logtest) |
+| Logs JSON de la API (con `correlationId`) | CloudWatch Logs `/b89-secops/demo/api` | Los ingiere el módulo **AWS de Wazuh** (`cloudwatchlogs`) → `wazuh-alerts-*`. Configuración en `wazuh/manager/ossec.b89-integrations.xml.tmpl`; reglas B89 sobre esos eventos en `wazuh/manager/rules/` (fase 1, con logtest) |
 | Access logs del ALB | Bucket S3 de logs | Módulo AWS de Wazuh (`alb`) |
 | Métricas de infraestructura (CPU, conexiones RDS, 5xx del ALB, tareas ECS) | CloudWatch Metrics nativas | Alarmas de CloudWatch a SNS a correo o Teams. Las métricas no salen de la cuenta |
 | Salud de Wazuh (agentes, cola de eventos, disco del Indexer) | Wazuh API e Indexer | Vistas nativas del dashboard |
-| Salud de la ingesta QAPAQ (cursores, retrasos, `PROVIDER_RESPONSE_INVALID`) | `GET /api/operations/health` | Vista «Salud operativa» de QAPAQ |
-| Acciones de los usuarios en QAPAQ | Cadena de auditoría | Vista «Auditoría» de QAPAQ. **Se mantiene separada** de los logs (ADR-021) |
+| Salud de la ingesta B89 (cursores, retrasos, `PROVIDER_RESPONSE_INVALID`) | `GET /api/operations/health` | Vista «Salud operativa» de B89 |
+| Acciones de los usuarios en B89 | Cadena de auditoría | Vista «Auditoría» de B89. **Se mantiene separada** de los logs (ADR-021) |
 
 Ventaja adicional: las acciones del SOC sobre su propia herramienta (logins, denegaciones,
-aprobaciones) se vuelven eventos Wazuh. Se pueden alertar con reglas QAPAQ, por ejemplo una
+aprobaciones) se vuelven eventos Wazuh. Se pueden alertar con reglas B89, por ejemplo una
 ráfaga de `AUTHZ_DENIED` del mismo usuario. Esto cubre el monitoreo de APIs que pide la SBS
 (art. 21) con la misma herramienta.
 
@@ -63,9 +63,9 @@ del ALB, y el log driver `awslogs` de la tarea ECS de la API (ya está configura
 | Situación | Acción |
 | --- | --- |
 | Pausar o reanudar la demo AWS conservando state y datos | [Control de costos reversible](operations/aws-demo-cost-control.md) |
-| La fuente «Wazuh Indexer · alertas» está en rojo | `GET /api/operations/health`. Desde la EC2, `curl --cacert` al proxy nginx con `qapaq_reader`. Workflow `repair-ingestion.yml` |
+| La fuente «Wazuh Indexer · alertas» está en rojo | `GET /api/operations/health`. Desde la EC2, `curl --cacert` al proxy nginx con `b89_reader`. Workflow `repair-ingestion.yml` |
 | Nadie puede entrar al dashboard | Probar `curl -i https://<dominio>/api/auth/introspect` con cookie. Si la API cae, el break-glass es el usuario interno `admin` por `https://<ip-privada>:5601` vía SSM port-forward, nunca público |
-| Disco del Indexer > 80 % | `GET _plugins/_ism/explain/wazuh-alerts-*` para ver índices atascados en una fase. Revisar el repo `qapaq-s3` |
+| Disco del Indexer > 80 % | `GET _plugins/_ism/explain/wazuh-alerts-*` para ver índices atascados en una fase. Revisar el repo `b89-s3` |
 | Restaurar historia | [05](05-datos-y-retencion.md#restauración) |
 | Revocar a alguien de inmediato | Sacarlo del grupo SOC en Entra (la sincronización Graph revoca) o `POST /api/admin/sessions/:ref/revoke`. El dashboard se pierde en ≤ 5 s |
 | Teardown de la demo | Ver `infra/aws/README.md`. Vaciar los buckets salvo el de evidencia, que está bajo lock |

@@ -2,7 +2,7 @@
 
 ## En una frase
 
-**Wazuh es el backend de datos y detección; QAPAQ (TypeScript) es el backend de trabajo,
+**Wazuh es el backend de datos y detección; B89 (TypeScript) es el backend de trabajo,
 identidad y gobierno; el dashboard de Wazuh es el único frontend.** Un login Entra protege todo.
 
 ```mermaid
@@ -13,12 +13,12 @@ flowchart LR
     AWS[CloudWatch / ALB logs]:::src
     SYS[Syslog: Cato, Sophos]:::src
   end
-  subgraph Wazuh["Wazuh (overlay QAPAQ en wazuh/)"]
-    MGR[Manager<br/>reglas + decoders QAPAQ<br/>integración custom-qapaq<br/>Active Response]
+  subgraph Wazuh["Wazuh (overlay B89 en wazuh/)"]
+    MGR[Manager<br/>reglas + decoders B89<br/>integración custom-b89<br/>Active Response]
     IDX[(Indexer / OpenSearch<br/>ISM hot·warm·cold<br/>Anomaly Detection)]
-    DSB[Dashboard<br/>marca QAPAQ + plugin qapaq-ops]
+    DSB[Dashboard<br/>marca B89 + plugin b89-ops]
   end
-  subgraph QAPAQ["QAPAQ API (NestJS, ECS)"]
+  subgraph B89["B89 API (NestJS, ECS)"]
     ACC[access<br/>OIDC Entra, sesiones, RBAC]
     SOC[soc<br/>alertas, incidentes, tareas]
     DET[detection<br/>correlación + prioridad]
@@ -31,14 +31,14 @@ flowchart LR
   EDGE[nginx edge<br/>auth_request]
   U((Analista)) --> EDGE
   EDGE -->|"/"| DSB
-  EDGE -->|"/api"| QAPAQ
+  EDGE -->|"/api"| B89
   EDGE -.->|"/api/auth/introspect"| ACC
   M365 & AG & AWS & SYS --> MGR --> IDX
   DSB --> IDX
   MGR -->|alerta nivel ≥ N| SOC
   SOC -->|lectura de reconciliación| IDX
   DET -->|lee resultados de AD| IDX
-  QAPAQ --> PG
+  B89 --> PG
   IDX -->|snapshot| S3
   SOAR -->|aprobado| MGR
   SOAR -->|aprobado| SH
@@ -51,19 +51,19 @@ classDef src fill:#eee,stroke:#999
 | --- | --- | --- | --- |
 | Wazuh Manager | EC2 | Recolección (agentes, Office 365, AWS, syslog), reglas, decoders, Active Response | `wazuh/manager/`, `wazuh/office365/` |
 | Wazuh Indexer | EC2 | Almacenamiento de alertas, ISM hot/warm/cold, snapshots S3, Anomaly Detection | `wazuh/indexer/` |
-| Wazuh Dashboard | EC2 | Frontend único: SIEM nativo más el plugin QAPAQ | `wazuh/dashboard/` |
-| nginx edge | EC2 (mismo host) | TLS, `auth_request` contra QAPAQ y ruteo `/` → dashboard, `/api` → QAPAQ | `wazuh/edge/` |
-| QAPAQ API | ECS Fargate | Identidad, casos, correlación, SOAR gobernado, auditoría y notificaciones | `apps/api`, `modules/*`, `platform/*` |
+| Wazuh Dashboard | EC2 | Frontend único: SIEM nativo más el plugin B89 | `wazuh/dashboard/` |
+| nginx edge | EC2 (mismo host) | TLS, `auth_request` contra B89 y ruteo `/` → dashboard, `/api` → B89 | `wazuh/edge/` |
+| B89 API | ECS Fargate | Identidad, casos, correlación, SOAR gobernado, auditoría y notificaciones | `apps/api`, `modules/*`, `platform/*` |
 | Valkey | ElastiCache | Caché con TTL e invalidación, estado efímero compartido entre réplicas y colas BullMQ ([11](11-cache-y-colas.md)) | `platform/cache`, `apps/worker` |
 | PostgreSQL | RDS | Estado operativo, sesiones y auditoría append-only | `platform/database` |
 | S3 | AWS | Snapshots cold del Indexer (KMS) y evidencia con Object Lock | `infra/aws` |
-| Shuffle (fase 3) | EC2 pequeña | Ejecutar playbooks **después** de la aprobación en QAPAQ | `wazuh/integrations/shuffle/` |
+| Shuffle (fase 3) | EC2 pequeña | Ejecutar playbooks **después** de la aprobación en B89 | `wazuh/integrations/shuffle/` |
 
 ## Qué salió del diseño y por qué
 
 | Retirado o sustituido | Motivo | Reemplazo / estado actual |
 | --- | --- | --- |
-| **Frontend propio** (`apps/web` en Vercel) | Duplicaba Discover, dashboards y agentes de Wazuh, y el dueño lo descartó | La UI de Wazuh rebrandeada como QAPAQ SecOps más el plugin `qapaq_ops` ([08](08-frontend-unificado.md)). `apps/web` eliminado (`4eab88f`) |
+| **Frontend propio** (`apps/web` en Vercel) | Duplicaba Discover, dashboards y agentes de Wazuh, y el dueño lo descartó | La UI de Wazuh rebrandeada como B89 SecOps más el plugin `b89_ops` ([08](08-frontend-unificado.md)). `apps/web` eliminado (`4eab88f`) |
 | **KrakenD** como salida genérica de proveedores | El diseño de ingesta ya no lo usa para salir a Sophos/Cato/M365; esos eventos entran por los módulos Wazuh. La decisión A8 vigente sí conserva KrakenD temporalmente para la lectura API → Indexer hasta que una ruta equivalente esté instalada y validada. | Mantener solo las rutas Wazuh de lectura aprobadas; retirarlo cuando el proxy TLS de Indexer y la paridad de lectura estén probados. En Azure, la ruta privada Core → KrakenD → proxy de solo lectura del Indexer sigue siendo un prerequisito del perfil EUS2; permanece apagada hasta provisionar ambos extremos. |
 | **Grafana, Loki, Prometheus y `platform/observability`** | Ninguna app importaba la librería y solo existían en compose local. Su fin regulatorio (N1) lo cumple Wazuh | CloudWatch para métricas de infraestructura AWS. Los logs de API y ALB entran a Wazuh por el módulo AWS: un solo plano, autogestionado ([06](06-operacion.md)) |
 | **Python analytics (ADR-007)** | Dormante y sin código | OpenSearch Anomaly Detection (RCF), que ya está en el Indexer ([07](07-deteccion-ml-y-soar.md)) |
@@ -100,5 +100,5 @@ Esto es lo que da valor y no se toca sin una decisión en [10](10-decisiones.md)
 | Agrupar alertas en un incidente o priorizarlas | TypeScript en `modules/detection` |
 | Un flujo humano: estado, tarea o aprobación | TypeScript en `modules/soc` o `modules/soar` |
 | Una acción de respuesta | Un catálogo en `modules/soar` que la ejecuta vía Wazuh Active Response o Shuffle, siempre con aprobación |
-| Una vista nueva | El plugin `wazuh/dashboard/plugins/qapaq_ops` (componentes OUI de la UI de Wazuh) |
+| Una vista nueva | El plugin `wazuh/dashboard/plugins/b89_ops` (componentes OUI de la UI de Wazuh) |
 | Retención, ML o índices | JSON versionado en `wazuh/indexer/`, aplicado por script idempotente |

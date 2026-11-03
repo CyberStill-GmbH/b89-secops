@@ -3,10 +3,10 @@
  *
  * Cada persona del SOC activa los avisos en un dispositivo desde la consola («Activar en este
  * dispositivo»): el navegador pide permiso y entrega una suscripción (endpoint del servicio de
- * push y claves). QAPAQ la guarda ligada a la persona; sin activar no se envía nada.
+ * push y claves). B89 la guarda ligada a la persona; sin activar no se envía nada.
  *
- * Diseño de privacidad: el push **no lleva contenido**. QAPAQ solo despierta al dispositivo; su
- * service worker pide el detalle a QAPAQ con la sesión de la persona, que vuelve a aplicar
+ * Diseño de privacidad: el push **no lleva contenido**. B89 solo despierta al dispositivo; su
+ * service worker pide el detalle a B89 con la sesión de la persona, que vuelve a aplicar
  * autorización. Así ningún dato del SOC pasa por los servicios de push (Google, Apple,
  * Mozilla, Microsoft), que de todos modos verían el contenido cifrado.
  *

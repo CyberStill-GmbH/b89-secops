@@ -2,9 +2,9 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { CreateBucketCommand, S3Client } from '@aws-sdk/client-s3';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { closeDatabaseClient, commitAdmission, createDatabaseClient } from '@qapaq/database';
-import { IntegrationEnvironment } from '@qapaq/testing';
-import type { AdmissionCommand } from '@qapaq/database/admission-contract';
+import { closeDatabaseClient, commitAdmission, createDatabaseClient } from '@b89/database';
+import { IntegrationEnvironment } from '@b89/testing';
+import type { AdmissionCommand } from '@b89/database/admission-contract';
 import { admitPage, TelemetryAdmissionError } from '../src/admission.js';
 import { S3RawStore } from '../src/s3-raw-store.js';
 

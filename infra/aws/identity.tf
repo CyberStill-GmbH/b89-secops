@@ -1,13 +1,13 @@
 # Sprint 5 — identidad: quién es administrador por ser dueño del grupo de admisión.
 #
-# El OID del dueño no se versiona: llega como variable de GitHub (`QAPAQ_GROUP_OWNER_OIDS`) y
+# El OID del dueño no se versiona: llega como variable de GitHub (`B89_GROUP_OWNER_OIDS`) y
 # el workflow Terraform Demo la pasa como `TF_VAR_soc_group_owner_oids`. Es el respaldo hasta
 # que la lectura del grupo por Microsoft Graph tenga consentimiento (fase 3); entonces los
 # dueños leídos se suman a estos. Las asignaciones fijas (p. ej. analista) van en
-# `QAPAQ_ROLE_BINDINGS` dentro de `runtime_api_environment`.
+# `B89_ROLE_BINDINGS` dentro de `runtime_api_environment`.
 
 variable "soc_group_owner_oids" {
-  description = "OID de Entra de los dueños del grupo de admisión, separados por coma; reciben qapaq.platform.admin."
+  description = "OID de Entra de los dueños del grupo de admisión, separados por coma; reciben b89.platform.admin."
   type        = string
   default     = ""
 
@@ -22,11 +22,11 @@ variable "soc_group_owner_oids" {
 
 variable "soc_directory_group_id" {
   description = <<-EOT
-    Object ID del grupo de admisión (QAPAQ-SecOps-Users). Con valor, el API sincroniza el padrón
+    Object ID del grupo de admisión (B89-SecOps-Users). Con valor, el API sincroniza el padrón
     por Microsoft Graph (fase 3). Requiere que el app registration del API tenga el permiso de
     aplicación GroupMember.Read.All con consentimiento de administrador; sin él, cada ciclo
     falla con DIRECTORY_FORBIDDEN y la vista de usuarios lo muestra. Variable de GitHub
-    QAPAQ_DIRECTORY_GROUP_ID.
+    B89_DIRECTORY_GROUP_ID.
   EOT
   type        = string
   default     = ""
@@ -50,9 +50,9 @@ variable "soc_directory_group_name" {
 
 variable "soc_admin_group_ids" {
   description = <<-EOT
-    Object ID de los grupos de Entra cuyos miembros reciben qapaq.platform.admin, separados por
+    Object ID de los grupos de Entra cuyos miembros reciben b89.platform.admin, separados por
     coma. La pertenencia se toma del claim `groups` del token o, si coincide con el grupo
-    sincronizado, del padrón de Graph. Variable opcional de GitHub QAPAQ_ADMIN_GROUP_IDS. El grupo
+    sincronizado, del padrón de Graph. Variable opcional de GitHub B89_ADMIN_GROUP_IDS. El grupo
     de admisión no concede admin por sí solo; los dueños se asignan por separado y los analistas
     conservan su rol explícito de deploy.
   EOT
@@ -71,17 +71,17 @@ variable "soc_admin_group_ids" {
 locals {
   identity_api_environment = merge(
     var.soc_admin_group_ids == "" ? {} : {
-      QAPAQ_ADMIN_GROUP_IDS = join(",", [for id in split(",", var.soc_admin_group_ids) : lower(trimspace(id))])
+      B89_ADMIN_GROUP_IDS = join(",", [for id in split(",", var.soc_admin_group_ids) : lower(trimspace(id))])
     },
     var.soc_group_owner_oids == "" ? {} : {
-      QAPAQ_GROUP_OWNER_OIDS = join(",", [for oid in split(",", var.soc_group_owner_oids) : lower(trimspace(oid))])
+      B89_GROUP_OWNER_OIDS = join(",", [for oid in split(",", var.soc_group_owner_oids) : lower(trimspace(oid))])
     },
     var.soc_directory_group_id != "" ? {
-      QAPAQ_DIRECTORY_SYNC     = "graph"
-      QAPAQ_DIRECTORY_GROUP_ID = lower(var.soc_directory_group_id)
+      B89_DIRECTORY_SYNC     = "graph"
+      B89_DIRECTORY_GROUP_ID = lower(var.soc_directory_group_id)
       } : var.soc_directory_group_name != "" ? {
-      QAPAQ_DIRECTORY_SYNC       = "graph"
-      QAPAQ_DIRECTORY_GROUP_NAME = var.soc_directory_group_name
+      B89_DIRECTORY_SYNC       = "graph"
+      B89_DIRECTORY_GROUP_NAME = var.soc_directory_group_name
     } : {},
   )
 }

@@ -43,33 +43,33 @@ const references = {
 
 function validEnvironment(profile = 'test'): Record<string, string> {
   return {
-    QAPAQ_PROFILE: profile,
-    QAPAQ_POSTGRES_DATABASE: 'qapaq_test',
-    QAPAQ_POSTGRES_USERNAME: 'qapaq_app',
-    QAPAQ_POSTGRES_PASSWORD_REF: references.postgres,
-    QAPAQ_MINIO_RAW_BUCKET: 'qapaq-raw-test',
-    QAPAQ_MINIO_ACCESS_KEY_REF: references.minioAccess,
-    QAPAQ_MINIO_SECRET_KEY_REF: references.minioSecret,
-    QAPAQ_WAZUH_GATEWAY_ACCESS_TOKEN_REF: references.wazuhGatewayToken,
-    QAPAQ_WAZUH_CURSOR_SECRET_REF: references.wazuhCursor,
-    QAPAQ_SECRET_FINGERPRINT_KEY_REF: references.c24Fingerprint,
+    B89_PROFILE: profile,
+    B89_POSTGRES_DATABASE: 'b89_test',
+    B89_POSTGRES_USERNAME: 'b89_app',
+    B89_POSTGRES_PASSWORD_REF: references.postgres,
+    B89_MINIO_RAW_BUCKET: 'b89-raw-test',
+    B89_MINIO_ACCESS_KEY_REF: references.minioAccess,
+    B89_MINIO_SECRET_KEY_REF: references.minioSecret,
+    B89_WAZUH_GATEWAY_ACCESS_TOKEN_REF: references.wazuhGatewayToken,
+    B89_WAZUH_CURSOR_SECRET_REF: references.wazuhCursor,
+    B89_SECRET_FINGERPRINT_KEY_REF: references.c24Fingerprint,
   };
 }
 
 function productionEnvironment(): Record<string, string> {
   return {
     ...validEnvironment('production'),
-    QAPAQ_POSTGRES_HOST: 'postgres.example.test',
-    QAPAQ_POSTGRES_PORT: '5432',
-    QAPAQ_POSTGRES_TLS: 'true',
-    QAPAQ_REDIS_HOST: 'redis.example.test',
-    QAPAQ_REDIS_PORT: '6379',
-    QAPAQ_REDIS_TLS: 'true',
-    QAPAQ_REDIS_PASSWORD_REF: 'secret://test/redis-password',
-    QAPAQ_MINIO_ENDPOINT: 'objects.example.test',
-    QAPAQ_MINIO_PORT: '443',
-    QAPAQ_MINIO_TLS: 'true',
-    QAPAQ_WAZUH_GATEWAY_BASE_URL: 'https://gateway.example.test',
+    B89_POSTGRES_HOST: 'postgres.example.test',
+    B89_POSTGRES_PORT: '5432',
+    B89_POSTGRES_TLS: 'true',
+    B89_REDIS_HOST: 'redis.example.test',
+    B89_REDIS_PORT: '6379',
+    B89_REDIS_TLS: 'true',
+    B89_REDIS_PASSWORD_REF: 'secret://test/redis-password',
+    B89_MINIO_ENDPOINT: 'objects.example.test',
+    B89_MINIO_PORT: '443',
+    B89_MINIO_TLS: 'true',
+    B89_WAZUH_GATEWAY_BASE_URL: 'https://gateway.example.test',
   };
 }
 
@@ -104,7 +104,7 @@ describe('profiles and structural validation', () => {
     ['test', 3100],
     ['production', 3000],
   ])('loads the minimal API configuration for %s', (profile, port) => {
-    expect(loadApiConfig({ QAPAQ_PROFILE: profile })).toEqual({
+    expect(loadApiConfig({ B89_PROFILE: profile })).toEqual({
       profile,
       host: profile === 'production' ? '0.0.0.0' : '127.0.0.1',
       port,
@@ -112,20 +112,20 @@ describe('profiles and structural validation', () => {
   });
 
   it('requires an explicit known profile', () => {
-    expectConfigurationError(() => loadApiConfig({}), 'CONFIG_PROFILE_INVALID', 'QAPAQ_PROFILE');
+    expectConfigurationError(() => loadApiConfig({}), 'CONFIG_PROFILE_INVALID', 'B89_PROFILE');
     expectConfigurationError(
-      () => loadApiConfig({ QAPAQ_PROFILE: 'staging' }),
+      () => loadApiConfig({ B89_PROFILE: 'staging' }),
       'CONFIG_PROFILE_INVALID',
-      'QAPAQ_PROFILE',
+      'B89_PROFILE',
     );
   });
 
   it.each([
-    ['QAPAQ_REDIS_TLS', 'yes', 'CONFIG_VALUE_INVALID'],
-    ['QAPAQ_REDIS_CONNECTION_TIMEOUT', '5000', 'CONFIG_DURATION_INVALID'],
-    ['QAPAQ_REDIS_CONNECTION_TIMEOUT', '-1s', 'CONFIG_DURATION_INVALID'],
-    ['QAPAQ_REDIS_RETRY_LIMIT', '-1', 'CONFIG_LIMIT_INVALID'],
-    ['QAPAQ_REDIS_DATABASE', '16', 'CONFIG_LIMIT_INVALID'],
+    ['B89_REDIS_TLS', 'yes', 'CONFIG_VALUE_INVALID'],
+    ['B89_REDIS_CONNECTION_TIMEOUT', '5000', 'CONFIG_DURATION_INVALID'],
+    ['B89_REDIS_CONNECTION_TIMEOUT', '-1s', 'CONFIG_DURATION_INVALID'],
+    ['B89_REDIS_RETRY_LIMIT', '-1', 'CONFIG_LIMIT_INVALID'],
+    ['B89_REDIS_DATABASE', '16', 'CONFIG_LIMIT_INVALID'],
   ])('rejects %s=%s', async (name, value, code) => {
     await expect(
       loadWorkerConfig({ ...validEnvironment(), [name]: value }, provider()),
@@ -134,41 +134,41 @@ describe('profiles and structural validation', () => {
 
   it.each(['1x', '70000'])('rejects invalid API port %s', (port) => {
     expectConfigurationError(
-      () => loadApiConfig({ QAPAQ_PROFILE: 'test', QAPAQ_API_PORT: port }),
+      () => loadApiConfig({ B89_PROFILE: 'test', B89_API_PORT: port }),
       'CONFIG_LIMIT_INVALID',
-      'QAPAQ_API_PORT',
+      'B89_API_PORT',
     );
   });
 
   it('rejects unknown controlled variables but permits OS variables', () => {
-    expect(loadApiConfig({ QAPAQ_PROFILE: 'test', PATH: 'synthetic' })).toMatchObject({
+    expect(loadApiConfig({ B89_PROFILE: 'test', PATH: 'synthetic' })).toMatchObject({
       profile: 'test',
     });
     expectConfigurationError(
-      () => loadApiConfig({ QAPAQ_PROFILE: 'test', QAPAQ_UNKNOWN: 'x' }),
+      () => loadApiConfig({ B89_PROFILE: 'test', B89_UNKNOWN: 'x' }),
       'CONFIG_VALUE_INVALID',
-      'QAPAQ_UNKNOWN',
+      'B89_UNKNOWN',
     );
   });
 
   it.each([
-    'QAPAQ_DEMO_MFA_EXCEPTION_UNTIL',
-    'QAPAQ_ADMIN_GROUP_IDS',
-    'QAPAQ_REDIS_PASSWORD',
-    'QAPAQ_PROCESS_ROLE',
+    'B89_DEMO_MFA_EXCEPTION_UNTIL',
+    'B89_ADMIN_GROUP_IDS',
+    'B89_REDIS_PASSWORD',
+    'B89_PROCESS_ROLE',
   ])('acepta variables legítimas inyectadas por el runtime %s en la allowlist', (name) => {
     // Una variable legítima del runtime fuera de la allowlist causa CONFIG_VALUE_INVALID.
-    expect(loadApiConfig({ QAPAQ_PROFILE: 'test', [name]: 'x' })).toMatchObject({
+    expect(loadApiConfig({ B89_PROFILE: 'test', [name]: 'x' })).toMatchObject({
       profile: 'test',
     });
   });
 
   it.each([
-    'QAPAQ_WAZUH_INDEXER_URL',
-    'QAPAQ_WAZUH_INDEXER_HOST',
-    'QAPAQ_WAZUH_INDEXER_USERNAME',
-    'QAPAQ_WAZUH_INDEXER_PASSWORD',
-    'QAPAQ_OPENSEARCH_URL',
+    'B89_WAZUH_INDEXER_URL',
+    'B89_WAZUH_INDEXER_HOST',
+    'B89_WAZUH_INDEXER_USERNAME',
+    'B89_WAZUH_INDEXER_PASSWORD',
+    'B89_OPENSEARCH_URL',
   ])('fails startup when legacy direct-backend variable %s is configured', async (name) => {
     await expect(
       loadRuntimeConfig({ ...validEnvironment(), [name]: 'forbidden' }, provider()),
@@ -226,7 +226,7 @@ describe('secret references and resolution', () => {
   it('resolves a repeated reference once during one startup', async () => {
     const secrets = provider();
     await loadRuntimeConfig(
-      { ...validEnvironment(), QAPAQ_MINIO_SECRET_KEY_REF: references.minioAccess },
+      { ...validEnvironment(), B89_MINIO_SECRET_KEY_REF: references.minioAccess },
       secrets,
     );
     expect(secrets.calls.filter((reference) => reference === references.minioAccess)).toHaveLength(
@@ -238,7 +238,7 @@ describe('secret references and resolution', () => {
     let caught: unknown;
     try {
       await loadRuntimeConfig(
-        { ...validEnvironment(), QAPAQ_MINIO_SECRET_KEY_REF: 'secret://test/missing' },
+        { ...validEnvironment(), B89_MINIO_SECRET_KEY_REF: 'secret://test/missing' },
         provider(),
       );
     } catch (error) {
@@ -266,12 +266,12 @@ describe('service contracts and transport policy', () => {
   it('rejects a test-only lifecycle provider in production', async () => {
     await expect(
       loadControlPlaneSecretConfig(
-        { ...productionEnvironment(), QAPAQ_SECRET_PROVIDER_TYPE: 'test-only' },
+        { ...productionEnvironment(), B89_SECRET_PROVIDER_TYPE: 'test-only' },
         provider(),
       ),
     ).rejects.toMatchObject({
       code: 'CONFIG_VALUE_INVALID',
-      path: 'QAPAQ_SECRET_PROVIDER_TYPE',
+      path: 'B89_SECRET_PROVIDER_TYPE',
     });
   });
 
@@ -283,7 +283,7 @@ describe('service contracts and transport policy', () => {
       pool: { minimum: 1, maximum: 10 },
     });
     expect(config.redis).toMatchObject({ port: 6379, database: 0, retryLimit: 5 });
-    expect(config.minio).toMatchObject({ port: 9000, rawBucket: 'qapaq-raw-test', retryLimit: 5 });
+    expect(config.minio).toMatchObject({ port: 9000, rawBucket: 'b89-raw-test', retryLimit: 5 });
     expect(config.wazuh.gateway).toMatchObject({
       baseUrl: 'http://127.0.0.1:18080/',
       allowInsecureLocalhost: true,
@@ -295,10 +295,10 @@ describe('service contracts and transport policy', () => {
   });
 
   it.each([
-    ['QAPAQ_POSTGRES_TLS', 'false', 'CONFIG_TLS_REQUIRED'],
-    ['QAPAQ_REDIS_TLS', 'false', 'CONFIG_TLS_REQUIRED'],
-    ['QAPAQ_MINIO_TLS', 'false', 'CONFIG_TLS_REQUIRED'],
-    ['QAPAQ_WAZUH_GATEWAY_BASE_URL', 'http://gateway.example.test', 'CONFIG_INSECURE_TRANSPORT'],
+    ['B89_POSTGRES_TLS', 'false', 'CONFIG_TLS_REQUIRED'],
+    ['B89_REDIS_TLS', 'false', 'CONFIG_TLS_REQUIRED'],
+    ['B89_MINIO_TLS', 'false', 'CONFIG_TLS_REQUIRED'],
+    ['B89_WAZUH_GATEWAY_BASE_URL', 'http://gateway.example.test', 'CONFIG_INSECURE_TRANSPORT'],
   ])('production rejects insecure %s', async (name, value, code) => {
     await expect(
       loadRuntimeConfig({ ...productionEnvironment(), [name]: value }, provider()),
@@ -311,18 +311,18 @@ describe('service contracts and transport policy', () => {
     ).resolves.toMatchObject({ profile: 'development' });
     await expect(
       loadRuntimeConfig(
-        { ...validEnvironment(), QAPAQ_REDIS_HOST: 'redis.example.test' },
+        { ...validEnvironment(), B89_REDIS_HOST: 'redis.example.test' },
         provider(),
       ),
     ).rejects.toMatchObject({ code: 'CONFIG_INSECURE_TRANSPORT' });
   });
 
   it.each([
-    ['QAPAQ_POSTGRES_POOL_MIN', '11', 'postgres.pool'],
-    ['QAPAQ_MINIO_RAW_BUCKET', 'INVALID_BUCKET', 'QAPAQ_MINIO_RAW_BUCKET'],
-    ['QAPAQ_WAZUH_PAGE_SIZE', '0', 'QAPAQ_WAZUH_PAGE_SIZE'],
-    ['QAPAQ_WAZUH_PAGE_SIZE', '201', 'QAPAQ_WAZUH_PAGE_SIZE'],
-    ['QAPAQ_WAZUH_DATASET', 'arbitrary', 'QAPAQ_WAZUH_DATASET'],
+    ['B89_POSTGRES_POOL_MIN', '11', 'postgres.pool'],
+    ['B89_MINIO_RAW_BUCKET', 'INVALID_BUCKET', 'B89_MINIO_RAW_BUCKET'],
+    ['B89_WAZUH_PAGE_SIZE', '0', 'B89_WAZUH_PAGE_SIZE'],
+    ['B89_WAZUH_PAGE_SIZE', '201', 'B89_WAZUH_PAGE_SIZE'],
+    ['B89_WAZUH_DATASET', 'arbitrary', 'B89_WAZUH_DATASET'],
   ])('rejects invalid service limit %s', async (name, value, path) => {
     await expect(
       loadRuntimeConfig({ ...validEnvironment(), [name]: value }, provider()),
@@ -332,23 +332,23 @@ describe('service contracts and transport policy', () => {
   it('rejects page size above configured maximum', async () => {
     await expect(
       loadRuntimeConfig(
-        { ...validEnvironment(), QAPAQ_WAZUH_PAGE_SIZE: '100', QAPAQ_WAZUH_MAX_PAGE_SIZE: '50' },
+        { ...validEnvironment(), B89_WAZUH_PAGE_SIZE: '100', B89_WAZUH_MAX_PAGE_SIZE: '50' },
         provider(),
       ),
     ).rejects.toMatchObject({ code: 'CONFIG_LIMIT_INVALID', path: 'wazuh.gateway.pageSize' });
   });
 
   it.each([
-    ['QAPAQ_WAZUH_GATEWAY_BASE_URL', 'not-a-url', 'CONFIG_URL_INVALID'],
+    ['B89_WAZUH_GATEWAY_BASE_URL', 'not-a-url', 'CONFIG_URL_INVALID'],
     [
-      'QAPAQ_WAZUH_GATEWAY_BASE_URL',
+      'B89_WAZUH_GATEWAY_BASE_URL',
       'https://user:password@gateway.example.test',
       'CONFIG_URL_INVALID',
     ],
-    ['QAPAQ_WAZUH_GATEWAY_ACCESS_TOKEN_REF', '', 'CONFIG_REQUIRED_VALUE_MISSING'],
-    ['QAPAQ_WAZUH_REQUEST_TIMEOUT', '0s', 'CONFIG_DURATION_INVALID'],
-    ['QAPAQ_WAZUH_GATEWAY_ACCESS_TOKEN_REF', 'literal-token', 'SECRET_REFERENCE_INVALID'],
-    ['QAPAQ_POSTGRES_CONNECTION_TIMEOUT', '999m', 'CONFIG_DURATION_INVALID'],
+    ['B89_WAZUH_GATEWAY_ACCESS_TOKEN_REF', '', 'CONFIG_REQUIRED_VALUE_MISSING'],
+    ['B89_WAZUH_REQUEST_TIMEOUT', '0s', 'CONFIG_DURATION_INVALID'],
+    ['B89_WAZUH_GATEWAY_ACCESS_TOKEN_REF', 'literal-token', 'SECRET_REFERENCE_INVALID'],
+    ['B89_POSTGRES_CONNECTION_TIMEOUT', '999m', 'CONFIG_DURATION_INVALID'],
   ])('rejects invalid Wazuh setting %s', async (name, value, code) => {
     await expect(
       loadRuntimeConfig({ ...validEnvironment(), [name]: value }, provider()),
@@ -388,7 +388,7 @@ describe('redaction and fail-safe startup', () => {
   it('does not invoke startup after a mandatory configuration failure', async () => {
     const start = vi.fn(async () => 'started');
     await expect(
-      loadConfigurationAndStart({ QAPAQ_PROFILE: 'test' }, provider(), start),
+      loadConfigurationAndStart({ B89_PROFILE: 'test' }, provider(), start),
     ).rejects.toMatchObject({ code: 'CONFIG_REQUIRED_VALUE_MISSING' });
     expect(start).not.toHaveBeenCalled();
   });

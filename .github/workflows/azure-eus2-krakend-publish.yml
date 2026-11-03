@@ -1,4 +1,4 @@
-name: Publish verified QAPAQ KrakenD image to Azure EUS2 ACR
+name: Publish verified B89 KrakenD image to Azure EUS2 ACR
 
 on:
   workflow_dispatch:
@@ -75,11 +75,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker image inspect qapaq-ci:krakend >/dev/null
-          docker save qapaq-ci:krakend | gzip -n > "$RUNNER_TEMP/krakend-image.tar.gz"
+          docker image inspect b89-ci:krakend >/dev/null
+          docker save b89-ci:krakend | gzip -n > "$RUNNER_TEMP/krakend-image.tar.gz"
           image_sha256="$(sha256sum "$RUNNER_TEMP/krakend-image.tar.gz" | awk '{print $1}')"
           [[ "$image_sha256" =~ ^[0-9a-f]{64}$ ]]
-          printf 'commit=%s\nsource_image=qapaq-ci:krakend\nimage_sha256=%s\n' \
+          printf 'commit=%s\nsource_image=b89-ci:krakend\nimage_sha256=%s\n' \
             "$GITHUB_SHA" "$image_sha256" > "$RUNNER_TEMP/metadata.txt"
           (cd "$RUNNER_TEMP" && sha256sum krakend-image.tar.gz > SHA256SUMS)
 
@@ -96,7 +96,7 @@ jobs:
           retention-days: 1
 
   publish:
-    name: Publish only qapaq-secops-krakend to the protected EUS2 ACR
+    name: Publish only b89-secops-krakend to the protected EUS2 ACR
     needs: [build]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
@@ -114,9 +114,9 @@ jobs:
       ACR_LOGIN_SERVER: ${{ vars.AZURE_EUS2_ACR_LOGIN_SERVER }}
       EXPECTED_TENANT_ID: "45f2f938-dbe3-4a3e-8a54-930893f94ef8"
       EXPECTED_SUBSCRIPTION_ID: "aaf787f8-5964-4470-9eb6-89d15eacda61"
-      EXPECTED_ACR_NAME: qapaqsecopsdemoeus3a2405f3
-      EXPECTED_ACR_ID: /subscriptions/aaf787f8-5964-4470-9eb6-89d15eacda61/resourceGroups/rg-qapaqsecopsdemoeus-3a2405f3/providers/Microsoft.ContainerRegistry/registries/qapaqsecopsdemoeus3a2405f3
-      REPOSITORY: qapaq-secops-krakend
+      EXPECTED_ACR_NAME: b89secopsdemoeus3a2405f3
+      EXPECTED_ACR_ID: /subscriptions/aaf787f8-5964-4470-9eb6-89d15eacda61/resourceGroups/rg-b89secopsdemoeus-3a2405f3/providers/Microsoft.ContainerRegistry/registries/b89secopsdemoeus3a2405f3
+      REPOSITORY: b89-secops-krakend
       COMMIT_SHA: ${{ github.sha }}
     steps:
       - name: Download the image from this exact workflow run
@@ -133,7 +133,7 @@ jobs:
           [[ "$GITHUB_REF" == refs/heads/main && "$COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]
           sha256sum --check --strict SHA256SUMS
           grep -Fxq "commit=$COMMIT_SHA" metadata.txt
-          grep -Fxq 'source_image=qapaq-ci:krakend' metadata.txt
+          grep -Fxq 'source_image=b89-ci:krakend' metadata.txt
           image_sha256="$(awk -F= '$1 == "image_sha256" { print $2 }' metadata.txt)"
           [[ "$image_sha256" =~ ^[0-9a-f]{64}$ ]]
           [[ "$(sha256sum krakend-image.tar.gz | awk '{print $1}')" == "$image_sha256" ]]
@@ -141,7 +141,7 @@ jobs:
           image_tag="git-${COMMIT_SHA}-sha256-${image_sha256}"
           echo "IMAGE_TAG=$image_tag" >> "$GITHUB_ENV"
           {
-            echo '## QAPAQ KrakenD EUS2 publication review'
+            echo '## B89 KrakenD EUS2 publication review'
             echo
             echo "- Source: commit \`$COMMIT_SHA\` on \`main\`, after \`CI / required\` passed."
             echo "- Exact image: \`$ACR_LOGIN_SERVER/$REPOSITORY:$image_tag\`"
@@ -211,15 +211,15 @@ jobs:
             exit 1
           fi
           docker load --input krakend-image.tar.gz
-          docker image inspect qapaq-ci:krakend >/dev/null
+          docker image inspect b89-ci:krakend >/dev/null
           az acr login --name "$EXPECTED_ACR_NAME"
-          docker tag qapaq-ci:krakend "$image"
+          docker tag b89-ci:krakend "$image"
           docker push "$image"
           digest="$(az acr repository show --name "$EXPECTED_ACR_NAME" --image "${REPOSITORY}:${IMAGE_TAG}" --query digest --output tsv)"
           [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
           echo "IMAGE_DIGEST_REF=${ACR_LOGIN_SERVER}/${REPOSITORY}@${digest}" >> "$GITHUB_OUTPUT"
           {
-            echo '## Published QAPAQ KrakenD image'
+            echo '## Published B89 KrakenD image'
             echo
             echo "- Source commit: \`$COMMIT_SHA\`"
             echo "- Immutable OCI reference: \`${ACR_LOGIN_SERVER}/${REPOSITORY}@${digest}\`"

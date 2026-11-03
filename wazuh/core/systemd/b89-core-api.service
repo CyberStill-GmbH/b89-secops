@@ -1,0 +1,45 @@
+[Unit]
+Description=B89 SecOps Core · API interna del SIEM B89 (login Entra, casos, auditoría)
+Documentation=file:///opt/b89-core/current/RELEASE
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=b89-core
+Group=b89-core
+WorkingDirectory=/opt/b89-core/current/api
+EnvironmentFile=/etc/b89-core/core.env
+Environment=NODE_ENV=production B89_PROFILE=production B89_API_HOST=127.0.0.1 B89_API_PORT=3000
+Environment=NODE_EXTRA_CA_CERTS=/opt/b89-core/current/certs/rds-global-bundle.pem
+ExecStart=/opt/b89-core/current/node/bin/node dist/main.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGTERM
+
+# Convivencia con el Indexer y el Manager en el mismo host: el núcleo nunca les quita memoria.
+MemoryHigh=768M
+MemoryMax=1G
+CPUQuota=100%
+TasksMax=256
+
+# Endurecimiento (ISO 27001 A.8.9 configuración segura).
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictNamespaces=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+ReadOnlyPaths=/opt/b89-core
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

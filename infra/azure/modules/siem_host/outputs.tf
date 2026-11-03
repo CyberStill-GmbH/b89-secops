@@ -1,5 +1,5 @@
 output "vm_id" {
-  description = "ID de la VM privada QAPAQ SIEM."
+  description = "ID de la VM privada B89 SIEM."
   value       = azurerm_linux_virtual_machine.siem.id
 }
 

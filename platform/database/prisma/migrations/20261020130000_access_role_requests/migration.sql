@@ -1,7 +1,7 @@
 -- Solicitudes de cambio de rol con aprobación separada (entra-soc-user-admin.md, ADR-017).
 --
 -- Nadie cambia `access_role_grants` directamente: una solicitud queda pendiente hasta que la
--- aprueba la etapa de Acceso y, para `qapaq.platform.admin`, además la de Seguridad. Solicitante,
+-- aprueba la etapa de Acceso y, para `b89.platform.admin`, además la de Seguridad. Solicitante,
 -- objetivo y cada aprobador son personas distintas. La aprobación final, el grant y el AuditEvent se
 -- confirman en la misma transacción. CAS sobre `revision`; el runtime no tiene DELETE.
 --
@@ -39,7 +39,7 @@ CREATE TABLE "access_role_requests" (
     CONSTRAINT "access_role_requests_pkey" PRIMARY KEY ("tenant_id", "id"),
     CONSTRAINT "access_role_requests_action_allowed" CHECK ("action" IN ('grant', 'revoke')),
     CONSTRAINT "access_role_requests_role_allowed" CHECK (
-        "role" IN ('qapaq.soc.analyst', 'qapaq.soc.lead', 'qapaq.auditor', 'qapaq.platform.admin')
+        "role" IN ('b89.soc.analyst', 'b89.soc.lead', 'b89.auditor', 'b89.platform.admin')
     ),
     CONSTRAINT "access_role_requests_status_allowed" CHECK (
         "status" IN ('pending_access', 'pending_security', 'approved', 'rejected', 'cancelled')
@@ -85,7 +85,7 @@ CREATE TABLE "access_role_requests" (
         OR ("closed_by_oid" <> "requester_oid" AND "closed_by_oid" <> "target_oid")
     ),
     CONSTRAINT "access_role_requests_security_only_privileged" CHECK (
-        "security_approver_oid" IS NULL OR "role" = 'qapaq.platform.admin'
+        "security_approver_oid" IS NULL OR "role" = 'b89.platform.admin'
     ),
     CONSTRAINT "access_role_requests_status_coherent" CHECK (
         (
@@ -96,7 +96,7 @@ CREATE TABLE "access_role_requests" (
         )
         OR (
             "status" = 'pending_security'
-            AND "role" = 'qapaq.platform.admin'
+            AND "role" = 'b89.platform.admin'
             AND "access_approver_oid" IS NOT NULL
             AND "security_approver_oid" IS NULL
             AND "closed_at" IS NULL
@@ -104,7 +104,7 @@ CREATE TABLE "access_role_requests" (
         OR (
             "status" = 'approved'
             AND "access_approver_oid" IS NOT NULL
-            AND ("role" <> 'qapaq.platform.admin' OR "security_approver_oid" IS NOT NULL)
+            AND ("role" <> 'b89.platform.admin' OR "security_approver_oid" IS NOT NULL)
             AND "closed_at" IS NULL
         )
         OR ("status" IN ('rejected', 'cancelled') AND "closed_at" IS NOT NULL)

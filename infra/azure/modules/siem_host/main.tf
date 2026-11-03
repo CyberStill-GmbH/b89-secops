@@ -11,7 +11,7 @@ locals {
   # lo superan; cloud-init descomprime `gz+b64` de forma nativa al escribir cada archivo.
   cloud_init = "#cloud-config\n${yamlencode({
     write_files = [{
-      path        = "/usr/local/sbin/qapaq-siem-bootstrap.py"
+      path        = "/usr/local/sbin/b89-siem-bootstrap.py"
       owner       = "root:root"
       permissions = "0700"
       encoding    = "gz+b64"
@@ -53,20 +53,20 @@ locals {
     set -euo pipefail
     # Revision 2 re-runs the Custom Script payload after an interrupted first apply.
     umask 077
-    install -d -m 0700 /etc/qapaq-siem
-    install -m 0600 /dev/null /var/log/qapaq-siem-bootstrap.log
-    printf '%s' '${base64encode(local.bootstrap_config)}' | base64 --decode > /etc/qapaq-siem/bootstrap.json
-    chmod 0600 /etc/qapaq-siem/bootstrap.json
+    install -d -m 0700 /etc/b89-siem
+    install -m 0600 /dev/null /var/log/b89-siem-bootstrap.log
+    printf '%s' '${base64encode(local.bootstrap_config)}' | base64 --decode > /etc/b89-siem/bootstrap.json
+    chmod 0600 /etc/b89-siem/bootstrap.json
     # Reintento tras un fallo posterior: el bootstrap exige el disco de datos sin montar. Se
     # detienen los servicios y se desmontan los bind mounts y el disco; install.sh reanuda
     # sobre la instalación existente. En el primer arranque no hay nada que detener.
-    for unit in qapaq-core-worker qapaq-core-api wazuh-dashboard filebeat wazuh-manager wazuh-indexer; do
+    for unit in b89-core-worker b89-core-api wazuh-dashboard filebeat wazuh-manager wazuh-indexer; do
       systemctl stop "$unit" 2>/dev/null || true
     done
-    for target in /var/ossec /var/lib/wazuh-indexer /var/lib/wazuh-dashboard /srv/qapaq-siem; do
+    for target in /var/ossec /var/lib/wazuh-indexer /var/lib/wazuh-dashboard /srv/b89-siem; do
       if mountpoint -q "$target"; then umount "$target"; fi
     done
-    exec python3 /usr/local/sbin/qapaq-siem-bootstrap.py >> /var/log/qapaq-siem-bootstrap.log 2>&1
+    exec python3 /usr/local/sbin/b89-siem-bootstrap.py >> /var/log/b89-siem-bootstrap.log 2>&1
   SCRIPT
 }
 
@@ -482,7 +482,7 @@ resource "azurerm_managed_disk" "siem_data" {
 
 resource "azurerm_linux_virtual_machine" "siem" {
   name                            = local.vm_name
-  computer_name                   = "qapaq-siem"
+  computer_name                   = "b89-siem"
   location                        = var.location
   resource_group_name             = var.resource_group_name
   size                            = var.vm_size
@@ -553,7 +553,7 @@ resource "azurerm_virtual_machine_data_disk_attachment" "siem_data" {
 }
 
 resource "azurerm_virtual_machine_extension" "siem_bootstrap" {
-  name                       = "qapaq-siem-bootstrap"
+  name                       = "b89-siem-bootstrap"
   virtual_machine_id         = azurerm_linux_virtual_machine.siem.id
   publisher                  = "Microsoft.Azure.Extensions"
   type                       = "CustomScript"

@@ -5,7 +5,7 @@
  * drenaje mediría algo distinto de lo que hará el adapter sobre PostgreSQL.
  */
 
-import type { OutboxMessageDraft } from '@qapaq/soc';
+import type { OutboxMessageDraft } from '@b89/soc';
 
 import type { NotificationAttempt, NotificationChannel } from './notification.js';
 import type { AttemptStore, FallbackChannel, FallbackNotification, OutboxReader } from './ports.js';

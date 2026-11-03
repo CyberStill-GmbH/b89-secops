@@ -15,15 +15,15 @@ function rejectedPath(load: () => unknown): string {
 }
 
 const PRODUCTION = {
-  QAPAQ_PROFILE: 'production',
-  QAPAQ_ENTRA_TENANT_ID: '9f2a1c44-0000-4000-8000-0000000000aa',
-  QAPAQ_ENTRA_CLIENT_ID: '11112222-3333-4444-5555-666677778888',
-  QAPAQ_ENTRA_CLIENT_SECRET_REF: 'secret://entra/client-secret',
-  QAPAQ_ENTRA_REDIRECT_URI: 'https://soc.qapaq.pe/api/auth/callback',
-  QAPAQ_ENTRA_ALLOWED_REDIRECT_URIS: 'https://soc.qapaq.pe/api/auth/callback',
-  QAPAQ_ACCESS_ALLOWED_CIDRS: '10.20.0.0/16',
-  QAPAQ_ACCESS_TRUSTED_PROXY_CIDRS: '172.31.0.0/16',
-  QAPAQ_CONSOLE_BASE_URL: 'https://soc.qapaq.pe',
+  B89_PROFILE: 'production',
+  B89_ENTRA_TENANT_ID: '9f2a1c44-0000-4000-8000-0000000000aa',
+  B89_ENTRA_CLIENT_ID: '11112222-3333-4444-5555-666677778888',
+  B89_ENTRA_CLIENT_SECRET_REF: 'secret://entra/client-secret',
+  B89_ENTRA_REDIRECT_URI: 'https://soc.b89.example/api/auth/callback',
+  B89_ENTRA_ALLOWED_REDIRECT_URIS: 'https://soc.b89.example/api/auth/callback',
+  B89_ACCESS_ALLOWED_CIDRS: '10.20.0.0/16',
+  B89_ACCESS_TRUSTED_PROXY_CIDRS: '172.31.0.0/16',
+  B89_CONSOLE_BASE_URL: 'https://soc.b89.example',
 } as const;
 
 describe('C-18 · configuración de acceso', () => {
@@ -31,7 +31,7 @@ describe('C-18 · configuración de acceso', () => {
     const config = loadAccessConfig(PRODUCTION);
 
     expect(config.issuer).toBe(
-      `https://login.microsoftonline.com/${PRODUCTION.QAPAQ_ENTRA_TENANT_ID}/v2.0`,
+      `https://login.microsoftonline.com/${PRODUCTION.B89_ENTRA_TENANT_ID}/v2.0`,
     );
     expect(config.authorizationEndpoint).toContain('/oauth2/v2.0/authorize');
     expect(config.jwksUri).toContain('/discovery/v2.0/keys');
@@ -40,16 +40,14 @@ describe('C-18 · configuración de acceso', () => {
 
   it('rechaza el emisor local en producción', () => {
     expect(() =>
-      loadAccessConfig({ ...PRODUCTION, QAPAQ_ACCESS_IDENTITY_MODE: 'local-development' }),
+      loadAccessConfig({ ...PRODUCTION, B89_ACCESS_IDENTITY_MODE: 'local-development' }),
     ).toThrow(ConfigurationError);
   });
 
   it('exige el secreto del cliente cuando la identidad es Entra', () => {
-    const { QAPAQ_ENTRA_CLIENT_SECRET_REF: _omitted, ...withoutSecret } = PRODUCTION;
+    const { B89_ENTRA_CLIENT_SECRET_REF: _omitted, ...withoutSecret } = PRODUCTION;
 
-    expect(rejectedPath(() => loadAccessConfig(withoutSecret))).toBe(
-      'QAPAQ_ENTRA_CLIENT_SECRET_REF',
-    );
+    expect(rejectedPath(() => loadAccessConfig(withoutSecret))).toBe('B89_ENTRA_CLIENT_SECRET_REF');
   });
 
   it('exige que el redirect configurado esté en la lista aprobada', () => {
@@ -57,23 +55,23 @@ describe('C-18 · configuración de acceso', () => {
       rejectedPath(() =>
         loadAccessConfig({
           ...PRODUCTION,
-          QAPAQ_ENTRA_REDIRECT_URI: 'https://atacante.example/callback',
+          B89_ENTRA_REDIRECT_URI: 'https://atacante.example/callback',
         }),
       ),
-    ).toBe('QAPAQ_ENTRA_REDIRECT_URI');
+    ).toBe('B89_ENTRA_REDIRECT_URI');
   });
 
   it('rechaza transporte inseguro en producción y lo admite en desarrollo local', () => {
     expect(() =>
-      loadAccessConfig({ ...PRODUCTION, QAPAQ_CONSOLE_BASE_URL: 'http://soc.qapaq.pe' }),
+      loadAccessConfig({ ...PRODUCTION, B89_CONSOLE_BASE_URL: 'http://soc.b89.example' }),
     ).toThrow(ConfigurationError);
     expect(
-      loadAccessConfig({ QAPAQ_PROFILE: 'development' }).consoleBaseUrl.startsWith('http://'),
+      loadAccessConfig({ B89_PROFILE: 'development' }).consoleBaseUrl.startsWith('http://'),
     ).toBe(true);
   });
 
   it('arranca en desarrollo con el emisor local y sin secreto de cliente', () => {
-    const config = loadAccessConfig({ QAPAQ_PROFILE: 'development' });
+    const config = loadAccessConfig({ B89_PROFILE: 'development' });
 
     expect(config.identityMode).toBe('local-development');
     expect(config.clientSecretRef).toBeNull();
@@ -82,16 +80,14 @@ describe('C-18 · configuración de acceso', () => {
 
   it('rechaza un modo de identidad desconocido', () => {
     expect(
-      rejectedPath(() =>
-        loadAccessConfig({ ...PRODUCTION, QAPAQ_ACCESS_IDENTITY_MODE: 'anonimo' }),
-      ),
-    ).toBe('QAPAQ_ACCESS_IDENTITY_MODE');
+      rejectedPath(() => loadAccessConfig({ ...PRODUCTION, B89_ACCESS_IDENTITY_MODE: 'anonimo' })),
+    ).toBe('B89_ACCESS_IDENTITY_MODE');
   });
 
   it('exige listas de red no vacías', () => {
     expect(
-      rejectedPath(() => loadAccessConfig({ ...PRODUCTION, QAPAQ_ACCESS_ALLOWED_CIDRS: '' })),
-    ).toBe('QAPAQ_ACCESS_ALLOWED_CIDRS');
+      rejectedPath(() => loadAccessConfig({ ...PRODUCTION, B89_ACCESS_ALLOWED_CIDRS: '' })),
+    ).toBe('B89_ACCESS_ALLOWED_CIDRS');
   });
 
   it('no expone material secreto: solo referencias', () => {

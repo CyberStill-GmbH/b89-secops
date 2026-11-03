@@ -10,7 +10,7 @@ ephemeral "random_password" "auth_token" {
 
 resource "aws_elasticache_subnet_group" "this" {
   name        = "${var.project}-${var.environment}-data"
-  description = "Private data subnets for QAPAQ SECOPS demo Valkey."
+  description = "Private data subnets for B89 SECOPS demo Valkey."
   subnet_ids  = var.subnet_ids
 
   tags = {
@@ -41,7 +41,7 @@ resource "aws_secretsmanager_secret_version" "auth_token" {
 resource "aws_elasticache_parameter_group" "this" {
   name        = "${var.project}-${var.environment}-valkey8"
   family      = "valkey8"
-  description = "QAPAQ SecOps: caché con TTL y colas BullMQ (noeviction)."
+  description = "B89 SecOps: caché con TTL y colas BullMQ (noeviction)."
 
   parameter {
     name  = "maxmemory-policy"
@@ -56,7 +56,7 @@ resource "aws_elasticache_parameter_group" "this" {
 
 resource "aws_elasticache_replication_group" "this" {
   replication_group_id       = "${var.project}-${var.environment}-valkey"
-  description                = "Valkey privado para cache (lazy loading) y colas BullMQ de QAPAQ SecOps."
+  description                = "Valkey privado para cache (lazy loading) y colas BullMQ de B89 SecOps."
   engine                     = "valkey"
   engine_version             = var.engine_version
   node_type                  = var.node_type

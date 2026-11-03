@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-exec > >(tee -a /var/log/qapaq-wazuh-bootstrap.log | logger -t qapaq-wazuh-bootstrap -s 2>/dev/console) 2>&1
+exec > >(tee -a /var/log/b89-wazuh-bootstrap.log | logger -t b89-wazuh-bootstrap -s 2>/dev/console) 2>&1
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
@@ -103,8 +103,8 @@ server {
   ssl_protocols TLSv1.2 TLSv1.3;
   client_max_body_size 50m;
 
-  location ^~ /qapaq-api/ {
-    rewrite ^/qapaq-api/(.*)$ /\$1 break;
+  location ^~ /b89-api/ {
+    rewrite ^/b89-api/(.*)$ /\$1 break;
     proxy_pass http://${api_origin};
     proxy_http_version 1.1;
     proxy_set_header Host \$host;

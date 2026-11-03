@@ -9,11 +9,11 @@ Inventario hecho sobre el código real (HEAD `050f9fa`), no sobre la documentaci
 | --- | --- | --- | --- |
 | `wazuh/wazuh` (manager, C/C++/Python) | GPLv2 (reglas y decoders incluidos) | **No** | Todo lo que necesitamos se hace por configuración: reglas, decoders, integraciones, Active Response y wodles. Además Wazuh 5.0 (RC1, 5-oct-2026) reemplaza `analysisd` por un motor nuevo basado en Sigma. Un fork de 4.x heredaría una arquitectura que el upstream descarta, y redistribuir binarios modificados nos obligaría a publicar fuentes GPL |
 | `wazuh/wazuh-indexer` (OpenSearch) | Apache-2.0 | **No** | ISM, snapshots S3, Anomaly Detection, Security Analytics y Alerting ya vienen como plugins. Se configuran con JSON versionado |
-| `wazuh/wazuh-dashboard` (OSD) | Apache-2.0 | **Sí: fork `qapaq_ops-dashboard`, en curso** | Se hace fork porque el tema, el login propio (`/qapaq/login`) y las vistas nativas tocan el núcleo de OSD. Está en `../wazuh-dashboard-src`, rama `qapaq/identity`. Debe fijarse a un tag GA de Wazuh 5.0.x ([08](08-frontend-unificado.md#riesgos-detectados)) |
+| `wazuh/wazuh-dashboard` (OSD) | Apache-2.0 | **Sí: fork `b89_ops-dashboard`, en curso** | Se hace fork porque el tema, el login propio (`/b89/login`) y las vistas nativas tocan el núcleo de OSD. Está en `../wazuh-dashboard-src`, rama `b89/identity`. Debe fijarse a un tag GA de Wazuh 5.0.x ([08](08-frontend-unificado.md#riesgos-detectados)) |
 | `wazuh/wazuh-dashboard-plugins` | Apache-2.0 (verificar LICENSE) | **No** | Nuestro plugin es independiente y se instala con `opensearch-dashboards-plugin install` |
 
-**Qué significa "poner el backend de Wazuh en qapaq-secops":** el directorio `wazuh/` en la raíz
-del repo es el **overlay QAPAQ de Wazuh**. Versiona todo lo que cambiamos de Wazuh (reglas,
+**Qué significa "poner el backend de Wazuh en b89-secops":** el directorio `wazuh/` en la raíz
+del repo es el **overlay B89 de Wazuh**. Versiona todo lo que cambiamos de Wazuh (reglas,
 decoders, `ossec.conf`, seguridad del Indexer, ISM, detectores ML, integraciones, plugin y edge)
 y lo aplica con scripts idempotentes sobre la versión oficial fijada en `wazuh/VERSION`. Se
 comporta como un fork, pero se puede rebasear en minutos cuando sale un parche de Wazuh.
@@ -23,7 +23,7 @@ comporta como un fork, pero se puede rebasear en minutos cuando sale un parche d
 > 2.19. Recomendación: fijar el fork a un tag 5.0.x GA y desplegar un cluster Wazuh 5 nuevo para la
 > plataforma unificada.
 
-## 2. Componentes QAPAQ: conservar, migrar o retirar
+## 2. Componentes B89: conservar, migrar o retirar
 
 | Componente | Madurez real | ¿Diferencial? | Decisión |
 | --- | --- | --- | --- |
@@ -36,8 +36,8 @@ comporta como un fork, pero se puede rebasear en minutos cuando sale un parche d
 | **Notificaciones** (Teams Workflows, push VAPID, outbox con reintentos) | Real, 29 tests | **Sí**. El Integrator de Wazuh manda a Slack o PagerDuty, pero sin acuse humano ni idempotencia | Conservar. Añadir el fencing token al outbox (gate P0) |
 | **Cambios en vivo** (`/api/changes`, long-poll de 2,5 s) | Real | **Sí**. OSD solo refresca por intervalo y Live Tail también hace polling | Conservar. Sin KrakenD se puede pasar a SSE y llevarlo al plugin como contador en el header |
 | **Salud de fuentes** | Real | Parcial (Wazuh muestra el estado de los agentes, no el de los cursores de ingesta) | Conservar |
-| **Lectura Wazuh por KrakenD** (`modules/connectors`) | Real, pero falla en la demo | No | **Migrar**: la API apunta al proxy nginx del Indexer con el usuario `qapaq_reader` (la ruta `/wazuh/_search` no cambia de forma) |
-| **Ingesta por polling** | Real | No | Conservar como **reconciliación** y añadir **push** vía la integración `custom-qapaq` de Wazuh para bajar la latencia ([07](07-deteccion-ml-y-soar.md)) |
+| **Lectura Wazuh por KrakenD** (`modules/connectors`) | Real, pero falla en la demo | No | **Migrar**: la API apunta al proxy nginx del Indexer con el usuario `b89_reader` (la ruta `/wazuh/_search` no cambia de forma) |
+| **Ingesta por polling** | Real | No | Conservar como **reconciliación** y añadir **push** vía la integración `custom-b89` de Wazuh para bajar la latencia ([07](07-deteccion-ml-y-soar.md)) |
 | **Control plane de secretos write-only** (`platform/configuration`) | Real, 68 tests | Medio | Conservar |
 | **KrakenD** (`platform/gateway`) | Config real | No | **Retirar del runtime** (ver [02](02-arquitectura.md)) |
 | **Valkey/Redis y BullMQ** | Provisionado sin uso | No | **Retirar** |
@@ -57,8 +57,8 @@ comporta como un fork, pero se puede rebasear en minutos cuando sale un parche d
 | ML de anomalías | OpenSearch Anomaly Detection (Random Cut Forest) | Apache-2.0 | `wazuh/indexer/anomaly-detection/`, leído por `modules/detection` |
 | Detección Sigma y correlación de hallazgos | OpenSearch Security Analytics (nativo en Wazuh 5) | Apache-2.0 | Fase 4 |
 | Respuesta en endpoint | Wazuh Active Response vía Wazuh API | GPLv2 (sin modificar) | `modules/soar` con aprobación |
-| Playbooks multi-herramienta | **Shuffle** (backend AGPL-3.0; apps y workflows MIT) | AGPL | Servicio separado **sin modificar**. QAPAQ lo invoca por webhook después de aprobar. Si no se modifica su código, AGPL no obliga a publicar QAPAQ. Confirmarlo con Legal |
-| Shell visual | Plugin OSD `qapaq-ops` | Propio | `wazuh/dashboard/plugins/qapaq-ops` |
+| Playbooks multi-herramienta | **Shuffle** (backend AGPL-3.0; apps y workflows MIT) | AGPL | Servicio separado **sin modificar**. B89 lo invoca por webhook después de aprobar. Si no se modifica su código, AGPL no obliga a publicar B89. Confirmarlo con Legal |
+| Shell visual | Plugin OSD `b89-ops` | Propio | `wazuh/dashboard/plugins/b89-ops` |
 
 **Descartados:** TheHive 5 (licencia propietaria de StrangeBee y Community limitada a 2 usuarios),
 n8n (licencia Sustainable Use, no OSI), Tracecat (AGPL con módulo enterprise propietario y sin

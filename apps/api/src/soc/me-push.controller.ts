@@ -20,7 +20,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { Body, Controller, Get, Inject, Param, Post, Req } from '@nestjs/common';
-import { notifyDevices, PUSH_LIMITS, validatePushSubscription } from '@qapaq/soar';
+import { notifyDevices, PUSH_LIMITS, validatePushSubscription } from '@b89/soar';
 
 import { ApiError } from '../http/api-error.js';
 import type { IncomingRequest } from '../http/http-contracts.js';

@@ -1,59 +1,59 @@
 #!/usr/bin/env bash
-# QAPAQ SecOps — acceso a Wazuh (Sprint 5 · fase 0 e identidad). Idempotente.
+# B89 SecOps — acceso a Wazuh (Sprint 5 · fase 0 e identidad). Idempotente.
 #
 # Corre en la instancia Wazuh (all-in-one) por SSM desde el workflow `initialize-wazuh`.
-# Deja Wazuh operativo para QAPAQ en una sola pasada:
+# Deja Wazuh operativo para B89 en una sola pasada:
 #
-#   1. `qapaq_reader`: usuario interno del Indexer con solo lectura sobre `wazuh-alerts-*`. Lo
+#   1. `b89_reader`: usuario interno del Indexer con solo lectura sobre `wazuh-alerts-*`. Lo
 #      usa KrakenD para la ingesta (S5-D3). Ningún otro permiso.
 #   2. Proxy TLS del Indexer en la IP privada (puerto 9200): el all-in-one escucha solo en
 #      127.0.0.1. nginx publica únicamente `/<índice de alertas>/_search` y `/_cluster/health`;
 #      todo lo demás responde 403. Certificado propio para la IP privada.
 #   3. Usuarios del Dashboard (decisión del dueño del producto): el dueño del grupo de admisión
 #      como administrador (`all_access` + rol `administrator` de la API de Wazuh) y la persona
-#      analista con solo lectura (`qapaq_wazuh_readonly` + `kibana_user` + rol `readonly`).
+#      analista con solo lectura (`b89_wazuh_readonly` + `kibana_user` + rol `readonly`).
 #   4. Publica en Secrets Manager la credencial del lector, el certificado del proxy y las
 #      credenciales de los usuarios del Dashboard. Nada de eso se imprime.
 #   5. Autoprueba: el lector puede buscar alertas por el proxy y no puede leer la configuración
 #      de seguridad ni escribir. Si falla, sale con error.
 #
-# Reejecutarlo no rota contraseñas: reutiliza las publicadas, salvo QAPAQ_ROTATE=true.
+# Reejecutarlo no rota contraseñas: reutiliza las publicadas, salvo B89_ROTATE=true.
 #
 # Variables:
-#   QAPAQ_AWS_REGION, QAPAQ_ADMIN_USERNAME, QAPAQ_ANALYST_USERNAME (obligatorias)
-#   QAPAQ_READER_SECRET_ID, QAPAQ_PROXY_CA_SECRET_ID, QAPAQ_ADMIN_USER_SECRET_ID,
-#   QAPAQ_ANALYST_USER_SECRET_ID (IDs de Secrets Manager)
-#   QAPAQ_ROTATE=true  rota todas las contraseñas gestionadas
+#   B89_AWS_REGION, B89_ADMIN_USERNAME, B89_ANALYST_USERNAME (obligatorias)
+#   B89_READER_SECRET_ID, B89_PROXY_CA_SECRET_ID, B89_ADMIN_USER_SECRET_ID,
+#   B89_ANALYST_USER_SECRET_ID (IDs de Secrets Manager)
+#   B89_ROTATE=true  rota todas las contraseñas gestionadas
 # Solo para pruebas locales (nunca en la instancia):
-#   QAPAQ_SECRET_DIR=<dir>          secretos en archivos en lugar de Secrets Manager
-#   QAPAQ_INDEXER_URL, QAPAQ_WAZUH_API_URL, QAPAQ_INDEXER_CA (o "insecure"),
-#   QAPAQ_INDEXER_ADMIN_PASSWORD, QAPAQ_WAZUH_API_PASSWORD, QAPAQ_PRIVATE_IP, QAPAQ_SKIP_PROXY=true,
-#   QAPAQ_PROXY_UPSTREAM (host:puerto del Indexer para el proxy)
+#   B89_SECRET_DIR=<dir>          secretos en archivos en lugar de Secrets Manager
+#   B89_INDEXER_URL, B89_WAZUH_API_URL, B89_INDEXER_CA (o "insecure"),
+#   B89_INDEXER_ADMIN_PASSWORD, B89_WAZUH_API_PASSWORD, B89_PRIVATE_IP, B89_SKIP_PROXY=true,
+#   B89_PROXY_UPSTREAM (host:puerto del Indexer para el proxy)
 
 set -euo pipefail
 umask 077
 
-fail() { printf 'qapaq-access: ERROR %s\n' "$1" >&2; exit 1; }
-info() { printf 'qapaq-access: %s\n' "$1"; }
+fail() { printf 'b89-access: ERROR %s\n' "$1" >&2; exit 1; }
+info() { printf 'b89-access: %s\n' "$1"; }
 
-: "${QAPAQ_ADMIN_USERNAME:?}" "${QAPAQ_ANALYST_USERNAME:?}"
+: "${B89_ADMIN_USERNAME:?}" "${B89_ANALYST_USERNAME:?}"
 # Herramientas del host (Ubuntu 24.04): nginx y python3 vienen del bootstrap; jq puede faltar.
 if ! command -v jq >/dev/null 2>&1; then
   DEBIAN_FRONTEND=noninteractive apt-get install -y -qq jq >/dev/null || fail 'no se pudo instalar jq'
 fi
 USERNAME_PATTERN='^[A-Za-z0-9._@-]{3,64}$'
-[[ "$QAPAQ_ADMIN_USERNAME" =~ $USERNAME_PATTERN ]] || fail 'QAPAQ_ADMIN_USERNAME inválido'
-[[ "$QAPAQ_ANALYST_USERNAME" =~ $USERNAME_PATTERN ]] || fail 'QAPAQ_ANALYST_USERNAME inválido'
-[[ "$QAPAQ_ADMIN_USERNAME" != "$QAPAQ_ANALYST_USERNAME" ]] || fail 'admin y analista deben ser distintos'
+[[ "$B89_ADMIN_USERNAME" =~ $USERNAME_PATTERN ]] || fail 'B89_ADMIN_USERNAME inválido'
+[[ "$B89_ANALYST_USERNAME" =~ $USERNAME_PATTERN ]] || fail 'B89_ANALYST_USERNAME inválido'
+[[ "$B89_ADMIN_USERNAME" != "$B89_ANALYST_USERNAME" ]] || fail 'admin y analista deben ser distintos'
 
-READER_USER='qapaq_reader'
-INDEXER_URL="${QAPAQ_INDEXER_URL:-https://127.0.0.1:9200}"
-WAZUH_API_URL="${QAPAQ_WAZUH_API_URL:-https://127.0.0.1:55000}"
-INDEXER_CA="${QAPAQ_INDEXER_CA:-/etc/wazuh-indexer/certs/root-ca.pem}"
+READER_USER='b89_reader'
+INDEXER_URL="${B89_INDEXER_URL:-https://127.0.0.1:9200}"
+WAZUH_API_URL="${B89_WAZUH_API_URL:-https://127.0.0.1:55000}"
+INDEXER_CA="${B89_INDEXER_CA:-/etc/wazuh-indexer/certs/root-ca.pem}"
 ALERTS_PATTERN='wazuh-alerts-*'
-PROXY_UPSTREAM="${QAPAQ_PROXY_UPSTREAM:-127.0.0.1:9200}"
-PROXY_DIR=/etc/qapaq/indexer-proxy
-PROXY_CONF=/etc/nginx/conf.d/qapaq-indexer-proxy.conf
+PROXY_UPSTREAM="${B89_PROXY_UPSTREAM:-127.0.0.1:9200}"
+PROXY_DIR=/etc/b89/indexer-proxy
+PROXY_CONF=/etc/nginx/conf.d/b89-indexer-proxy.conf
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -61,20 +61,20 @@ trap 'rm -rf "$work"' EXIT
 # ------------------------------------------------------------------ secretos
 
 secret_get() { # id -> valor por stdout; vacío si no tiene versión
-  if [[ -n "${QAPAQ_SECRET_DIR:-}" ]]; then
-    cat "$QAPAQ_SECRET_DIR/$(printf '%s' "$1" | tr '/' '_')" 2>/dev/null || true
+  if [[ -n "${B89_SECRET_DIR:-}" ]]; then
+    cat "$B89_SECRET_DIR/$(printf '%s' "$1" | tr '/' '_')" 2>/dev/null || true
     return
   fi
-  aws secretsmanager get-secret-value --region "$QAPAQ_AWS_REGION" --secret-id "$1" \
+  aws secretsmanager get-secret-value --region "$B89_AWS_REGION" --secret-id "$1" \
     --query SecretString --output text 2>/dev/null || true
 }
 
 secret_put() { # id archivo
-  if [[ -n "${QAPAQ_SECRET_DIR:-}" ]]; then
-    cp "$2" "$QAPAQ_SECRET_DIR/$(printf '%s' "$1" | tr '/' '_')"
+  if [[ -n "${B89_SECRET_DIR:-}" ]]; then
+    cp "$2" "$B89_SECRET_DIR/$(printf '%s' "$1" | tr '/' '_')"
     return
   fi
-  aws secretsmanager put-secret-value --region "$QAPAQ_AWS_REGION" --secret-id "$1" \
+  aws secretsmanager put-secret-value --region "$B89_AWS_REGION" --secret-id "$1" \
     --secret-string "file://$2" >/dev/null
 }
 
@@ -90,7 +90,7 @@ new_password() {
 password_for() { # secret_id username
   local current
   current="$(secret_get "$1")"
-  if [[ "${QAPAQ_ROTATE:-false}" != true && -n "$current" && "$current" != None ]]; then
+  if [[ "${B89_ROTATE:-false}" != true && -n "$current" && "$current" != None ]]; then
     local stored_user
     stored_user="$(jq -r '.username // empty' <<<"$current" 2>/dev/null || true)"
     if [[ "$stored_user" == "$2" ]]; then
@@ -104,7 +104,7 @@ password_for() { # secret_id username
 # ------------------------------------------------------------ credenciales locales
 
 passwords_file="$work/passwords.txt"
-if [[ -z "${QAPAQ_INDEXER_ADMIN_PASSWORD:-}" || -z "${QAPAQ_WAZUH_API_PASSWORD:-}" ]]; then
+if [[ -z "${B89_INDEXER_ADMIN_PASSWORD:-}" || -z "${B89_WAZUH_API_PASSWORD:-}" ]]; then
   [[ -r /root/wazuh-install-files.tar ]] || fail 'no se encuentra wazuh-install-files.tar'
   tar -O -xf /root/wazuh-install-files.tar wazuh-install-files/wazuh-passwords.txt >"$passwords_file"
 fi
@@ -127,9 +127,9 @@ sys.exit(1)
 PY
 }
 
-INDEXER_ADMIN_PASSWORD="${QAPAQ_INDEXER_ADMIN_PASSWORD:-$(install_password indexer admin)}" \
+INDEXER_ADMIN_PASSWORD="${B89_INDEXER_ADMIN_PASSWORD:-$(install_password indexer admin)}" \
   || fail 'no se pudo leer la credencial admin del Indexer'
-WAZUH_API_PASSWORD="${QAPAQ_WAZUH_API_PASSWORD:-$(install_password api wazuh-wui)}" \
+WAZUH_API_PASSWORD="${B89_WAZUH_API_PASSWORD:-$(install_password api wazuh-wui)}" \
   || fail 'no se pudo leer la credencial wazuh-wui'
 
 # Las credenciales viajan a curl por archivo de configuración, nunca por argumentos visibles
@@ -153,14 +153,14 @@ json_file() { local file; file="$(mktemp -p "$work")"; cat >"$file"; printf '%s'
 # ---------------------------------------------------------------- 1. roles
 
 info 'roles del Indexer'
-indexer PUT /_plugins/_security/api/roles/qapaq_alerts_read "$(json_file <<JSON
-{"description":"QAPAQ: lectura de alertas Wazuh para la ingesta (S5-D3)",
+indexer PUT /_plugins/_security/api/roles/b89_alerts_read "$(json_file <<JSON
+{"description":"B89: lectura de alertas Wazuh para la ingesta (S5-D3)",
  "cluster_permissions":["cluster_monitor"],
  "index_permissions":[{"index_patterns":["$ALERTS_PATTERN"],"allowed_actions":["read"]}]}
 JSON
 )"
-indexer PUT /_plugins/_security/api/roles/qapaq_wazuh_readonly "$(json_file <<'JSON'
-{"description":"QAPAQ: analista con solo lectura en el Dashboard",
+indexer PUT /_plugins/_security/api/roles/b89_wazuh_readonly "$(json_file <<'JSON'
+{"description":"B89: analista con solo lectura en el Dashboard",
  "cluster_permissions":["cluster_composite_ops_ro"],
  "index_permissions":[{"index_patterns":["wazuh-*"],"allowed_actions":["read"]}],
  "tenant_permissions":[{"tenant_patterns":["global_tenant"],"allowed_actions":["kibana_all_read"]}]}
@@ -199,17 +199,17 @@ copy_dashboard_role() { # source managed-name
   ' "$work/response.json")" || fail "no se pudo leer el rol $1"
   indexer PUT "/_plugins/_security/api/roles/$2" "$(json_file <<<"$body")"
 }
-copy_dashboard_role all_access qapaq_dashboard_admin
-copy_dashboard_role kibana_user qapaq_dashboard_user
+copy_dashboard_role all_access b89_dashboard_admin
+copy_dashboard_role kibana_user b89_dashboard_user
 
 # Wazuh creates its built-in index patterns (alerts, statistics, monitoring) as shared saved
 # objects. The analyst may write only dashboard objects in global_tenant; event indexes remain
-# read-only under qapaq_wazuh_readonly.
+# read-only under b89_wazuh_readonly.
 grant_dashboard_saved_object_write() {
-  indexer GET /_plugins/_security/api/roles/qapaq_dashboard_user
+  indexer GET /_plugins/_security/api/roles/b89_dashboard_user
   local body
   body="$(jq -e '
-    .qapaq_dashboard_user as $role
+    .b89_dashboard_user as $role
     | {
         cluster_permissions: ($role.cluster_permissions // []),
         index_permissions: ($role.index_permissions // []),
@@ -218,7 +218,7 @@ grant_dashboard_saved_object_write() {
            + [{"tenant_patterns":["global_tenant"],"allowed_actions":["kibana_all_write"]}])
       }
   ' "$work/response.json")" || fail 'no se pudo preparar el permiso del tenant de Dashboard'
-  indexer PUT /_plugins/_security/api/roles/qapaq_dashboard_user "$(json_file <<<"$body")"
+  indexer PUT /_plugins/_security/api/roles/b89_dashboard_user "$(json_file <<<"$body")"
 }
 grant_dashboard_saved_object_write
 
@@ -229,18 +229,18 @@ upsert_user() { # usuario contraseña descripción
 }
 
 info 'usuario de ingesta'
-reader_password="$(password_for "${QAPAQ_READER_SECRET_ID:-reader}" "$READER_USER")"
-upsert_user "$READER_USER" "$reader_password" 'QAPAQ: lector de alertas para KrakenD (solo lectura)'
-map_users qapaq_alerts_read "$READER_USER"
+reader_password="$(password_for "${B89_READER_SECRET_ID:-reader}" "$READER_USER")"
+upsert_user "$READER_USER" "$reader_password" 'B89: lector de alertas para KrakenD (solo lectura)'
+map_users b89_alerts_read "$READER_USER"
 
 info 'usuarios del Dashboard'
-admin_password="$(password_for "${QAPAQ_ADMIN_USER_SECRET_ID:-admin-user}" "$QAPAQ_ADMIN_USERNAME")"
-analyst_password="$(password_for "${QAPAQ_ANALYST_USER_SECRET_ID:-analyst-user}" "$QAPAQ_ANALYST_USERNAME")"
-upsert_user "$QAPAQ_ADMIN_USERNAME" "$admin_password" 'QAPAQ: dueño del grupo de admisión (administrador)'
-upsert_user "$QAPAQ_ANALYST_USERNAME" "$analyst_password" 'QAPAQ: analista (solo lectura)'
-map_users qapaq_dashboard_admin "$QAPAQ_ADMIN_USERNAME"
-map_users qapaq_dashboard_user "$QAPAQ_ANALYST_USERNAME"
-map_users qapaq_wazuh_readonly "$QAPAQ_ANALYST_USERNAME"
+admin_password="$(password_for "${B89_ADMIN_USER_SECRET_ID:-admin-user}" "$B89_ADMIN_USERNAME")"
+analyst_password="$(password_for "${B89_ANALYST_USER_SECRET_ID:-analyst-user}" "$B89_ANALYST_USERNAME")"
+upsert_user "$B89_ADMIN_USERNAME" "$admin_password" 'B89: dueño del grupo de admisión (administrador)'
+upsert_user "$B89_ANALYST_USERNAME" "$analyst_password" 'B89: analista (solo lectura)'
+map_users b89_dashboard_admin "$B89_ADMIN_USERNAME"
+map_users b89_dashboard_user "$B89_ANALYST_USERNAME"
+map_users b89_wazuh_readonly "$B89_ANALYST_USERNAME"
 
 # ------------------------------------------------- 3. roles de la API de Wazuh
 
@@ -264,7 +264,7 @@ role_id() { wazuh_api GET "/security/roles?search=$1&limit=500" \
   | jq -r --arg name "$1" '.data.affected_items[] | select(.name == $name) | .id' | head -1; }
 
 bind_api_role() { # usuario rol-api
-  local rule_name="qapaq_user_$(printf '%s' "$1" | tr -c 'A-Za-z0-9_' '_')"
+  local rule_name="b89_user_$(printf '%s' "$1" | tr -c 'A-Za-z0-9_' '_')"
   local rule_id
   rule_id="$(wazuh_api GET "/security/rules?search=$rule_name&limit=500" \
     | jq -r --arg name "$rule_name" '.data.affected_items[] | select(.name == $name) | .id' | head -1)"
@@ -279,25 +279,25 @@ bind_api_role() { # usuario rol-api
   wazuh_api POST "/security/roles/$target/rules?rule_ids=$rule_id" >/dev/null
 }
 
-bind_api_role "$QAPAQ_ADMIN_USERNAME" administrator
-bind_api_role "$QAPAQ_ANALYST_USERNAME" readonly
+bind_api_role "$B89_ADMIN_USERNAME" administrator
+bind_api_role "$B89_ANALYST_USERNAME" readonly
 
 # --------------------------------------------------------- 4. proxy privado
 
-private_ip="${QAPAQ_PRIVATE_IP:-}"
+private_ip="${B89_PRIVATE_IP:-}"
 if [[ -z "$private_ip" ]]; then
   imds="$(curl -sS -X PUT -H 'X-aws-ec2-metadata-token-ttl-seconds: 60' http://169.254.169.254/latest/api/token)"
   private_ip="$(curl -sS -H "X-aws-ec2-metadata-token: $imds" http://169.254.169.254/latest/meta-data/local-ipv4)"
 fi
 [[ "$private_ip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || fail 'IP privada inválida'
 
-if [[ "${QAPAQ_SKIP_PROXY:-false}" != true ]]; then
+if [[ "${B89_SKIP_PROXY:-false}" != true ]]; then
   info 'proxy TLS del Indexer'
   install -d -m 0750 "$PROXY_DIR"
   current_san="$(openssl x509 -in "$PROXY_DIR/cert.pem" -noout -ext subjectAltName 2>/dev/null || true)"
-  if [[ "$current_san" != *"IP Address:$private_ip"* || "${QAPAQ_ROTATE:-false}" == true ]]; then
+  if [[ "$current_san" != *"IP Address:$private_ip"* || "${B89_ROTATE:-false}" == true ]]; then
     openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 825 \
-      -subj '/CN=qapaq-indexer-proxy' -addext "subjectAltName=IP:$private_ip" \
+      -subj '/CN=b89-indexer-proxy' -addext "subjectAltName=IP:$private_ip" \
       -keyout "$PROXY_DIR/key.pem" -out "$PROXY_DIR/cert.pem" 2>/dev/null
   fi
   chmod 0640 "$PROXY_DIR/key.pem"; chmod 0644 "$PROXY_DIR/cert.pem"
@@ -322,7 +322,7 @@ if [[ "${QAPAQ_SKIP_PROXY:-false}" != true ]]; then
   previous="$work/previous.conf"
   [[ -f "$PROXY_CONF" ]] && cp "$PROXY_CONF" "$previous"
   cat >"$PROXY_CONF" <<NGINX
-# QAPAQ SecOps — proxy del Indexer para la ingesta (generado por apply-access.sh).
+# B89 SecOps — proxy del Indexer para la ingesta (generado por apply-access.sh).
 # Solo búsqueda en alertas y salud del clúster; el resto responde 403.
 server {
   listen $private_ip:9200 ssl;
@@ -359,7 +359,7 @@ NGINX
 fi
 
 restore_proxy() {
-  [[ "${QAPAQ_SKIP_PROXY:-false}" == true ]] && return
+  [[ "${B89_SKIP_PROXY:-false}" == true ]] && return
   if [[ -f "$work/previous.conf" ]]; then cp "$work/previous.conf" "$PROXY_CONF"; else rm -f "$PROXY_CONF"; fi
   reload_nginx || true
 }
@@ -376,11 +376,11 @@ reader_file="$(mktemp -p "$work")"
 jq -n --arg username "$READER_USER" --arg password "$reader_password" \
   --arg b64 "$(printf '%s:%s' "$READER_USER" "$reader_password" | base64 -w0)" \
   '{username: $username, password: $password, basic_auth_b64: $b64}' >"$reader_file"
-secret_put "${QAPAQ_READER_SECRET_ID:-reader}" "$reader_file"
-publish_user "${QAPAQ_ADMIN_USER_SECRET_ID:-admin-user}" "$QAPAQ_ADMIN_USERNAME" "$admin_password"
-publish_user "${QAPAQ_ANALYST_USER_SECRET_ID:-analyst-user}" "$QAPAQ_ANALYST_USERNAME" "$analyst_password"
-if [[ "${QAPAQ_SKIP_PROXY:-false}" != true ]]; then
-  secret_put "${QAPAQ_PROXY_CA_SECRET_ID:-proxy-ca}" "$PROXY_DIR/cert.pem"
+secret_put "${B89_READER_SECRET_ID:-reader}" "$reader_file"
+publish_user "${B89_ADMIN_USER_SECRET_ID:-admin-user}" "$B89_ADMIN_USERNAME" "$admin_password"
+publish_user "${B89_ANALYST_USER_SECRET_ID:-analyst-user}" "$B89_ANALYST_USERNAME" "$analyst_password"
+if [[ "${B89_SKIP_PROXY:-false}" != true ]]; then
+  secret_put "${B89_PROXY_CA_SECRET_ID:-proxy-ca}" "$PROXY_DIR/cert.pem"
 fi
 
 # ------------------------------------------------------------- 6. autoprueba
@@ -388,7 +388,7 @@ fi
 info 'autoprueba del lector'
 reader_cfg="$work/reader.curl"
 printf 'user = "%s:%s"\n' "$READER_USER" "$reader_password" >"$reader_cfg"
-if [[ "${QAPAQ_SKIP_PROXY:-false}" == true ]]; then
+if [[ "${B89_SKIP_PROXY:-false}" == true ]]; then
   probe_url="$INDEXER_URL"; probe_tls=("${tls_args[@]}")
 else
   probe_url="https://$private_ip:9200"; probe_tls=(--cacert "$PROXY_DIR/cert.pem")
@@ -406,7 +406,7 @@ done
 security_code="$(probe "$probe_url/_plugins/_security/api/internalusers")"
 [[ "$security_code" == 403 ]] || fail "el lector alcanza la API de seguridad ($security_code)"
 write_code="$(probe -X POST -H 'Content-Type: application/json' --data '{}' \
-  "$probe_url/wazuh-alerts-qapaq-probe/_doc")"
+  "$probe_url/wazuh-alerts-b89-probe/_doc")"
 [[ "$write_code" == 403 ]] || fail "el lector puede escribir ($write_code)"
 
 info "completado: lector, proxy y usuarios (admin y analista) operativos"

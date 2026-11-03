@@ -7,7 +7,7 @@
  * temporal, `nonce` y método de autenticación.
  *
  * El `tid` se comprueba además de `iss` a propósito: un token de otro tenant de Entra
- * está perfectamente firmado por Microsoft y no debe abrir sesión en QAPAQ.
+ * está perfectamente firmado por Microsoft y no debe abrir sesión en B89.
  */
 
 import { createPublicKey, createVerify, type KeyObject } from 'node:crypto';

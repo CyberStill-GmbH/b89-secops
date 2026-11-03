@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1.0.0",
   "recordId": "01890f47-7abc-7def-9abc-0123456789ab",
-  "eventUid": "siem-qapaq-lab:alerts:evt-0001",
+  "eventUid": "siem-b89-lab:alerts:evt-0001",
   "eventUidType": "native",
   "kind": "alert",
   "occurredAt": "2026-09-20T15:30:00.000Z",
@@ -12,7 +12,7 @@
     "vendor": "Wazuh, Inc.",
     "product": "Wazuh",
     "dataset": "alerts",
-    "instanceId": "siem-qapaq-lab",
+    "instanceId": "siem-b89-lab",
     "nativeEventId": "evt-0001"
   },
   "tenant": {
@@ -57,7 +57,7 @@
     "sizeBytes": 2048
   },
   "provenance": {
-    "connector": "qapaq-wazuh-indexer",
+    "connector": "b89-wazuh-indexer",
     "connectorVersion": "1.0.0",
     "parserVersion": "1.0.0",
     "mappingVersion": "1.0.0",
@@ -67,12 +67,12 @@
         "kind": "collector",
         "vendor": "Wazuh, Inc.",
         "product": "Wazuh",
-        "instanceId": "siem-qapaq-lab"
+        "instanceId": "siem-b89-lab"
       },
       {
         "kind": "adapter",
-        "vendor": "QAPAQ",
-        "product": "QAPAQ SecOps"
+        "vendor": "B89",
+        "product": "B89 SecOps"
       }
     ]
   }

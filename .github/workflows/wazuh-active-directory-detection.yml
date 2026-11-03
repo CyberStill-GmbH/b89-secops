@@ -1,4 +1,4 @@
-name: QAPAQ Wazuh Active Directory detections
+name: B89 Wazuh Active Directory detections
 
 on:
   pull_request:
@@ -28,7 +28,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: qapaq-wazuh-ad-detection-${{ github.ref }}
+  group: b89-wazuh-ad-detection-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -45,16 +45,16 @@ jobs:
         run: python3 -m unittest discover -s wazuh/azure-release/tests -p 'test_*.py' -v
       - name: Start isolated Wazuh Manager 4.14.8
         run: >-
-          docker run --detach --rm --name qapaq-wazuh-ad-test
+          docker run --detach --rm --name b89-wazuh-ad-test
           --ulimit nofile=458752:458752
-          --volume "${GITHUB_WORKSPACE}/infra/wazuh/active-directory/rules/qapaq_active_directory_rules.xml:/var/ossec/etc/rules/qapaq_active_directory_rules.xml:ro"
+          --volume "${GITHUB_WORKSPACE}/infra/wazuh/active-directory/rules/b89_active_directory_rules.xml:/var/ossec/etc/rules/b89_active_directory_rules.xml:ro"
           wazuh/wazuh-manager:4.14.8
       - name: Validate candidate agent profiles with Wazuh 4.14.8
         run: |
           set -euo pipefail
           ready=false
           for attempt in $(seq 1 60); do
-            if docker exec --workdir /var/ossec qapaq-wazuh-ad-test sh -c \
+            if docker exec --workdir /var/ossec b89-wazuh-ad-test sh -c \
               'test -s etc/internal_options.conf && grep -q "^agent.remote_conf=" etc/internal_options.conf'; then
               ready=true
               break
@@ -70,30 +70,30 @@ jobs:
             infra/wazuh/active-directory/agent-groups/windows-domain-controller.agent.conf \
             infra/wazuh/launch-detections/agent-groups/windows-sysmon-pilot.agent.conf; do
             destination="/tmp/$(basename "$profile")"
-            docker cp "$profile" "qapaq-wazuh-ad-test:$destination"
-            docker exec --workdir /var/ossec qapaq-wazuh-ad-test /var/ossec/bin/verify-agent-conf -f "$destination"
+            docker cp "$profile" "b89-wazuh-ad-test:$destination"
+            docker exec --workdir /var/ossec b89-wazuh-ad-test /var/ossec/bin/verify-agent-conf -f "$destination"
           done
       - name: Start Manager daemons and run AD positive/negative fixtures
         run: |
           # Logtest reads JSON fixtures with the generic json decoder. Adapt only the
           # disposable test container's Windows parent rule; production rules stay unchanged.
-          docker exec qapaq-wazuh-ad-test sed -i \
+          docker exec b89-wazuh-ad-test sed -i \
             -e '/<category>ossec<\/category>/d' \
             -e 's|<decoded_as>windows_eventchannel</decoded_as>|<decoded_as>json</decoded_as>|' \
             /var/ossec/ruleset/rules/0575-win-base_rules.xml
-          if ! docker exec qapaq-wazuh-ad-test /var/ossec/bin/wazuh-control start; then
+          if ! docker exec b89-wazuh-ad-test /var/ossec/bin/wazuh-control start; then
             echo 'Manager start returned a nonzero status; checking analysisd health.'
           fi
           ready=false
           for attempt in $(seq 1 60); do
-            if docker exec qapaq-wazuh-ad-test /var/ossec/bin/wazuh-control status 2>/dev/null | grep -q 'wazuh-analysisd is running'; then
+            if docker exec b89-wazuh-ad-test /var/ossec/bin/wazuh-control status 2>/dev/null | grep -q 'wazuh-analysisd is running'; then
               ready=true
               break
             fi
             sleep 2
           done
           test "$ready" = true
-          bash infra/wazuh/active-directory/tests/run-logtest.sh qapaq-wazuh-ad-test
+          bash infra/wazuh/active-directory/tests/run-logtest.sh b89-wazuh-ad-test
       - name: Stop test Manager
         if: always()
-        run: docker rm -f qapaq-wazuh-ad-test || true
+        run: docker rm -f b89-wazuh-ad-test || true

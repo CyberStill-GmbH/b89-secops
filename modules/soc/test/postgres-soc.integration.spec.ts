@@ -23,11 +23,11 @@ import { promisify } from 'node:util';
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { recordAudit } from '@qapaq/audit';
-import { candidateId, promotionKey, type DetectionCandidate } from '@qapaq/detection';
+import { recordAudit } from '@b89/audit';
+import { candidateId, promotionKey, type DetectionCandidate } from '@b89/detection';
 
 import { PostgresSocPersistence, SocIntegrityError } from '../src/infrastructure/postgres-soc.js';
-import { capabilitiesForRoles } from '@qapaq/access';
+import { capabilitiesForRoles } from '@b89/access';
 
 import { openIncident } from '../src/incident.js';
 import {
@@ -44,13 +44,13 @@ const databaseUrl = process.env['DATABASE_URL'];
 const databaseRoot = fileURLToPath(new URL('../../../platform/database/', import.meta.url));
 
 const TENANT = 'tenant-c17-pg';
-const USER_KEY = 'user:usuario.sintetico@qapaq-lab.example';
+const USER_KEY = 'user:usuario.sintetico@b89-lab.example';
 const IP_KEY = 'ip:203.0.113.24';
 
 async function provisionDatabase() {
   if (!databaseUrl) throw new Error('DATABASE_URL es obligatorio para esta spec.');
   const parsed = new URL(databaseUrl);
-  const name = `qapaq_c17_${process.pid}_${Date.now()}`.toLowerCase();
+  const name = `b89_c17_${process.pid}_${Date.now()}`.toLowerCase();
   const adminUrl = new URL(parsed);
   adminUrl.pathname = '/postgres';
   const admin = new Client(adminUrl.toString());
@@ -87,12 +87,12 @@ function candidate(
     id: candidateId(key, occurredAt),
     tenantId: TENANT,
     eventRecordId,
-    eventUid: `siem-qapaq-lab:alerts:evt-${sequence}`,
+    eventUid: `siem-b89-lab:alerts:evt-${sequence}`,
     idempotencyKey: key,
     priority: 'P2',
     score: 70,
     reasons: [{ code: 'BASE_SEVERITY', delta: 60, detail: 'Severidad alta.' }],
-    rulesetId: 'qapaq.detection.prioritization',
+    rulesetId: 'b89.detection.prioritization',
     rulesetVersion: '1.1.0',
     occurredAt,
     createdAt: new Date(occurredAt.getTime() + 1_000),
@@ -175,7 +175,7 @@ describe.skipIf(!databaseUrl)('C-17 · persistencia SOC sobre PostgreSQL', () =>
     );
     await ingestCandidate(
       dependencies(persistence),
-      candidate(3, { entityKeys: ['user:otra@qapaq-lab.example'] }),
+      candidate(3, { entityKeys: ['user:otra@b89-lab.example'] }),
     );
 
     const byUser = await persistence.recentByEntities(
@@ -355,7 +355,7 @@ describe.skipIf(!databaseUrl)('C-17 · persistencia SOC sobre PostgreSQL', () =>
       subjectId: 'sub-lider',
       tenantId: TENANT,
       sessionId: 'session-s5',
-      capabilities: capabilitiesForRoles(['qapaq.soc.lead']),
+      capabilities: capabilitiesForRoles(['b89.soc.lead']),
     };
     const incidentId = randomUUID();
     await persistence.run((context) =>

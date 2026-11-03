@@ -1,17 +1,17 @@
-# QAPAQ SIEM Azure release bundle
+# B89 SIEM Azure release bundle
 
 Status: **the current-main candidate was built and published to private Azure Blob; no SIEM VM has been provisioned or installed yet**.
 
 ### Latest EUS2 publication — 2026-10-27
 
-- Bundle run: [40445959714](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/40445959714)
-- Publisher run: [40453658942](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/40453658942)
+- Bundle run: [40445959714](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/40445959714)
+- Publisher run: [40453658942](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/40453658942)
 - Source SHA: `c96e35fc4618ad10db575e110b26625315fece20`
-- Private Blob URI (no SAS): `https://qapaqdemoeus2rel3a2405f3.blob.core.windows.net/siem-release/releases/c96e35fc4618ad10db575e110b26625315fece20/qapaq-siem-c96e35fc4618.tar.gz`
+- Private Blob URI (no SAS): `https://b89demoeus2rel3a2405f3.blob.core.windows.net/siem-release/releases/c96e35fc4618ad10db575e110b26625315fece20/b89-siem-c96e35fc4618.tar.gz`
 - SHA-256: `89040cb69535da6b7b6b763b77fa0bdb3e15c2089481d139fa9cd2f23c7e5472`
 - Size: `6960684738` bytes. Publisher verified Blob content length and SHA metadata after upload.
-- This is a private install candidate addressed by source SHA; the publisher refuses to overwrite a blob with different bytes. It has **not** been installed on an Azure VM and does not verify health, DNS, Graph/provider ingestion, Teams delivery or Ankay.
-- The source commit packages the QAPAQ Active Directory detection profile added by PR #159. The profile and rules are present in the artifact; agent enrollment and collection on actual domain controllers remain opt-in and unverified.
+- This is a private install candidate addressed by source SHA; the publisher refuses to overwrite a blob with different bytes. It has **not** been installed on an Azure VM and does not verify health, DNS, Graph/provider ingestion, Teams delivery or B89 Respond.
+- The source commit packages the B89 Active Directory detection profile added by PR #159. The profile and rules are present in the artifact; agent enrollment and collection on actual domain controllers remain opt-in and unverified.
 
 ## What the workflow produces
 
@@ -20,8 +20,8 @@ the same `main` SHA:
 
 1. `azure-siem-prerequisites-experimental.yml`: Wazuh Manager and Indexer 4.14.8, plus
    Filebeat 7.10.2-2, module 0.5 and the template.
-2. `qapaq-dashboard-azure.yml`: Dashboard Debian package `4.14.8-1qapaq1` for OSD 2.19.6.
-3. `qapaq-core-azure.yml`: QAPAQ core archive built for Node 24.21.0 and the runner's CA store.
+2. `b89-dashboard-azure.yml`: Dashboard Debian package `4.14.8-1b891` for OSD 2.19.6.
+3. `b89-core-azure.yml`: B89 core archive built for Node 24.21.0 and the runner's CA store.
 4. Official `wazuh-installation-assistant` v4.14.8 at immutable commit
    `33d2069715e8500b676d13cefe7ddaea8eb79019` (signature verified by GitHub API).
 
@@ -29,7 +29,7 @@ The workflow runs from `main` and takes `release_sha` plus the three successful 
 `release_sha` must be a full commit already merged into the current `main`. Each source run must
 be successful on `main` at that exact SHA, and the install/bootstrap inputs must not have changed
 between that commit and the workflow run. The workflow checks the Wazuh pins, artifact hashes and
-provenance; assembles the official offline package tree; records the full `qapaqCommit` in its
+provenance; assembles the official offline package tree; records the full `b89Commit` in its
 manifest; and uploads a seven-day review artifact. This permits the release assembler to reuse
 verified, unexpired artifacts after unrelated commits advance `main`, while refusing candidates
 whose package sources or pins have changed. It has read-only repository/artifact permissions. It
@@ -38,7 +38,7 @@ has no Azure OIDC permission and does not publish, deploy, run Terraform, or edi
 The separate `.github/workflows/azure-siem-release-publish.yml` accepts a successful bundle-run ID
 and its 40-character candidate source SHA. It verifies the bundle run is the expected successful
 `main` workflow, the candidate commit is an ancestor of that run, the matching artifact has not
-expired, and the embedded manifest records the same full `qapaqCommit`. It downloads only that
+expired, and the embedded manifest records the same full `b89Commit`. It downloads only that
 artifact, verifies `SHA256SUMS`, then signs into Azure with the existing `azure-demo` OIDC identity. It uploads
 to `releases/<source-sha>/` in the private `siem-release` container using Entra RBAC, shared keys
 disabled, anonymous access disabled, and `--overwrite false`. A retry is accepted only if the
@@ -48,7 +48,7 @@ a SAS URL or secret value. Publishing does not apply Terraform, configure runtim
 DNS.
 
 The next candidate assembled after the AD detection-pack change also contains the 30-case catalog,
-the QAPAQ Active Directory, provider and Outlook/Sysmon endpoint rules, and an idempotent installer. The
+the B89 Active Directory, provider and Outlook/Sysmon endpoint rules, and an idempotent installer. The
 installer registers `/var/ossec/etc/rules` with the Wazuh ruleset, validates `wazuh-analysisd`,
 and restarts the Manager with rollback if validation or restart fails. This does not enable
 the AD domain-controller collection profile or Sophos/Cato collectors: those remain opt-in and
@@ -58,42 +58,42 @@ versioned provider and endpoint rule files; it does not prove collectors are ena
 
 ### Previous published candidate evidence — 2026-10-24
 
-- Prerequisite build: [40080125109](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/40080125109)
-- Dashboard build: [40080125315](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/40080125315)
-- Core build: [40080124975](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/40080124975)
-- Bundle run: [40084337528](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/40084337528)
-- Publisher run: [40086863260](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/40086863260)
+- Prerequisite build: [40080125109](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/40080125109)
+- Dashboard build: [40080125315](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/40080125315)
+- Core build: [40080124975](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/40080124975)
+- Bundle run: [40084337528](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/40084337528)
+- Publisher run: [40086863260](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/40086863260)
 - Source SHA: `afdfbaa61f558ab30c307aa4cf6d0fd8a783b15c`
-- Private Blob URI (no SAS): `https://qapaqsecdemorel66f8c73b.blob.core.windows.net/siem-release/releases/afdfbaa61f558ab30c307aa4cf6d0fd8a783b15c/qapaq-siem-afdfbaa61f55.tar.gz`
+- Private Blob URI (no SAS): `https://b89secdemorel66f8c73b.blob.core.windows.net/siem-release/releases/afdfbaa61f558ab30c307aa4cf6d0fd8a783b15c/b89-siem-afdfbaa61f55.tar.gz`
 - SHA-256: `954d284674442645dc4c1a7bf9a991ae7712888a842bff262083dfa66806dbcd`
 - Size: `6959200149` bytes. The publisher verified the Blob content length and SHA metadata after upload. The source-run GitHub artifact was `13921808870` bytes.
 - The exact source artifacts succeeded on the same SHA. The bundle run verified installer, provenance, package hashes and bootstrap contract; the publisher authenticated through Azure OIDC and verified the private Blob. It remains an install candidate, not evidence of a provisioned VM or operational SIEM.
 
 ### Previous published candidate evidence — 2026-10-23
 
-- Prerequisite build: [39883868793](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39883868793)
-- Dashboard build: [39883868545](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39883868545)
-- Core build: [39883868998](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39883868998)
-- Bundle run: [39890065716](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39890065716)
-- Publisher run: [39891503496](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39891503496)
+- Prerequisite build: [39883868793](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39883868793)
+- Dashboard build: [39883868545](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39883868545)
+- Core build: [39883868998](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39883868998)
+- Bundle run: [39890065716](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39890065716)
+- Publisher run: [39891503496](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39891503496)
 - Source SHA: `6c3c2b498a8a9dc43f6a0da45c07244fdf132f2f`
-- Private Blob URI (no SAS): `https://qapaqsecdemorel66f8c73b.blob.core.windows.net/siem-release/releases/6c3c2b498a8a9dc43f6a0da45c07244fdf132f2f/qapaq-siem-6c3c2b498a8a.tar.gz`
+- Private Blob URI (no SAS): `https://b89secdemorel66f8c73b.blob.core.windows.net/siem-release/releases/6c3c2b498a8a9dc43f6a0da45c07244fdf132f2f/b89-siem-6c3c2b498a8a.tar.gz`
 - SHA-256: `9cfcd1acd6c5c1c78ec10024d6a4b7c3bbd43932ad8931ce3a9d63d126a4ccac`
 - Size: `5083594839` bytes. The publisher verified the Blob content length and SHA metadata after upload.
 - This is a build and publication result only. It does not prove VM provisioning, installation, service health, DNS, or data ingestion.
 ### Superseded candidate evidence — 2026-10-22
 
-- Publisher run: [39823003732](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39823003732)
-- Source bundle run/SHA: [39819291113](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39819291113) / `f599adf7591cc0adab34d5f43a355073d23f909d`
-- Private Blob URI (no SAS): `https://qapaqsecdemorel66f8c73b.blob.core.windows.net/siem-release/releases/f599adf7591cc0adab34d5f43a355073d23f909d/qapaq-siem-f599adf7591c.tar.gz`
+- Publisher run: [39823003732](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39823003732)
+- Source bundle run/SHA: [39819291113](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39819291113) / `f599adf7591cc0adab34d5f43a355073d23f909d`
+- Private Blob URI (no SAS): `https://b89secdemorel66f8c73b.blob.core.windows.net/siem-release/releases/f599adf7591cc0adab34d5f43a355073d23f909d/b89-siem-f599adf7591c.tar.gz`
 - SHA-256: `3045155b53ff736bdcb157cdea6022b2931b1d4781d89c74ed1a497f38dc8f4e`
 - Size: `5083241196` bytes. The workflow verified the Blob metadata digest and content length after upload.
 - This is an install candidate only. It has not been installed on an Azure VM and does not certify the SOC as operational.
 
 ### Azure Terraform state at publication
 
-- Latest plan run: [40085138833](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/40085138833); it succeeded with `0 add, 0 change, 0 destroy`, so the apply step was skipped.
-- The workflow inputs were `siem_host=null`, `ankay_host=null`, and `enable_runtime=false`; no SIEM or Ankay VM was created.
+- Latest plan run: [40085138833](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/40085138833); it succeeded with `0 add, 0 change, 0 destroy`, so the apply step was skipped.
+- The workflow inputs were `siem_host=null`, `b89_respond_host=null`, and `enable_runtime=false`; no SIEM or B89 Respond VM was created.
 - Terraform is independent of AWS. The Azure root creates its own Azure Firewall when `siem_host` is provided; the AWS-era firewall is not a prerequisite.
 
 ## First-boot inputs
@@ -119,7 +119,7 @@ The Key Vault secret name, current version, value, certificate validity and matc
 not been inspected here. The module references a secret by name (latest version), so a secret-value
 rotation affects the next bootstrap. The Key Vault reference and `core_secret_names` must be verified
 by the owner before applying. Azure preflight requires both the Entra client secret and
-`QAPAQ_TEAMS_WORKFLOW_URL` to be mapped by name in `core_secret_names`; the signed Workflow URL
+`B89_TEAMS_WORKFLOW_URL` to be mapped by name in `core_secret_names`; the signed Workflow URL
 must never be placed in `core_environment`, GitHub variables, Terraform state, or logs. The release
 requires complete `core_environment`/`core_secret_names`
 for the selected production configuration; it does not invent app registrations, database
@@ -129,9 +129,9 @@ credentials, redis references or policy values.
 
 The installer runs the official assistant in all-in-one offline mode, verifies the exact package
 versions, validates the Office 365 configuration and client secret file materialized from Key Vault,
-installs the QAPAQ core through its atomic release installer, applies the M365 rules/configuration,
+installs the B89 core through its atomic release installer, applies the M365 rules/configuration,
 then installs the optional Microsoft Teams Workflows adapter when its Key Vault name is present
-in `wazuh_secret_names`, and waits for active Manager, Indexer, Filebeat, Dashboard and QAPAQ core
+in `wazuh_secret_names`, and waits for active Manager, Indexer, Filebeat, Dashboard and B89 core
 services, Indexer TLS health and `/health/ready`.
 Before the first package operation it also requires the official assistant's Ubuntu prerequisites
 (`curl`, `tar`, `gnupg`, `openssl`, `lsof`, `apt-transport-https`, `libcap2-bin`, `debconf`,
@@ -144,18 +144,18 @@ pre-existing install and is only allowed on a clean host; if its first install f
 installer intentionally stops without purging packages or deleting state. Operator diagnosis is
 required before retry.
 
-This bundle does **not** install/validate the QAPAQ access and role overlay, `qapaq_ops`
-edge route, TLS/DNS or Ankay/Shuffle. Teams support is packaged, but actual activation requires
-`wazuh_secret_names.qapaq-teams-workflow-url` to reference the current Workflows URL in Key Vault;
+This bundle does **not** install/validate the B89 access and role overlay, `b89_ops`
+edge route, TLS/DNS or B89 Respond/Shuffle. Teams support is packaged, but actual activation requires
+`wazuh_secret_names.b89-teams-workflow-url` to reference the current Workflows URL in Key Vault;
 the bootstrap validates the URL, protects it as a file, updates Wazuh idempotently and rolls back
 `ossec.conf` if analysis validation or restart fails. This does not prove delivery to a real Teams
 channel. The bundle installs M365 plus the versioned
-QAPAQ detection rules, but does not prove Graph permissions or event ingestion/indexing. Sophos/Cato
+B89 detection rules, but does not prove Graph permissions or event ingestion/indexing. Sophos/Cato
 rules are present while their collectors remain disabled unless explicitly configured. The Azure installer
 passes a Key Vault-materialized `file:` secret source; the shared M365 script retains an AWS
 Secrets Manager branch for AWS deployments, which the Azure path does not invoke. The Dashboard
-package contains QAPAQ branding/plugin code, but without edge/auth configuration it is not an
-externally usable QAPAQ SOC.
+package contains B89 branding/plugin code, but without edge/auth configuration it is not an
+externally usable B89 SOC.
 
 ## Remaining evidence before deployment
 
@@ -170,5 +170,5 @@ externally usable QAPAQ SOC.
 - The bootstrap must install or verify Ubuntu's required packages before invoking the offline installer; no clean-VM installation test has run yet.
 - Key Vault refs, private endpoints, firewall allowlist, subnet routes and core database/identity
   configuration must be verified without displaying secret values.
-- Complete access, edge TLS/DNS, M365, Teams, Ankay and vendor connectors in their own reviewed
+- Complete access, edge TLS/DNS, M365, Teams, B89 Respond and vendor connectors in their own reviewed
   steps before describing the deployment as an operational SOC.

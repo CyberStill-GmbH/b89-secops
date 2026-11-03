@@ -6,7 +6,7 @@
  * lease evita gastar dos llamadas al destino por cada crítico.
  */
 
-import type { OutboxMessageDraft } from '@qapaq/soc';
+import type { OutboxMessageDraft } from '@b89/soc';
 
 import type { NotificationAttempt, NotificationChannel } from './notification.js';
 import type { NotificationRecipient } from './notification-routing.js';
@@ -46,7 +46,7 @@ export interface FallbackNotification {
    * dirige a ellas. Vacío si no hay padrón.
    */
   readonly recipients?: readonly NotificationRecipient[];
-  /** Enlace a QAPAQ para abrir el recurso (requiere sesión). */
+  /** Enlace a B89 para abrir el recurso (requiere sesión). */
   readonly link?: string;
 }
 

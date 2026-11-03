@@ -16,7 +16,7 @@ import { withSeverity } from './support/events.js';
 const NOW = new Date('2026-10-07T15:31:00.000Z');
 
 const CONTEXT: PrioritizationContext = {
-  privilegedIdentities: new Set(['jperez@qapaq.pe']),
+  privilegedIdentities: new Set(['jperez@b89.example']),
   criticalAssets: new Set(['host-1']),
 };
 

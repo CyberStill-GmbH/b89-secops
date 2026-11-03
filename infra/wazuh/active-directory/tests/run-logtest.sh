@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-container="${1:-qapaq-wazuh-ad-test}"
+container="${1:-b89-wazuh-ad-test}"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 output="$(mktemp)"
 trap 'rm -f "${output}"' EXIT

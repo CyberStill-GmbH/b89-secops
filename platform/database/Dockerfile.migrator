@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-# QAPAQ SecOps — imagen one-off de base de datos (C-1).
+# B89 SecOps — imagen one-off de base de datos (C-1).
 #
 # Se construye desde el mismo commit que la imagen del API y contiene solo lo necesario para
 # `bootstrap-roles` y `migrate`: Prisma CLI, esquema, migraciones, SQL de roles, el driver pg,
@@ -15,20 +15,20 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc .nvmrc ./
 COPY platform/database/package.json platform/database/package.json
 COPY platform/configuration/package.json platform/configuration/package.json
 
-RUN pnpm install --filter @qapaq/database... --frozen-lockfile
+RUN pnpm install --filter @b89/database... --frozen-lockfile
 
 # Bundle CA global de RDS, fijado por hash: si AWS lo rota, el build falla hasta revisar y
 # actualizar el hash a propósito. Se descarga aquí para fijar permisos legibles por el usuario
 # sin privilegios (directorio 0755, archivo 0644): `ADD --chmod` también cambia el directorio
 # y lo deja sin permiso de ejecución.
-ADD --checksum=sha256:90a6f1a7978a1b1b096dca6c57511ca48d3b8cf052f8e704baf358f34ea2f21b     https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem /qapaq-certs/rds-global-bundle.pem
-RUN chmod 0755 /qapaq-certs && chmod 0644 /qapaq-certs/rds-global-bundle.pem
+ADD --checksum=sha256:90a6f1a7978a1b1b096dca6c57511ca48d3b8cf052f8e704baf358f34ea2f21b     https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem /b89-certs/rds-global-bundle.pem
+RUN chmod 0755 /b89-certs && chmod 0644 /b89-certs/rds-global-bundle.pem
 
 COPY . .
 # Sin `--prod`: Prisma CLI y el SDK de Secrets Manager son dependencias de desarrollo del
 # paquete y aquí sí se necesitan. La imagen del API sigue sin ellos.
-RUN pnpm --filter @qapaq/database exec prisma generate \
-    && pnpm --filter @qapaq/database deploy --legacy /migrator \
+RUN pnpm --filter @b89/database exec prisma generate \
+    && pnpm --filter @b89/database deploy --legacy /migrator \
     && rm -rf /migrator/test /migrator/src /migrator/generated
 
 # Runtime distroless como el API: sin shell, apt ni npm (la imagen slim traía CVEs HIGH del SO y
@@ -36,10 +36,10 @@ RUN pnpm --filter @qapaq/database exec prisma generate \
 FROM --platform=linux/amd64 gcr.io/distroless/nodejs24-debian13:nonroot@sha256:9eeb7f5887d0e239e78264b06f7f11d2e14be534050481803a9e4728fcdd278e AS runtime
 
 # Bundle CA de RDS con permisos ya fijados en la etapa de build (C-1).
-COPY --from=build /qapaq-certs/ /etc/qapaq/
+COPY --from=build /b89-certs/ /etc/b89/
 
 ENV NODE_ENV=production \
-    NODE_EXTRA_CA_CERTS=/etc/qapaq/rds-global-bundle.pem
+    NODE_EXTRA_CA_CERTS=/etc/b89/rds-global-bundle.pem
 WORKDIR /migrator
 COPY --from=build --chown=1000:1000 /migrator/ ./
 

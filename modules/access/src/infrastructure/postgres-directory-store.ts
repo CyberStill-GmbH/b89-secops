@@ -1,7 +1,7 @@
 /**
  * Sprint 5 · fase 3 — adapter PostgreSQL de `DirectoryStore`.
  *
- * Traduce filas planas (`@qapaq/database/directory-stores`) al dominio del padrón y valida los
+ * Traduce filas planas (`@b89/database/directory-stores`) al dominio del padrón y valida los
  * catálogos leídos: un estado desconocido en la base es un error de integridad, no se adivina.
  * Separa las altas y bajas del ciclo antes de entregarlo al store, que lo aplica en una sola
  * transacción cercada por el claim.
@@ -11,12 +11,12 @@ import {
   closeDatabaseClient,
   createDatabaseClient,
   type DatabaseConnectionOptions,
-} from '@qapaq/database';
+} from '@b89/database';
 import {
   PrismaDirectoryStore,
   type DirectoryMemberRow,
   type DirectorySyncStateRow,
-} from '@qapaq/database/directory-stores';
+} from '@b89/database/directory-stores';
 
 import {
   DIRECTORY_SYNC_STATUSES,

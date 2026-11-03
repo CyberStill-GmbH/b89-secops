@@ -2,9 +2,9 @@ import { readFileSync } from 'node:fs';
 
 const terraform = readFileSync('infra/azure/modules/runtime/main.tf', 'utf8');
 const schema = readFileSync('platform/configuration/src/schema/environment.schema.ts', 'utf8');
-const schemaStart = schema.indexOf('export const KNOWN_QAPAQ_VARIABLES = new Set([');
+const schemaStart = schema.indexOf('export const KNOWN_B89_VARIABLES = new Set([');
 const schemaEnd = schema.indexOf(']);', schemaStart);
-if (schemaStart < 0 || schemaEnd < 0) throw new Error('No se encontró KNOWN_QAPAQ_VARIABLES');
+if (schemaStart < 0 || schemaEnd < 0) throw new Error('No se encontró KNOWN_B89_VARIABLES');
 const known = new Set(
   [...schema.slice(schemaStart, schemaEnd).matchAll(/'([^']+)'/gu)].map((m) => m[1]),
 );
@@ -26,12 +26,12 @@ function envBlock(service) {
 
 const failures = [];
 for (const service of ['api', 'worker']) {
-  const configured = [...envBlock(service).matchAll(/^\s*(QAPAQ_[A-Z0-9_]+)\s*=/gmu)].map(
+  const configured = [...envBlock(service).matchAll(/^\s*(B89_[A-Z0-9_]+)\s*=/gmu)].map(
     (m) => m[1],
   );
   for (const name of configured) {
-    if (!known.has(name)) failures.push(`${service}: ${name} no está en KNOWN_QAPAQ_VARIABLES`);
-    if (name.startsWith('QAPAQ_QUEUE_'))
+    if (!known.has(name)) failures.push(`${service}: ${name} no está en KNOWN_B89_VARIABLES`);
+    if (name.startsWith('B89_QUEUE_'))
       failures.push(`${service}: ${name} no tiene implementación de runtime`);
   }
 }
@@ -39,4 +39,4 @@ if (failures.length) {
   console.error(failures.join('\n'));
   process.exit(1);
 }
-console.log('Azure API/worker no reciben variables QAPAQ desconocidas ni de cola sin implementar.');
+console.log('Azure API/worker no reciben variables B89 desconocidas ni de cola sin implementar.');

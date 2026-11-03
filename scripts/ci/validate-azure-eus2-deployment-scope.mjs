@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { isIP } from 'node:net';
 
-const expectedAcr = 'qapaqsecopsdemoeus3a2405f3.azurecr.io';
+const expectedAcr = 'b89secopsdemoeus3a2405f3.azurecr.io';
 
 function parseJson(env, name) {
   try {
@@ -56,7 +56,7 @@ function validateSiemSubnet(siem, addressSpace, krakendEnabled) {
   );
   const reserved = [
     ['ACA', cidrAt(vnet, 11, 0)],
-    ['Ankay', cidrAt(vnet, 11, 1)],
+    ['B89 Respond', cidrAt(vnet, 11, 1)],
     ['KrakenD', cidrAt(vnet, 11, 2)],
     ['PostgreSQL', cidrAt(vnet, 12, 256)],
     ['Private Endpoints', cidrAt(vnet, 12, 257)],
@@ -83,7 +83,7 @@ export function validateEus2DeploymentScope(env = process.env) {
   const scope = env.DEPLOYMENT_SCOPE;
   const runtime = env.TF_VAR_enable_runtime;
   const siem = parseJson(env, 'TF_VAR_siem_host');
-  const ankay = parseJson(env, 'TF_VAR_ankay_host');
+  const b89Respond = parseJson(env, 'TF_VAR_b89_respond_host');
   const krakend = parseJson(env, 'TF_VAR_krakend_gateway');
 
   requireThat(
@@ -93,20 +93,20 @@ export function validateEus2DeploymentScope(env = process.env) {
   validateSiemSubnet(siem, env.TF_VAR_address_space ?? '10.80.0.0/16', krakend !== null);
   requireThat(
     runtime === 'false',
-    'All current EUS2 scopes require AZURE_EUS2_ENABLE_RUNTIME=false; the generic Container Apps edge is not the QAPAQ SIEM frontend.',
+    'All current EUS2 scopes require AZURE_EUS2_ENABLE_RUNTIME=false; the generic Container Apps edge is not the B89 SIEM frontend.',
   );
 
   if (scope === 'foundation') {
     requireThat(
-      siem === null && ankay === null && krakend === null,
-      'Foundation scope refuses SIEM, Ankay, and KrakenD host profiles.',
+      siem === null && b89Respond === null && krakend === null,
+      'Foundation scope refuses SIEM, B89 Respond, and KrakenD host profiles.',
     );
   }
 
   if (scope === 'siem') {
     requireThat(
-      siem !== null && ankay === null,
-      'SIEM-first scope requires a SIEM host profile and refuses an Ankay host.',
+      siem !== null && b89Respond === null,
+      'SIEM-first scope requires a SIEM host profile and refuses an B89 Respond host.',
     );
     if (krakend !== null) {
       requireThat(
@@ -119,11 +119,11 @@ export function validateEus2DeploymentScope(env = process.env) {
   if (scope === 'soc') {
     requireThat(
       env.AZURE_ACR_LOGIN_SERVER === expectedAcr,
-      'Wazuh plus Ankay scope requires the East US 2 demo ACR, not a registry from another environment.',
+      'Wazuh plus B89 Respond scope requires the East US 2 demo ACR, not a registry from another environment.',
     );
     requireThat(
-      siem !== null && ankay !== null,
-      'Wazuh plus Ankay scope requires complete SIEM and Ankay host profiles.',
+      siem !== null && b89Respond !== null,
+      'Wazuh plus B89 Respond scope requires complete SIEM and B89 Respond host profiles.',
     );
   }
 

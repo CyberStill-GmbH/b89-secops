@@ -39,14 +39,14 @@ jobs:
         working-directory: infra/aws
     env:
       TF_IN_AUTOMATION: "true"
-      # Sprint 5: OID de los dueños del grupo de admisión (admin en QAPAQ). Variable de
+      # Sprint 5: OID de los dueños del grupo de admisión (admin en B89). Variable de
       # repositorio de GitHub, no del repositorio git; vacía = sin dueños declarados.
-      TF_VAR_soc_group_owner_oids: ${{ vars.QAPAQ_GROUP_OWNER_OIDS }}
+      TF_VAR_soc_group_owner_oids: ${{ vars.B89_GROUP_OWNER_OIDS }}
       # Sprint 5 · fase 3: grupo de admisión para el padrón por Graph (vacío = deshabilitado).
-      TF_VAR_soc_directory_group_id: ${{ vars.QAPAQ_DIRECTORY_GROUP_ID || vars.SOC_DIRECTORY_GROUP_ID }}
+      TF_VAR_soc_directory_group_id: ${{ vars.B89_DIRECTORY_GROUP_ID || vars.SOC_DIRECTORY_GROUP_ID }}
       # Grupos cuyos miembros reciben admin; solo los declarados explícitamente.
       # Solo los grupos explícitamente declarados conceden admin; pertenecer al padrón SOC no basta.
-      TF_VAR_soc_admin_group_ids: ${{ vars.QAPAQ_ADMIN_GROUP_IDS }}
+      TF_VAR_soc_admin_group_ids: ${{ vars.B89_ADMIN_GROUP_IDS }}
 
     steps:
       - name: Checkout
@@ -55,9 +55,9 @@ jobs:
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
-          role-to-assume: arn:aws:iam::955200662475:role/qapaq-secops-github-terraform-demo
+          role-to-assume: arn:aws:iam::955200662475:role/b89-secops-github-terraform-demo
           aws-region: us-east-1
-          role-session-name: qapaq-secops-terraform
+          role-session-name: b89-secops-terraform
           allowed-account-ids: 955200662475
 
       - name: Setup Terraform
@@ -108,7 +108,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          current="$(aws secretsmanager list-secret-version-ids --secret-id qapaq-secops/demo/entra/client-secret --query "length(Versions[?contains(VersionStages, 'AWSCURRENT')])" --output text)"
+          current="$(aws secretsmanager list-secret-version-ids --secret-id b89-secops/demo/entra/client-secret --query "length(Versions[?contains(VersionStages, 'AWSCURRENT')])" --output text)"
           if [[ "$current" == 0 ]]; then
             echo '::error::The existing Entra secret must already have an AWSCURRENT version in Secrets Manager.'
             exit 1
@@ -119,7 +119,7 @@ jobs:
         run: |
           set -euo pipefail
           for service in api krakend worker; do
-            desired="$(aws ecs describe-services --cluster qapaq-secops-demo --services "qapaq-secops-demo-$service" --query 'services[0].desiredCount' --output text)"
+            desired="$(aws ecs describe-services --cluster b89-secops-demo --services "b89-secops-demo-$service" --query 'services[0].desiredCount' --output text)"
             if [[ "$desired" == 0 || "$desired" == None ]]; then
               echo "::error::Demo cost-control pause detected (ECS $service desired_count=0). Resume with AWS Demo Cost Control before a Terraform apply."
               exit 1
@@ -161,18 +161,18 @@ jobs:
               exit 1
             fi
             for suffix in indexer-reader indexer-proxy-ca dashboard-admin-user dashboard-analyst-user; do
-              secret_id="qapaq-secops/demo/wazuh/$suffix"
+              secret_id="b89-secops/demo/wazuh/$suffix"
               current="$(aws secretsmanager list-secret-version-ids --secret-id "$secret_id" --query "length(Versions[?contains(VersionStages, 'AWSCURRENT')])" --output text)"
               if [[ "$current" == 0 ]]; then
                 echo "::error::Required generated secret has no AWSCURRENT version: $secret_id"
                 exit 1
               fi
             done
-            aws ecs update-service --cluster qapaq-secops-demo --service qapaq-secops-demo-krakend --force-new-deployment --query 'service.serviceName' --output text
+            aws ecs update-service --cluster b89-secops-demo --service b89-secops-demo-krakend --force-new-deployment --query 'service.serviceName' --output text
           fi
           # ECS injects Secrets Manager values at task startup; refresh the API after sync.
-          aws ecs update-service --cluster qapaq-secops-demo --service qapaq-secops-demo-api --force-new-deployment --query 'service.serviceName' --output text
-          aws ecs wait services-stable --cluster qapaq-secops-demo --services qapaq-secops-demo-api qapaq-secops-demo-krakend
+          aws ecs update-service --cluster b89-secops-demo --service b89-secops-demo-api --force-new-deployment --query 'service.serviceName' --output text
+          aws ecs wait services-stable --cluster b89-secops-demo --services b89-secops-demo-api b89-secops-demo-krakend
           curl --fail --silent --show-error --retry 6 --retry-delay 5 --max-time 15 https://api.jappi.net.pe/api/health/ready -o /dev/null
 
       - name: Verify browser sign-in redirect
@@ -204,7 +204,7 @@ jobs:
           dashboard_url="$(terraform output -raw wazuh_dashboard_url)"
           api_url="$(terraform output -raw public_api_url)"
           echo "Wazuh Dashboard: $dashboard_url"
-          echo "QAPAQ API URL: $api_url"
+          echo "B89 API URL: $api_url"
           echo "Wazuh admin secret ARN: $(terraform output -raw wazuh_dashboard_admin_secret_arn)"
 
           echo 'Waiting for Wazuh HTTPS bootstrap to finish...'
@@ -233,7 +233,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo '## Route 53 name servers for qapaq.secops.com'
+          echo '## Route 53 name servers for b89.secops.com'
           terraform output -json public_route53_zone_name_servers
           echo '## Parent secops.com zone in this AWS account (if managed here)'
           parent_zone_id="$(aws route53 list-hosted-zones-by-name \
@@ -246,7 +246,7 @@ jobs:
             echo "Parent hosted zone: $parent_zone_id"
             aws route53 list-resource-record-sets \
               --hosted-zone-id "$parent_zone_id" \
-              --query "ResourceRecordSets[?Name == 'qapaq.secops.com.' && Type == 'NS']" \
+              --query "ResourceRecordSets[?Name == 'b89.secops.com.' && Type == 'NS']" \
               --output json
           fi
 
@@ -260,7 +260,7 @@ jobs:
 
           echo '## Existing ECR repositories'
           if ! aws ecr describe-repositories \
-            --repository-names qapaq-secops-api qapaq-secops-worker qapaq-secops-krakend \
+            --repository-names b89-secops-api b89-secops-worker b89-secops-krakend \
             --query 'repositories[].{name:repositoryName,uri:repositoryUri,tagMutability:imageTagMutability,scanOnPush:imageScanningConfiguration.scanOnPush}' \
             --output json; then
             echo 'One or more expected ECR repositories are absent.'
@@ -268,7 +268,7 @@ jobs:
 
           echo '## Publisher role and trust policy'
           if ! aws iam get-role \
-            --role-name qapaq-secops-demo-github-ecr-publisher \
+            --role-name b89-secops-demo-github-ecr-publisher \
             --query 'Role.{Arn:Arn,Trust:AssumeRolePolicyDocument}' \
             --output json; then
             echo 'Publisher IAM role is absent.'
@@ -276,22 +276,22 @@ jobs:
 
           echo '## Publisher role policies'
           aws iam list-attached-role-policies \
-            --role-name qapaq-secops-demo-github-ecr-publisher \
+            --role-name b89-secops-demo-github-ecr-publisher \
             --output json
           aws iam list-role-policies \
-            --role-name qapaq-secops-demo-github-ecr-publisher \
+            --role-name b89-secops-demo-github-ecr-publisher \
             --output json
           aws iam get-role-policy \
-            --role-name qapaq-secops-demo-github-ecr-publisher \
+            --role-name b89-secops-demo-github-ecr-publisher \
             --policy-name publish-demo-ecr-images \
             --query PolicyDocument \
             --output json
 
           echo '## Phase 2B S3 buckets'
           for bucket in \
-            qapaq-secops-demo-raw-955200662475 \
-            qapaq-secops-demo-evidence-955200662475 \
-            qapaq-secops-demo-artifacts-955200662475; do
+            b89-secops-demo-raw-955200662475 \
+            b89-secops-demo-evidence-955200662475 \
+            b89-secops-demo-artifacts-955200662475; do
             if aws s3api head-bucket --bucket "$bucket" >/dev/null 2>&1; then
               echo "$bucket: present"
             else

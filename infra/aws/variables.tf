@@ -7,7 +7,7 @@ variable "aws_region" {
 variable "project" {
   description = "Project tag applied to every resource."
   type        = string
-  default     = "qapaq-secops"
+  default     = "b89-secops"
 }
 
 variable "environment" {
@@ -19,7 +19,7 @@ variable "environment" {
 variable "github_repository" {
   description = "GitHub repository allowed to assume the demo image-publisher role."
   type        = string
-  default     = "CyberStill-GmbH/qapaq-secops"
+  default     = "CyberStill-GmbH/b89-secops"
 }
 
 variable "github_repository_owner_id" {
@@ -185,7 +185,7 @@ variable "krakend_port" {
 }
 
 variable "api_port" {
-  description = "QAPAQ API listener port."
+  description = "B89 API listener port."
   type        = number
   default     = 3000
 }
@@ -361,7 +361,7 @@ variable "ecs_health_check_grace_period_seconds" {
 }
 
 variable "siem_app_cutover" {
-  description = "true: app.<zona> apunta al SIEM QAPAQ (edge del host Wazuh) en vez de Vercel. Activar después de instalar el núcleo y el edge (docs/12)."
+  description = "true: app.<zona> apunta al SIEM B89 (edge del host Wazuh) en vez de Vercel. Activar después de instalar el núcleo y el edge (docs/12)."
   type        = bool
   default     = false
 }

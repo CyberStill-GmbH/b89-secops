@@ -31,7 +31,7 @@ let store: InMemoryAuditStore;
 let sealed: SealedAuditEvent[];
 
 beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), 'qapaq-audit-'));
+  root = await mkdtemp(join(tmpdir(), 'b89-audit-'));
   archive = new FileAuditArchive(root);
   store = new InMemoryAuditStore();
   sealed = [];

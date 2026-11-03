@@ -9,7 +9,7 @@ for (const app of ['api', 'worker']) {
     ['double-signal', undefined],
   ]) {
     test(`${app}: ${fault} closes once with safe process diagnostics`, async () => {
-      const runtime = startApp(app, { QAPAQ_API_PORT: '0' });
+      const runtime = startApp(app, { B89_API_PORT: '0' });
       try {
         await until(() => runtime.output.includes('application.ready'), `${app} readiness`);
         runtime.child.send({ fault });

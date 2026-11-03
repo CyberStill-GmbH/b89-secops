@@ -17,7 +17,7 @@ variable "location" {
 variable "project" {
   description = "Prefijo lógico de recursos Azure."
   type        = string
-  default     = "qapaq-secops"
+  default     = "b89-secops"
 }
 
 variable "environment" {
@@ -40,7 +40,7 @@ variable "address_space" {
 variable "github_repository" {
   description = "Repositorio autorizado para publicar imágenes por federación OIDC."
   type        = string
-  default     = "CyberStill-GmbH/qapaq-secops"
+  default     = "CyberStill-GmbH/b89-secops"
 }
 
 variable "github_owner_id" {
@@ -75,7 +75,7 @@ variable "additional_github_environments" {
 variable "postgres_admin_login" {
   description = "Login de bootstrap PostgreSQL; no se usa desde API ni workers."
   type        = string
-  default     = "qapaqbootstrap"
+  default     = "b89bootstrap"
 }
 
 variable "postgres_admin_password" {
@@ -145,7 +145,7 @@ variable "enable_runtime" {
 }
 
 variable "siem_host" {
-  description = "Configuración completa para habilitar el host Wazuh QAPAQ. null mantiene el módulo apagado; al habilitarlo Terraform crea el firewall Azure con policy, bundle inmutable, clave pública y CIDR aprobados."
+  description = "Configuración completa para habilitar el host Wazuh B89. null mantiene el módulo apagado; al habilitarlo Terraform crea el firewall Azure con policy, bundle inmutable, clave pública y CIDR aprobados."
   type = object({
     address_prefix          = string
     private_ip_address      = optional(string)
@@ -216,7 +216,7 @@ variable "krakend_gateway" {
 
   validation {
     condition = var.krakend_gateway == null || (
-      can(regex("^[a-z0-9]+\\.azurecr\\.io/qapaq-secops-krakend@sha256:[0-9a-f]{64}$", var.krakend_gateway.image)) &&
+      can(regex("^[a-z0-9]+\\.azurecr\\.io/b89-secops-krakend@sha256:[0-9a-f]{64}$", var.krakend_gateway.image)) &&
       can(regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", var.krakend_gateway.tenant_id)) &&
       can(regex("^api://[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/\\.default$", var.krakend_gateway.client_scope)) &&
       can(regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", var.krakend_gateway.core_client_id)) &&
@@ -234,17 +234,17 @@ variable "krakend_gateway" {
       var.siem_host.private_ip_address != null &&
       can(cidrhost("${var.siem_host.private_ip_address}/32", 0)) &&
       var.siem_host.private_ip_address == cidrhost(var.siem_host.address_prefix, 4) &&
-      contains(keys(var.siem_host.core_secret_names), "QAPAQ_ENTRA_CLIENT_SECRET") &&
-      lookup(var.siem_host.core_environment, "QAPAQ_ENTRA_TENANT_ID", "") == var.krakend_gateway.tenant_id &&
-      lookup(var.siem_host.core_environment, "QAPAQ_ENTRA_CLIENT_ID", "") == var.krakend_gateway.core_client_id &&
-      lookup(var.siem_host.core_environment, "QAPAQ_INGESTION_SOURCE", "wazuh") == "wazuh"
+      contains(keys(var.siem_host.core_secret_names), "B89_ENTRA_CLIENT_SECRET") &&
+      lookup(var.siem_host.core_environment, "B89_ENTRA_TENANT_ID", "") == var.krakend_gateway.tenant_id &&
+      lookup(var.siem_host.core_environment, "B89_ENTRA_CLIENT_ID", "") == var.krakend_gateway.core_client_id &&
+      lookup(var.siem_host.core_environment, "B89_INGESTION_SOURCE", "wazuh") == "wazuh"
     )
-    error_message = "KrakenD requiere siem_host, QAPAQ_ENTRA_CLIENT_SECRET en Key Vault y core_client_id coincidente con QAPAQ_ENTRA_CLIENT_ID; la ingesta debe usar la fuente wazuh."
+    error_message = "KrakenD requiere siem_host, B89_ENTRA_CLIENT_SECRET en Key Vault y core_client_id coincidente con B89_ENTRA_CLIENT_ID; la ingesta debe usar la fuente wazuh."
   }
 }
 
-variable "ankay_host" {
-  description = "Configuración de Ankay Qapaq/Shuffle en VM privada separada. null mantiene el host apagado. Requiere SIEM, seis digests ACR, Compose sin secretos y referencias a secretos precreados en Key Vault; comparte el firewall Azure del SIEM."
+variable "b89_respond_host" {
+  description = "Configuración de B89 Respond/Shuffle en VM privada separada. null mantiene el host apagado. Requiere SIEM, seis digests ACR, Compose sin secretos y referencias a secretos precreados en Key Vault; comparte el firewall Azure del SIEM."
   type = object({
     private_ip_address      = string
     admin_ssh_public_key    = string
@@ -261,25 +261,25 @@ variable "ankay_host" {
   nullable = true
 
   validation {
-    condition     = var.ankay_host == null || var.siem_host != null
-    error_message = "Ankay Qapaq requiere que siem_host esté configurado para compartir el edge y callback protegido de QAPAQ."
+    condition     = var.b89_respond_host == null || var.siem_host != null
+    error_message = "B89 Respond requiere que siem_host esté configurado para compartir el edge y callback protegido de B89."
   }
 
   validation {
-    condition = var.ankay_host == null || (
-      length(var.ankay_host.secret_names) >= 1 &&
-      alltrue([for key, value in var.ankay_host.secret_names : can(regex("^[A-Z][A-Z0-9_]{0,127}$", key)) && can(regex("^[A-Za-z0-9-]{1,127}$", value))])
+    condition = var.b89_respond_host == null || (
+      length(var.b89_respond_host.secret_names) >= 1 &&
+      alltrue([for key, value in var.b89_respond_host.secret_names : can(regex("^[A-Z][A-Z0-9_]{0,127}$", key)) && can(regex("^[A-Za-z0-9-]{1,127}$", value))])
     )
-    error_message = "ankay_host.secret_names debe mapear variables de entorno a nombres existentes de Key Vault; nunca incluyas valores secretos."
+    error_message = "b89_respond_host.secret_names debe mapear variables de entorno a nombres existentes de Key Vault; nunca incluyas valores secretos."
   }
 
   validation {
-    condition = var.ankay_host == null || (
-      length(var.ankay_host.docker_package_versions) == 6 &&
-      alltrue([for key in ["docker-ce", "docker-ce-cli", "containerd.io", "docker-buildx-plugin", "docker-compose-plugin", "azure-cli"] : contains(keys(var.ankay_host.docker_package_versions), key)]) &&
-      alltrue([for value in values(var.ankay_host.docker_package_versions) : can(regex("^[A-Za-z0-9:.+~_-]{1,80}$", value))])
+    condition = var.b89_respond_host == null || (
+      length(var.b89_respond_host.docker_package_versions) == 6 &&
+      alltrue([for key in ["docker-ce", "docker-ce-cli", "containerd.io", "docker-buildx-plugin", "docker-compose-plugin", "azure-cli"] : contains(keys(var.b89_respond_host.docker_package_versions), key)]) &&
+      alltrue([for value in values(var.b89_respond_host.docker_package_versions) : can(regex("^[A-Za-z0-9:.+~_-]{1,80}$", value))])
     )
-    error_message = "ankay_host.docker_package_versions debe fijar las seis versiones apt de Docker y Azure CLI."
+    error_message = "b89_respond_host.docker_package_versions debe fijar las seis versiones apt de Docker y Azure CLI."
   }
 }
 
@@ -293,7 +293,7 @@ variable "tags" {
   description = "Etiquetas comunes de gobierno y costo."
   type        = map(string)
   default = {
-    project     = "qapaq-secops"
+    project     = "b89-secops"
     environment = "demo"
     managed_by  = "terraform"
     cloud       = "azure"
@@ -315,7 +315,7 @@ variable "cost_budget_amount" {
 variable "cost_alert_emails" {
   description = "Destinatarios autorizados para avisos de presupuesto Azure."
   type        = list(string)
-  default     = ["cguevara@qapaq.pe"]
+  default     = ["cguevara@b89.example"]
 
   validation {
     condition     = length(var.cost_alert_emails) > 0 && alltrue([for email in var.cost_alert_emails : can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", email))])

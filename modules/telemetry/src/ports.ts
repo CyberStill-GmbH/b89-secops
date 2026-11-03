@@ -7,7 +7,7 @@
  * no contra dobles (Definition of Done, sección Specs automatizadas).
  */
 
-import type { SecurityEvent } from '@qapaq/contracts';
+import type { SecurityEvent } from '@b89/contracts';
 
 import type { CheckpointCandidate, CheckpointState } from './checkpoint-advance.js';
 import type { InboxEntry, InboxStatus } from './inbox-lifecycle.js';

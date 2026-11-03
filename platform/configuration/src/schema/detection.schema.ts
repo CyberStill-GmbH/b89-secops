@@ -1,7 +1,7 @@
 /**
- * C-16 — contexto de negocio para la priorización QAPAQ.
+ * C-16 — contexto de negocio para la priorización B89.
  *
- * Wazuh decide que algo es una alerta; QAPAQ decide qué merece atención primero. Esa
+ * Wazuh decide que algo es una alerta; B89 decide qué merece atención primero. Esa
  * decisión depende de datos que el SIEM no tiene: quién es administrador, qué cuentas
  * son de emergencia (break-glass), qué activos son críticos y qué reglas se aceptaron
  * como benignas. Sin este contexto la priorización solo reetiqueta el nivel de la regla.
@@ -83,7 +83,7 @@ function parseKnownBenignRules(
   environment: EnvironmentInput,
   profile: ConfigurationProfile,
 ): readonly KnownBenignRule[] {
-  const name = 'QAPAQ_DETECTION_KNOWN_BENIGN_RULES';
+  const name = 'B89_DETECTION_KNOWN_BENIGN_RULES';
   const rules = parseEntries(environment, profile, name).map((entry) => {
     const separator = entry.indexOf(':');
     const ruleId = separator > 0 ? entry.slice(0, separator) : '';
@@ -109,10 +109,10 @@ export function parseDetectionContext(
   profile: ConfigurationProfile,
 ): DetectionContextConfig {
   const privilegedIdentities = lowerCased(
-    parseEntries(environment, profile, 'QAPAQ_DETECTION_PRIVILEGED_IDENTITIES'),
+    parseEntries(environment, profile, 'B89_DETECTION_PRIVILEGED_IDENTITIES'),
   );
   const breakGlassIdentities = lowerCased(
-    parseEntries(environment, profile, 'QAPAQ_DETECTION_BREAK_GLASS_IDENTITIES'),
+    parseEntries(environment, profile, 'B89_DETECTION_BREAK_GLASS_IDENTITIES'),
   );
   return {
     // Una cuenta break-glass es privilegiada por definición; se agrega para que basten
@@ -121,11 +121,9 @@ export function parseDetectionContext(
       ...new Set([...privilegedIdentities, ...breakGlassIdentities]),
     ]),
     breakGlassIdentities,
-    criticalAssets: lowerCased(
-      parseEntries(environment, profile, 'QAPAQ_DETECTION_CRITICAL_ASSETS'),
-    ),
+    criticalAssets: lowerCased(parseEntries(environment, profile, 'B89_DETECTION_CRITICAL_ASSETS')),
     internetFacingAssets: lowerCased(
-      parseEntries(environment, profile, 'QAPAQ_DETECTION_INTERNET_FACING_ASSETS'),
+      parseEntries(environment, profile, 'B89_DETECTION_INTERNET_FACING_ASSETS'),
     ),
     knownBenignRules: parseKnownBenignRules(environment, profile),
   };

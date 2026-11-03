@@ -8,7 +8,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 here = Path(__file__).resolve().parent
-rule_path = here.parent / "rules" / "qapaq_endpoint_rules.xml"
+rule_path = here.parent / "rules" / "b89_endpoint_rules.xml"
 rule_root = ET.parse(rule_path).getroot()
 rule = rule_root.find("rule[@id='101100']")
 if rule is None:

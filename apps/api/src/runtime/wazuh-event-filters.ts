@@ -12,18 +12,18 @@
  *   `undefined` y el proveedor rechaza la consulta.
  */
 
-import type { EventFilters, JsonObject } from '@qapaq/connectors';
+import type { EventFilters, JsonObject } from '@b89/connectors';
 import {
   NORMALIZED_SEVERITIES,
   SECURITY_EVENT_CATEGORIES,
   type SecurityEvent,
   type SecurityEventCategory,
-} from '@qapaq/contracts';
+} from '@b89/contracts';
 import {
   wazuhGroupsForCategories,
   wazuhGroupsForOutcome,
   wazuhLevelRangesFor,
-} from '@qapaq/telemetry/wazuh';
+} from '@b89/telemetry/wazuh';
 
 type Severity = SecurityEvent['severity']['normalized'];
 

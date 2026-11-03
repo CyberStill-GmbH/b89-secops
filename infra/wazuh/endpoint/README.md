@@ -1,6 +1,6 @@
-# Detecciones endpoint QAPAQ sobre Wazuh
+# Detecciones endpoint B89 sobre Wazuh
 
-**Estado: candidata; quedará en el próximo bundle Azure, pero aún no está instalada en un Manager ni observada en endpoints QAPAQ.**
+**Estado: candidata; quedará en el próximo bundle Azure, pero aún no está instalada en un Manager ni observada en endpoints B89.**
 
 Este paquete incorpora una adaptación acotada de la idea de SigmaHQ “Suspicious Outlook
 Child Process” (UUID `208748f7-881d-47ac-a29c-07ea84bf691d`) para Wazuh 4.14.x. Busca
@@ -35,13 +35,13 @@ referencias al grupo nativo. `tests/validate-fixtures.py` evalúa los casos sint
 positivos/negativos usando los patrones extraídos de la regla real. No suplanta al
 decoder EventChannel ni afirma un `wazuh-logtest` end-to-end; la aceptación final requiere
 eventos Sysmon sintéticos en un Manager de prueba con telemetría Windows habilitada. La
-imagen de CI usa Wazuh 4.14.8, igual a la versión base del Dashboard QAPAQ. Una prueba
+imagen de CI usa Wazuh 4.14.8, igual a la versión base del Dashboard B89. Una prueba
 verde valida sintaxis y patrones con fixtures; no acredita cobertura ni tasa de falsos
 positivos en endpoints reales.
 
-La regla aún no está cableada al forwarder Wazuh→Ankay: el adaptador actual solo eleva
+La regla aún no está cableada al forwarder Wazuh→B89 Respond: el adaptador actual solo eleva
 alertas desde nivel 12. No reducir ese umbral global por esta regla. El paso posterior
-es admitirla mediante un caso QAPAQ y un allowlist versionado, después de validar el
+es admitirla mediante un caso B89 y un allowlist versionado, después de validar el
 contrato de eventos y volumen; el playbook correspondiente es de triage read-only.
 
 ## Procedencia y licencia

@@ -54,7 +54,7 @@ de costo del tenant ni incluyen descuentos.
 El subtotal previo era un **piso sin HA**: Wazuh es un nodo all-in-one y PostgreSQL usa Burstable `B2S`. Azure documenta que PostgreSQL HA no admite el tier Burstable; Chile Central sí soporta zone-redundant HA ([matriz de región](https://learn.microsoft.com/en-us/azure/postgresql/overview), [requisitos y costo HA](https://learn.microsoft.com/en-us/azure/reliability/reliability-database-postgresql)). Los importes previos para PostgreSQL General Purpose `Standard_D2ads_v5` (USD 0.2492/h) y su standby no se revalidaron el 2026-10-19; los cálculos siguientes son ilustrativos y no una cotización actual:
 
 - PostgreSQL `D2ads_v5` primary + standby: USD 0.2492 × 2 × 730 = **USD 363.83/mes** solo cómputo.
-- Más el mínimo Wazuh all-in-one calculado arriba: **USD 536.84/mes**, todavía sin discos, backup, red, Container Apps, Ankay ni alta disponibilidad del propio Wazuh.
+- Más el mínimo Wazuh all-in-one calculado arriba: **USD 536.84/mes**, todavía sin discos, backup, red, Container Apps, B89 Respond ni alta disponibilidad del propio Wazuh.
 
 La [oferta gratuita de Azure](https://azure.microsoft.com/en-us/pricing/free-services/) anuncia PostgreSQL B1MS por 750 h/mes, 32 GB de storage y 32 GB de backup durante 12 meses; requiere una suscripción elegible de Azure Free y no cubre la configuración General Purpose HA. No pude comprobar la elegibilidad de esta suscripción. No la descuento del piso ni la trato como financiación recurrente.
 
@@ -64,24 +64,24 @@ La revalidación confirma que el cómputo Wazuh recomendado consume USD 173.01/m
 pero no revalidó PostgreSQL ni el costo total de la cuenta. El subtotal previo de
 USD 242.51 y el escenario PostgreSQL HA de USD 536.84 quedan como estimaciones de
 trabajo hasta recalcularlos con precios actuales y la cotización del tenant. Ninguno
-incluye discos, backups, tráfico, Container Apps, Ankay, Log Analytics, ACR ni el
+incluye discos, backups, tráfico, Container Apps, B89 Respond, Log Analytics, ACR ni el
 Wazuh distribuido que exigiría un objetivo real de alta disponibilidad y estrés. El
 root actual además crea cinco Container Apps con `min_replicas = 1` al activar
-`enable_runtime`; Wazuh y Ankay todavía no están incluidos en esa IaC. Encender ese
+`enable_runtime`; Wazuh y B89 Respond todavía no están incluidos en esa IaC. Encender ese
 runtime no produciría el SOC solicitado y el presupuesto configurado solo envía
 avisos; no corta consumo.
 
 No reduciré Wazuh por debajo del tamaño recomendado, co-localizaré datos confidenciales
 y runtime para simular ahorro, ni desplegaré un stack parcial como si fuera resiliente.
-Para conservar Wazuh/M365 activo 24/7, QAPAQ, persistencia, Ankay y conectores, el gate
+Para conservar Wazuh/M365 activo 24/7, B89, persistencia, B89 Respond y conectores, el gate
 de presupuesto requiere una cotización completa por SKU, datos/retención y tráfico.
 **No se debe aplicar el stack** hasta revalidar PostgreSQL, almacenamiento, red,
-observabilidad, Ankay y cargos de la suscripción y compararlos con el límite histórico de USD 200.
+observabilidad, B89 Respond y cargos de la suscripción y compararlos con el límite histórico de USD 200.
 
 ## Implicaciones para Terraform
 
 1. No habilitar `enable_runtime` ni crear el primer state hasta tener el estimado completo y el presupuesto aprobado.
-2. Obtener la cotización del tenant/contrato y calcular al menos Wazuh + disco de datos + backups, PostgreSQL, Container Apps, Log Analytics, ACR, Key Vault, IP/egress, storage/retención y Ankay.
+2. Obtener la cotización del tenant/contrato y calcular al menos Wazuh + disco de datos + backups, PostgreSQL, Container Apps, Log Analytics, ACR, Key Vault, IP/egress, storage/retención y B89 Respond.
 3. Reconciliar costo y disponibilidad con el contrato real de cola; actualmente `apps/worker` no consume BullMQ y Terraform no puede declarar ese costo como funcionalidad entregada.
 4. Mantener cualquier plan/apply separado para que el delta de recursos, costo, `prevent_destroy`, DNS y referencias de Key Vault se pueda revisar antes de ejecución.
 

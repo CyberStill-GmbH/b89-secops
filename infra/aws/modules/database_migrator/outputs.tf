@@ -1,15 +1,15 @@
 output "runtime_secret_arn" {
-  description = "Secret de qapaq_soc_runtime (claves username y password). Es el que se inyecta en el API."
+  description = "Secret de b89_soc_runtime (claves username y password). Es el que se inyecta en el API."
   value       = aws_secretsmanager_secret.role["soc_runtime"].arn
 }
 
 output "entity_ref_key_secret_arn" {
-  description = "Secret con la clave HMAC de referencias de entidad; se inyecta en el API como QAPAQ_ENTITY_REF_KEY."
+  description = "Secret con la clave HMAC de referencias de entidad; se inyecta en el API como B89_ENTITY_REF_KEY."
   value       = aws_secretsmanager_secret.entity_ref_key.arn
 }
 
 output "migrator_secret_arn" {
-  description = "Secret de qapaq_migrator; solo lo usa la tarea migrate."
+  description = "Secret de b89_migrator; solo lo usa la tarea migrate."
   value       = aws_secretsmanager_secret.role["migrator"].arn
 }
 

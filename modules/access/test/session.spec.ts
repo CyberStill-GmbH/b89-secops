@@ -16,7 +16,7 @@ const NOW = new Date('2026-10-07T12:00:00.000Z');
 const input: OpenSessionInput = {
   subjectId: 'analyst-1',
   tenantId: 'tenant-1',
-  roles: ['qapaq.soc.analyst'],
+  roles: ['b89.soc.analyst'],
   scopes: ['soc.read', 'soc.write'],
   capabilities: new Set<Capability>(['alerts.read', 'alerts.triage']),
   amr: ['pwd', 'mfa'],

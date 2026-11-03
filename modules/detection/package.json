@@ -1,5 +1,5 @@
 {
-  "name": "@qapaq/detection",
+  "name": "@b89/detection",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -16,7 +16,7 @@
     "test": "pnpm --dir ../.. exec vitest run --config vitest.config.ts modules/detection/test"
   },
   "dependencies": {
-    "@qapaq/contracts": "workspace:*"
+    "@b89/contracts": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "24.13.6",

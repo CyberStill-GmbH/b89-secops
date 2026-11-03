@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Atomically install QAPAQ AD, endpoint and provider rules into Wazuh's local ruleset."""
+"""Atomically install B89 AD, endpoint and provider rules into Wazuh's local ruleset."""
 
 from __future__ import annotations
 
@@ -20,9 +20,9 @@ except ImportError:  # Windows test runner; deployment runs on Ubuntu.
 
 
 RULE_FILES = (
-    pathlib.Path("launch-detections/rules/qapaq_launch_provider_rules.xml"),
-    pathlib.Path("endpoint/rules/qapaq_endpoint_rules.xml"),
-    pathlib.Path("active-directory/rules/qapaq_active_directory_rules.xml"),
+    pathlib.Path("launch-detections/rules/b89_launch_provider_rules.xml"),
+    pathlib.Path("endpoint/rules/b89_endpoint_rules.xml"),
+    pathlib.Path("active-directory/rules/b89_active_directory_rules.xml"),
 )
 RULESET = re.compile(r"<ruleset(?:\s[^>]*)?>(.*?)</ruleset>", re.DOTALL)
 LOCAL_RULE_DIR = re.compile(r"<rule_dir(?:\s[^>]*)?>\s*etc/rules\s*</rule_dir>")
@@ -57,13 +57,13 @@ def _atomic_write(
 
 def _validate_rule_file(path: pathlib.Path) -> None:
     if not path.is_file() or path.is_symlink():
-        raise InstallError(f"required QAPAQ rule file missing: {path.name}")
+        raise InstallError(f"required B89 rule file missing: {path.name}")
     try:
         root = ET.parse(path).getroot()
     except ET.ParseError as error:
-        raise InstallError(f"QAPAQ rule XML is invalid: {path.name}") from error
+        raise InstallError(f"B89 rule XML is invalid: {path.name}") from error
     if root.tag != "group" or not root.findall("rule"):
-        raise InstallError(f"QAPAQ rule XML has no root group or rules: {path.name}")
+        raise InstallError(f"B89 rule XML has no root group or rules: {path.name}")
 
 
 def _updated_ossec_conf(content: bytes) -> bytes:
@@ -135,7 +135,7 @@ def install(bundle_wazuh: pathlib.Path, wazuh_root: pathlib.Path, *, restart: bo
 
         checked = subprocess.run([str(analysisd), "-t"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if checked.returncode != 0:
-            raise InstallError("wazuh-analysisd rejected the QAPAQ rules; previous local rules were restored")
+            raise InstallError("wazuh-analysisd rejected the B89 rules; previous local rules were restored")
         if restart:
             restarted = subprocess.run(["systemctl", "restart", "wazuh-manager"], check=False,
                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -157,9 +157,9 @@ def main() -> int:
     try:
         install(args.bundle_wazuh, args.wazuh_root)
     except (OSError, InstallError, KeyError, UnicodeError) as error:
-        print(f"qapaq-detection-rules: {error}", file=os.sys.stderr)
+        print(f"b89-detection-rules: {error}", file=os.sys.stderr)
         return 1
-    print("qapaq-detection-rules: AD, endpoint and provider rules installed and manager restarted")
+    print("b89-detection-rules: AD, endpoint and provider rules installed and manager restarted")
     return 0
 
 

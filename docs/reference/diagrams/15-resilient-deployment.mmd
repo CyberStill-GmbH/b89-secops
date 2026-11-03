@@ -4,16 +4,16 @@ flowchart TB
   WAZ[Wazuh Manager / agentes / Indexer]
   SHUFFLE[Shuffle · SOAR no-code post-MVP]
 
-  subgraph EDGE[Zona de acceso QAPAQ]
+  subgraph EDGE[Zona de acceso B89]
     WAF[Control perimetral del ambiente]
     LB[Balanceador de acceso]
   end
 
-  subgraph APP[Pool de aplicación QAPAQ · réplicas stateless]
+  subgraph APP[Pool de aplicación B89 · réplicas stateless]
     WEB1[Consola web A]
     WEB2[Consola web B]
-    API1[Qapaq SecOps Core API A]
-    API2[Qapaq SecOps Core API B]
+    API1[B89 SecOps Core API A]
+    API2[B89 SecOps Core API B]
   end
 
   subgraph INT[Integraciones · on-premises o red privada aprobada]
@@ -27,14 +27,14 @@ flowchart TB
     PG[(PostgreSQL HA objetivo<br/>estado, checkpoint, outbox, audit)]
     REDIS[(Redis HA objetivo<br/>BullMQ · jobs con referencias)]
     WORKERS[Workers escalables<br/>ingesta · detección · indexación]
-    OS[(OpenSearch QAPAQ<br/>índices versionados y alias)]
+    OS[(OpenSearch B89<br/>índices versionados y alias)]
     OBJ[(Object storage cifrado<br/>HOT/WARM/COLD según política)]
   end
 
   subgraph CORE[Capacidades de producto]
-    QCORE[Alertas y priorización<br/>Qapaq SecOps Core]
-    AYNI[Ayni Qapaq<br/>investigación, tareas, evidencia, timeline]
-    SOARCTL[Autorización y ledger SOAR<br/>en QAPAQ]
+    QCORE[Alertas y priorización<br/>B89 SecOps Core]
+    B89_CASES[B89 Cases<br/>investigación, tareas, evidencia, timeline]
+    SOARCTL[Autorización y ledger SOAR<br/>en B89]
   end
 
   SOC -->|HTTPS| WAF --> LB
@@ -48,8 +48,8 @@ flowchart TB
   API2 --> PG
   API1 --> OS
   API2 --> OS
-  API1 --> AYNI
-  API2 --> AYNI
+  API1 --> B89_CASES
+  API2 --> B89_CASES
 
   EXT --> ILB
   WAZ -->|consulta mínima, read-only| POLL
@@ -64,7 +64,7 @@ flowchart TB
   WORKERS --> PG
   WORKERS --> OS
   WORKERS --> QCORE
-  QCORE --> AYNI
+  QCORE --> B89_CASES
   QCORE --> SOARCTL
   SOARCTL -->|solicitud autenticada y aprobada| SHUFFLE
   SHUFFLE -->|callback/resultado correlacionado| SOARCTL

@@ -51,7 +51,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Checkout QAPAQ repository without persisted credentials
+      - name: Checkout B89 repository without persisted credentials
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -135,7 +135,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Checkout QAPAQ repository without persisted credentials
+      - name: Checkout B89 repository without persisted credentials
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -216,7 +216,7 @@ jobs:
             --arg sha256 "$(sha256sum "$package" | cut -d' ' -f1)" \
             --arg sha512 "$(sha512sum "$package" | cut -d' ' -f1)" \
             --arg osdCompatibility "$(bash packaging_scripts/upstream_version.sh)" \
-            '{status:"experimental", component:"wazuh-indexer", repository:$repository, sourceCommit:$commit, buildOverlaySha256:$overlaySha256, package:$package, debVersion:$version, sha256:$sha256, sha512:$sha512, openSearchDashboardsCompatibility:$osdCompatibility, buildMethod:"official docker/ci/ci.sh and packaging_scripts build/assemble with pinned QAPAQ Spotless 8.10.2 build-only overlay; Debian amd64; revision 1"}' \
+            '{status:"experimental", component:"wazuh-indexer", repository:$repository, sourceCommit:$commit, buildOverlaySha256:$overlaySha256, package:$package, debVersion:$version, sha256:$sha256, sha512:$sha512, openSearchDashboardsCompatibility:$osdCompatibility, buildMethod:"official docker/ci/ci.sh and packaging_scripts build/assemble with pinned B89 Spotless 8.10.2 build-only overlay; Debian amd64; revision 1"}' \
             > "$RUNNER_TEMP/indexer-artifact/provenance.json"
 
       - name: Stop official build containers
@@ -250,7 +250,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Checkout QAPAQ repository without persisted credentials
+      - name: Checkout B89 repository without persisted credentials
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -356,7 +356,7 @@ jobs:
             --arg filebeatVersion "$FILEBEAT_VERSION" \
             --arg runId "$GITHUB_RUN_ID" \
             --arg runAttempt "$GITHUB_RUN_ATTEMPT" \
-            '{status:$status, runtimeReady:false, installBundle:false, cloudPublication:false, versions:{wazuhManager:$wazuhVersion, wazuhIndexer:$wazuhVersion, openSearchDashboardsCompatibility:$osdCompatibility, filebeat:$filebeatVersion}, sourceCommits:{wazuhManager:$managerSha, wazuhIndexer:$indexerSha}, buildOverlays:{wazuhIndexerSpotless:{version:"8.10.2",sha256:$indexerOverlaySha256}}, actionsRun:{id:$runId, attempt:$runAttempt}, artifacts:["azure-siem-manager-4.14.8-experimental","azure-siem-indexer-4.14.8-experimental","azure-siem-filebeat-7.10.2-2-experimental"], limitations:["Dashboard QAPAQ and qapaq-core are not included.","This is not the siem_host bootstrap bundle and cannot be applied.","Source-package builds are not locally executable/validated in this Windows worktree.","Upstream builders may download mutable base images or dependencies; this workflow records source and output hashes but does not claim bit-for-bit reproducibility."]}' \
+            '{status:$status, runtimeReady:false, installBundle:false, cloudPublication:false, versions:{wazuhManager:$wazuhVersion, wazuhIndexer:$wazuhVersion, openSearchDashboardsCompatibility:$osdCompatibility, filebeat:$filebeatVersion}, sourceCommits:{wazuhManager:$managerSha, wazuhIndexer:$indexerSha}, buildOverlays:{wazuhIndexerSpotless:{version:"8.10.2",sha256:$indexerOverlaySha256}}, actionsRun:{id:$runId, attempt:$runAttempt}, artifacts:["azure-siem-manager-4.14.8-experimental","azure-siem-indexer-4.14.8-experimental","azure-siem-filebeat-7.10.2-2-experimental"], limitations:["Dashboard B89 and b89-core are not included.","This is not the siem_host bootstrap bundle and cannot be applied.","Source-package builds are not locally executable/validated in this Windows worktree.","Upstream builders may download mutable base images or dependencies; this workflow records source and output hashes but does not claim bit-for-bit reproducibility."]}' \
             > "$RUNNER_TEMP/evidence/prerequisites-manifest.json"
           cp "$manager/provenance.json" "$RUNNER_TEMP/evidence/manager-provenance.json"
           cp "$indexer/provenance.json" "$RUNNER_TEMP/evidence/indexer-provenance.json"

@@ -5,18 +5,18 @@
 set -Eeuo pipefail
 umask 077
 
-readonly MODE="${QAPAQ_ARCHIVES_MODE:-apply}"
-readonly WAZUH_HOME="${QAPAQ_WAZUH_HOME:-/var/ossec}"
-readonly FILEBEAT_CONFIG="${QAPAQ_FILEBEAT_CONFIG:-/etc/filebeat/filebeat.yml}"
+readonly MODE="${B89_ARCHIVES_MODE:-apply}"
+readonly WAZUH_HOME="${B89_WAZUH_HOME:-/var/ossec}"
+readonly FILEBEAT_CONFIG="${B89_FILEBEAT_CONFIG:-/etc/filebeat/filebeat.yml}"
 readonly MANAGER_CONFIG="${WAZUH_HOME}/etc/ossec.conf"
-readonly INDEXER_ADMIN="${QAPAQ_INDEXER_ADMIN_HELPER:-/opt/qapaq/indexer-admin.sh}"
-readonly POLICY_SOURCE="${QAPAQ_ARCHIVES_POLICY:-/opt/qapaq/qapaq-wazuh-archives-7d.json}"
-readonly POLICY_ID='qapaq-wazuh-archives-7d'
+readonly INDEXER_ADMIN="${B89_INDEXER_ADMIN_HELPER:-/opt/b89/indexer-admin.sh}"
+readonly POLICY_SOURCE="${B89_ARCHIVES_POLICY:-/opt/b89/b89-wazuh-archives-7d.json}"
+readonly POLICY_ID='b89-wazuh-archives-7d'
 
-fail() { printf 'qapaq-archives: ERROR %s\n' "$1" >&2; exit 1; }
-info() { printf 'qapaq-archives: %s\n' "$1"; }
+fail() { printf 'b89-archives: ERROR %s\n' "$1" >&2; exit 1; }
+info() { printf 'b89-archives: %s\n' "$1"; }
 
-[[ "$MODE" == audit || "$MODE" == apply ]] || fail 'QAPAQ_ARCHIVES_MODE debe ser audit o apply.'
+[[ "$MODE" == audit || "$MODE" == apply ]] || fail 'B89_ARCHIVES_MODE debe ser audit o apply.'
 [[ -r "$MANAGER_CONFIG" ]] || fail 'no se puede leer ossec.conf.'
 [[ -r "$FILEBEAT_CONFIG" ]] || fail 'no se puede leer filebeat.yml.'
 [[ -r "$POLICY_SOURCE" ]] || fail 'no se encuentra la política ISM versionada.'
@@ -110,8 +110,8 @@ free_kb="$(df -Pk /var/lib/wazuh-indexer | awk 'NR == 2 {print $4}')"
 [[ "$free_kb" =~ ^[0-9]+$ ]] || fail 'no se pudo calcular el espacio libre del Indexer.'
 (( free_kb >= 10485760 )) || fail 'menos de 10 GiB libres en el Indexer; no se activa el archivo crudo.'
 
-work="$(mktemp -d /dev/shm/qapaq-archives.XXXXXX 2>/dev/null || mktemp -d)"
-backup="/root/qapaq-archives-backup-$(date -u +%Y%m%dT%H%M%SZ)"
+work="$(mktemp -d /dev/shm/b89-archives.XXXXXX 2>/dev/null || mktemp -d)"
+backup="/root/b89-archives-backup-$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -m 700 "$backup"
 cp -p "$MANAGER_CONFIG" "$backup/ossec.conf"
 cp -p "$FILEBEAT_CONFIG" "$backup/filebeat.yml"
@@ -126,7 +126,7 @@ rollback() {
     systemctl restart filebeat >/dev/null 2>&1 || true
   fi
   rm -rf "$work"
-  [[ -z "${_qapaq_work:-}" ]] || rm -rf "$_qapaq_work"
+  [[ -z "${_b89_work:-}" ]] || rm -rf "$_b89_work"
   exit "$code"
 }
 trap rollback EXIT
@@ -153,18 +153,18 @@ info "política ${POLICY_ID} configurada; aplica solo a wazuh-archives-*"
 # anterior, se asigna esta política por nombre exacto (nunca con un wildcard global).
 indexer GET '/_cat/indices/wazuh-archives-*?format=json&h=index'
 [[ "$INDEXER_STATUS" == 200 ]] || fail "inventariar índices archive → HTTP $INDEXER_STATUS"
-printf '{"policy_id":"%s"}\n' "$POLICY_ID" >"$_qapaq_work/archive-policy.json"
+printf '{"policy_id":"%s"}\n' "$POLICY_ID" >"$_b89_work/archive-policy.json"
 archive_indices="$(jq -r '.[].index // empty' "$INDEXER_BODY")"
 while IFS= read -r archive_index; do
   [[ -n "$archive_index" ]] || continue
-  indexer POST "/_plugins/_ism/add/${archive_index}" "$_qapaq_work/archive-policy.json"
+  indexer POST "/_plugins/_ism/add/${archive_index}" "$_b89_work/archive-policy.json"
   if [[ "$INDEXER_STATUS" =~ ^20[01]$ ]] && jq -e '.failures == false' "$INDEXER_BODY" >/dev/null; then
     info "política ${POLICY_ID} asignada a ${archive_index}"
     continue
   fi
   # Si ya tenía una política (por ejemplo la política genérica de 90 días), migra solo el índice
   # archive existente a la retención demo autorizada.
-  indexer POST "/_plugins/_ism/change_policy/${archive_index}" "$_qapaq_work/archive-policy.json"
+  indexer POST "/_plugins/_ism/change_policy/${archive_index}" "$_b89_work/archive-policy.json"
   [[ "$INDEXER_STATUS" =~ ^20[01]$ ]] && jq -e '.failures == false' "$INDEXER_BODY" >/dev/null ||
     fail "no se pudo asignar la política de siete días a ${archive_index}"
   info "política ${POLICY_ID} programada para ${archive_index}"

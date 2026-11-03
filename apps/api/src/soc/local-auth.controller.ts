@@ -52,7 +52,7 @@ export class LocalAuthController {
       .status(200)
       .header('content-type', 'text/html; charset=utf-8')
       .send(
-        `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Acceso local QAPAQ</title></head><body><h1>Emisor local de desarrollo</h1><p>Perfil no productivo. Seleccione una identidad sintética.</p><ul>${rows}</ul></body></html>`,
+        `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Acceso local B89</title></head><body><h1>Emisor local de desarrollo</h1><p>Perfil no productivo. Seleccione una identidad sintética.</p><ul>${rows}</ul></body></html>`,
       );
   }
 

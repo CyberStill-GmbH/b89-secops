@@ -10,8 +10,8 @@ locals {
       cpu          = 0.5
       memory       = "1Gi"
       env = {
-        QAPAQ_WEB_UPSTREAM     = "http://${var.name_base}-web.internal.${var.container_app_environment_default_domain}"
-        QAPAQ_GATEWAY_UPSTREAM = "http://${var.name_base}-gateway.internal.${var.container_app_environment_default_domain}"
+        B89_WEB_UPSTREAM     = "http://${var.name_base}-web.internal.${var.container_app_environment_default_domain}"
+        B89_GATEWAY_UPSTREAM = "http://${var.name_base}-gateway.internal.${var.container_app_environment_default_domain}"
       }
     }
     web = {
@@ -32,7 +32,7 @@ locals {
       max_replicas = 2
       cpu          = 0.5
       memory       = "1Gi"
-      env          = { QAPAQ_API_UPSTREAM = "http://${var.name_base}-api.internal.${var.container_app_environment_default_domain}:3000" }
+      env          = { B89_API_UPSTREAM = "http://${var.name_base}-api.internal.${var.container_app_environment_default_domain}:3000" }
     }
     api = {
       image        = lookup(var.container_images, "api", "")
@@ -44,14 +44,14 @@ locals {
       memory       = "1Gi"
       env = {
         NODE_ENV                = "production"
-        QAPAQ_PROFILE           = "production"
-        QAPAQ_API_HOST          = "0.0.0.0"
-        QAPAQ_API_PORT          = "3000"
-        QAPAQ_SOC_PERSISTENCE   = "postgres"
-        QAPAQ_POSTGRES_HOST     = var.postgres_fqdn
-        QAPAQ_POSTGRES_PORT     = "5432"
-        QAPAQ_POSTGRES_DATABASE = var.app_database_name
-        QAPAQ_POSTGRES_TLS      = "true"
+        B89_PROFILE           = "production"
+        B89_API_HOST          = "0.0.0.0"
+        B89_API_PORT          = "3000"
+        B89_SOC_PERSISTENCE   = "postgres"
+        B89_POSTGRES_HOST     = var.postgres_fqdn
+        B89_POSTGRES_PORT     = "5432"
+        B89_POSTGRES_DATABASE = var.app_database_name
+        B89_POSTGRES_TLS      = "true"
       }
     }
     worker = {
@@ -64,7 +64,7 @@ locals {
       memory       = "1Gi"
       env = {
         NODE_ENV      = "production"
-        QAPAQ_PROFILE = "production"
+        B89_PROFILE = "production"
       }
     }
   }

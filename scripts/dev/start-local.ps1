@@ -12,6 +12,6 @@ if (-not (Test-Path $environmentFile)) {
 
 & (Join-Path $PSScriptRoot 'setup-wazuh.ps1')
 docker compose --env-file $environmentFile -f $composeFile up -d --wait
-if ($LASTEXITCODE -ne 0) { throw 'No se pudo iniciar la infraestructura QAPAQ local.' }
+if ($LASTEXITCODE -ne 0) { throw 'No se pudo iniciar la infraestructura B89 local.' }
 
 docker compose --env-file $environmentFile -f $composeFile ps

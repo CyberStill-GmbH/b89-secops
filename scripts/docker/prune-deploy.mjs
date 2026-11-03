@@ -36,7 +36,7 @@ await pruneWorkspacePackage(deployment);
 const virtualStore = join(deployment, 'node_modules', '.pnpm');
 for (const snapshot of await readdir(virtualStore, { withFileTypes: true })) {
   if (!snapshot.isDirectory()) continue;
-  const workspaceScope = join(virtualStore, snapshot.name, 'node_modules', '@qapaq');
+  const workspaceScope = join(virtualStore, snapshot.name, 'node_modules', '@b89');
   let packages;
   try {
     packages = await readdir(workspaceScope, { withFileTypes: true });
@@ -49,7 +49,7 @@ for (const snapshot of await readdir(virtualStore, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const packagePath = join(workspaceScope, entry.name);
     const manifest = JSON.parse(await readFile(join(packagePath, 'package.json'), 'utf8'));
-    if (typeof manifest.name === 'string' && manifest.name.startsWith('@qapaq/')) {
+    if (typeof manifest.name === 'string' && manifest.name.startsWith('@b89/')) {
       await pruneWorkspacePackage(packagePath);
     }
   }

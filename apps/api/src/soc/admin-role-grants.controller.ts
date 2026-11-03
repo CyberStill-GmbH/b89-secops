@@ -1,5 +1,5 @@
 /**
- * Administración de roles concedidos por QAPAQ (entra-soc-user-admin.md, ADR-017).
+ * Administración de roles concedidos por B89 (entra-soc-user-admin.md, ADR-017).
  *
  * No existe asignación directa: todo cambio es una solicitud que resuelven aprobadores distintos.
  *
@@ -38,9 +38,9 @@ import {
   type RoleRequest,
   type RoleRequestAction,
   type RoleRequestStatus,
-} from '@qapaq/access';
-import { recordAudit } from '@qapaq/audit';
-import { GROUP_OWNER_ROLE } from '@qapaq/configuration';
+} from '@b89/access';
+import { recordAudit } from '@b89/audit';
+import { GROUP_OWNER_ROLE } from '@b89/configuration';
 
 import { ApiError } from '../http/api-error.js';
 import type { IncomingRequest } from '../http/http-contracts.js';

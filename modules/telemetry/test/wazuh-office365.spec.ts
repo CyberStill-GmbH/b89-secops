@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { validateSecurityEvent } from '@qapaq/contracts';
+import { validateSecurityEvent } from '@b89/contracts';
 
 import {
   normalizeWazuhAlert,
@@ -23,9 +23,9 @@ import {
  */
 
 const context: WazuhNormalizationContext = {
-  tenantId: 'tenant-qapaq-001',
-  instanceId: 'siem-qapaq-lab',
-  connector: 'qapaq-wazuh-indexer',
+  tenantId: 'tenant-b89-001',
+  instanceId: 'siem-b89-lab',
+  connector: 'b89-wazuh-indexer',
   connectorVersion: '1.0.0',
   receivedAt: new Date('2026-10-11T12:00:00.000Z'),
 };
@@ -45,7 +45,7 @@ function office365Alert(
           id: 100510,
           level: 12,
           description: 'Office 365: regla de bandeja que reenvía correo',
-          groups: ['office365', 'qapaq_m365'],
+          groups: ['office365', 'b89_m365'],
           ...rule,
         },
         agent: { id: '000', name: 'wazuh-manager' },
@@ -53,7 +53,7 @@ function office365Alert(
       },
     },
     raw: {
-      ref: 'raw:tenant-qapaq-001/2026/10/11/o365-01',
+      ref: 'raw:tenant-b89-001/2026/10/11/o365-01',
       sha256: 'ab'.repeat(32),
       mediaType: 'application/json',
       sizeBytes: 4096,
@@ -67,7 +67,7 @@ const inboxRule = {
   Workload: 'Exchange',
   RecordType: 1,
   ResultStatus: 'True',
-  UserId: 'Usuario.Sintetico@qapaq-lab.example',
+  UserId: 'Usuario.Sintetico@b89-lab.example',
   UserKey: '10032000A1B2C3D4',
   UserType: 0,
   OrganizationId: '00000000-0000-4000-8000-000000000001',
@@ -101,9 +101,9 @@ describe('C-12 · Office 365: lo que el analista necesita para triar', () => {
     expect(event.entities.identities).toEqual([
       {
         kind: 'user',
-        principal: 'Usuario.Sintetico@qapaq-lab.example',
+        principal: 'Usuario.Sintetico@b89-lab.example',
         id: '10032000A1B2C3D4',
-        domain: 'qapaq-lab.example',
+        domain: 'b89-lab.example',
       },
     ]);
   });
@@ -155,7 +155,7 @@ describe('C-12 · Office 365: resultado y autenticación', () => {
         Operation: 'UserLoginFailed',
         Workload: 'AzureActiveDirectory',
         RecordType: 15,
-        UserId: 'usuario.sintetico@qapaq-lab.example',
+        UserId: 'usuario.sintetico@b89-lab.example',
         ClientIP: '198.51.100.7',
       }),
     );
@@ -169,7 +169,7 @@ describe('C-12 · Office 365: resultado y autenticación', () => {
       office365Alert({
         Operation: 'UserLoggedIn',
         Workload: 'AzureActiveDirectory',
-        UserId: 'usuario.sintetico@qapaq-lab.example',
+        UserId: 'usuario.sintetico@b89-lab.example',
       }),
     );
 
@@ -239,7 +239,7 @@ describe('C-12 · Office 365: entradas hostiles o incompletas', () => {
     const event = normalized(
       office365Alert({
         Operation: 'X'.repeat(500),
-        UserId: `${'u'.repeat(400)}@qapaq-lab.example`,
+        UserId: `${'u'.repeat(400)}@b89-lab.example`,
         ObjectId: 'o'.repeat(1000),
       }),
     );

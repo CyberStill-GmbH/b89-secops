@@ -1,29 +1,29 @@
 <p align="center">
-  <img src="docs/reference/assets/qapaq-logo.png" alt="Qapaq, una financiera solidaria" width="320" />
+  <img src="docs/reference/assets/b89-logo.png" alt="B89 SOC" width="320" />
 </p>
 
-# QAPAQ SecOps
+# B89 SecOps
 
 **Plataforma SOC unificada sobre Wazuh.** Una URL, un login Entra y un shell: el dashboard de Wazuh
-con marca QAPAQ, al que QAPAQ añade casos, correlación contextual, respuesta gobernada, auditoría
+con marca B89, al que B89 añade casos, correlación contextual, respuesta gobernada, auditoría
 con integridad, gestión de acceso con revocación inmediata y avisos con acuse humano. La investigación
-colaborativa es **Ayni Qapaq** y la automatización de respuesta será **Ankay Qapaq** (Shuffle).
+colaborativa es **B89 Cases** y la automatización de respuesta será **B89 Respond** (Shuffle).
 
-- **Wazuh** recolecta, detecta y guarda (manager, indexer, dashboard). Lo que QAPAQ cambia de
+- **Wazuh** recolecta, detecta y guarda (manager, indexer, dashboard). Lo que B89 cambia de
   Wazuh vive versionado en [`wazuh/`](wazuh/README.md), sin fork del código.
-- **QAPAQ** (TypeScript, NestJS) coordina el trabajo humano: quién toma una alerta, cómo se vuelve
+- **B89** (TypeScript, NestJS) coordina el trabajo humano: quién toma una alerta, cómo se vuelve
   incidente, quién aprueba una acción, qué queda como evidencia y quién puede entrar.
 
 ## Estructura
 
-| Ruta                      | Contenido                                                                                                                       |
-| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `wazuh/`                  | Overlay QAPAQ de Wazuh: reglas, Office 365, edge nginx, seguridad del Indexer, ISM, detectores ML, integraciones y dashboard    |
-| `apps/api`, `apps/worker` | Backend QAPAQ (login Entra, casos, auditoría, avisos, colas). Pasa al SIEM QAPAQ según [docs/12](docs/12-backend-en-el-siem.md) |
-| `modules/`                | Dominio hexagonal sin frameworks: `access`, `soc`, `detection`, `soar`, `connectors`, `telemetry`                               |
-| `platform/`               | Auditoría, configuración y secretos, base de datos (Prisma/Postgres), testing, gateway (en retiro)                              |
-| `packages/contracts`      | Contrato `SecurityEvent` 1.0.0 y catálogo de errores                                                                            |
-| `infra/aws`               | Terraform de la demo AWS. `infra/local`: Postgres, Redis y MinIO para desarrollo                                                |
+| Ruta                      | Contenido                                                                                                                   |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `wazuh/`                  | Overlay B89 de Wazuh: reglas, Office 365, edge nginx, seguridad del Indexer, ISM, detectores ML, integraciones y dashboard  |
+| `apps/api`, `apps/worker` | Backend B89 (login Entra, casos, auditoría, avisos, colas). Pasa al SIEM B89 según [docs/12](docs/12-backend-en-el-siem.md) |
+| `modules/`                | Dominio hexagonal sin frameworks: `access`, `soc`, `detection`, `soar`, `connectors`, `telemetry`                           |
+| `platform/`               | Auditoría, configuración y secretos, base de datos (Prisma/Postgres), testing, gateway (en retiro)                          |
+| `packages/contracts`      | Contrato `SecurityEvent` 1.0.0 y catálogo de errores                                                                        |
+| `infra/aws`               | Terraform de la demo AWS. `infra/local`: Postgres, Redis y MinIO para desarrollo                                            |
 
 ## Documentación
 
@@ -55,6 +55,6 @@ Requisitos: Node 24.21 y pnpm 12.4. Baseline completa en
 
 ## Licencias
 
-Código QAPAQ: ver [LICENSE](LICENSE). Wazuh Manager y sus reglas y decoders son GPLv2. El Indexer,
+Código B89: ver [LICENSE](LICENSE). Wazuh Manager y sus reglas y decoders son GPLv2. El Indexer,
 el Dashboard y OpenSearch son Apache-2.0. Las reglas y decoders derivados que viven en `wazuh/`
 mantienen la atribución GPLv2.

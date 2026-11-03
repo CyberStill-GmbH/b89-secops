@@ -3,7 +3,7 @@
 **Fecha:** 2026-10-26
 
 **Alcance:** apply `foundation` del state independiente `demo-eus2`.
-**No cubre:** VM Wazuh QAPAQ, Azure Firewall, edge público, Ankay/Shuffle,
+**No cubre:** VM Wazuh B89, Azure Firewall, edge público, B89 Respond/Shuffle,
 ingesta de telemetría, agentes, DNS ni servicios de integración. Esos perfiles
 siguen apagados y requieren otro plan.
 
@@ -34,20 +34,20 @@ y el control contra destrucciones; ambos fallaron al crear PostgreSQL con
 parcial, verificó el checksum del plan guardado y pasó el control de
 destrucciones. El plan exacto tenía **3 altas, 0 destrucciones y 0
 reemplazos**: PostgreSQL Flexible Server (`module.data.azurerm_postgresql_flexible_server.this`)
-y las bases `qapaq_secops` y `qapaq_jobs`. El apply terminó correctamente.
+y las bases `b89_secops` y `b89_jobs`. El apply terminó correctamente.
 
 La consulta ARM posterior confirma PostgreSQL 16 `Standard_D2s_v3` en estado
 `Ready` y ambas bases creadas. Key Vault continúa con acceso público deshabilitado.
-No se cambió DNS. El apply fue solo de la fundación: `siem_host`, `ankay_host` y
+No se cambió DNS. El apply fue solo de la fundación: `siem_host`, `b89_respond_host` y
 `enable_runtime` siguen deshabilitados; no se publicaron imágenes en ACR ni se
-instalaron Wazuh, QAPAQ Core, Ankay, agentes o conectores.
+instalaron Wazuh, B89 Core, B89 Respond, agentes o conectores.
 
 La selección de D2s v3 es EUS2-only; el default compartido de otros entornos
 vuelve a B2s. El state remoto se conserva y no se reimportó ni limpió.
 
 El presupuesto Terraform de USD 200/mes solo genera avisos; **no limita ni
 detiene el gasto y no ejecuta destroy**. El plan de fundación no aprovisiona
-Azure Firewall. El costo de SIEM/Ankay se evaluará por separado: no se debe
+Azure Firewall. El costo de SIEM/B89 Respond se evaluará por separado: no se debe
 interpretar este documento como autorización de gasto para el SOC completo.
 
 Fuentes oficiales:

@@ -11,11 +11,11 @@ a value to paste into `AZURE_EUS2_SIEM_HOST_JSON`.
 
 ## Architecture and deployment order
 
-The current system design keeps Wazuh as the SIEM, with the QAPAQ overlay and Core as
+The current system design keeps Wazuh as the SIEM, with the B89 overlay and Core as
 the workflow/application layer. The Azure EUS2 design places Wazuh Dashboard and Core
 on a private SIEM VM behind Azure Firewall DNAT and an internal Load Balancer. PostgreSQL,
 Key Vault, release Blob, and platform logs remain separate. The single VM is a demo
-single point of failure, not a resilient production topology. Ankay/Shuffle is a later
+single point of failure, not a resilient production topology. B89 Respond/Shuffle is a later
 scope and must not be implied by a successful `siem` deployment.
 
 Use this sequence:
@@ -36,13 +36,13 @@ Use this sequence:
 4. Use the latest EUS2 SIEM artifact recorded in
    [`siem-release-bundle.md`](siem-release-bundle.md): source SHA
    `c96e35fc4618ad10db575e110b26625315fece20`, private Blob URL
-   `https://qapaqdemoeus2rel3a2405f3.blob.core.windows.net/siem-release/releases/c96e35fc4618ad10db575e110b26625315fece20/qapaq-siem-c96e35fc4618.tar.gz`,
+   `https://b89demoeus2rel3a2405f3.blob.core.windows.net/siem-release/releases/c96e35fc4618ad10db575e110b26625315fece20/b89-siem-c96e35fc4618.tar.gz`,
    SHA-256 `89040cb69535da6b7b6b763b77fa0bdb3e15c2089481d139fa9cd2f23c7e5472`.
    The publish workflow verifies the object digest and size. This is an install candidate;
    no Azure VM has installed it and no service health is established by publication.
 5. Complete the operator-input matrix below, then run `Terraform Azure demo East US 2
    plan and apply` with scope `siem`, first as plan-only. Keep generic Container Apps
-   runtime disabled, leave `ankay_host` absent, inspect all resource actions and costs,
+   runtime disabled, leave `b89_respond_host` absent, inspect all resource actions and costs,
    and use the protected apply gate only after the SIEM profile is complete.
 6. Verify bootstrap and Wazuh service health, then test M365 permissions and event
    arrival, alert delivery, and agent enrollment using synthetic events. DNS at Punto.pe
@@ -57,10 +57,10 @@ SIEM profile, and the latest apply reached the bootstrap extension. Its current 
 settings remain limited:
 
 - `AZURE_EUS2_SIEM_HOST_JSON` is set; its `core_environment` currently uses
-  `QAPAQ_SOC_PERSISTENCE=memory` and `QAPAQ_INGESTION_SOURCE=disabled`.
+  `B89_SOC_PERSISTENCE=memory` and `B89_INGESTION_SOURCE=disabled`.
 - `AZURE_EUS2_KEY_VAULT_SECRET_IDS_JSON={}`, `AZURE_EUS2_CONTAINER_IMAGES_JSON={}` and
   `AZURE_EUS2_ENABLE_RUNTIME=false`.
-- `AZURE_EUS2_ANKAY_HOST_JSON` and `AZURE_EUS2_KRAKEND_GATEWAY_JSON` are absent.
+- `AZURE_EUS2_B89_RESPOND_HOST_JSON` and `AZURE_EUS2_KRAKEND_GATEWAY_JSON` are absent.
 - The environment has the Terraform admin password and OIDC client-id secret names;
   their values and the presence of Key Vault runtime secrets were not inspected.
 - The inventory did not inspect Key Vault secret names or values. It therefore does
@@ -83,18 +83,18 @@ substitute an example CIDR, user key, credential, or identifier.
 
 | JSON field | Known value / contract | Operator input or gate |
 | --- | --- | --- |
-| `address_prefix` | Must be a subnet inside VNet `10.80.0.0/16`; subnet length `/27` or larger (numerically, prefix length ≤27); SIEM IP is derived as host 10. | Select an unused subnet and prove no overlap with Container Apps `10.80.0.0/27`, future Ankay `10.80.0.32/27`, KrakenD `10.80.0.64/27`, PostgreSQL `10.80.16.0/28`, Private Endpoints `10.80.16.16/28`, or Firewall `10.80.64.0/26`. Confirm it also leaves Azure-required addresses available. **No exact SIEM subnet is approved in the design.** |
+| `address_prefix` | Must be a subnet inside VNet `10.80.0.0/16`; subnet length `/27` or larger (numerically, prefix length ≤27); SIEM IP is derived as host 10. | Select an unused subnet and prove no overlap with Container Apps `10.80.0.0/27`, future B89 Respond `10.80.0.32/27`, KrakenD `10.80.0.64/27`, PostgreSQL `10.80.16.0/28`, Private Endpoints `10.80.16.16/28`, or Firewall `10.80.64.0/26`. Confirm it also leaves Azure-required addresses available. **No exact SIEM subnet is approved in the design.** |
 | `vm_size` | `Standard_F4s_v2` only; module validates exact SKU. | Confirm quota and availability for the target subscription/region immediately before plan. |
 | `admin_ssh_public_key` | OpenSSH **public** key only; no public SSH NSG rule. Terraform does not currently provision Bastion or another private SSH management path, and the NSG keeps SSH closed. | Provide the public half and separately approve/provision a management path (for example, VPN or Bastion) before relying on SSH for recovery. Retain the private half outside GitHub/Terraform. The key alone does not make the VM reachable. |
 | `ubuntu_image_version` | Canonical Ubuntu 24.04 LTS; `latest` is rejected. | Select and verify an exact currently available `24.04.x` Marketplace version in East US 2. |
 | `data_disk_size_gb` | Minimum is `128`; disk has `prevent_destroy` and is security-sensitive persistent Wazuh data. | Confirm size against event volume, retention, and growth. `128` is a floor, not a retention guarantee. |
-| `dashboard_ingress_cidrs` | `0.0.0.0/0` publishes HTTPS/443 to all IPv4 addresses through Firewall DNAT → internal LB → Nginx, as explicitly requested by the owner. | Verify TLS and QAPAQ `auth_request` on the edge. Keep agent ports 1514/1515 restricted to approved source ranges; never set their CIDRs to `/0`. |
+| `dashboard_ingress_cidrs` | `0.0.0.0/0` publishes HTTPS/443 to all IPv4 addresses through Firewall DNAT → internal LB → Nginx, as explicitly requested by the owner. | Verify TLS and B89 `auth_request` on the edge. Keep agent ports 1514/1515 restricted to approved source ranges; never set their CIDRs to `/0`. |
 | `agent_ingress_cidrs` | Empty means agent ports 1514/1515 stay closed; `/0` is rejected. | Supply actual managed endpoint/domain-controller private egress ranges or VPN ranges. Without them, no agent enrollment is enabled. |
-| `core_secret_names` | Map is non-secret `ENV_NAME` → existing Key Vault **name**. The approved seed allowlist names include `qapaq-entra-client-secret` and `qapaq-teams-workflow-url`. | Confirm a rotated QAPAQ Entra secret, Teams Workflow URL, least-privilege PostgreSQL application credential, and the additional Core secret-provider/storage/gateway keys listed below exist. The PostgreSQL admin password in GitHub is not an application account. |
+| `core_secret_names` | Map is non-secret `ENV_NAME` → existing Key Vault **name**. The approved seed allowlist names include `b89-entra-client-secret` and `b89-teams-workflow-url`. | Confirm a rotated B89 Entra secret, Teams Workflow URL, least-privilege PostgreSQL application credential, and the additional Core secret-provider/storage/gateway keys listed below exist. The PostgreSQL admin password in GitHub is not an application account. |
 | `wazuh_secret_names` | Must include exactly these required keys: `office365-client-secret` and `wazuh-install-files.tar.b64`; these are Key Vault names, not values. | Confirm the Office 365 app secret corresponds to the selected Graph app. Generate the separate official Wazuh installer tar with passwords/certificates and load its one-line base64 as `wazuh-install-files.tar.b64` (decoded tar ≤18 KB). The release Blob is not this credential tar. |
 | `core_environment` | Non-secret Core configuration map. Production defaults exist for some timeouts and TLS settings, but required endpoints/identity/storage/gateway configuration has no EUS2 profile yet. | Complete from the current Core config contract, including app database role/FQDN, identity/redirects, secrets provider, object storage, and Wazuh gateway. Current Terraform validation rejects several legitimate `*_REF` entries; see Core blockers. **This map is not currently satisfiable for the production Core contract.** |
 | `office365.tenant_id` | GUID required. | Supply/confirm the Microsoft 365 tenant that owns the Graph app. |
-| `office365.client_id` | GUID required. Do not assume QAPAQ dashboard login client ID is also the Graph collector app. | Confirm the app registration, Graph application permissions/admin consent, and secret pairing. |
+| `office365.client_id` | GUID required. Do not assume B89 dashboard login client ID is also the Graph collector app. | Confirm the app registration, Graph application permissions/admin consent, and secret pairing. |
 | `office365.api_type` | `commercial`, `gcc`, or `gcc-high`. | Confirm tenant cloud. |
 | `office365.enable_dlp` | Explicit boolean required. | Choose only after deciding whether the Graph app has the DLP/audit permissions required. `false` is the conservative initial choice; it does not enable DLP. |
 | `provider_ingestion` | Optional map of strings. Accepted keys: `sophos_enabled`, `sophos_tenant_id`, `sophos_data_region`, `cato_enabled`, `cato_account_id`. For first M365 vertical, both connectors may remain off. | Only set `sophos_enabled="true"` after tenant GUID, region, client ID/secret, API scopes, Key Vault refs, and egress are verified. Only set `cato_enabled="true"` after numeric account ID, API key, permissions, Key Vault ref, and egress are verified. |
@@ -133,7 +133,7 @@ GitHub Environment variable in this form.
     "sophos_enabled": "false",
     "cato_enabled": "false"
   },
-  "bootstrap_bundle_blob_url": "https://qapaqdemoeus2rel3a2405f3.blob.core.windows.net/siem-release/releases/c96e35fc4618ad10db575e110b26625315fece20/qapaq-siem-c96e35fc4618.tar.gz",
+  "bootstrap_bundle_blob_url": "https://b89demoeus2rel3a2405f3.blob.core.windows.net/siem-release/releases/c96e35fc4618ad10db575e110b26625315fece20/b89-siem-c96e35fc4618.tar.gz",
   "bootstrap_bundle_sha256": "89040cb69535da6b7b6b763b77fa0bdb3e15c2089481d139fa9cd2f23c7e5472"
 }
 ```
@@ -144,13 +144,13 @@ The EUS2 secret-seed workflow allowlists one secret per run and is create-only. 
 previous read-only environment inventory found these source secrets absent; re-check
 their **names/status only** before relying on that inventory:
 
-- `QAPAQ_EUS2_ENTRA_CLIENT_SECRET` → `qapaq-entra-client-secret`
-- `QAPAQ_EUS2_OFFICE365_CLIENT_SECRET` → `office365-client-secret`
-- `QAPAQ_EUS2_SOPHOS_CLIENT_ID` → `sophos-client-id`
-- `QAPAQ_EUS2_SOPHOS_CLIENT_SECRET` → `sophos-client-secret`
-- `QAPAQ_EUS2_CATO_API_KEY` → `cato-api-key`
-- `QAPAQ_EUS2_TEAMS_WORKFLOW_URL` → `qapaq-teams-workflow-url`
-- `QAPAQ_EUS2_WAZUH_INSTALL_FILES_TAR_B64` → `wazuh-install-files.tar.b64`
+- `B89_EUS2_ENTRA_CLIENT_SECRET` → `b89-entra-client-secret`
+- `B89_EUS2_OFFICE365_CLIENT_SECRET` → `office365-client-secret`
+- `B89_EUS2_SOPHOS_CLIENT_ID` → `sophos-client-id`
+- `B89_EUS2_SOPHOS_CLIENT_SECRET` → `sophos-client-secret`
+- `B89_EUS2_CATO_API_KEY` → `cato-api-key`
+- `B89_EUS2_TEAMS_WORKFLOW_URL` → `b89-teams-workflow-url`
+- `B89_EUS2_WAZUH_INSTALL_FILES_TAR_B64` → `wazuh-install-files.tar.b64`
 
 The release bundle is already published as a private Blob and is fetched by the SIEM
 VM's own Managed Identity. Do not put the several-gigabyte release into Key Vault. The
@@ -218,14 +218,14 @@ and state reconciliation remain an independent gate.
 - Successful plan review, quota/price check, private Blob/Key Vault access, and clean
   host bootstrap. The Wazuh bundle was published, but no EUS2 SIEM VM has installed it.
 
-### QAPAQ Dashboard/Core gates
+### B89 Dashboard/Core gates
 
 - `core_environment` validation in `infra/azure/variables.tf` uses a deny regex for
   names such as `PASSWORD`, `SECRET`, and `TOKEN`, with only
-  `QAPAQ_ENTRA_CLIENT_SECRET_REF` exempted. Core's production parser also requires
-  references such as `QAPAQ_POSTGRES_PASSWORD_REF`,
-  `QAPAQ_MINIO_SECRET_KEY_REF`, `QAPAQ_WAZUH_GATEWAY_ACCESS_TOKEN_REF`,
-  `QAPAQ_WAZUH_CURSOR_SECRET_REF`, and `QAPAQ_SECRET_FINGERPRINT_KEY_REF`. Therefore,
+  `B89_ENTRA_CLIENT_SECRET_REF` exempted. Core's production parser also requires
+  references such as `B89_POSTGRES_PASSWORD_REF`,
+  `B89_MINIO_SECRET_KEY_REF`, `B89_WAZUH_GATEWAY_ACCESS_TOKEN_REF`,
+  `B89_WAZUH_CURSOR_SECRET_REF`, and `B89_SECRET_FINGERPRINT_KEY_REF`. Therefore,
   a complete production `core_environment` cannot currently pass the Terraform
   validation. The safe code correction is to allowlist only the supported `*_REF`
   keys, validate the `secret://keyvault/<name>` form, and assert each reference matches
@@ -234,7 +234,7 @@ and state reconciliation remain an independent gate.
   Azure `modules/data` creates the databases but does not provision/validate the
   least-privilege application role or its secret for this VM path. The Terraform
   PostgreSQL administrator credential is not a substitute for the app role.
-- Core's current object storage contract is MinIO/S3 (`QAPAQ_MINIO_ENDPOINT`, raw
+- Core's current object storage contract is MinIO/S3 (`B89_MINIO_ENDPOINT`, raw
   bucket, access-key and secret-key refs). Azure Blob Storage is not a drop-in MinIO
   or S3 API endpoint. A small, explicit Azure Blob adapter is required behind the
   existing object-storage port; it should use Managed Identity/Blob Data RBAC and
@@ -245,7 +245,7 @@ and state reconciliation remain an independent gate.
   module can deploy private KrakenD ACA routes; it does not provision the read-only
   Indexer proxy on the SIEM VM. Before enabling it, publish a digest-pinned ACR image,
   configure the Entra resource app role and assign it only to the Core service
-  principal, create the two named Key Vault secrets (Base64 `qapaq_reader` credential
+  principal, create the two named Key Vault secrets (Base64 `b89_reader` credential
   and the proxy CA), and install/test the TLS-verifying proxy on the SIEM host. The
   current `wazuh/access/apply-access.sh` writes credentials to AWS Secrets Manager;
   no Azure proxy/secret seeding path exists yet. Its custom Key Vault role also needs
@@ -260,13 +260,13 @@ and state reconciliation remain an independent gate.
   review says the worker is lifecycle-only and ADR-AZ-001 remains proposed. A managed
   Redis-compatible service cannot be called the queue until the actual queue contract
   is exercised.
-- `QAPAQ_SECRET_PROVIDER_TYPE` is required for the Core control plane, and the local
+- `B89_SECRET_PROVIDER_TYPE` is required for the Core control plane, and the local
   configuration README still marks the production backend `TO_BE_PROVIDED`. The SIEM
   bootstrap can read Key Vault secrets with VM Managed Identity and write a root-owned
   environment file, but that is not the same as a working Core secret-provider adapter
   for references at runtime.
 - The deployment-input preflight rejects a SIEM subnet outside the configured VNet and
-  computes overlap against the network/gateway modules' reserved Container Apps, Ankay,
+  computes overlap against the network/gateway modules' reserved Container Apps, B89 Respond,
   KrakenD, PostgreSQL, Private Endpoints, and Azure Firewall subnets. The preflight tests cover
   the accepted free example `10.80.16.32/27` and rejection of overlapping/out-of-VNet
   inputs. This does not approve that example for the real deployment: the operator must
@@ -278,7 +278,7 @@ and state reconciliation remain an independent gate.
   Before production, approve a backup/retention design consistent with A11 (currently
   S3 snapshots, with Azure Blob explicitly not approved as a replacement) and demonstrate
   restoration. Until then, document the data-loss window and do not claim recovery or HA.
-- Keep the existing QAPAQ/Entra auth contract unchanged. Configure redirect URI,
+- Keep the existing B89/Entra auth contract unchanged. Configure redirect URI,
   allowed redirects, proxy trust, role bindings and user authorization only after the
   service configuration above is deployable; this document proposes no auth change.
 - Wazuh rules and provider connectors are detection/ingestion controls, not a malware
@@ -287,7 +287,7 @@ and state reconciliation remain an independent gate.
   Sophos remains the XDR source of truth for its own endpoint detections. Terraform
   also does not install agents on servers or domain controllers: enrollment requires
   approved private CIDRs, a pilot host, and a separately authorized GPO/MDM rollout.
-- Ankay/Shuffle remains a later deployment gate: six image digests, Compose/runtime
+- B89 Respond/Shuffle remains a later deployment gate: six image digests, Compose/runtime
   hardening, private routes/auth, and E2E playbook tests are separate from this SIEM
   profile. DNS stays at Punto.pe until the whole path is accepted.
 
@@ -307,7 +307,7 @@ they do not satisfy the current Core contracts by configuration alone:
   endpoint subnet, not Redis TCP/10000 or discovered shard ports; no Redis private DNS
   zone/endpoint is wired in the SIEM path. Do not infer compatibility from protocol
   resemblance alone.
-- These storage, queue, and secret adapters do not require changing the existing QAPAQ
+- These storage, queue, and secret adapters do not require changing the existing B89
   login flow. Keep OIDC/auth code untouched while validating them behind service ports.
 
 Microsoft currently documents Azure Managed Redis as Redis 7.4.x with TLS and managed
@@ -324,19 +324,19 @@ Sources: [Azure Managed Redis overview](https://learn.microsoft.com/en-us/azure/
 Do not label the SOC operational until evidence shows:
 
 1. VM, Firewall DNAT, internal Load Balancer, private route, and TLS are healthy.
-2. Wazuh Manager, Indexer, Filebeat, Dashboard, and QAPAQ Core services report ready;
+2. Wazuh Manager, Indexer, Filebeat, Dashboard, and B89 Core services report ready;
    host bootstrap logs were reviewed without exposing values.
 3. Azure platform/VM diagnostics have a defined owner, retention, alert route, and tested
    recovery procedure. The durable data disk and PostgreSQL are backed up and restored in
    a rehearsal; `prevent_destroy` alone does not satisfy this criterion.
 4. A synthetic M365 audit event is pulled through Microsoft Graph, parsed, indexed in
    the expected Wazuh index, and visible in the branded Dashboard.
-5. A synthetic Wazuh alert produces a successful QAPAQ/Teams path, and an authorized
+5. A synthetic Wazuh alert produces a successful B89/Teams path, and an authorized
    agent can enroll over only the approved private source range.
 6. Database/object-store/secret-provider/queue checks pass their defined contracts;
    no source is marked green from static config or a successful Terraform apply alone.
 7. Rollback and data-preservation steps are exercised; public DNS is changed only after
    these checks and approval.
 
-Ankay playbooks, Sophos/Cato ingestion, DNS cutover, and production resilience are not
+B89 Respond playbooks, Sophos/Cato ingestion, DNS cutover, and production resilience are not
 certified by a successful first SIEM apply.

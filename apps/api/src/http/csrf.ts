@@ -14,7 +14,7 @@
 
 import { createHmac } from 'node:crypto';
 
-import { constantTimeEquals } from '@qapaq/access';
+import { constantTimeEquals } from '@b89/access';
 
 import type { IncomingRequest } from './http-contracts.js';
 
@@ -22,7 +22,7 @@ export const CSRF_HEADER = 'x-csrf-token';
 
 /** Deriva una clave CSRF estable por propósito desde el secreto compartido del BFF. */
 export function deriveCsrfKey(masterKey: string | Buffer): Buffer {
-  return createHmac('sha256', masterKey).update('qapaq.csrf.key.v1').digest();
+  return createHmac('sha256', masterKey).update('b89.csrf.key.v1').digest();
 }
 
 function single(value: string | readonly string[] | undefined): string | undefined {
@@ -30,7 +30,7 @@ function single(value: string | readonly string[] | undefined): string | undefin
 }
 
 export function csrfTokenFor(key: Buffer, sessionId: string): string {
-  return createHmac('sha256', key).update(`qapaq.csrf.v1:${sessionId}`).digest('base64url');
+  return createHmac('sha256', key).update(`b89.csrf.v1:${sessionId}`).digest('base64url');
 }
 
 export function csrfAccepted(request: IncomingRequest, expected: string): boolean {

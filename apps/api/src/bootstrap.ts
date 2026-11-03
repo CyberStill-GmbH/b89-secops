@@ -13,11 +13,11 @@ import {
   type DetectionContextConfig,
   type EnvironmentInput,
   type SocPersistenceConfig,
-} from '@qapaq/configuration';
-import type { PrioritizationContext } from '@qapaq/detection';
-import type { SessionStore } from '@qapaq/access';
-import type { AttemptStore } from '@qapaq/soar';
-import type { SocPersistence } from '@qapaq/soc';
+} from '@b89/configuration';
+import type { PrioritizationContext } from '@b89/detection';
+import type { SessionStore } from '@b89/access';
+import type { AttemptStore } from '@b89/soar';
+import type { SocPersistence } from '@b89/soc';
 import { composeApi } from './composition-root.js';
 import { ApiLifecycle, type ApiEvent } from './lifecycle.js';
 import { resolveApiSecretEnvironment } from './runtime/secret-environment.js';
@@ -43,7 +43,7 @@ import { GraphDirectoryReader } from './runtime/graph-directory.js';
 import { directoryRecipients } from './runtime/notification-recipients.js';
 import { GraphMailFallbackChannel } from './runtime/email-fallback.js';
 import { ephemeralVapidKey, VapidPushSender, vapidKeyFrom } from './runtime/web-push.js';
-import { InMemoryPushSubscriptionStore, type PushSubscriptionStore } from '@qapaq/soar';
+import { InMemoryPushSubscriptionStore, type PushSubscriptionStore } from '@b89/soar';
 import { NotificationDispatcher } from './runtime/notification-dispatcher.js';
 import {
   DirectoryError,
@@ -51,7 +51,7 @@ import {
   InMemoryRoleAdministration,
   type DirectoryStore,
   type RoleAdministration,
-} from '@qapaq/access';
+} from '@b89/access';
 import { clearRemovedMembers } from './runtime/role-administration.js';
 import {
   measureSourceActivity,
@@ -113,9 +113,9 @@ async function durableStoresFor(config: SocPersistenceConfig): Promise<DurableSt
     { PostgresNotificationAttemptStore, PostgresPushSubscriptionStore },
     { PostgresSessionStore, PostgresDirectoryStore, PostgresRoleAdministration },
   ] = await Promise.all([
-    import('@qapaq/soc/postgres'),
-    import('@qapaq/soar/postgres'),
-    import('@qapaq/access/postgres'),
+    import('@b89/soc/postgres'),
+    import('@b89/soar/postgres'),
+    import('@b89/access/postgres'),
   ]);
   const { postgres } = config;
   const connectionString = connectionStringFor(config);
@@ -216,7 +216,7 @@ export async function buildApi(
     : config.profile === 'production'
       ? undefined
       : ephemeralVapidKey();
-  const clientSecret = environment['QAPAQ_ENTRA_CLIENT_SECRET'];
+  const clientSecret = environment['B89_ENTRA_CLIENT_SECRET'];
   // Sprint 5 · fase 3: el padrón usa un token de aplicación de Graph con el mismo secreto.
   if (directoryConfig.mode === 'graph' && !clientSecret) {
     throw new Error('DIRECTORY_CLIENT_SECRET_MISSING');

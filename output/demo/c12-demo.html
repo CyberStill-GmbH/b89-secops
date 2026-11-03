@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>QAPAQ SecOps — Demostración C-12</title>
+    <title>B89 SecOps — Demostración C-12</title>
     <style>
       * {
         box-sizing: border-box;
@@ -225,7 +225,7 @@
   <body>
     <div class="wrap">
       <header>
-        <p class="eyebrow">QAPAQ SecOps · Demostración</p>
+        <p class="eyebrow">B89 SecOps · Demostración</p>
         <h1>Qué le pasa a un evento de seguridad cuando entra</h1>
         <p class="sub">
           Resultado de una ejecución real del normalizador, el 30/09/2026 23:46. Procesó 10 eventos
@@ -270,23 +270,23 @@
             <td>Intento de autenticación SSH fallido</td>
             <td><span class="pill" style="background: #f7ead4; color: #8a5a14">Alta</span></td>
             <td>Acceso</td>
-            <td>srv-app-01.qapaq.local</td>
-            <td>jperez@qapaq.pe</td>
+            <td>srv-app-01.b89.local</td>
+            <td>jperez@b89.example</td>
           </tr>
           <tr>
             <td class="mono">30/09/2026 16:41</td>
             <td>Archivo malicioso detectado por análisis antivirus</td>
             <td><span class="pill" style="background: #fbe6e1; color: #8c2f1e">Crítica</span></td>
             <td>Código malicioso</td>
-            <td>workstation-contabilidad.qapaq.local</td>
-            <td>mquispe@qapaq.pe</td>
+            <td>workstation-contabilidad.b89.local</td>
+            <td>mquispe@b89.example</td>
           </tr>
           <tr>
             <td class="mono">30/09/2026 16:42</td>
             <td>Integridad de archivo alterada en directorio vigilado</td>
             <td><span class="pill" style="background: #e3f0ed; color: #1f5e57">Media</span></td>
             <td>Archivos</td>
-            <td>srv-app-01.qapaq.local</td>
+            <td>srv-app-01.b89.local</td>
             <td>—</td>
           </tr>
           <tr>
@@ -295,14 +295,14 @@
             <td><span class="pill" style="background: #e3f0ed; color: #1f5e57">Media</span></td>
             <td>Identidades, Acceso</td>
             <td>wazuh-manager</td>
-            <td>fclavo@qapaq.pe</td>
+            <td>fclavo@b89.example</td>
           </tr>
           <tr>
             <td class="mono">30/09/2026 16:43</td>
             <td>Conexión rechazada por el cortafuegos perimetral</td>
             <td><span class="pill" style="background: #e8ebef; color: #44536b">Baja</span></td>
             <td>Red</td>
-            <td>fw-perimetral.qapaq.local</td>
+            <td>fw-perimetral.b89.local</td>
             <td>—</td>
           </tr>
           <tr>
@@ -310,7 +310,7 @@
             <td>Múltiples solicitudes web sospechosas desde un mismo origen</td>
             <td><span class="pill" style="background: #f7ead4; color: #8a5a14">Alta</span></td>
             <td>Web, Intrusión</td>
-            <td>srv-web-02.qapaq.local</td>
+            <td>srv-web-02.b89.local</td>
             <td>—</td>
           </tr>
           <tr>
@@ -318,15 +318,15 @@
             <td>Cuenta de administrador agregada al dominio</td>
             <td><span class="pill" style="background: #fbe6e1; color: #8c2f1e">Crítica</span></td>
             <td>Equipo, Identidades</td>
-            <td>dc-01.qapaq.local</td>
-            <td>svc_backup@qapaq.pe</td>
+            <td>dc-01.b89.local</td>
+            <td>svc_backup@b89.example</td>
           </tr>
           <tr>
             <td class="mono">30/09/2026 16:44</td>
             <td>Rotación programada de registros completada</td>
             <td><span class="pill" style="background: #e8ebef; color: #44536b">Baja</span></td>
             <td>Equipo</td>
-            <td>srv-app-01.qapaq.local</td>
+            <td>srv-app-01.b89.local</td>
             <td>—</td>
           </tr>
         </tbody>
@@ -337,7 +337,7 @@
         <p class="why">La fecha del evento no existe en el calendario</p>
         <p class="lin">
           Evento <strong>evt-1005</strong> · original conservado en
-          <span class="mono">raw:tenant-qapaq-001/2026/09/30/evt-1005</span> · huella
+          <span class="mono">raw:tenant-b89-001/2026/09/30/evt-1005</span> · huella
           <span class="mono">ff02bb17c2a090d2…</span>
         </p>
       </div>
@@ -345,7 +345,7 @@
         <p class="why">El evento no declara qué regla lo originó</p>
         <p class="lin">
           Evento <strong>evt-1008</strong> · original conservado en
-          <span class="mono">raw:tenant-qapaq-001/2026/09/30/evt-1008</span> · huella
+          <span class="mono">raw:tenant-b89-001/2026/09/30/evt-1008</span> · huella
           <span class="mono">7dd7ec0ccc310d6d…</span>
         </p>
       </div>
@@ -372,10 +372,10 @@
  },
  &quot;agent&quot;: {
   &quot;id&quot;: &quot;003&quot;,
-  &quot;name&quot;: &quot;srv-app-01.qapaq.local&quot;
+  &quot;name&quot;: &quot;srv-app-01.b89.local&quot;
  },
  &quot;data&quot;: {
-  &quot;srcuser&quot;: &quot;jperez@qapaq.pe&quot;,
+  &quot;srcuser&quot;: &quot;jperez@b89.example&quot;,
   &quot;srcip&quot;: &quot;190.12.44.7&quot;
  }
 }</pre>
@@ -395,11 +395,11 @@
             <dt>Tipo</dt>
             <dd>Acceso</dd>
             <dt>Equipo</dt>
-            <dd>srv-app-01.qapaq.local</dd>
+            <dd>srv-app-01.b89.local</dd>
             <dt>Usuario</dt>
-            <dd>jperez@qapaq.pe</dd>
+            <dd>jperez@b89.example</dd>
             <dt>Original</dt>
-            <dd class="mono">raw:tenant-qapaq-001/2026/09/30/evt-1001</dd>
+            <dd class="mono">raw:tenant-b89-001/2026/09/30/evt-1001</dd>
           </dl>
         </div>
       </div>

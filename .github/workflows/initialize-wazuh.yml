@@ -1,15 +1,15 @@
 name: Initialize Wazuh
 
-# Sprint 5 — deja el Wazuh del demo operativo para QAPAQ en una sola ejecución, por SSM y sin
+# Sprint 5 — deja el Wazuh del demo operativo para B89 en una sola ejecución, por SSM y sin
 # reemplazar la instancia (user_data no cambia). Idempotente: reejecutarlo no rota contraseñas.
 #
 #   1. wazuh/access/apply-access.sh
-#      - `qapaq_reader` (solo lectura de alertas) y proxy TLS del Indexer en la IP privada;
+#      - `b89_reader` (solo lectura de alertas) y proxy TLS del Indexer en la IP privada;
 #      - usuario del Dashboard del dueño del grupo de admisión (administrador) y de la persona
 #        analista (solo lectura);
 #      - publica credenciales y certificado en Secrets Manager; autoprueba de permisos.
 #   2. wazuh/office365/apply-office365.sh (si hay app de Entra declarada): módulo office365,
-#      reglas QAPAQ y lista break-glass.
+#      reglas B89 y lista break-glass.
 #
 # Variables de repositorio de GitHub (no secretas, no versionadas):
 #   WAZUH_ADMIN_USERNAME    usuario del Dashboard del dueño del grupo (p. ej. su UPN)
@@ -18,7 +18,7 @@ name: Initialize Wazuh
 #   WAZUH_O365_CLIENT_ID    app de Entra con ActivityFeed.Read (vacío = se omite el paso 2)
 # Secretos (cargados con `Sync deploy secrets`): office365-client-secret, break-glass-identities.
 # Las contraseñas generadas quedan solo en Secrets Manager:
-#   qapaq-secops/demo/wazuh/dashboard-admin-user y …/dashboard-analyst-user.
+#   b89-secops/demo/wazuh/dashboard-admin-user y …/dashboard-analyst-user.
 
 on:
   workflow_dispatch:
@@ -69,9 +69,9 @@ jobs:
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
-          role-to-assume: arn:aws:iam::955200662475:role/qapaq-secops-github-terraform-demo
+          role-to-assume: arn:aws:iam::955200662475:role/b89-secops-github-terraform-demo
           aws-region: us-east-1
-          role-session-name: qapaq-secops-initialize-wazuh
+          role-session-name: b89-secops-initialize-wazuh
           allowed-account-ids: 955200662475
 
       - name: Apply through SSM
@@ -79,7 +79,7 @@ jobs:
         run: |
           set -eu
           instance_id="$(aws ec2 describe-instances \
-            --filters 'Name=tag:Name,Values=qapaq-secops-demo-wazuh' 'Name=instance-state-name,Values=running' \
+            --filters 'Name=tag:Name,Values=b89-secops-demo-wazuh' 'Name=instance-state-name,Values=running' \
             --query 'Reservations[].Instances[].InstanceId | [0]' --output text)"
           if [[ -z "$instance_id" || "$instance_id" == None ]]; then
             echo 'No running Wazuh EC2 instance found.' >&2
@@ -93,14 +93,14 @@ jobs:
             access/apply-access.sh \
             office365/apply-office365.sh \
             office365/ossec-office365.xml.tmpl \
-            office365/rules/qapaq_office365_rules.xml | base64 -w0)"
+            office365/rules/b89_office365_rules.xml | base64 -w0)"
           office365_step=''
           if [[ -n "$O365_CLIENT_ID" ]]; then
-            office365_step="QAPAQ_APPLY_MODE=apply QAPAQ_O365_TENANT_ID='${M365_TENANT_ID}' \
-          QAPAQ_O365_CLIENT_ID='${O365_CLIENT_ID}' QAPAQ_O365_API_TYPE=commercial QAPAQ_O365_ENABLE_DLP=false \
-          QAPAQ_AWS_REGION=us-east-1 \
-          QAPAQ_O365_SECRET_SOURCE='aws-secretsmanager:qapaq-secops/demo/wazuh/office365-client-secret' \
-          QAPAQ_BREAK_GLASS_SOURCE='aws-secretsmanager:qapaq-secops/demo/wazuh/break-glass-identities' \
+            office365_step="B89_APPLY_MODE=apply B89_O365_TENANT_ID='${M365_TENANT_ID}' \
+          B89_O365_CLIENT_ID='${O365_CLIENT_ID}' B89_O365_API_TYPE=commercial B89_O365_ENABLE_DLP=false \
+          B89_AWS_REGION=us-east-1 \
+          B89_O365_SECRET_SOURCE='aws-secretsmanager:b89-secops/demo/wazuh/office365-client-secret' \
+          B89_BREAK_GLASS_SOURCE='aws-secretsmanager:b89-secops/demo/wazuh/break-glass-identities' \
           bash \"\$work/office365/apply-office365.sh\""
           fi
           remote_script="$(cat <<REMOTE
@@ -108,14 +108,14 @@ jobs:
           work="\$(mktemp -d)"
           trap 'rm -rf "\$work"' EXIT
           printf '%s' '${bundle}' | base64 -d | tar -C "\$work" -xzf -
-          QAPAQ_AWS_REGION=us-east-1 \
-          QAPAQ_ADMIN_USERNAME='${ADMIN_USERNAME}' \
-          QAPAQ_ANALYST_USERNAME='${ANALYST_USERNAME}' \
-          QAPAQ_ROTATE='${ROTATE}' \
-          QAPAQ_READER_SECRET_ID=qapaq-secops/demo/wazuh/indexer-reader \
-          QAPAQ_PROXY_CA_SECRET_ID=qapaq-secops/demo/wazuh/indexer-proxy-ca \
-          QAPAQ_ADMIN_USER_SECRET_ID=qapaq-secops/demo/wazuh/dashboard-admin-user \
-          QAPAQ_ANALYST_USER_SECRET_ID=qapaq-secops/demo/wazuh/dashboard-analyst-user \
+          B89_AWS_REGION=us-east-1 \
+          B89_ADMIN_USERNAME='${ADMIN_USERNAME}' \
+          B89_ANALYST_USERNAME='${ANALYST_USERNAME}' \
+          B89_ROTATE='${ROTATE}' \
+          B89_READER_SECRET_ID=b89-secops/demo/wazuh/indexer-reader \
+          B89_PROXY_CA_SECRET_ID=b89-secops/demo/wazuh/indexer-proxy-ca \
+          B89_ADMIN_USER_SECRET_ID=b89-secops/demo/wazuh/dashboard-admin-user \
+          B89_ANALYST_USER_SECRET_ID=b89-secops/demo/wazuh/dashboard-analyst-user \
             bash "\$work/access/apply-access.sh"
           ${office365_step}
           REMOTE
@@ -129,7 +129,7 @@ jobs:
           command_id="$(aws ssm send-command \
             --instance-ids "$instance_id" \
             --document-name AWS-RunShellScript \
-            --comment 'QAPAQ Wazuh initialization' \
+            --comment 'B89 Wazuh initialization' \
             --timeout-seconds 900 \
             --parameters "$payload" \
             --query 'Command.CommandId' --output text)"

@@ -5,7 +5,7 @@ locals {
     wazuh-basic-auth-b64 = var.indexer_reader_secret_name
     wazuh-indexer-ca-pem = var.indexer_proxy_ca_secret_name
   }
-  # Core requests tokens with the v2 token endpoint, but QAPAQ's existing app
+  # Core requests tokens with the v2 token endpoint, but B89's existing app
   # registration issues v1 access-token issuer claims (same contract as AWS).
   issuer         = "https://sts.windows.net/${var.tenant_id}/"
   jwks_url       = "https://login.microsoftonline.com/${var.tenant_id}/discovery/v2.0/keys"
@@ -176,7 +176,7 @@ resource "azurerm_container_app" "this" {
         value = local.audience
       }
       env {
-        name  = "QAPAQ_CORE_CLIENT_ID"
+        name  = "B89_CORE_CLIENT_ID"
         value = local.core_client_id
       }
       env {
@@ -185,7 +185,7 @@ resource "azurerm_container_app" "this" {
       }
       env {
         name  = "WAZUH_INDEXER_CA_FILE"
-        value = "/tmp/qapaq/indexer-ca.pem"
+        value = "/tmp/b89/indexer-ca.pem"
       }
       env {
         name  = "WAZUH_INDEX_PATTERN"

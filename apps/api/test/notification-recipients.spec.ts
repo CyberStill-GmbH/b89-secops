@@ -12,8 +12,8 @@ import {
   InMemoryDirectoryStore,
   InMemorySessionStore,
   openSession,
-} from '@qapaq/access';
-import { loadRoleGrantsConfig, loadTeamsWorkflowUrl } from '@qapaq/configuration';
+} from '@b89/access';
+import { loadRoleGrantsConfig, loadTeamsWorkflowUrl } from '@b89/configuration';
 
 import { directoryRecipients } from '../src/runtime/notification-recipients.js';
 
@@ -28,7 +28,7 @@ const NOW = new Date('2026-10-13T01:00:00.000Z');
 const person = (oid: string, name: string) => ({
   oid,
   displayName: name,
-  upn: `${name.toLowerCase()}@qapaq-lab.example`,
+  upn: `${name.toLowerCase()}@b89-lab.example`,
   accountEnabled: true,
 });
 
@@ -63,11 +63,11 @@ describe('destinatarios por rol', () => {
         {
           subjectId: 'sub-lead',
           oid: LEAD,
-          email: 'lider@qapaq-lab.example',
+          email: 'lider@b89-lab.example',
           tenantId: TENANT,
-          roles: ['qapaq.soc.lead'],
+          roles: ['b89.soc.lead'],
           scopes: ['soc.read'],
-          capabilities: capabilitiesForRoles(['qapaq.soc.lead']),
+          capabilities: capabilitiesForRoles(['b89.soc.lead']),
           amr: ['mfa'],
           clientIp: '10.0.0.1',
         },
@@ -79,24 +79,21 @@ describe('destinatarios por rol', () => {
       directory: () => ({ mode: 'graph', groupId: GROUP, intervalMs: 900_000, store }),
       sessions: () => sessions,
       grants: loadRoleGrantsConfig({
-        QAPAQ_PROFILE: 'test',
-        QAPAQ_ROLE_BINDINGS: `${ANALYST}=qapaq.soc.analyst`,
+        B89_PROFILE: 'test',
+        B89_ROLE_BINDINGS: `${ANALYST}=b89.soc.analyst`,
       }),
       now: () => NOW,
     });
 
-    const triage = await resolver.recipientsFor(TENANT, ['qapaq.soc.analyst', 'qapaq.soc.lead']);
+    const triage = await resolver.recipientsFor(TENANT, ['b89.soc.analyst', 'b89.soc.lead']);
     expect(triage.map((recipient) => recipient.upn)).toEqual([
-      'analista@qapaq-lab.example',
-      'lider@qapaq-lab.example',
+      'analista@b89-lab.example',
+      'lider@b89-lab.example',
     ]);
-    const command = await resolver.recipientsFor(TENANT, [
-      'qapaq.soc.lead',
-      'qapaq.platform.admin',
-    ]);
+    const command = await resolver.recipientsFor(TENANT, ['b89.soc.lead', 'b89.platform.admin']);
     expect(command.map((recipient) => recipient.upn)).toEqual([
-      'dueno@qapaq-lab.example',
-      'lider@qapaq-lab.example',
+      'dueno@b89-lab.example',
+      'lider@b89-lab.example',
     ]);
   });
 
@@ -104,16 +101,16 @@ describe('destinatarios por rol', () => {
     const resolver = directoryRecipients({
       directory: () => ({ mode: 'disabled' }),
       sessions: () => new InMemorySessionStore(),
-      grants: loadRoleGrantsConfig({ QAPAQ_PROFILE: 'test' }),
+      grants: loadRoleGrantsConfig({ B89_PROFILE: 'test' }),
       now: () => NOW,
     });
-    expect(await resolver.recipientsFor(TENANT, ['qapaq.soc.analyst'])).toEqual([]);
+    expect(await resolver.recipientsFor(TENANT, ['b89.soc.analyst'])).toEqual([]);
   });
 });
 
 describe('URL del Teams Workflow', () => {
   const load = (value: string) =>
-    loadTeamsWorkflowUrl({ QAPAQ_PROFILE: 'test', QAPAQ_TEAMS_WORKFLOW_URL: value });
+    loadTeamsWorkflowUrl({ B89_PROFILE: 'test', B89_TEAMS_WORKFLOW_URL: value });
 
   it('acepta HTTPS hacia hosts de Microsoft', () => {
     expect(
@@ -124,7 +121,7 @@ describe('URL del Teams Workflow', () => {
     expect(load('https://abc.environment.api.powerplatform.com/powerautomate/x')).toContain(
       'powerplatform.com',
     );
-    expect(loadTeamsWorkflowUrl({ QAPAQ_PROFILE: 'test' })).toBeUndefined();
+    expect(loadTeamsWorkflowUrl({ B89_PROFILE: 'test' })).toBeUndefined();
   });
 
   it.each([

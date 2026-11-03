@@ -11,11 +11,11 @@ export const root = fileURLToPath(new URL('../../', import.meta.url));
 
 export function startProcess(args, overrides = {}) {
   const env = Object.fromEntries(
-    Object.entries(process.env).filter(([key]) => !/^(QAPAQ_|VITE_|NODE_OPTIONS$)/u.test(key)),
+    Object.entries(process.env).filter(([key]) => !/^(B89_|VITE_|NODE_OPTIONS$)/u.test(key)),
   );
   const child = spawn(process.execPath, args, {
     cwd: root,
-    env: { ...env, SECRET_TOKEN: fixtureToken, QAPAQ_PROFILE: 'test', ...overrides },
+    env: { ...env, SECRET_TOKEN: fixtureToken, B89_PROFILE: 'test', ...overrides },
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
     windowsHide: true,
   });

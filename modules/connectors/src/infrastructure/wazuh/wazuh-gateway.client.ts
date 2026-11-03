@@ -17,7 +17,7 @@ export interface WazuhGatewayClientOptions {
   readonly maximumResponseBytes: number;
   readonly allowInsecureLocalhost?: boolean;
   /**
-   * HTTP sin TLS hacia un host de service discovery privado (`*.qapaq.internal`, AWS Cloud
+   * HTTP sin TLS hacia un host de service discovery privado (`*.b89.internal`, AWS Cloud
    * Map). Solo para el tramo API → KrakenD dentro de la VPC, cerrado por security groups; el
    * token es de vida corta y ligado a la audiencia del gateway. Cualquier otro host exige TLS.
    */
@@ -42,7 +42,7 @@ export class WazuhGatewayError extends Error {
   }
 }
 
-const PRIVATE_SERVICE_SUFFIX = '.qapaq.internal';
+const PRIVATE_SERVICE_SUFFIX = '.b89.internal';
 
 function isLoopback(hostname: string): boolean {
   const normalized = hostname.toLowerCase().replace(/^\[|\]$/gu, '');

@@ -13,7 +13,7 @@ const databaseUrl = process.env['DATABASE_URL'];
 const databaseRoot = fileURLToPath(new URL('../', import.meta.url));
 
 function temporaryDatabaseName(): string {
-  return `qapaq_c04_${process.pid}_${Date.now()}`.replace(/[^a-z0-9_]/gi, '_').toLowerCase();
+  return `b89_c04_${process.pid}_${Date.now()}`.replace(/[^a-z0-9_]/gi, '_').toLowerCase();
 }
 
 async function createTemporaryDatabase(): Promise<{

@@ -12,8 +12,8 @@
  * cualquier ambiente donde el estado deba sobrevivir a un reinicio).
  */
 
-import type { AuditStore } from '@qapaq/audit';
-import type { CorrelationWindowQuery, DetectionCandidateStore } from '@qapaq/detection';
+import type { AuditStore } from '@b89/audit';
+import type { CorrelationWindowQuery, DetectionCandidateStore } from '@b89/detection';
 
 import type { Alert, AlertStatus } from './alert.js';
 import type { Incident, IncidentStatus } from './incident.js';

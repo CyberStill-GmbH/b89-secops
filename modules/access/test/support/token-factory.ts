@@ -30,7 +30,7 @@ function base64UrlJson(value: unknown): string {
   return Buffer.from(JSON.stringify(value), 'utf8').toString('base64url');
 }
 
-export function createSigningIdentity(kid = 'qapaq-test-key'): SigningIdentity {
+export function createSigningIdentity(kid = 'b89-test-key'): SigningIdentity {
   const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const jwk = publicKey.export({ format: 'jwk' }) as { n: string; e: string };
   const jwks: readonly JsonWebKey[] = [
@@ -46,7 +46,7 @@ export function createSigningIdentity(kid = 'qapaq-test-key'): SigningIdentity {
     const signature = signer.sign(privateKey).toString('base64url');
     if (!overrides.tamperPayload) return `${signingInput}.${signature}`;
     // Firma válida sobre la carga original, carga alterada después: debe fallar la firma.
-    const tampered = base64UrlJson({ ...claims, roles: ['qapaq.platform.admin'] });
+    const tampered = base64UrlJson({ ...claims, roles: ['b89.platform.admin'] });
     return `${base64UrlJson(header)}.${tampered}.${signature}`;
   };
   return { jwks, sign, privateKey };
@@ -65,8 +65,8 @@ export function baseClaims(now: Date, overrides: Partial<IdTokenClaims> = {}): I
     exp: seconds + 3600,
     nonce: 'nonce-valido',
     amr: ['pwd', 'mfa'],
-    roles: ['qapaq.soc.analyst'],
-    preferred_username: 'analista@qapaq.pe',
+    roles: ['b89.soc.analyst'],
+    preferred_username: 'analista@b89.example',
     sid: 'idp-session-1',
     ...overrides,
   };

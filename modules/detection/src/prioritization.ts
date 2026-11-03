@@ -1,8 +1,8 @@
 /**
- * C-16 — priorización QAPAQ sobre alertas ya detectadas por el proveedor de origen.
+ * C-16 — priorización B89 sobre alertas ya detectadas por el proveedor de origen.
  *
  * Esto **no** es un motor de detección y no reimplementa el ruleset del SIEM. El
- * proveedor decide que algo es una alerta; QAPAQ decide qué merece la atención de un
+ * proveedor decide que algo es una alerta; B89 decide qué merece la atención de un
  * analista hoy, usando contexto que el SIEM no tiene: qué identidades son privilegiadas,
  * qué activos son críticos y qué ventanas de mantenimiento están abiertas.
  *
@@ -19,11 +19,11 @@
  *   distinguen y una diferencia de capitalización no puede apagar un ajuste.
  */
 
-import type { SecurityEvent } from '@qapaq/contracts';
+import type { SecurityEvent } from '@b89/contracts';
 
 import type { CorrelationSignal } from './correlation.js';
 
-export const PRIORITIZATION_RULESET_ID = 'qapaq.detection.prioritization' as const;
+export const PRIORITIZATION_RULESET_ID = 'b89.detection.prioritization' as const;
 export const PRIORITIZATION_RULESET_VERSION = '1.1.0' as const;
 
 export const PRIORITIES = ['P1', 'P2', 'P3', 'P4'] as const;
@@ -51,7 +51,7 @@ export interface Reason {
   readonly detail: string;
 }
 
-/** Contexto QAPAQ. Lo aporta un puerto; el dominio no consulta inventarios. */
+/** Contexto B89. Lo aporta un puerto; el dominio no consulta inventarios. */
 export interface PrioritizationContext {
   readonly privilegedIdentities: ReadonlySet<string>;
   /**

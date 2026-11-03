@@ -24,9 +24,9 @@ import {
 const RECEIVED_AT = new Date('2026-09-30T16:45:00.000Z');
 
 const context: WazuhNormalizationContext = {
-  tenantId: 'tenant-qapaq-001',
-  instanceId: 'siem-qapaq-lab',
-  connector: 'qapaq-wazuh-indexer',
+  tenantId: 'tenant-b89-001',
+  instanceId: 'siem-b89-lab',
+  connector: 'b89-wazuh-indexer',
   connectorVersion: '1.0.0',
   receivedAt: RECEIVED_AT,
 };
@@ -43,8 +43,8 @@ const ALERTS: readonly { readonly id: string; readonly raw: Record<string, unkno
         description: 'Intento de autenticación SSH fallido',
         groups: ['sshd', 'authentication_failed'],
       },
-      agent: { id: '003', name: 'srv-app-01.qapaq.local' },
-      data: { srcuser: 'jperez@qapaq.pe', srcip: '190.12.44.7' },
+      agent: { id: '003', name: 'srv-app-01.b89.local' },
+      data: { srcuser: 'jperez@b89.example', srcip: '190.12.44.7' },
     },
   },
   {
@@ -57,8 +57,8 @@ const ALERTS: readonly { readonly id: string; readonly raw: Record<string, unkno
         description: 'Archivo malicioso detectado por análisis antivirus',
         groups: ['virus', 'malware'],
       },
-      agent: { id: '007', name: 'workstation-contabilidad.qapaq.local' },
-      data: { srcuser: 'mquispe@qapaq.pe' },
+      agent: { id: '007', name: 'workstation-contabilidad.b89.local' },
+      data: { srcuser: 'mquispe@b89.example' },
     },
   },
   {
@@ -71,7 +71,7 @@ const ALERTS: readonly { readonly id: string; readonly raw: Record<string, unkno
         description: 'Integridad de archivo alterada en directorio vigilado',
         groups: ['syscheck', 'syscheck_entry_added'],
       },
-      agent: { id: '003', name: 'srv-app-01.qapaq.local' },
+      agent: { id: '003', name: 'srv-app-01.b89.local' },
       data: {},
     },
   },
@@ -86,7 +86,7 @@ const ALERTS: readonly { readonly id: string; readonly raw: Record<string, unkno
         groups: ['office365', 'authentication_success'],
       },
       agent: { id: '000', name: 'wazuh-manager' },
-      data: { office365: { UserId: 'fclavo@qapaq.pe' } },
+      data: { office365: { UserId: 'fclavo@b89.example' } },
     },
   },
   {
@@ -95,7 +95,7 @@ const ALERTS: readonly { readonly id: string; readonly raw: Record<string, unkno
       // Marca temporal imposible: el 31 de febrero no existe.
       timestamp: '2026-02-31T16:43:00.000Z',
       rule: { id: 1002, level: 6, description: 'Evento con fecha corrupta', groups: ['syslog'] },
-      agent: { id: '004', name: 'srv-web-02.qapaq.local' },
+      agent: { id: '004', name: 'srv-web-02.b89.local' },
     },
   },
   {
@@ -108,7 +108,7 @@ const ALERTS: readonly { readonly id: string; readonly raw: Record<string, unkno
         description: 'Conexión rechazada por el cortafuegos perimetral',
         groups: ['firewall'],
       },
-      agent: { id: '001', name: 'fw-perimetral.qapaq.local' },
+      agent: { id: '001', name: 'fw-perimetral.b89.local' },
       data: { srcip: '45.133.1.90' },
     },
   },
@@ -122,7 +122,7 @@ const ALERTS: readonly { readonly id: string; readonly raw: Record<string, unkno
         description: 'Múltiples solicitudes web sospechosas desde un mismo origen',
         groups: ['web', 'web_scan'],
       },
-      agent: { id: '004', name: 'srv-web-02.qapaq.local' },
+      agent: { id: '004', name: 'srv-web-02.b89.local' },
       data: { srcip: '45.133.1.90' },
     },
   },
@@ -131,7 +131,7 @@ const ALERTS: readonly { readonly id: string; readonly raw: Record<string, unkno
     raw: {
       // Alerta sin regla: no se puede sostener qué la originó.
       timestamp: '2026-09-30T16:44:12.000Z',
-      agent: { id: '005', name: 'srv-bd-01.qapaq.local' },
+      agent: { id: '005', name: 'srv-bd-01.b89.local' },
       data: { srcuser: 'root' },
     },
   },
@@ -145,8 +145,8 @@ const ALERTS: readonly { readonly id: string; readonly raw: Record<string, unkno
         description: 'Cuenta de administrador agregada al dominio',
         groups: ['windows', 'account_changed', 'adduser'],
       },
-      agent: { id: '002', name: 'dc-01.qapaq.local' },
-      data: { dstuser: 'svc_backup@qapaq.pe' },
+      agent: { id: '002', name: 'dc-01.b89.local' },
+      data: { dstuser: 'svc_backup@b89.example' },
     },
   },
   {
@@ -159,7 +159,7 @@ const ALERTS: readonly { readonly id: string; readonly raw: Record<string, unkno
         description: 'Rotación programada de registros completada',
         groups: ['syslog'],
       },
-      agent: { id: '003', name: 'srv-app-01.qapaq.local' },
+      agent: { id: '003', name: 'srv-app-01.b89.local' },
     },
   },
 ];
@@ -174,7 +174,7 @@ function toInput(alert: (typeof ALERTS)[number]): WazuhAlertInput {
       raw: alert.raw,
     },
     raw: {
-      ref: `raw:tenant-qapaq-001/2026/09/30/${alert.id}`,
+      ref: `raw:tenant-b89-001/2026/09/30/${alert.id}`,
       sha256: createHash('sha256').update(bytes).digest('hex'),
       mediaType: 'application/json',
       sizeBytes: bytes.byteLength,

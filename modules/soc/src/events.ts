@@ -8,7 +8,7 @@
 
 import { createHash } from 'node:crypto';
 
-import type { Priority } from '@qapaq/detection';
+import type { Priority } from '@b89/detection';
 
 import type { AlertStatus, TriageVerdict } from './alert.js';
 import type { IncidentSeverity, IncidentStatus } from './incident.js';
@@ -48,7 +48,7 @@ export interface OutboxMessageDraft {
   readonly availableAt: Date;
 }
 
-/** Hechos que exigen notificación inmediata según la política aprobada de QAPAQ. */
+/** Hechos que exigen notificación inmediata según la política aprobada de B89. */
 export function requiresCriticalNotification(event: SocDomainEvent): boolean {
   if (event.type === 'soc.incident.opened') return event.payload.severity === 'critical';
   if (event.type === 'soc.alert.escalated') return event.payload.priority === 'P1';

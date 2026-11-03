@@ -38,12 +38,12 @@ INDEXER_PORT = 9200
 PROXY_PORT = 9443
 INDEXER_CA = pathlib.Path("/etc/wazuh-indexer/certs/root-ca.pem")
 INSTALL_ARCHIVE = pathlib.Path("/root/wazuh-install-files.tar")
-PROXY_ROOT = pathlib.Path("/etc/qapaq/indexer-proxy")
+PROXY_ROOT = pathlib.Path("/etc/b89/indexer-proxy")
 PROXY_CERT = PROXY_ROOT / "cert.pem"
 PROXY_KEY = PROXY_ROOT / "key.pem"
-PROXY_CONF = pathlib.Path("/etc/nginx/conf.d/qapaq-indexer-proxy.conf")
-READER_USER = "qapaq_reader"
-READER_ROLE = "qapaq_alerts_read"
+PROXY_CONF = pathlib.Path("/etc/nginx/conf.d/b89-indexer-proxy.conf")
+READER_USER = "b89_reader"
+READER_ROLE = "b89_alerts_read"
 PLACEHOLDER = "bootstrap-pending"
 ALERTS_PATTERN = "wazuh-alerts-*"
 
@@ -122,7 +122,7 @@ def reader_password_from_secret(value: str | None) -> tuple[str, str, bool]:
         or not password
         or any(ord(char) < 0x21 or ord(char) > 0x7E for char in password)
     ):
-        _fail("el secreto del lector no corresponde a la identidad read-only QAPAQ")
+        _fail("el secreto del lector no corresponde a la identidad read-only B89")
     return password, value, False
 
 
@@ -257,11 +257,11 @@ def _prepare_proxy_certificate(private_ip: str, stored: str | None) -> tuple[str
     if stored not in (None, PLACEHOLDER):
         _fail("Key Vault conserva una CA sin clave privada local; se requiere rotación coordinada")
 
-    with tempfile.TemporaryDirectory(prefix="qapaq-indexer-cert-", dir=PROXY_ROOT) as temporary:
+    with tempfile.TemporaryDirectory(prefix="b89-indexer-cert-", dir=PROXY_ROOT) as temporary:
         cert_path, key_path = pathlib.Path(temporary) / "cert.pem", pathlib.Path(temporary) / "key.pem"
         _run(
             "openssl", "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256",
-            "-nodes", "-days", "825", "-subj", "/CN=qapaq-indexer-proxy",
+            "-nodes", "-days", "825", "-subj", "/CN=b89-indexer-proxy",
             "-addext", f"subjectAltName=IP:{private_ip}", "-keyout", str(key_path), "-out", str(cert_path),
         )
         os.chmod(key_path, 0o640)
@@ -327,7 +327,7 @@ def _host_mapping_may_apply(host_patterns: object, source_addresses: set[str]) -
 
 
 def _allowlisted_reader_mapping_users(mapping: object) -> list[str]:
-    """Validate an existing QAPAQ mapping before reusing or replacing it."""
+    """Validate an existing B89 mapping before reusing or replacing it."""
     if mapping is None:
         return []
     if not isinstance(mapping, dict):
@@ -395,7 +395,7 @@ def _upstream_tls_name(indexer_url: str, private_ip: str, workdir: pathlib.Path)
 
 
 def _nginx_configuration(private_ip: str, indexer_url: str, upstream_name: str) -> str:
-    return f"""# QAPAQ SecOps — Azure read-only Wazuh Indexer proxy.
+    return f"""# B89 SecOps — Azure read-only Wazuh Indexer proxy.
 # Only alert search and cluster health are exposed; all other paths return 403.
 server {{
   listen {private_ip}:{PROXY_PORT} ssl;
@@ -517,7 +517,7 @@ def _rollback_indexer_security(
     mapping: dict | None,
     log: Callable[[str], None],
 ) -> None:
-    """Restore only the QAPAQ-owned objects changed by this bootstrap."""
+    """Restore only the B89-owned objects changed by this bootstrap."""
     ok = True
     if not user_existed:
         status, _ = _indexer_request(
@@ -595,7 +595,7 @@ def configure(
     if not indexer_host:
         _fail("el endpoint local de Indexer no tiene un host válido")
     indexer_source_addresses = {indexer_host, private_ip, "127.0.0.1"}
-    with tempfile.TemporaryDirectory(prefix="qapaq-indexer-tls-") as tls_work:
+    with tempfile.TemporaryDirectory(prefix="b89-indexer-tls-") as tls_work:
         upstream_name = _upstream_tls_name(indexer_url, private_ip, pathlib.Path(tls_work))
     request_indexer = lambda method, path, payload=None: _indexer_request(  # noqa: E731
         indexer_url, method, path, admin_password, payload, upstream_name
@@ -674,7 +674,7 @@ def configure(
         code, _ = request_indexer(
             "PUT", f"/_plugins/_security/api/roles/{READER_ROLE}",
             {
-                "description": "QAPAQ: lectura de alertas para la ingesta; sin escritura ni administración",
+                "description": "B89: lectura de alertas para la ingesta; sin escritura ni administración",
                 "cluster_permissions": ["cluster:monitor/health"],
                 "index_permissions": [{"index_patterns": [ALERTS_PATTERN], "allowed_actions": ["read"]}],
             },
@@ -686,7 +686,7 @@ def configure(
         if not user_existed:
             code, _ = request_indexer(
                 "PUT", f"/_plugins/_security/api/internalusers/{READER_USER}",
-                {"password": password, "description": "QAPAQ: lector read-only para KrakenD", "backend_roles": []},
+                {"password": password, "description": "B89: lector read-only para KrakenD", "backend_roles": []},
             )
             if code not in (200, 201):
                 _fail(f"Indexer rechazó el usuario read-only (HTTP {code})")
@@ -704,12 +704,12 @@ def configure(
             _fail(f"Indexer rechazó el mapeo del usuario read-only (HTTP {code})")
         mapping_changed = True
 
-        with tempfile.TemporaryDirectory(prefix="qapaq-indexer-proxy-") as work:
+        with tempfile.TemporaryDirectory(prefix="b89-indexer-proxy-") as work:
             nginx_previous = _apply_nginx(_nginx_configuration(private_ip, indexer_url, upstream_name))
             search_code = _probe(private_ip, PROXY_CERT, basic_auth, "POST", "/wazuh-alerts-*/_search", b'{"size":0}')
             health_code = _probe(private_ip, PROXY_CERT, basic_auth, "GET", "/_cluster/health")
             security_code = _probe(private_ip, PROXY_CERT, basic_auth, "GET", "/_plugins/_security/api/internalusers")
-            write_code = _probe(private_ip, PROXY_CERT, basic_auth, "POST", "/wazuh-alerts-qapaq-probe/_doc", b"{}")
+            write_code = _probe(private_ip, PROXY_CERT, basic_auth, "POST", "/wazuh-alerts-b89-probe/_doc", b"{}")
             if search_code != 200 or health_code != 200 or security_code != 403 or write_code != 403:
                 _fail("la autoprueba del proxy no confirma lectura permitida y rutas restringidas")
             if publish_reader:

@@ -24,7 +24,7 @@ La documentación oficial de [Wazuh Quickstart](https://documentation.wazuh.com/
 | --- | ---: | ---: | --- |
 | Wazuh all-in-one | `Standard_F4s_v2`, USD 0.237/h | **USD 173.01/mes** | Solo cómputo Linux |
 | PostgreSQL Flexible Server | `B2S`, USD 0.0952/h | **USD 69.50/mes** | Solo cómputo Burstable |
-| **Piso de cómputo** |  | **USD 242.51/mes** | Sin discos, backups, Container Apps, Ankay, ACR, Key Vault, red, logs ni salida |
+| **Piso de cómputo** |  | **USD 242.51/mes** | Sin discos, backups, Container Apps, B89 Respond, ACR, Key Vault, red, logs ni salida |
 
 El módulo `siem_host` requiere egress controlado a través de Azure Firewall. La consulta de precios del mismo día devuelve Basic a USD 0.395/h más USD 0.065/GB procesado y Standard a USD 1.25/h más USD 0.016/GB procesado. Con 730 horas al mes, el fijo de Firewall es USD 288.35 para Basic y USD 912.50 para Standard, antes del procesamiento y de IP pública. El piso combinado Wazuh + PostgreSQL + Firewall queda, por tanto, en **USD 530.86/mes con Basic** o **USD 1,155.01/mes con Standard**, sin el resto del SOC.
 
@@ -38,19 +38,19 @@ La suscripción mostró USD 200 de créditos promocionales con vencimiento el 18
 
 ## Decisión operativa
 
-El piso medido de USD 242.51/mes supera el umbral de notificación de USD 200, y aún faltan cómputo, almacenamiento, respaldo, observabilidad, Ankay y egreso. El dueño del proyecto decidió usar USD 200 como umbral de aviso, sin apagado ni destrucción automática; por tanto, la cifra no es un límite de facturación. No se debe presentar una VM subdimensionada como “lista para producción”.
+El piso medido de USD 242.51/mes supera el umbral de notificación de USD 200, y aún faltan cómputo, almacenamiento, respaldo, observabilidad, B89 Respond y egreso. El dueño del proyecto decidió usar USD 200 como umbral de aviso, sin apagado ni destrucción automática; por tanto, la cifra no es un límite de facturación. No se debe presentar una VM subdimensionada como “lista para producción”.
 
 Antes de aplicar, completar la cotización del stack y registrar la proyección, los posibles cargos por encima de los créditos y los efectos de cada recurso. Mantener el presupuesto Terraform de USD 200 como alerta solamente; no incorporar apagado ni `destroy` automático. Revisar el plan exacto, almacenamiento/retención, HA y restore antes de ejecutar.
 
 Este cálculo es un control de viabilidad, no una cotización contractual. La estimación del tenant y el plan Terraform siguen siendo gates previos al despliegue.
 
-## Reconciliación con el diseño Azure QAPAQ vigente
+## Reconciliación con el diseño Azure B89 vigente
 
 La cifra de este informe cubre únicamente los SKU explicitados en cada escenario.
-El objetivo A22 añade `qapaq-core` al host SIEM y no requiere una VM de API/worker
+El objetivo A22 añade `b89-core` al host SIEM y no requiere una VM de API/worker
 separada; sí requiere dimensionamiento de memoria/CPU y PostgreSQL privado. A9
 requiere además Valkey compatible con Valkey, TLS, auth y capacidad persistente, y
-A13 requiere una VM privada separada para Ankay/Shuffle completo y su OpenSearch.
+A13 requiere una VM privada separada para B89 Respond/Shuffle completo y su OpenSearch.
 No se ha cotizado ninguno de estos componentes adicionales ni los discos de datos,
 backups, egreso, Key Vault, ACR, reglas de red y observabilidad.
 

@@ -13,7 +13,7 @@
 export const DEFAULT_RETURN_TO = '/';
 
 const MAX_RETURN_TO_LENGTH = 512;
-const PROBE_ORIGIN = 'https://return-to.qapaq.invalid';
+const PROBE_ORIGIN = 'https://return-to.b89.invalid';
 
 export function safeReturnTo(value: unknown): string {
   if (typeof value !== 'string' || value.length === 0 || value.length > MAX_RETURN_TO_LENGTH) {

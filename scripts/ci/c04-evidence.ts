@@ -8,7 +8,7 @@ import workspaceManifest from '../../package.json' with { type: 'json' };
 
 const root = resolve(import.meta.dirname, '../..');
 const environment = new IntegrationEnvironment({ profile: 'postgres', repositoryRoot: root });
-const command = 'pnpm --filter @qapaq/database test';
+const command = 'pnpm --filter @b89/database test';
 let suiteExitCode: number | null = null;
 let failure = '';
 let failureDetail = '';
@@ -18,7 +18,7 @@ function runSuite(connectionString: string): Promise<number> {
   return new Promise((done, reject) => {
     const child = spawn(
       process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm',
-      ['--filter', '@qapaq/database', 'test'],
+      ['--filter', '@b89/database', 'test'],
       {
         cwd: root,
         env: { ...process.env, DATABASE_URL: connectionString },

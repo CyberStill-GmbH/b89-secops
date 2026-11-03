@@ -1,8 +1,8 @@
 /**
- * Roles concedidos por QAPAQ desde la administración (entra-soc-user-admin.md).
+ * Roles concedidos por B89 desde la administración (entra-soc-user-admin.md).
  *
  * Es la tercera fuente de roles, separada a propósito de las otras dos: las asignaciones del
- * deploy (`QAPAQ_ROLE_BINDINGS`) y los dueños del grupo de admisión siguen saliendo de
+ * deploy (`B89_ROLE_BINDINGS`) y los dueños del grupo de admisión siguen saliendo de
  * configuración y del padrón, y este store nunca las lee ni las escribe. Así, retirar un grant
  * dinámico no puede quitar un rol que el deploy declara, ni un administrador puede, desde la
  * consola, tocar el admin que deriva de ser dueño del grupo.

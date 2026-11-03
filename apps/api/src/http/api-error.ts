@@ -8,9 +8,9 @@
  */
 
 import { HttpException } from '@nestjs/common';
-import { API_ERROR_CATALOG, apiError, type ApiErrorCode } from '@qapaq/contracts';
-import type { SocFailureCode } from '@qapaq/soc';
-import type { SignInDenialReason } from '@qapaq/access';
+import { API_ERROR_CATALOG, apiError, type ApiErrorCode } from '@b89/contracts';
+import type { SocFailureCode } from '@b89/soc';
+import type { SignInDenialReason } from '@b89/access';
 
 export class ApiError extends HttpException {
   public constructor(code: ApiErrorCode, correlationId: string, fields?: readonly string[]) {

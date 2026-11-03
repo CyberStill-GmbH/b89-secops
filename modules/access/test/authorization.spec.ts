@@ -19,7 +19,7 @@ function actor(capabilities: readonly Capability[], overrides: Partial<Actor> = 
     tenantId: 'tenant-1',
     sessionId: 'sess-1',
     capabilities: new Set(capabilities),
-    roles: ['qapaq.soc.analyst'],
+    roles: ['b89.soc.analyst'],
     ...overrides,
   };
 }
@@ -32,11 +32,11 @@ const alert: ResourceContext = {
 };
 
 describe('C-18 · capabilities por rol y scope', () => {
-  it('traduce roles de Entra a capabilities de QAPAQ', () => {
-    expect([...capabilitiesForRoles(['qapaq.soc.analyst'])]).toContain('alerts.triage');
-    expect([...capabilitiesForRoles(['qapaq.soc.analyst'])]).not.toContain('events.read_raw');
-    expect([...capabilitiesForRoles(['qapaq.soc.lead'])]).toContain('incidents.close');
-    const administrator = capabilitiesForRoles(['qapaq.platform.admin']);
+  it('traduce roles de Entra a capabilities de B89', () => {
+    expect([...capabilitiesForRoles(['b89.soc.analyst'])]).toContain('alerts.triage');
+    expect([...capabilitiesForRoles(['b89.soc.analyst'])]).not.toContain('events.read_raw');
+    expect([...capabilitiesForRoles(['b89.soc.lead'])]).toContain('incidents.close');
+    const administrator = capabilitiesForRoles(['b89.platform.admin']);
     expect(administrator).toContain('alerts.triage');
     expect(administrator).toContain('audit.read_sensitive');
     expect(administrator).toContain('secrets.write');
@@ -48,14 +48,14 @@ describe('C-18 · capabilities por rol y scope', () => {
   });
 
   it('interseca rol y scope: ninguno amplía al otro', () => {
-    const lead = ['qapaq.soc.lead'];
+    const lead = ['b89.soc.lead'];
 
     expect([...effectiveCapabilities(lead, ['soc.read'])]).not.toContain('incidents.close');
     expect([...effectiveCapabilities(lead, ['soc.read', 'soc.write'])]).toContain(
       'incidents.close',
     );
     // El scope de auditoría no concede auditoría a quien no la tiene por rol.
-    expect([...effectiveCapabilities(['qapaq.soc.analyst'], ['audit.read'])]).toEqual([]);
+    expect([...effectiveCapabilities(['b89.soc.analyst'], ['audit.read'])]).toEqual([]);
   });
 });
 
@@ -133,14 +133,14 @@ describe('C-18 · autorización contextual', () => {
 
 describe('C-18 · autorización por campo', () => {
   it('oculta el crudo a quien no tiene events.read_raw', () => {
-    const capabilities = capabilitiesForRoles(['qapaq.soc.analyst']);
+    const capabilities = capabilitiesForRoles(['b89.soc.analyst']);
 
     expect(visibleFields(['id', 'severity', 'raw'], capabilities)).toEqual(['id', 'severity']);
     expect(projectFields({ id: 'e1', raw: { ref: 'raw:1' } }, capabilities)).toEqual({ id: 'e1' });
   });
 
   it('proyecta el crudo al rol que sí lo tiene', () => {
-    const capabilities = capabilitiesForRoles(['qapaq.soc.lead']);
+    const capabilities = capabilitiesForRoles(['b89.soc.lead']);
 
     expect(projectFields({ id: 'e1', raw: { ref: 'raw:1' } }, capabilities)).toEqual({
       id: 'e1',

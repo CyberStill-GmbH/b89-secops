@@ -4,42 +4,42 @@
 
 ### Verificación más reciente — 2026-10-22 18:34 UTC
 
-- PR [#115](https://github.com/CyberStill-GmbH/qapaq-secops/pull/115) ya está integrado en `main` (`812a7d7`). Corrige la dependencia de Azure del firewall anterior: el root ahora crea su propio Azure Firewall Standard y policy al configurar `siem_host`. No existe ya un requisito de firewall AWS ni de referencia manual.
+- PR [#115](https://github.com/CyberStill-GmbH/b89-secops/pull/115) ya está integrado en `main` (`812a7d7`). Corrige la dependencia de Azure del firewall anterior: el root ahora crea su propio Azure Firewall Standard y policy al configurar `siem_host`. No existe ya un requisito de firewall AWS ni de referencia manual.
 - El environment `azure-demo` se verificó por GitHub API: solo aplica una regla de rama que permite `main`; no hay revisores requeridos. No es el impedimento actual.
-- El plan de `main` [39829577577](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39829577577) pasó OIDC, backend remoto, validación e inicialización. Después, [39830716725](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39830716725) aplicó el plan nuevo del mismo run: **0 altas, 1 cambio, 0 destrucciones**. El cambio fue solo en reglas de red de `siem-release`; el endpoint público usa OAuth/RBAC, sin acceso anónimo ni shared keys. No crea SIEM, Firewall, Ankay, edge, DNS ni servicios runtime.
-- El input real mantiene `enable_runtime=false`, `siem_host=null` y `ankay_host=null`. GitHub no tiene configuradas las variables JSON requeridas para habilitarlos; no se leyeron valores secretos. Sin perfil VM, clave SSH pública, rangos autorizados, referencias de Key Vault y configuración completa de Ankay, no existe un plan de despliegue del SOC que pueda aplicarse con seguridad.
-- La lectura [39831099993](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39831099993) repitió el cambio de red del Storage después del apply. La [documentación de AzureRM](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/storage_account) requiere `Deny` y al menos una regla al declarar `network_rules`; PR [#116](https://github.com/CyberStill-GmbH/qapaq-secops/pull/116) retiró el bloque incompatible y conservó `public_network_access_enabled=true`, OAuth/RBAC, claves compartidas deshabilitadas y contenedor privado. El plan posterior de solo lectura [39832251308](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39832251308) reportó **“No changes”**.
-- Auditoría de solo lectura de Ankay: el workflow vigente solo construye/publica frontend; faltan backend, Orborus, worker, OpenSearch fijados por digest y Compose aprobado. El bootstrap de la VM no instala Docker ni arranca Shuffle. El host no debe habilitarse hasta resolver ese contrato y su ejecución.
-- El Firewall Standard solo se crea junto con el SIEM configurado y cuesta aproximadamente **USD 912.50/mes**, más procesamiento/IP. El piso documentado Wazuh + PostgreSQL + Firewall Standard es **USD 1,155.01/mes** antes de Ankay y otros costos. El budget de USD 200 genera avisos; no limita cargos ni apaga servicios.
+- El plan de `main` [39829577577](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39829577577) pasó OIDC, backend remoto, validación e inicialización. Después, [39830716725](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39830716725) aplicó el plan nuevo del mismo run: **0 altas, 1 cambio, 0 destrucciones**. El cambio fue solo en reglas de red de `siem-release`; el endpoint público usa OAuth/RBAC, sin acceso anónimo ni shared keys. No crea SIEM, Firewall, B89 Respond, edge, DNS ni servicios runtime.
+- El input real mantiene `enable_runtime=false`, `siem_host=null` y `b89_respond_host=null`. GitHub no tiene configuradas las variables JSON requeridas para habilitarlos; no se leyeron valores secretos. Sin perfil VM, clave SSH pública, rangos autorizados, referencias de Key Vault y configuración completa de B89 Respond, no existe un plan de despliegue del SOC que pueda aplicarse con seguridad.
+- La lectura [39831099993](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39831099993) repitió el cambio de red del Storage después del apply. La [documentación de AzureRM](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/storage_account) requiere `Deny` y al menos una regla al declarar `network_rules`; PR [#116](https://github.com/CyberStill-GmbH/b89-secops/pull/116) retiró el bloque incompatible y conservó `public_network_access_enabled=true`, OAuth/RBAC, claves compartidas deshabilitadas y contenedor privado. El plan posterior de solo lectura [39832251308](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39832251308) reportó **“No changes”**.
+- Auditoría de solo lectura de B89 Respond: el workflow vigente solo construye/publica frontend; faltan backend, Orborus, worker, OpenSearch fijados por digest y Compose aprobado. El bootstrap de la VM no instala Docker ni arranca Shuffle. El host no debe habilitarse hasta resolver ese contrato y su ejecución.
+- El Firewall Standard solo se crea junto con el SIEM configurado y cuesta aproximadamente **USD 912.50/mes**, más procesamiento/IP. El piso documentado Wazuh + PostgreSQL + Firewall Standard es **USD 1,155.01/mes** antes de B89 Respond y otros costos. El budget de USD 200 genera avisos; no limita cargos ni apaga servicios.
 - No se ejecutó apply ni se cambió DNS. `app.jappi.net.pe` aún no tiene un destino Azure/TLS verificado.
 
 La descripción del botón `apply` del workflow se corrigió para no afirmar que requiere una aprobación de environment inexistente; mantiene la restricción a `main` y aplica el plan guardado de esa misma corrida.
 
-PR [#100](https://github.com/CyberStill-GmbH/qapaq-secops/pull/100) se integró en
+PR [#100](https://github.com/CyberStill-GmbH/b89-secops/pull/100) se integró en
 `main`, ahora en `048716ada8e3e5e077b044888b1291ec101506d4`. Solo añadió validación
 de la referencia de secreto en Key Vault y casos de `terraform test`; no modificó
 infraestructura. La validación Azure Terraform
-[39773533408](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39773533408)
+[39773533408](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39773533408)
 está verde. CI Security
-[39773533266](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39773533266)
+[39773533266](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39773533266)
 seguía en progreso al momento de esta actualización. Estos checks no ejecutan
 `terraform apply`.
 
 La evidencia de infraestructura y ejecuciones anteriores es:
 
-- [39766635034](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39766635034)
+- [39766635034](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39766635034)
   aplicó solo el canal privado de artefactos: Storage dedicado, contenedor Blob
   privado, private endpoint y RBAC del publicador (**4 altas, 0 cambios,
   0 destrucciones**). No aplicó un runtime.
-- [39768505115](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39768505115)
+- [39768505115](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39768505115)
   generó el plan **0 altas, 1 cambio in-place, 0 destrucciones** para cambiar las
   reglas de red del Storage a `default_action=Allow` y permitir `AzureServices`.
   `apply` fue omitido: ese cambio no se ejecutó.
-- [39771791770](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39771791770)
+- [39771791770](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39771791770)
   corresponde al estado anterior y no sustituye un plan validado para el nuevo SHA
   de `main`.
 
-El runtime Wazuh/QAPAQ/Ankay no está demostrado como desplegado ni operativo en
+El runtime Wazuh/B89/B89 Respond no está demostrado como desplegado ni operativo en
 Azure; tampoco hay evidencia nueva de salud de integraciones o de endpoint público.
 DNS no se cambió. El apply confirmado no modificó los secretos, el storage de
 eventos/evidencia ni otros recursos existentes. No se hizo una lectura nueva del
@@ -48,75 +48,75 @@ una lista de recursos como inventario actual.
 
 ## Aplicación del canal de releases (2026-10-22 11:00 UTC)
 
-- PR [#98](https://github.com/CyberStill-GmbH/qapaq-secops/pull/98), commit `c32ed62`, corrige la colisión del address de Terraform entre el recurso de publicación nuevo y la migración del permiso histórico. CI, seguridad y `fmt/init/validate` pasaron.
-- El workflow protegido [39766635034](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39766635034) generó y aplicó el plan exacto tras revisión. Resumen: **4 altas, 0 cambios, 0 destrucciones** — Storage de releases, contenedor privado, private endpoint y `Storage Blob Data Contributor` para la identidad publicadora federada.
-- No cambió el storage de eventos/evidencia, los valores de Key Vault, secretos de GitHub, PostgreSQL, DNS ni otros recursos existentes. Los recursos del canal de releases existen, pero la publicación end-to-end no está verificada; todavía no hay paquete completo publicado ni instalación de Wazuh/Ankay.
+- PR [#98](https://github.com/CyberStill-GmbH/b89-secops/pull/98), commit `c32ed62`, corrige la colisión del address de Terraform entre el recurso de publicación nuevo y la migración del permiso histórico. CI, seguridad y `fmt/init/validate` pasaron.
+- El workflow protegido [39766635034](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39766635034) generó y aplicó el plan exacto tras revisión. Resumen: **4 altas, 0 cambios, 0 destrucciones** — Storage de releases, contenedor privado, private endpoint y `Storage Blob Data Contributor` para la identidad publicadora federada.
+- No cambió el storage de eventos/evidencia, los valores de Key Vault, secretos de GitHub, PostgreSQL, DNS ni otros recursos existentes. Los recursos del canal de releases existen, pero la publicación end-to-end no está verificada; todavía no hay paquete completo publicado ni instalación de Wazuh/B89 Respond.
 - No se refrescó el inventario ARM por portal después del apply; la evidencia de estas cuatro altas es el resultado de Terraform en Actions. Verificar el inventario del resource group antes de un plan adicional.
-- Run anterior [39764311183](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39764311183) falló antes del apply por un `moved` block inválido; no produjo cambios.
-- El build experimental [39758248744](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39758248744) terminó correctamente para Manager 4.14.8, Indexer y Filebeat; la asamblea solo generó evidencia efímera de procedencia, no un bundle instalable. El archive QAPAQ Core [39758800010](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39758800010) pasó validación. El paquete Dashboard [39758795551](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39758795551) pasó build, pero la publicación a ACR se omitió. El siguiente gate es ensamblar y validar el bundle completo antes de publicarlo.
+- Run anterior [39764311183](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39764311183) falló antes del apply por un `moved` block inválido; no produjo cambios.
+- El build experimental [39758248744](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39758248744) terminó correctamente para Manager 4.14.8, Indexer y Filebeat; la asamblea solo generó evidencia efímera de procedencia, no un bundle instalable. El archive B89 Core [39758800010](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39758800010) pasó validación. El paquete Dashboard [39758795551](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39758795551) pasó build, pero la publicación a ACR se omitió. El siguiente gate es ensamblar y validar el bundle completo antes de publicarlo.
 
 ## Validación del adaptador Core Azure (2026-10-22 09:20 UTC)
 
-- El PR [#93](https://github.com/CyberStill-GmbH/qapaq-secops/pull/93), commit `b94760b`, agrega el instalador Azure de `qapaq-core` y la validación segura del archive. El workflow [39754134555](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39754134555) pasó: cuatro casos de prueba del validador, sintaxis Bash, build en Ubuntu, checksum y comprobación del trust store CA.
-- El artefacto producido por ese workflow es efímero (retención de un día); **no** se publicó en Blob/ACR ni se instaló en una VM. El workflow no construye el bundle Wazuh/QAPAQ completo y no demuestra worker BullMQ, migraciones o salud de Wazuh.
+- El PR [#93](https://github.com/CyberStill-GmbH/b89-secops/pull/93), commit `b94760b`, agrega el instalador Azure de `b89-core` y la validación segura del archive. El workflow [39754134555](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39754134555) pasó: cuatro casos de prueba del validador, sintaxis Bash, build en Ubuntu, checksum y comprobación del trust store CA.
+- El artefacto producido por ese workflow es efímero (retención de un día); **no** se publicó en Blob/ACR ni se instaló en una VM. El workflow no construye el bundle Wazuh/B89 completo y no demuestra worker BullMQ, migraciones o salud de Wazuh.
 - Los checks generales de seguridad/contendedores del PR seguían en curso a esta hora. La rama `main` no cambió por este PR.
-- La última ejecución Terraform observada sobre `main`, [39751334214](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39751334214), sigue siendo solo lectura con cero cambios. No hubo `apply`, cambio DNS, acceso a valores de Key Vault ni mutación de recursos en esta validación.
+- La última ejecución Terraform observada sobre `main`, [39751334214](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39751334214), sigue siendo solo lectura con cero cambios. No hubo `apply`, cambio DNS, acceso a valores de Key Vault ni mutación de recursos en esta validación.
 
 ## Actualización de publicación (2026-10-22 08:42 UTC)
 
-- El PR [#91](https://github.com/CyberStill-GmbH/qapaq-secops/pull/91) se integró en `main` como `b7ff341`. Corrige la instalación de ORAS en el workflow de publicación fijando URL y checksum oficiales de ORAS 1.3.5.
-- El workflow [39745314741](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39745314741) terminó `success`: build y verificación del paquete (`wazuh-dashboard_4.14.8-1qapaq1_amd64.deb`, SHA-256 `e678df149679a5d564f2d3b7d56988c1e2533b7654a1aec0df0975dd7c0b39d8`) y publicación con GitHub OIDC a Azure Container Registry.
-- ACR confirmó el repositorio `qapaq-dashboard`, tag inmutable `git-b7ff341a2e249e69dbcd190c0619c098d4d2eec6-sha256-e678df149679a5d564f2d3b7d56988c1e2533b7654a1aec0df0975dd7c0b39d8` y manifest OCI `sha256:63277d6e56942a2ebe0f2c511d7ee90851160b0caca948eef4a8cc288eb05e2b`. El contenido es un artefacto OCI que transporta el `.deb`, no una imagen de contenedor ni un Dashboard instalado.
-- El build aplicó los overlays QAPAQ sobre Wazuh 4.14.8 / OpenSearch Dashboards 2.19.6 e instaló `qapaqI18n`, `qapaqOps`, Wazuh y los plugins OpenSearch fijados. Usó Node 18.19.0 y Yarn 1.22.22 según el upstream; no hay mezcla de npm y Yarn en el build. Actions dejó una advertencia no bloqueante de que `actions/upload-artifact` será forzado a Node 24; requiere seguimiento de actualización del action.
-- El plan Terraform protegido [39741366185](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39741366185) sobre `main` (`4b310b1`) concluyó **0 altas, 0 cambios, 0 destrucciones**. En el grupo Azure existen recursos fundacionales (identidades, Key Vault, Log Analytics, endpoints privados/DNS, PostgreSQL, ACR, Storage y VNet), pero no existe VM del SIEM, VM Ankay ni Container Apps runtime. Los objetos `siem_host` y `ankay_host` y `enable_runtime` siguen deshabilitados.
+- El PR [#91](https://github.com/CyberStill-GmbH/b89-secops/pull/91) se integró en `main` como `b7ff341`. Corrige la instalación de ORAS en el workflow de publicación fijando URL y checksum oficiales de ORAS 1.3.5.
+- El workflow [39745314741](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39745314741) terminó `success`: build y verificación del paquete (`wazuh-dashboard_4.14.8-1b891_amd64.deb`, SHA-256 `e678df149679a5d564f2d3b7d56988c1e2533b7654a1aec0df0975dd7c0b39d8`) y publicación con GitHub OIDC a Azure Container Registry.
+- ACR confirmó el repositorio `b89-dashboard`, tag inmutable `git-b7ff341a2e249e69dbcd190c0619c098d4d2eec6-sha256-e678df149679a5d564f2d3b7d56988c1e2533b7654a1aec0df0975dd7c0b39d8` y manifest OCI `sha256:63277d6e56942a2ebe0f2c511d7ee90851160b0caca948eef4a8cc288eb05e2b`. El contenido es un artefacto OCI que transporta el `.deb`, no una imagen de contenedor ni un Dashboard instalado.
+- El build aplicó los overlays B89 sobre Wazuh 4.14.8 / OpenSearch Dashboards 2.19.6 e instaló `b89I18n`, `b89Ops`, Wazuh y los plugins OpenSearch fijados. Usó Node 18.19.0 y Yarn 1.22.22 según el upstream; no hay mezcla de npm y Yarn en el build. Actions dejó una advertencia no bloqueante de que `actions/upload-artifact` será forzado a Node 24; requiere seguimiento de actualización del action.
+- El plan Terraform protegido [39741366185](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39741366185) sobre `main` (`4b310b1`) concluyó **0 altas, 0 cambios, 0 destrucciones**. En el grupo Azure existen recursos fundacionales (identidades, Key Vault, Log Analytics, endpoints privados/DNS, PostgreSQL, ACR, Storage y VNet), pero no existe VM del SIEM, VM B89 Respond ni Container Apps runtime. Los objetos `siem_host` y `b89_respond_host` y `enable_runtime` siguen deshabilitados.
 - No se instalaron servicios, no se ejecutó un apply de runtime, no se cambiaron secretos y no se hizo corte DNS. La subida a ACR únicamente demuestra que el paquete está disponible para un futuro instalador.
 
 ## Actualización de estado (2026-10-22 07:22 UTC)
 
-- El PR [#84](https://github.com/CyberStill-GmbH/qapaq-secops/pull/84) se integró en `main` como commit `3eeaed0`; el PR [#86](https://github.com/CyberStill-GmbH/qapaq-secops/pull/86) como `3b58ab9`; y el PR [#87](https://github.com/CyberStill-GmbH/qapaq-secops/pull/87) como `4ee8dd6`. Estos cambios endurecen la publicación de bundles y el bootstrap idempotente; no constituyen un despliegue del SOC.
-- El run Terraform [39731939654](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39731939654), lanzado desde `main` en `3b58ab9`, ya autenticó por OIDC, abrió el state remoto y completó el plan tras la aprobación del reviewer `CesarGuevaraQapaq`. Resultado: **1 alta, 0 cambios, 0 destrucciones**; solo crea `Storage Blob Data Contributor` para el publicador sobre el contenedor privado `siem-release`. El input fue `apply=false`: el job de apply se omitió y no cambió recursos. El plan no incluye runtime Wazuh ni Ankay.
-- El run posterior [39739274128](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39739274128) generó un plan guardado nuevo sobre `main` (`4ee8dd6`) con **1 alta, 0 cambios, 0 destrucciones** y aplicó exclusivamente `module.identity_registry.azurerm_role_assignment.siem_release_publisher`. GitHub Actions reportó `Apply complete! Resources: 1 added, 0 changed, 0 destroyed.` El rol queda acotado a `Storage Blob Data Contributor` del contenedor privado `siem-release`; no provisionó servicios ni tocó secretos, datos, DNS u otros recursos.
-- El apply anterior [39649721166](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39649721166) falló después de intentar 30 altas y reportar errores de RBAC `roleAssignments/write` y registro del proveedor `Microsoft.App`. Reconciliar el state con un plan nuevo antes de otro apply; no inferir rollback completo del apply fallido.
-- Builds del SHA `3b58ab9`: `qapaq-core` pasó en [39731393165](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39731393165); Indexer y Filebeat pasaron en [39731386944](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39731386944), pero la compilación del Manager aún estaba en curso a las 07:04 UTC; Dashboard pasó build/verificación en [39731390092](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39731390092) y Ankay en [39731396102](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39731396102). Las publicaciones a ACR se omitieron; no hay imágenes publicadas ni runtime instalado.
-- Antes de la publicación actual, la vista Repositories del ACR `qapaqsecopsdemo66f8c73b` mostró cero repositorios. Después, el run Ankay agregó el repositorio de su imagen frontend. Se configuraron en GitHub las variables no secretas `AZURE_ACR_NAME`, `AZURE_ACR_LOGIN_SERVER` y `AZURE_ACR_PUBLISHER_CLIENT_ID` para apuntar a ese registro y a la identidad federada dedicada.
-- La identidad publicadora `id-qapaqsecopsdemo-github-publisher` se verificó en el portal. Su `principal_id` coincide con el principal del plan y el rol `AcrPush` ya existe en el state. Su client ID quedó configurado en GitHub como variable de repositorio `AZURE_ACR_PUBLISHER_CLIENT_ID`; no es un secreto. La configuración OIDC de ACR está completa; hasta ahora se publicó solo la imagen frontend Ankay.
-- El workflow Ankay [39738569548](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39738569548) pasó pruebas y publicó correctamente una imagen frontend en el ACR privado después de aprobación del environment `azure-demo`. Digest registrado: `sha256:40ee82ef93148df955f01f9d1faa3f38cc3547d42a92e044c3d23abac2c278fa`. Es solo el frontend Ankay; no representa el backend, Orborus, worker ni OpenSearch, y aún no se instala en una VM.
-- El PR [#89](https://github.com/CyberStill-GmbH/qapaq-secops/pull/89) se integró en `main` como `b2e8161`; el cableado `ankay_host` es opcional, conserva `null` como default y no inicia Docker/Shuffle. Su verificación de Azure Terraform terminó en verde; no se volvió a aplicar Terraform por ese PR.
-- El workflow de publicación del Dashboard [39738565521](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39738565521) sigue compilando el paquete Wazuh. El build Manager/Indexer/Filebeat [39731386944](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39731386944) terminó correctamente y subió artefactos efímeros; no son una release durable.
-- Inspeccioné solo nombres de GitHub Secrets/Variables y claves de `.env.example`, sin leer valores: están configurados los datos de OIDC Azure, password de bootstrap PostgreSQL, client secret de Entra y referencias/IDs de tenant y grupo M365/QAPAQ. No encontré nombres de configuración o secretos para Sophos, Cato ni Teams. No he consultado ni cambiado secretos de Key Vault. Por tanto, esas integraciones no están acreditadas ni listas para instalar.
+- El PR [#84](https://github.com/CyberStill-GmbH/b89-secops/pull/84) se integró en `main` como commit `3eeaed0`; el PR [#86](https://github.com/CyberStill-GmbH/b89-secops/pull/86) como `3b58ab9`; y el PR [#87](https://github.com/CyberStill-GmbH/b89-secops/pull/87) como `4ee8dd6`. Estos cambios endurecen la publicación de bundles y el bootstrap idempotente; no constituyen un despliegue del SOC.
+- El run Terraform [39731939654](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39731939654), lanzado desde `main` en `3b58ab9`, ya autenticó por OIDC, abrió el state remoto y completó el plan tras la aprobación del reviewer `CesarGuevaraB89`. Resultado: **1 alta, 0 cambios, 0 destrucciones**; solo crea `Storage Blob Data Contributor` para el publicador sobre el contenedor privado `siem-release`. El input fue `apply=false`: el job de apply se omitió y no cambió recursos. El plan no incluye runtime Wazuh ni B89 Respond.
+- El run posterior [39739274128](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39739274128) generó un plan guardado nuevo sobre `main` (`4ee8dd6`) con **1 alta, 0 cambios, 0 destrucciones** y aplicó exclusivamente `module.identity_registry.azurerm_role_assignment.siem_release_publisher`. GitHub Actions reportó `Apply complete! Resources: 1 added, 0 changed, 0 destroyed.` El rol queda acotado a `Storage Blob Data Contributor` del contenedor privado `siem-release`; no provisionó servicios ni tocó secretos, datos, DNS u otros recursos.
+- El apply anterior [39649721166](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39649721166) falló después de intentar 30 altas y reportar errores de RBAC `roleAssignments/write` y registro del proveedor `Microsoft.App`. Reconciliar el state con un plan nuevo antes de otro apply; no inferir rollback completo del apply fallido.
+- Builds del SHA `3b58ab9`: `b89-core` pasó en [39731393165](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39731393165); Indexer y Filebeat pasaron en [39731386944](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39731386944), pero la compilación del Manager aún estaba en curso a las 07:04 UTC; Dashboard pasó build/verificación en [39731390092](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39731390092) y B89 Respond en [39731396102](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39731396102). Las publicaciones a ACR se omitieron; no hay imágenes publicadas ni runtime instalado.
+- Antes de la publicación actual, la vista Repositories del ACR `b89secopsdemo66f8c73b` mostró cero repositorios. Después, el run B89 Respond agregó el repositorio de su imagen frontend. Se configuraron en GitHub las variables no secretas `AZURE_ACR_NAME`, `AZURE_ACR_LOGIN_SERVER` y `AZURE_ACR_PUBLISHER_CLIENT_ID` para apuntar a ese registro y a la identidad federada dedicada.
+- La identidad publicadora `id-b89secopsdemo-github-publisher` se verificó en el portal. Su `principal_id` coincide con el principal del plan y el rol `AcrPush` ya existe en el state. Su client ID quedó configurado en GitHub como variable de repositorio `AZURE_ACR_PUBLISHER_CLIENT_ID`; no es un secreto. La configuración OIDC de ACR está completa; hasta ahora se publicó solo la imagen frontend B89 Respond.
+- El workflow B89 Respond [39738569548](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39738569548) pasó pruebas y publicó correctamente una imagen frontend en el ACR privado después de aprobación del environment `azure-demo`. Digest registrado: `sha256:40ee82ef93148df955f01f9d1faa3f38cc3547d42a92e044c3d23abac2c278fa`. Es solo el frontend B89 Respond; no representa el backend, Orborus, worker ni OpenSearch, y aún no se instala en una VM.
+- El PR [#89](https://github.com/CyberStill-GmbH/b89-secops/pull/89) se integró en `main` como `b2e8161`; el cableado `b89_respond_host` es opcional, conserva `null` como default y no inicia Docker/Shuffle. Su verificación de Azure Terraform terminó en verde; no se volvió a aplicar Terraform por ese PR.
+- El workflow de publicación del Dashboard [39738565521](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39738565521) sigue compilando el paquete Wazuh. El build Manager/Indexer/Filebeat [39731386944](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39731386944) terminó correctamente y subió artefactos efímeros; no son una release durable.
+- Inspeccioné solo nombres de GitHub Secrets/Variables y claves de `.env.example`, sin leer valores: están configurados los datos de OIDC Azure, password de bootstrap PostgreSQL, client secret de Entra y referencias/IDs de tenant y grupo M365/B89. No encontré nombres de configuración o secretos para Sophos, Cato ni Teams. No he consultado ni cambiado secretos de Key Vault. Por tanto, esas integraciones no están acreditadas ni listas para instalar.
 - Entre `3b58ab9` del plan previo y `4ee8dd6` solo cambió documentación, sin diferencias en `infra/azure` ni en el workflow Terraform.
-- La revisión de `main` confirma que `enable_runtime=false`; `siem_host` y `ankay_host` siguen apagados por defecto. El módulo Ankay crea subnet dedicada y prepara VM/disco y Compose en `cloud-init`: no instala Docker ni arranca Shuffle. Aún faltan el bundle Wazuh integral, imágenes completas de Ankay, Compose probado, credenciales Cato/Sophos/Teams en el almacén autorizado y `tfvars` con red/firewall revisados. El apply reciente solo agregó un permiso Blob acotado; no deja el SOC operativo.
-- La estimación de lista publicada mantiene un piso de USD 530.86/mes con Wazuh, PostgreSQL y Firewall Basic, antes de Ankay, discos, tráfico y observabilidad. No es una cotización del tenant. El umbral USD 200 solo alerta; no limita cargos ni apaga recursos.
+- La revisión de `main` confirma que `enable_runtime=false`; `siem_host` y `b89_respond_host` siguen apagados por defecto. El módulo B89 Respond crea subnet dedicada y prepara VM/disco y Compose en `cloud-init`: no instala Docker ni arranca Shuffle. Aún faltan el bundle Wazuh integral, imágenes completas de B89 Respond, Compose probado, credenciales Cato/Sophos/Teams en el almacén autorizado y `tfvars` con red/firewall revisados. El apply reciente solo agregó un permiso Blob acotado; no deja el SOC operativo.
+- La estimación de lista publicada mantiene un piso de USD 530.86/mes con Wazuh, PostgreSQL y Firewall Basic, antes de B89 Respond, discos, tráfico y observabilidad. No es una cotización del tenant. El umbral USD 200 solo alerta; no limita cargos ni apaga recursos.
 
-No declarar el SOC operativo hasta que se publique y verifique el bundle, el plan completo sea aprobado y aplicado, y las pruebas de salud e integraciones M365, Sophos, Cato, Teams, agentes y Ankay produzcan evidencia de ejecución.
+No declarar el SOC operativo hasta que se publique y verifique el bundle, el plan completo sea aprobado y aplicado, y las pruebas de salud e integraciones M365, Sophos, Cato, Teams, agentes y B89 Respond produzcan evidencia de ejecución.
 
 ## Alineación vigente de arquitectura
 
 Este runbook conserva abajo observaciones fechadas del 2026-10-20. Para el diseño objetivo prevalece [`architecture.md`](architecture.md), basado en `docs/10-decisiones.md` A5–A9/A13/A18/A20/A22 y `docs/12-backend-en-el-siem.md`.
 
-El destino Azure es Wazuh QAPAQ 4.14.8 / OSD 2.19.6 con edge Nginx QAPAQ en el host SIEM; `qapaq-core` API+worker Node 24 junto al SIEM; PostgreSQL durable; Valkey para sesiones, cache-aside y BullMQ; KrakenD para ingesta según A8; y Ankay como Shuffle completo en un host privado separado, tras `/ankay/*` con la sesión/autorización QAPAQ actual. `siem_host` está conectado al root detrás del objeto opcional `siem_host`, desactivado por defecto; el PR #89 integra `ankay_host` opcional, también desactivado y todavía sin runtime Compose. El apply de infraestructura descrito arriba completó una asignación de identidad acotada; no desplegó ese destino ni certifica el runtime.
+El destino Azure es Wazuh B89 4.14.8 / OSD 2.19.6 con edge Nginx B89 en el host SIEM; `b89-core` API+worker Node 24 junto al SIEM; PostgreSQL durable; Valkey para sesiones, cache-aside y BullMQ; KrakenD para ingesta según A8; y B89 Respond como Shuffle completo en un host privado separado, tras `/b89-respond/*` con la sesión/autorización B89 actual. `siem_host` está conectado al root detrás del objeto opcional `siem_host`, desactivado por defecto; el PR #89 integra `b89_respond_host` opcional, también desactivado y todavía sin runtime Compose. El apply de infraestructura descrito arriba completó una asignación de identidad acotada; no desplegó ese destino ni certifica el runtime.
 
 ## Estado de Azure verificado (2026-10-21, hora de Lima)
 
 - El workflow protegido de Terraform ejecutó el apply en `main`, commit
-  [`9a8fbe3`](https://github.com/CyberStill-GmbH/qapaq-secops/commit/9a8fbe38b8e28b3d26e9e2b1faf0034cb80e1bf5).
-  El [run 39721818427](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39721818427)
+  [`9a8fbe3`](https://github.com/CyberStill-GmbH/b89-secops/commit/9a8fbe38b8e28b3d26e9e2b1faf0034cb80e1bf5).
+  El [run 39721818427](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39721818427)
   terminó `success`: **1 recurso añadido, 0 modificados, 0 destruidos**. La única
   acción fue crear `module.identity_registry.azurerm_role_assignment.raw_blob_writer`,
   asignando `Storage Blob Data Contributor` a la identidad administrada del runtime,
   limitado al contenedor `security-event-raw`. El workflow validó el checksum del
   plan guardado y aplicó ese mismo plan.
-- El [plan posterior 39722269994](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39722269994)
+- El [plan posterior 39722269994](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39722269994)
   terminó `success`: **0 añadidos, 0 modificados, 0 destruidos**; el job de apply
   fue omitido. Es una comprobación de deriva para el estado Terraform en ese
   momento, no un health check de aplicaciones.
 - Estos runs no cambiaron DNS, secretos, buckets de evidencia ni datos; tampoco
-  crearon el host Wazuh/Ankay ni activaron conectores. El runtime genérico continúa
+  crearon el host Wazuh/B89 Respond ni activaron conectores. El runtime genérico continúa
   deshabilitado (`enable_runtime=false`), `siem_host` permanece sin configuración
-  (`null`) y `ankay_host` no está conectado al root. **QAPAQ SecOps y Ankay no están
+  (`null`) y `b89_respond_host` no está conectado al root. **B89 SecOps y B89 Respond no están
   operativos en Azure por este apply.**
-- Siguen pendientes el bundle instalable y bootstrap de Wazuh QAPAQ, Valkey y
-  `qapaq-core` funcional, KrakenD, el despliegue completo de Ankay, migración segura
+- Siguen pendientes el bundle instalable y bootstrap de Wazuh B89, Valkey y
+  `b89-core` funcional, KrakenD, el despliegue completo de B89 Respond, migración segura
   de secretos a Key Vault, configuración/validación real de M365, Sophos, Cato y
   Teams, agentes/playbooks, TLS y corte DNS. No presentar la base Azure ni el rol
   Blob como evidencia de que esos servicios están conectados.
@@ -126,14 +126,14 @@ El destino Azure es Wazuh QAPAQ 4.14.8 / OSD 2.19.6 con edge Nginx QAPAQ en el h
 
 Antes de usar este runbook, tener presentes estos gates:
 
-- `enable_runtime` crea cinco Container Apps genéricas; no sustituye Wazuh ni representa A22. Una base `qapaq_jobs` tampoco acredita una cola activa. A9 define Valkey/BullMQ, pero el worker actual es lifecycle-only y no consume BullMQ.
-- El bootstrap Azure del SIEM instala la configuración/reglas M365 y obtiene `office365-client-secret` de Key Vault mediante Managed Identity. La lectura real de Graph y la indexación aún no están probadas. `qapaq-core` conserva dependencias AWS/CA RDS que requieren una migración separada. No rotar los secretos AWS existentes.
-- No afirmar M365, Sophos, Cato, Teams, agentes o playbooks operativos sin pruebas contra los servicios Azure. El workflow Ankay publica el overlay de frontend; no instala backend, Orborus, workers ni OpenSearch.
+- `enable_runtime` crea cinco Container Apps genéricas; no sustituye Wazuh ni representa A22. Una base `b89_jobs` tampoco acredita una cola activa. A9 define Valkey/BullMQ, pero el worker actual es lifecycle-only y no consume BullMQ.
+- El bootstrap Azure del SIEM instala la configuración/reglas M365 y obtiene `office365-client-secret` de Key Vault mediante Managed Identity. La lectura real de Graph y la indexación aún no están probadas. `b89-core` conserva dependencias AWS/CA RDS que requieren una migración separada. No rotar los secretos AWS existentes.
+- No afirmar M365, Sophos, Cato, Teams, agentes o playbooks operativos sin pruebas contra los servicios Azure. El workflow B89 Respond publica el overlay de frontend; no instala backend, Orborus, workers ni OpenSearch.
 - A11 fija snapshots/evidencia en S3 y excluye Azure. No usar Blob para esos datos hasta que una decisión revisada defina residencia, Object Lock y retención.
 - USD 200/mes es un umbral de alertas, sin apagado ni `destroy`. La estimación actual ya supera ese importe antes de los componentes restantes.
 - No aplicar el paso DNS de abajo como si el destino fuera Container Apps. Primero debe existir el edge del host SIEM con TLS y hostname probado. El Terraform Azure no administra Route 53.
 **Estado al 2026-10-21:** fundación parcial aplicada y sin deriva Terraform en la
-última lectura; el runtime QAPAQ/Ankay no está desplegado y DNS no fue cambiado.
+última lectura; el runtime B89/B89 Respond no está desplegado y DNS no fue cambiado.
 **Región configurada:** Chile Central (`chilecentral`).
 **Umbral de alerta de presupuesto:** USD 200/mes; no es un tope ni apaga recursos.
 **Crédito de cuenta observado:** USD 200 restantes, con vencimiento el 18 de
@@ -170,20 +170,20 @@ secretos ni adjuntarlos a planes, logs o artefactos de CI.
   escrito state con ese workflow.
 - El módulo SIEM requiere un bundle instalable completo que aún no existe. El
   workflow experimental construye Manager/Indexer y verifica Filebeat, pero sus
-  paquetes son temporales y no incluyen `install.sh`, Dashboard QAPAQ ni core.
+  paquetes son temporales y no incluyen `install.sh`, Dashboard B89 ni core.
   En los runs experimentales
-  [39531441349](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39531441349)
+  [39531441349](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39531441349)
   y
-  [39531495712](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39531495712),
+  [39531495712](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39531495712),
   Indexer falló al crear `artifacts/maven`: el contenedor builder corre como UID 1000
   y el checkout bind-mounted pertenecía al runner. La corrección temporal de ownership
   se integró en `main`; el builder Indexer ya terminó y validó su `.deb` en el run
-  [39535588443](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39535588443).
+  [39535588443](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39535588443).
   En esa misma ejecución, Manager construyó el paquete principal y el de símbolos, pero
   la validación falló porque contaba todos los `.deb` como si fueran el único Manager.
   El PR #78 corrigió la selección por metadato Debian `Package=wazuh-manager` y se
   integró en `main` como `d59bca44872bf5f430c9cf3cec5b381a48f35b04`. En el run
-  [39644906120](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39644906120),
+  [39644906120](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39644906120),
   Filebeat pasó firma/checksum; el job Manager seguía compilando en la última lectura.
   Indexer volvió a fallar, ahora porque `download.eclipse.org/eclipse/updates/4.29/p2.index`
   respondió HTML de mantenimiento en vez del índice P2. El endpoint presenta el mismo
@@ -194,35 +194,35 @@ secretos ni adjuntarlos a planes, logs o artefactos de CI.
 - Actualización CI 2026-10-21: el pin de KrakenD Go se actualizó a 1.26.10 para incluir
   la corrección oficial de CVE-2026-111943; el PR #78 y los escaneos Trivy de contenedores
   pasaron y se integraron en `main`. Para el bloqueo Eclipse se está preparando el overlay
-  QAPAQ [`wazuh-indexer-spotless-jdt-lockfile.patch`](../../../infra/azure/overlays/wazuh-indexer-spotless-jdt-lockfile.patch),
+  B89 [`wazuh-indexer-spotless-jdt-lockfile.patch`](../../../infra/azure/overlays/wazuh-indexer-spotless-jdt-lockfile.patch),
   limitado a la dependencia de formato de build. La compilación deberá registrar su SHA-256
   junto a la procedencia y demostrar que resuelve JDT 4.29 desde Maven Central. No modifica
   el código runtime de Wazuh. El overlay sigue sin validación de GitHub Actions al momento
   de esta nota.
   Los workflows Azure de Dashboard y core son separados: el core Azure pasó
   build/checksum en el run
-  [39531106649](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39531106649);
+  [39531106649](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39531106649);
   el Dashboard compiló y subió un artefacto temporal en
-  [39531035378](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39531035378),
+  [39531035378](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39531035378),
   pero su job de publicación a ACR fue omitido porque requiere ejecución manual en `main`.
   Ninguno de esos runs despliega una VM.
-- El módulo `ankay_host` existe aislado, pero el root no lo instancia. Su
+- El módulo `b89_respond_host` existe aislado, pero el root no lo instancia. Su
   `cloud-init` monta y prepara el Compose; no instala ni arranca Shuffle,
-  Orborus, workers, OpenSearch o el backend. El workflow de Ankay en
-  [39530587455](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39530587455)
+  Orborus, workers, OpenSearch o el backend. El workflow de B89 Respond en
+  [39530587455](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39530587455)
   terminó el build sin publicar a ACR.
-- El workflow heredado `QAPAQ SIEM` de `main` construyó `qapaq-core` y publicó
+- El workflow heredado `B89 SIEM` de `main` construyó `b89-core` y publicó
   el artefacto inmutable a S3 de AWS en el run
-  [39530587442](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39530587442).
+  [39530587442](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39530587442).
   El job `build-dashboard` de ese run seguía activo en la última lectura. Esto
   es publicación de artefactos, no despliegue ni cambio de infraestructura. El
   workflow Azure separado no reutiliza esa publicación. El repositorio separado
-  [`CyberStill-GmbH/qapaq-dashboard`](https://github.com/CyberStill-GmbH/qapaq-dashboard)
+  [`CyberStill-GmbH/b89-dashboard`](https://github.com/CyberStill-GmbH/b89-dashboard)
   reporta versión `5.1.0-alpha0` en `main`; no sustituye el overlay compatible
-  que se fija en `qapaq-secops/wazuh/dashboard/upstream.lock` para Wazuh 4.14.8 /
-  OSD 2.19.6. La fuente de Ankay está en la
-  rama `feature/ankay-qapaq`: `ankay/build.sh` fija
-  Shuffle v2.3.0, construye el frontend con overlay QAPAQ y publica su fuente
+  que se fija en `b89-secops/wazuh/dashboard/upstream.lock` para Wazuh 4.14.8 /
+  OSD 2.19.6. La fuente de B89 Respond está en la
+  rama `feature/b89-respond`: `b89-respond/build.sh` fija
+  Shuffle v2.3.0, construye el frontend con overlay B89 y publica su fuente
   correspondiente bajo AGPL. El backend Go, Orborus, workers y OpenSearch son
   upstream Shuffle sin modificar. Orborus necesita acceso al socket Docker; el
   diseño apunta a una VM Linux privada con Compose y volúmenes persistentes. El
@@ -231,15 +231,15 @@ secretos ni adjuntarlos a planes, logs o artefactos de CI.
   credencial desde un archivo materializado por Managed Identity/Key Vault; esto
   instala reglas, pero no demuestra lectura Graph ni indexación de eventos.
 - CI Security pasó en el run
-  [39530588011](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39530588011).
-  La validación del Terraform Azure y la validación aislada del host Ankay
+  [39530588011](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39530588011).
+  La validación del Terraform Azure y la validación aislada del host B89 Respond
   pasaron en los runs de `main`; son pruebas de código, no autenticación Azure
   ni despliegues.
 - El workflow Terraform Azure se lanzó con `apply=false` en
-  [39530618084](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/39530618084).
+  [39530618084](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39530618084).
   Permanece esperando aprobación de `azure-demo` antes de generar el plan. La
   API de GitHub reportó que el usuario que lanzó el run no puede aprobar su
-  propio deployment; el revisor configurado es `CesarGuevaraQapaq`. El run actual
+  propio deployment; el revisor configurado es `CesarGuevaraB89`. El run actual
   solo puede generar un plan; no puede aplicar recursos. No se ejecutó apply ni
   se cambió DNS.
 - GitHub Actions ya tiene configurados, como repository secrets, los nombres
@@ -268,13 +268,13 @@ secretos ni adjuntarlos a planes, logs o artefactos de CI.
   datasets, cuotas, replay, credencial y conectores validados. Tener credenciales
   sin esos contratos no habilita ingestión.
 - La zona pública `jappi.net.pe` está delegada a Route 53 (`awsdns`). No hay A,
-  AAAA ni CNAME para `app`, `qapaq-secops` o `wazuh`; los registros encontrados
+  AAAA ni CNAME para `app`, `b89-secops` o `wazuh`; los registros encontrados
   para esos tres nombres son solo CAA para Let's Encrypt. El único A de la zona
   apunta Vercel en `codexpt.jappi.net.pe`, fuera de los hostnames de corte. No se
   borró ningún DNS porque no existe un destino web antiguo en los hostnames
   solicitados; quitar CAA no redirige el tráfico y alteraría la política TLS.
 - En la última lectura autenticada de Azure se observó la suscripción `Enabled`,
-  la cuenta `cguevara@qapaq.pe` con `Owner` en el ámbito de suscripción y cero
+  la cuenta `cguevara@b89.example` con `Owner` en el ámbito de suscripción y cero
   grupos de recursos en el portal. No se ejecutó un apply desde este checkout.
   La CLI `az` local no está instalada; renovar inventario desde Cloud Shell o
   Actions antes del plan. `aws sts get-caller-identity` respondió como la cuenta
@@ -282,7 +282,7 @@ secretos ni adjuntarlos a planes, logs o artefactos de CI.
   se usará esa identidad para cambios. No se inspeccionaron valores de secretos
   en Azure, AWS, Sophos o Cato.
 
-## Publicación del Dashboard QAPAQ a Azure Container Registry
+## Publicación del Dashboard B89 a Azure Container Registry
 
 El build existente produce un `.deb` verificable, pero su publicación actual es
 solo a S3. ACR admite artefactos OCI genéricos además de imágenes de contenedor;
@@ -300,7 +300,7 @@ El flujo Azure debe:
 4. Registrar SBOM/procedencia y el digest aprobado en el manifiesto del release;
    el tag por sí solo no es prueba de inmutabilidad.
 
-El workflow `.github/workflows/qapaq-dashboard-azure.yml` implementa el tramo de
+El workflow `.github/workflows/b89-dashboard-azure.yml` implementa el tramo de
 build y publicación; su validación cloud-free puede correr en PR. El build/PR no recibe
 `id-token`; la publicación requiere `workflow_dispatch`, `publish_to_acr=true`,
 `main` y el environment `azure-demo`. Falla antes de autenticarse si se despacha
@@ -315,7 +315,7 @@ Los workflows de publicación leen `AZURE_ACR_PUBLISHER_CLIENT_ID`,
 `AZURE_TENANT_ID` y `AZURE_SUBSCRIPTION_ID` desde repository secrets (con
 fallback a variables). El `AZURE_ACR_PUBLISHER_CLIENT_ID` debe corresponder a la
 identidad federada que Terraform crea con `AcrPush`, cuyo subject inmutable es
-`repo:CyberStill-GmbH@220633794/qapaq-secops@1374673243:environment:azure-demo`.
+`repo:CyberStill-GmbH@220633794/b89-secops@1374673243:environment:azure-demo`.
 El artifact de GitHub
 se conserva un día entre jobs. Esta pipeline no instala el `.deb`, no modifica
 una VM ni ejecuta Terraform. ACR conserva endpoint público autenticado con RBAC;
@@ -331,11 +331,11 @@ artifact ni se publicó nada a ACR.
 
 ## Catálogo de secretos
 
-### Carga inicial del secreto Entra de QAPAQ
+### Carga inicial del secreto Entra de B89
 
-El workflow manual [`seed-azure-qapaq-secret.yml`](../../../.github/workflows/seed-azure-qapaq-secret.yml)
+El workflow manual [`seed-azure-b89-secret.yml`](../../../.github/workflows/seed-azure-b89-secret.yml)
 transfiere únicamente el secreto GitHub `ENTRA_CLIENT_SECRET` al nombre
-`qapaq-entra-client-secret` en el Key Vault demo. Se ejecuta desde `main` con
+`b89-entra-client-secret` en el Key Vault demo. Se ejecuta desde `main` con
 GitHub OIDC y un parámetro ARM `secureString`; no expone el endpoint de datos,
 no agrega permisos de lectura/escritura de secretos y no escribe valores en
 Terraform state. El workflow se niega a crear otra versión si el nombre ya existe.
@@ -348,7 +348,7 @@ desde GitHub. Microsoft documenta el tipo ARM para crear secretos y que el
 firewall de Key Vault se aplica al plano de datos. Esto evita abrir el vault o
 crear una infraestructura efímera de red para esta carga puntual.
 
-Este paso solo resuelve la credencial de la API QAPAQ. No crea ni sustituye el
+Este paso solo resuelve la credencial de la API B89. No crea ni sustituye el
 secreto del conector Office 365 de Wazuh, el paquete/certificados de instalación
 Wazuh, URL de Teams, credenciales Sophos/Cato ni otros materiales ausentes. El
 SOC no queda desplegable ni operativo hasta poblar y verificar cada referencia
@@ -361,9 +361,9 @@ valores desde AWS.
 
 | Servicio consumidor | Secreto requerido | Estado y procedencia |
 | --- | --- | --- |
-| API QAPAQ | `QAPAQ_ENTRA_CLIENT_SECRET` | Requiere comprobar la versión vigente en el origen autorizado y copiarla mediante un canal seguro. Tenant ID y client ID son configuración, no secretos. |
-| API QAPAQ | `QAPAQ_TEAMS_WORKFLOW_URL` | Debe ser la URL nueva de Teams Workflows. La URL firmada es una credencial y nunca se imprime ni prueba con `curl -v`. |
-| API/gateway QAPAQ | `QAPAQ_WAZUH_GATEWAY_ACCESS_TOKEN` y CA del Indexer, si aplica | Pendientes del paquete y endpoints de Wazuh para Azure; no configurar hasta establecer identidad de solo lectura, TLS y ruta privada. |
+| API B89 | `B89_ENTRA_CLIENT_SECRET` | Requiere comprobar la versión vigente en el origen autorizado y copiarla mediante un canal seguro. Tenant ID y client ID son configuración, no secretos. |
+| API B89 | `B89_TEAMS_WORKFLOW_URL` | Debe ser la URL nueva de Teams Workflows. La URL firmada es una credencial y nunca se imprime ni prueba con `curl -v`. |
+| API/gateway B89 | `B89_WAZUH_GATEWAY_ACCESS_TOKEN` y CA del Indexer, si aplica | Pendientes del paquete y endpoints de Wazuh para Azure; no configurar hasta establecer identidad de solo lectura, TLS y ruta privada. |
 | Manager Wazuh | Credencial de la app Office 365 (`office365-client-secret`) | Se materializa desde Key Vault en el host con Managed Identity y se consume como archivo por el módulo `office365`. Antes de declarar operación, comprobar permisos Graph, lectura e indexación sin imprimir la credencial. |
 | Worker M365/Sophos/Cato | Credenciales de cada conector | M365 conserva la integración aceptada. Sophos y Cato están bloqueados por contratos de API/permisos todavía ausentes. No inyectar secretos a un worker sin adaptador aprobado. |
 | PostgreSQL | Password bootstrap y password de rol runtime | El bootstrap es requerido para crear el servidor y queda en Terraform state. Falta crear un usuario de aplicación de mínimo privilegio y migraciones seguras; no reutilizar el administrador como identidad de runtime. |
@@ -377,16 +377,16 @@ por el chat ni guardarlos en `tfvars`, GitHub variables de texto, logs o planes.
 
 ## Notificaciones Teams
 
-La ruta de notificaciones de QAPAQ (`modules/soar/src/teams-adapter.ts` y
+La ruta de notificaciones de B89 (`modules/soar/src/teams-adapter.ts` y
 `teams-payload.ts`) ya utiliza una URL de **Teams Workflows** y adjuntos
 **Adaptive Card**. La suite del adapter pasó 27/27 pruebas del módulo `soar`.
 Microsoft documenta Workflows como receptor de webhook HTTP y la publicación de
 Adaptive Cards; los conectores Office 365 heredados están en retirada.
 
-`infra/wazuh/teams/custom-qapaq-teams` es la integración personalizada del
+`infra/wazuh/teams/custom-b89-teams` es la integración personalizada del
 **backend Wazuh Manager 4.x**. El bundle Azure versiona ahora el adaptador, el
 actualizador idempotente de `ossec.conf` y su bloque de integración. Al incluir
-`qapaq-teams-workflow-url` en `siem_host.wazuh_secret_names`, el bootstrap obtiene
+`b89-teams-workflow-url` en `siem_host.wazuh_secret_names`, el bootstrap obtiene
 la URL de Key Vault por identidad administrada, la conserva como archivo protegido,
 valida el formato de Teams Workflows y reinicia Manager solo después de
 `wazuh-analysisd -t`. Una validación o reinicio fallidos restauran el `ossec.conf`
@@ -405,23 +405,23 @@ publica al trigger moderno `/api/v1/webhooks/webhook_<id>` de Shuffle con TLS y
 header de autenticación obligatorio, enviando un payload mínimo. El workflow puede
 usar una acción HTTP hacia Teams Workflows solo con almacenamiento cifrado/KMS
 verificado para la URL firmada; si no, el emisor crítico continúa en el outbox de
-QAPAQ (ADR-022) para no duplicar notificaciones. El workflow, host Shuffle,
+B89 (ADR-022) para no duplicar notificaciones. El workflow, host Shuffle,
 credencial, webhook y ejecución reales siguen pendientes; no están creados ni
 aplicados por Terraform.
 
 El catálogo inicial de playbooks está en
-el directorio `docs/security/ankay-playbooks/` (no presente en esta rama). Define el
+el directorio `docs/security/b89-respond-playbooks/` (no presente en esta rama). Define el
 trigger directo Wazuh solo para triage read-only; ejecución de acciones requiere
-despachador del outbox QAPAQ, callback firmado, permisos revisados y aprobación
+despachador del outbox B89, callback firmado, permisos revisados y aprobación
 SoD. VirusTotal queda bloqueado hasta confirmar licencia Enterprise/comercial,
 condiciones de privacidad de IOCs y referencia de secreto en Key Vault. Graph,
 Sophos y Cato no se consideran conectados hasta validar scopes/tenant y entregar
 eventos sintéticos por los conectores reales.
 
-Ankay Qapaq **es Shuffle modificado**, no otro producto SOAR: el overlay actual
+B89 Respond **es Shuffle modificado**, no otro producto SOAR: el overlay actual
 cambia marca, arte y CSP del frontend, mientras sus servicios backend siguen el
 upstream fijado. La exposición propuesta es un enlace del Dashboard bajo
-`/ankay/*` detrás de la sesión y autorización QAPAQ, sin iframe ni cambio del
+`/b89-respond/*` detrás de la sesión y autorización B89, sin iframe ni cambio del
 login. Requiere integrar la ruta en el edge, desplegar Compose en la VM privada y
 contar con Manager y Shuffle desplegados; el stack Azure actual aún no contiene
 esos componentes. La integración Wazuh→Shuffle existente es solo el adaptador del
@@ -432,14 +432,14 @@ fijado y pasó 11/11 pruebas del codemod, incluyendo texto de UI con
 interpolaciones. Se generó el paquete de fuente exigido por AGPL; no se construyó
 la imagen porque el daemon Docker local no estaba disponible. Por tanto, aún no
 hay imagen publicada ni despliegue funcional. Se añadió
-`.github/workflows/ankay-azure.yml`: el job de PR no recibe credenciales cloud y
+`.github/workflows/b89-respond-azure.yml`: el job de PR no recibe credenciales cloud y
 compila el contenedor en GitHub Actions; la publicación manual a ACR está
 restringida a `main` y depende del mismo environment/identidad OIDC que el
 workflow del Dashboard. El workflow está en PR #75; sus checks de PR no publican
 imágenes ni se autentican en Azure.
 
 El baseline profesional de agentes, malware, telemetría y respuesta está en
-el documento `docs/security/qapaq-sophos-cato-wazuh-baseline.md` (no presente en esta rama).
+el documento `docs/security/b89-sophos-cato-wazuh-baseline.md` (no presente en esta rama).
 Es una propuesta, no una comprobación ni aplicación de políticas en proveedores.
 Sophos y Cato permanecen `TO_BE_PROVIDED`/`planned` en el inventario de fuentes;
 faltan contratos de API/licencia/tenant y las credenciales de acceso a sus
@@ -492,7 +492,7 @@ usar una clave compartida como sustituto del control de acceso.
 5. Proveer contratos de conectores y materializar secretos por URI de Key Vault.
 6. Ejecutar `terraform plan`; revisar altas, cambios, exposición pública,
    `prevent_destroy`, permisos RBAC y costo antes de aplicar.
-7. Desplegar Wazuh QAPAQ y Ankay (frontend overlay más backend/Orborus/workers/
+7. Desplegar Wazuh B89 y B89 Respond (frontend overlay más backend/Orborus/workers/
    OpenSearch de Shuffle) con almacenamiento/recuperación; validar TLS, ruta
    protegida, workflows sintéticos y flujos de notificación. Enrolar primero
    agentes sintéticos.
@@ -505,13 +505,13 @@ técnicos de Azure, AWS, Microsoft 365 y Route 53. Sin ellos no se puede ejecuta
 el plan ni certificar una integración real.
 ## Administración de roles: gate de aprobación y SoD
 
-PR [#88](https://github.com/CyberStill-GmbH/qapaq-secops/pull/88) prepara solicitudes de rol
-con auditoría y revisión en QAPAQ. Esta función aún no está integrada en `main` ni desplegada en
+PR [#88](https://github.com/CyberStill-GmbH/b89-secops/pull/88) prepara solicitudes de rol
+con auditoría y revisión en B89. Esta función aún no está integrada en `main` ni desplegada en
 Azure; su CI debe repetirse tras actualizar la rama.
 
 - Las solicitudes requieren un padrón Graph reciente y la configuración explícita de los grupos
   de aprobadores de Acceso y Seguridad. Sin esa evidencia o configuración, el flujo falla cerrado.
-- La persona solicitante no aprueba su propia solicitud. `qapaq.platform.admin` requiere una
+- La persona solicitante no aprueba su propia solicitud. `b89.platform.admin` requiere una
   segunda aprobación de Seguridad y evidencia reciente de step-up; no se relaja OIDC, MFA ni la
   sesión actual.
 - El grant y su evento de auditoría se guardan en una transacción. La revocación de sesiones es

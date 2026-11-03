@@ -7,8 +7,8 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { InMemoryAuditStore } from '@qapaq/audit';
-import { InMemoryIngestionState } from '@qapaq/soc';
+import { InMemoryAuditStore } from '@b89/audit';
+import { InMemoryIngestionState } from '@b89/soc';
 
 import {
   measureSourceActivity,

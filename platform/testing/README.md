@@ -1,6 +1,6 @@
 # C-06 — entorno real de integración
 
-`@qapaq/testing` contiene el harness reutilizable para pruebas de plataforma. No
+`@b89/testing` contiene el harness reutilizable para pruebas de plataforma. No
 se importa desde aplicaciones ni desde dominio y no inicia contenedores al
 importarse.
 
@@ -8,7 +8,7 @@ importarse.
 
 `IntegrationEnvironment` expone `preflight()`, `start()`, `health()`,
 `collectEvidence()` y `stop()`. Cada ejecución recibe un `runId` UUID, etiquetas
-de ownership (`qapaq.test`, `qapaq.test.run-id` y `qapaq.test.owner`) y nombres
+de ownership (`b89.test`, `b89.test.run-id` y `b89.test.owner`) y nombres
 derivados de esa identidad. Las credenciales solo viven en el runtime.
 
 Los perfiles son `postgres` (PostgreSQL fijado por digest para C-04), `base`
@@ -21,7 +21,7 @@ pendiente queda `BLOCKED`; nunca se informa como PASS.
 
 ```text
 pnpm run test:integration
-pnpm --filter @qapaq/testing typecheck
+pnpm --filter @b89/testing typecheck
 ```
 
 Cuando Docker no está disponible, las suites reales se marcan como omitidas y

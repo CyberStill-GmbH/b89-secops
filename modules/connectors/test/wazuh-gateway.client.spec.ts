@@ -209,24 +209,24 @@ describe('WazuhGatewayClient', () => {
     ).toThrowError(expect.objectContaining({ code: 'CONFIGURATION_INVALID' }));
   });
 
-  it('HTTP privado solo hacia *.qapaq.internal y con opción explícita', () => {
+  it('HTTP privado solo hacia *.b89.internal y con opción explícita', () => {
     const base = { accessToken: TOKEN, requestTimeoutMs: 100, maximumResponseBytes: 10_000 };
     expect(
       () =>
         new WazuhGatewayClient({
           ...base,
-          baseUrl: 'http://krakend.demo.qapaq.internal:8080',
+          baseUrl: 'http://krakend.demo.b89.internal:8080',
           allowPrivateServiceHttp: true,
         }),
     ).not.toThrow();
     expect(
-      () => new WazuhGatewayClient({ ...base, baseUrl: 'http://krakend.demo.qapaq.internal:8080' }),
+      () => new WazuhGatewayClient({ ...base, baseUrl: 'http://krakend.demo.b89.internal:8080' }),
     ).toThrowError(expect.objectContaining({ code: 'CONFIGURATION_INVALID' }));
     expect(
       () =>
         new WazuhGatewayClient({
           ...base,
-          baseUrl: 'http://qapaq.internal.example.test',
+          baseUrl: 'http://b89.internal.example.test',
           allowPrivateServiceHttp: true,
         }),
     ).toThrowError(expect.objectContaining({ code: 'CONFIGURATION_INVALID' }));

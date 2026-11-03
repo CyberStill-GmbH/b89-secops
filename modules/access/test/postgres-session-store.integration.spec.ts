@@ -31,10 +31,10 @@ function session(overrides: Partial<Session> = {}): Session {
     id: randomBytes(32).toString('base64url'),
     subjectId: 'sub-analista-1',
     displayName: 'Analista Sintética',
-    email: 'analista@qapaq-lab.example',
+    email: 'analista@b89-lab.example',
     tenantId: 'tenant-sessions',
     state: 'active',
-    roles: ['qapaq.soc.analyst'],
+    roles: ['b89.soc.analyst'],
     scopes: ['soc.read'],
     capabilities: new Set(['alerts.read', 'incidents.read']),
     amr: ['pwd', 'mfa'],
@@ -48,7 +48,7 @@ function session(overrides: Partial<Session> = {}): Session {
 }
 
 describe.skipIf(!databaseUrl)('C-18 · sesiones en PostgreSQL', () => {
-  const name = `qapaq_sess_${process.pid}_${Date.now()}`.toLowerCase();
+  const name = `b89_sess_${process.pid}_${Date.now()}`.toLowerCase();
   let url: string;
   let store: PostgresSessionStore;
 

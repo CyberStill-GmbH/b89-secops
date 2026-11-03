@@ -23,7 +23,7 @@ import {
   type DirectoryReader,
   type DirectoryStore,
   type MemberChange,
-} from '@qapaq/access';
+} from '@b89/access';
 
 import type { GroupOwnerSource } from './role-grants.js';
 

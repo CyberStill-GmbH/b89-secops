@@ -6,7 +6,7 @@
  * que la resuelven aprobadores distintos:
  *
  * - etapa de Acceso (`roles.approve`) para todo rol;
- * - etapa de Seguridad (`roles.approve.privileged`) además, para `qapaq.platform.admin`.
+ * - etapa de Seguridad (`roles.approve.privileged`) además, para `b89.platform.admin`.
  *
  * Solicitante, objetivo y cada aprobador son personas distintas (por `oid`). Solo la aprobación
  * final cambia el grant, y lo hace bajo compare-and-set sobre la revisión que vio el solicitante:
@@ -17,7 +17,7 @@
  * (`RoleAdministration.run`): o queda todo, o nada.
  */
 
-import type { AuditStore } from '@qapaq/audit';
+import type { AuditStore } from '@b89/audit';
 
 import { PRIVILEGED_ROLES, REQUESTABLE_ROLES, type RequestableRole } from './capabilities.js';
 import { InMemoryRoleGrantStore, normalizeGrantRoles, type RoleGrantStore } from './role-grants.js';

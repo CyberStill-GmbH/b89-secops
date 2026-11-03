@@ -1,9 +1,9 @@
 # C-18 — Comprobación de conectividad real con Microsoft Entra ID
 
-Fecha: 2026-10-01 · Ambiente: estación de desarrollo Windows, red QAPAQ ·
+Fecha: 2026-10-01 · Ambiente: estación de desarrollo Windows, red B89 ·
 Tenant: `45f2f938-dbe3-4a3e-8a54-930893f94ef8`
 
-Esta comprobación responde a una sola pregunta: **¿Entra reacciona a lo que QAPAQ
+Esta comprobación responde a una sola pregunta: **¿Entra reacciona a lo que B89
 construye?** No sustituye la aceptación del flujo completo, que exige una persona real
 iniciando sesión y sus claims de rol.
 
@@ -31,11 +31,11 @@ longitud.
 - **Inicio de sesión interactivo** con una persona del tenant, para observar `amr`,
   `roles` y la emisión del `id_token` que C-18 valida. Requiere intervención humana y
   consentimiento; no se automatiza aquí.
-- **Mapeo de roles**: el catálogo de C-18 espera `qapaq.soc.analyst`, `qapaq.soc.lead`,
-  `qapaq.auditor` y `qapaq.platform.admin` como app roles del registro. Su publicación en
+- **Mapeo de roles**: el catálogo de C-18 espera `b89.soc.analyst`, `b89.soc.lead`,
+  `b89.auditor` y `b89.platform.admin` como app roles del registro. Su publicación en
   el tenant no se ha verificado.
-- **Nombres de variables**: el `.env` local declara `QAPAQ_MICROSOFT_ENTRA_*`, mientras el
-  esquema de configuración de C-18 lee `QAPAQ_ENTRA_*`. Unificarlos es trabajo pendiente
+- **Nombres de variables**: el `.env` local declara `B89_MICROSOFT_ENTRA_*`, mientras el
+  esquema de configuración de C-18 lee `B89_ENTRA_*`. Unificarlos es trabajo pendiente
   antes de arrancar el BFF contra el tenant real.
 
 Por eso el gate `C-18-entra-real` permanece `BLOCKED` en la matriz: la conectividad y la

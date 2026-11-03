@@ -14,7 +14,7 @@ const profiles: Readonly<Record<ConfigurationProfileName, ConfigurationProfile>>
 
 export function selectProfile(value: unknown): ConfigurationProfile {
   if (value !== 'development' && value !== 'test' && value !== 'production') {
-    throw configurationError('CONFIG_PROFILE_INVALID', 'QAPAQ_PROFILE');
+    throw configurationError('CONFIG_PROFILE_INVALID', 'B89_PROFILE');
   }
   return profiles[value];
 }

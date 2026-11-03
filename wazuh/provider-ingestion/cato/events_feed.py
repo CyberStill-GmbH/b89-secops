@@ -268,7 +268,7 @@ def run(config_path: pathlib.Path) -> int:
         save_state(state_path, new_marker)
         return 0
     except (OSError, KeyError, TypeError, json.JSONDecodeError, ProviderError):
-        print("qapaq-cato-ingest: provider poll failed; cursor preserved", file=sys.stderr)
+        print("b89-cato-ingest: provider poll failed; cursor preserved", file=sys.stderr)
         return 1
 
 

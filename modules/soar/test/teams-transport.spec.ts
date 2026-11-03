@@ -15,7 +15,7 @@ const message = buildTeamsMessage({
   title: 'Acceso no autorizado a srv-app-01',
   severity: 'critical',
   occurredAt: AT,
-  consoleBaseUrl: 'https://soc.qapaq.pe/',
+  consoleBaseUrl: 'https://soc.b89.example/',
   clientRequestId: clientRequestIdFor('tenant-1', 'key-1'),
 });
 
@@ -71,8 +71,8 @@ describe('C-20 · carga del canal', () => {
   it('construye una tarjeta adaptativa con enlace a la consola', () => {
     const card = message.attachments[0].content as { actions: { url: string }[] };
 
-    expect(card.actions[0]?.url).toBe('https://soc.qapaq.pe/incidents/inc-1');
-    expect(message.qapaq.clientRequestId).toBe(clientRequestIdFor('tenant-1', 'key-1'));
+    expect(card.actions[0]?.url).toBe('https://soc.b89.example/incidents/inc-1');
+    expect(message.b89.clientRequestId).toBe(clientRequestIdFor('tenant-1', 'key-1'));
   });
 
   it('no incluye crudo, identidades ni material sensible', () => {
@@ -89,17 +89,17 @@ describe('C-20 · transporte real sobre HTTP', () => {
     behaviour = () => ({ status: 202 });
     received.length = 0;
 
-    const outcome = await transport().send(message, message.qapaq.clientRequestId);
+    const outcome = await transport().send(message, message.b89.clientRequestId);
 
     expect(outcome).toMatchObject({ delivered: true, httpStatus: 202 });
-    expect(received[0]?.clientRequestId).toBe(message.qapaq.clientRequestId);
+    expect(received[0]?.clientRequestId).toBe(message.b89.clientRequestId);
     expect(JSON.parse(received[0]!.body)).toMatchObject({ type: 'message' });
   });
 
   it('clasifica 429 y 500 como transitorios', async () => {
     for (const status of [429, 500]) {
       behaviour = () => ({ status });
-      const outcome = await transport().send(message, message.qapaq.clientRequestId);
+      const outcome = await transport().send(message, message.b89.clientRequestId);
 
       expect(outcome.failure).toMatchObject({ class: 'transient', httpStatus: status });
     }
@@ -108,7 +108,7 @@ describe('C-20 · transporte real sobre HTTP', () => {
   it('clasifica 503 y 504 como ambiguos', async () => {
     for (const status of [503, 504]) {
       behaviour = () => ({ status });
-      const outcome = await transport().send(message, message.qapaq.clientRequestId);
+      const outcome = await transport().send(message, message.b89.clientRequestId);
 
       expect(outcome.failure?.class, `estado ${status}`).toBe('ambiguous');
     }
@@ -117,7 +117,7 @@ describe('C-20 · transporte real sobre HTTP', () => {
   it('clasifica 400 y 403 como permanentes', async () => {
     for (const status of [400, 403]) {
       behaviour = () => ({ status });
-      const outcome = await transport().send(message, message.qapaq.clientRequestId);
+      const outcome = await transport().send(message, message.b89.clientRequestId);
 
       expect(outcome.failure?.class, `estado ${status}`).toBe('permanent');
     }
@@ -126,7 +126,7 @@ describe('C-20 · transporte real sobre HTTP', () => {
   it('trata el timeout como ambiguo, no como fallo de entrega', async () => {
     behaviour = () => ({ status: 202, delayMs: 300 });
 
-    const outcome = await transport(80).send(message, message.qapaq.clientRequestId);
+    const outcome = await transport(80).send(message, message.b89.clientRequestId);
 
     expect(outcome.delivered).toBe(false);
     expect(outcome.failure).toMatchObject({ class: 'ambiguous', code: 'REQUEST_TIMEOUT' });
@@ -135,7 +135,7 @@ describe('C-20 · transporte real sobre HTTP', () => {
   it('no filtra la URL firmada del workflow en el error', async () => {
     behaviour = () => ({ status: 403 });
 
-    const outcome = await transport().send(message, message.qapaq.clientRequestId);
+    const outcome = await transport().send(message, message.b89.clientRequestId);
 
     expect(JSON.stringify(outcome)).not.toContain('secreto-firmado');
   });
@@ -147,7 +147,7 @@ describe('C-20 · transporte real sobre HTTP', () => {
       timeoutMs: 1_000,
     });
 
-    const outcome = await unreachable.send(message, message.qapaq.clientRequestId);
+    const outcome = await unreachable.send(message, message.b89.clientRequestId);
 
     expect(outcome.delivered).toBe(false);
     expect(outcome.failure?.class).toBe('transient');

@@ -74,7 +74,7 @@ test('Azure SIEM gateway exposes only authenticated Wazuh ingestion routes', () 
   assert.match(azureIngestionTemplate, /WAZUH_BASIC_AUTH_B64/);
   assert.match(azureIngestionTemplate, /WAZUH_INDEX_PATTERN/);
   assert.doesNotMatch(azureIngestionTemplate, /\/api\//);
-  assert.doesNotMatch(azureIngestionTemplate, /QAPAQ_API_UPSTREAM/);
+  assert.doesNotMatch(azureIngestionTemplate, /B89_API_UPSTREAM/);
   assert.doesNotMatch(azureIngestionTemplate, /127\.0\.0\.1|localhost/);
   assert.doesNotMatch(azureIngestionTemplate, /"endpoint"\s*:\s*"\/wazuh\/\*"/);
 });
@@ -82,7 +82,7 @@ test('Azure SIEM gateway exposes only authenticated Wazuh ingestion routes', () 
 test('Azure Wazuh routes require the dedicated app role and Core app identity', () => {
   assert.equal((azureIngestionTemplate.match(/"roles_key":\s*"roles"/g) ?? []).length, 2);
   assert.equal(
-    (azureIngestionTemplate.match(/"roles":\s*\["Qapaq\.Wazuh\.Read"\]/g) ?? []).length,
+    (azureIngestionTemplate.match(/"roles":\s*\["B89\.Wazuh\.Read"\]/g) ?? []).length,
     2,
   );
   assert.equal(
@@ -90,9 +90,9 @@ test('Azure Wazuh routes require the dedicated app role and Core app identity', 
     2,
   );
   assert.equal((azureIngestionTemplate.match(/JWT\.azp/g) ?? []).length, 4);
-  assert.match(azureIngestionTemplate, /QAPAQ_CORE_CLIENT_ID/);
-  assert.match(compose, /QAPAQ_CORE_CLIENT_ID/);
-  assert.match(envExample, /^QAPAQ_CORE_CLIENT_ID=/m);
+  assert.match(azureIngestionTemplate, /B89_CORE_CLIENT_ID/);
+  assert.match(compose, /B89_CORE_CLIENT_ID/);
+  assert.match(envExample, /^B89_CORE_CLIENT_ID=/m);
 });
 
 test('each C-28 route has explicit method, auth, rate, timeout, backend, classification and owner', () => {
@@ -314,12 +314,12 @@ test('finite timeout and bounded per-instance rate policy are explicitly wired',
   assert.ok(template.includes('GATEWAY_ENDPOINT_TIMEOUT'));
   assert.match(template, /"client_max_rate"\s*:\s*\{\{ env "GATEWAY_RATE_PER_SECOND" \}\}/);
   assert.match(template, /"client_capacity"\s*:\s*\{\{ env "GATEWAY_RATE_BURST" \}\}/);
-  assert.match(template, /"propagate_claims"\s*:\s*\[\["sub",\s*"X-Qapaq-Workload"\]\]/);
+  assert.match(template, /"propagate_claims"\s*:\s*\[\["sub",\s*"X-B89-Workload"\]\]/);
   assert.equal(
     (template.match(/"timeout": "\{\{ env "GATEWAY_ENDPOINT_TIMEOUT" \}\}"/g) ?? []).length,
     2 + applicationRoutes.routes.length,
   );
-  assert.match(template, /"host": \[\s*"\{\{ env "QAPAQ_API_UPSTREAM" \}\}"\s*\]/);
+  assert.match(template, /"host": \[\s*"\{\{ env "B89_API_UPSTREAM" \}\}"\s*\]/);
 });
 
 test('production infrastructure dependencies stay explicitly TO_BE_PROVIDED', () => {

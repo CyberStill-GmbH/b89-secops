@@ -16,7 +16,7 @@ resource "aws_security_group" "krakend" {
 
 resource "aws_security_group" "api" {
   name        = "${var.project}-${var.environment}-api"
-  description = "QAPAQ API accepts traffic only from KrakenD."
+  description = "B89 API accepts traffic only from KrakenD."
   vpc_id      = var.vpc_id
 
   tags = { Name = "${var.project}-${var.environment}-api" }
@@ -24,7 +24,7 @@ resource "aws_security_group" "api" {
 
 resource "aws_security_group" "worker" {
   name        = "${var.project}-${var.environment}-worker"
-  description = "QAPAQ worker has no inbound listeners."
+  description = "B89 worker has no inbound listeners."
   vpc_id      = var.vpc_id
 
   tags = { Name = "${var.project}-${var.environment}-worker" }
@@ -56,7 +56,7 @@ resource "aws_security_group" "wazuh" {
 
 resource "aws_security_group" "public_proxy" {
   name        = "${var.project}-${var.environment}-public-proxy"
-  description = "Public HTTPS edge for Wazuh and QAPAQ API; no SSH ingress."
+  description = "Public HTTPS edge for Wazuh and B89 API; no SSH ingress."
   vpc_id      = var.vpc_id
 
   tags = { Name = "${var.project}-${var.environment}-public-proxy" }
@@ -94,7 +94,7 @@ resource "aws_vpc_security_group_ingress_rule" "public_proxy_http" {
 
 resource "aws_vpc_security_group_ingress_rule" "public_proxy_https" {
   security_group_id = aws_security_group.public_proxy.id
-  description       = "Public HTTPS for Wazuh Dashboard and the QAPAQ web API."
+  description       = "Public HTTPS for Wazuh Dashboard and the B89 web API."
   cidr_ipv4         = "0.0.0.0/0"
   from_port         = 443
   ip_protocol       = "tcp"
@@ -140,7 +140,7 @@ resource "aws_vpc_security_group_egress_rule" "public_proxy_to_alb" {
 resource "aws_vpc_security_group_egress_rule" "public_proxy_to_api" {
   security_group_id            = aws_security_group.public_proxy.id
   referenced_security_group_id = aws_security_group.api.id
-  description                  = "Unified edge to QAPAQ API over the private network."
+  description                  = "Unified edge to B89 API over the private network."
   from_port                    = var.api_port
   ip_protocol                  = "tcp"
   to_port                      = var.api_port
@@ -149,7 +149,7 @@ resource "aws_vpc_security_group_egress_rule" "public_proxy_to_api" {
 resource "aws_vpc_security_group_ingress_rule" "api_from_public_proxy" {
   security_group_id            = aws_security_group.api.id
   referenced_security_group_id = aws_security_group.public_proxy.id
-  description                  = "QAPAQ API from the unified edge on the Wazuh host."
+  description                  = "B89 API from the unified edge on the Wazuh host."
   from_port                    = var.api_port
   ip_protocol                  = "tcp"
   to_port                      = var.api_port
@@ -196,7 +196,7 @@ resource "aws_vpc_security_group_ingress_rule" "krakend_from_worker" {
 resource "aws_vpc_security_group_ingress_rule" "api_from_krakend" {
   security_group_id            = aws_security_group.api.id
   referenced_security_group_id = aws_security_group.krakend.id
-  description                  = "KrakenD to QAPAQ API."
+  description                  = "KrakenD to B89 API."
   from_port                    = var.api_port
   ip_protocol                  = "tcp"
   to_port                      = var.api_port
@@ -270,7 +270,7 @@ resource "aws_vpc_security_group_egress_rule" "alb_to_krakend" {
 resource "aws_vpc_security_group_egress_rule" "krakend_to_api" {
   security_group_id            = aws_security_group.krakend.id
   referenced_security_group_id = aws_security_group.api.id
-  description                  = "KrakenD to QAPAQ API."
+  description                  = "KrakenD to B89 API."
   from_port                    = var.api_port
   ip_protocol                  = "tcp"
   to_port                      = var.api_port

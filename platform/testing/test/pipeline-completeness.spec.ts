@@ -28,7 +28,7 @@ const stages: readonly PipelineStage[] = [
     evidence: 'No existe pipeline de normalización ejecutable',
   },
   {
-    name: 'opensearch-qapaq',
+    name: 'opensearch-b89',
     status: 'BLOCKED',
     evidence: 'TLS y cliente de integración pendientes',
   },
@@ -47,7 +47,7 @@ describe('auditoría ejecutable del flujo C-06', () => {
       'postgres-admission',
       'redis-dispatch',
       'normalization',
-      'opensearch-qapaq',
+      'opensearch-b89',
       'wazuh-manager-to-indexer',
     ]);
     expect(stages.some((stage) => stage.status === 'BLOCKED')).toBe(true);

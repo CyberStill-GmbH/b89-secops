@@ -29,7 +29,7 @@ class EvidenceGeneratorTests(unittest.TestCase):
         self.environment = patch.dict(
             os.environ,
             {
-                "GITHUB_REPOSITORY": "CyberStill-GmbH/qapaq-secops",
+                "GITHUB_REPOSITORY": "CyberStill-GmbH/b89-secops",
                 "C09_RUN_ID": "12345",
                 "GITHUB_TOKEN": "synthetic-test-token-not-in-output",
                 "GITHUB_EVENT_PATH": str(self.event_file),

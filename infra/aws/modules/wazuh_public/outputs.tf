@@ -1,5 +1,5 @@
 output "public_ip" {
-  description = "Elastic IP for the Wazuh Dashboard and QAPAQ API edge."
+  description = "Elastic IP for the Wazuh Dashboard and B89 API edge."
   value       = aws_eip.this.public_ip
 }
 
@@ -9,8 +9,8 @@ output "dashboard_url" {
 }
 
 output "api_url" {
-  description = "QAPAQ API URL routed under a path distinct from Wazuh Dashboard APIs."
-  value       = "https://${aws_eip.this.public_ip}/qapaq-api"
+  description = "B89 API URL routed under a path distinct from Wazuh Dashboard APIs."
+  value       = "https://${aws_eip.this.public_ip}/b89-api"
 }
 
 output "admin_secret_arn" {

@@ -12,7 +12,7 @@
 import { Body, Controller, Get, Inject, Param, Post, Query, Req } from '@nestjs/common';
 import type { IncomingRequest } from '../http/http-contracts.js';
 
-import { projectFields } from '@qapaq/access';
+import { projectFields } from '@b89/access';
 import {
   ALERT_STATUSES,
   executeAlertCommand,
@@ -24,7 +24,7 @@ import {
   type Incident,
   type IncidentStatus,
   type TriageVerdict,
-} from '@qapaq/soc';
+} from '@b89/soc';
 
 import { ApiError, fromSocFailure } from '../http/api-error.js';
 import { ENTITY_REF_PATTERN } from '../runtime/entity-refs.js';

@@ -9,13 +9,13 @@
  *    lector que tiene capability explícita para verla. No basta con poder leer eventos.
  */
 
-import type { Raw, SecurityEvent } from '@qapaq/contracts';
+import type { Raw, SecurityEvent } from '@b89/contracts';
 import {
   NORMALIZED_SEVERITIES,
   SECURITY_EVENT_CATEGORIES,
   SECURITY_EVENT_KINDS,
   SECURITY_EVENT_OUTCOMES,
-} from '@qapaq/contracts';
+} from '@b89/contracts';
 
 /** Límites canónicos de ADR-016 / `docs/reference/toolchain-and-capacity.md`. */
 export const QUERY_LIMITS = Object.freeze({

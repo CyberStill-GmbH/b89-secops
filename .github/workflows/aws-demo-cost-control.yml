@@ -11,7 +11,7 @@ on:
           - stop
           - resume
       confirmation:
-        description: Type STOP-QAPAQ-DEMO or RESUME-QAPAQ-DEMO to match the selected operation
+        description: Type STOP-B89-DEMO or RESUME-B89-DEMO to match the selected operation
         type: string
         required: true
 
@@ -39,9 +39,9 @@ jobs:
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
-          role-to-assume: arn:aws:iam::955200662475:role/qapaq-secops-github-terraform-demo
+          role-to-assume: arn:aws:iam::955200662475:role/b89-secops-github-terraform-demo
           aws-region: us-east-1
-          role-session-name: qapaq-secops-cost-control
+          role-session-name: b89-secops-cost-control
           allowed-account-ids: '955200662475'
 
       - name: Setup Terraform

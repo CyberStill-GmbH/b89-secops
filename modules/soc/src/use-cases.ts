@@ -10,9 +10,9 @@
  * auditor necesita ver.
  */
 
-import { authorize, type Actor } from '@qapaq/access';
-import { recordAudit, type AuditEventDraft } from '@qapaq/audit';
-import type { DetectionCandidate } from '@qapaq/detection';
+import { authorize, type Actor } from '@b89/access';
+import { recordAudit, type AuditEventDraft } from '@b89/audit';
+import type { DetectionCandidate } from '@b89/detection';
 
 import {
   applyAlertCommand,

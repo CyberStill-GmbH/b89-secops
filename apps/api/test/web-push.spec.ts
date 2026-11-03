@@ -14,7 +14,7 @@ import {
   notifyDevices,
   validatePushSubscription,
   type PushSubscriptionRecord,
-} from '@qapaq/soar';
+} from '@b89/soar';
 
 import { ephemeralVapidKey, VapidPushSender, vapidPublicKey } from '../src/runtime/web-push.js';
 

@@ -4,8 +4,8 @@ import {
   closeDatabaseClient,
   createDatabaseClient,
   type DatabaseConnectionOptions,
-} from '@qapaq/database';
-import { PrismaNotificationAttemptStore } from '@qapaq/database/notification-stores';
+} from '@b89/database';
+import { PrismaNotificationAttemptStore } from '@b89/database/notification-stores';
 
 import {
   NOTIFICATION_CHANNELS,
@@ -77,5 +77,5 @@ export class PostgresNotificationAttemptStore implements AttemptStore {
   }
 }
 
-// Sprint 5: dispositivos Web Push en el mismo subpath `@qapaq/soar/postgres`.
+// Sprint 5: dispositivos Web Push en el mismo subpath `@b89/soar/postgres`.
 export { PostgresPushSubscriptionStore } from './postgres-push-store.js';

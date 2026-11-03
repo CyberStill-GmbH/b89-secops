@@ -7,7 +7,7 @@
 # Orden (docs/03-evaluacion-de-componentes.md; KrakenD sale en fase 1, docs/09):
 #   1. apply con `wazuh_ingestion_enabled = false`: crea los secretos vacíos y el permiso de la
 #      instancia para poblarlos.
-#   2. workflow `configure-wazuh-indexer-reader`: crea `qapaq_reader` (solo lectura), el proxy y
+#   2. workflow `configure-wazuh-indexer-reader`: crea `b89_reader` (solo lectura), el proxy y
 #      publica la credencial y el certificado del proxy en estos secretos.
 #   3. `wazuh_indexer_private_ip` y `wazuh_ingestion_gateway_scope` en las variables del
 #      ambiente, `wazuh_ingestion_enabled = true` y apply.
@@ -44,11 +44,11 @@ variable "wazuh_ingestion_gateway_scope" {
   }
 }
 
-# Credencial Basic del usuario `qapaq_reader` del Indexer: JSON con `basic_auth_b64`. Solo la
+# Credencial Basic del usuario `b89_reader` del Indexer: JSON con `basic_auth_b64`. Solo la
 # lee KrakenD; el API nunca ve credenciales del Indexer (S5-D3).
 resource "aws_secretsmanager_secret" "wazuh_indexer_reader" {
   name                    = "${var.project}/${var.environment}/wazuh/indexer-reader"
-  description             = "Read-only Wazuh Indexer credential (qapaq_reader) for the KrakenD gateway."
+  description             = "Read-only Wazuh Indexer credential (b89_reader) for the KrakenD gateway."
   recovery_window_in_days = 7
 
   tags = {

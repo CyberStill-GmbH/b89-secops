@@ -13,9 +13,9 @@ describe('servicios locales reales', () => {
       [postgres, redis] = await Promise.all([
         new GenericContainer('postgres:18.6')
           .withEnvironment({
-            POSTGRES_DB: 'qapaq_test',
-            POSTGRES_PASSWORD: 'qapaq_test_only',
-            POSTGRES_USER: 'qapaq',
+            POSTGRES_DB: 'b89_test',
+            POSTGRES_PASSWORD: 'b89_test_only',
+            POSTGRES_USER: 'b89',
           })
           .withExposedPorts(5432)
           // La imagen oficial inicia un servidor temporal y luego el definitivo.
@@ -40,9 +40,9 @@ describe('servicios locales reales', () => {
     const client = new Client({
       host: postgres.getHost(),
       port: postgres.getMappedPort(5432),
-      database: 'qapaq_test',
-      user: 'qapaq',
-      password: 'qapaq_test_only',
+      database: 'b89_test',
+      user: 'b89',
+      password: 'b89_test_only',
     });
     await client.connect();
     const result = await client.query<{ value: number }>('SELECT 1::int AS value');

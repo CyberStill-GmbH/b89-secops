@@ -2,7 +2,7 @@ import {
   parseSecretReference,
   type EnvironmentInput,
   type SecretProvider,
-} from '@qapaq/configuration';
+} from '@b89/configuration';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   AzureKeyVaultSecretProvider,
@@ -11,7 +11,7 @@ import {
 import { resolveApiSecretEnvironment } from '../src/runtime/secret-environment.js';
 
 const syntheticManagedIdentity = '11111111-1111-4111-8111-111111111111';
-const syntheticVaultUri = 'https://kv-qapaq.vault.azure.net';
+const syntheticVaultUri = 'https://kv-b89.vault.azure.net';
 
 function imdsTokenResponse(): Response {
   return new Response(
@@ -117,7 +117,7 @@ describe('AzureKeyVaultSecretProvider', () => {
   it('only accepts the approved vault URI and user-assigned identity shape', () => {
     expect(() =>
       createAzureKeyVaultSecretProvider({
-        vaultUri: 'http://kv-qapaq.vault.azure.net',
+        vaultUri: 'http://kv-b89.vault.azure.net',
         managedIdentityClientId: '11111111-1111-4111-8111-111111111111',
         timeoutMs: 5_000,
       }),
@@ -133,7 +133,7 @@ describe('AzureKeyVaultSecretProvider', () => {
 
     expect(() =>
       createAzureKeyVaultSecretProvider({
-        vaultUri: 'https://kv-qapaq.vault.azure.net:8443',
+        vaultUri: 'https://kv-b89.vault.azure.net:8443',
         managedIdentityClientId: '11111111-1111-4111-8111-111111111111',
         timeoutMs: 5_000,
       }),
@@ -141,7 +141,7 @@ describe('AzureKeyVaultSecretProvider', () => {
 
     expect(() =>
       createAzureKeyVaultSecretProvider({
-        vaultUri: 'https://kv-qapaq.vault.azure.net',
+        vaultUri: 'https://kv-b89.vault.azure.net',
         managedIdentityClientId: 'not-a-client-id',
         timeoutMs: 5_000,
       }),
@@ -285,16 +285,16 @@ describe('AzureKeyVaultSecretProvider', () => {
 
 describe('resolveApiSecretEnvironment', () => {
   const keyVaultEnvironment: EnvironmentInput = {
-    QAPAQ_PROFILE: 'production',
-    QAPAQ_SECRET_PROVIDER_TYPE: 'azure-key-vault',
-    QAPAQ_SECRET_PROVIDER_ENDPOINT: 'https://kv-qapaq.vault.azure.net',
-    QAPAQ_SECRET_PROVIDER_TIMEOUT: '5s',
+    B89_PROFILE: 'production',
+    B89_SECRET_PROVIDER_TYPE: 'azure-key-vault',
+    B89_SECRET_PROVIDER_ENDPOINT: 'https://kv-b89.vault.azure.net',
+    B89_SECRET_PROVIDER_TIMEOUT: '5s',
     AZURE_CLIENT_ID: '11111111-1111-4111-8111-111111111111',
-    QAPAQ_ENTRA_CLIENT_SECRET_REF: 'secret://keyvault/entra-client-secret',
-    QAPAQ_POSTGRES_PASSWORD_REF: 'secret://keyvault/postgres-runtime-password',
-    QAPAQ_ENTITY_REF_KEY_REF: 'secret://keyvault/entity-ref-key',
-    QAPAQ_TEAMS_WORKFLOW_URL_REF: 'secret://keyvault/teams-workflow-url',
-    QAPAQ_VAPID_PRIVATE_KEY_REF: 'secret://keyvault/vapid-private-key',
+    B89_ENTRA_CLIENT_SECRET_REF: 'secret://keyvault/entra-client-secret',
+    B89_POSTGRES_PASSWORD_REF: 'secret://keyvault/postgres-runtime-password',
+    B89_ENTITY_REF_KEY_REF: 'secret://keyvault/entity-ref-key',
+    B89_TEAMS_WORKFLOW_URL_REF: 'secret://keyvault/teams-workflow-url',
+    B89_VAPID_PRIVATE_KEY_REF: 'secret://keyvault/vapid-private-key',
   };
 
   it('resolves only current API secret consumers and leaves the source environment unchanged', async () => {
@@ -309,22 +309,22 @@ describe('resolveApiSecretEnvironment', () => {
     const result = await resolveApiSecretEnvironment(keyVaultEnvironment, () => provider);
 
     expect(resolvedReferences).toHaveLength(5);
-    expect(result.QAPAQ_ENTRA_CLIENT_SECRET).toBe('synthetic-value:entra-client-secret');
-    expect(result.QAPAQ_POSTGRES_PASSWORD).toBe('synthetic-value:postgres-runtime-password');
-    expect(result.QAPAQ_ENTITY_REF_KEY).toBe('synthetic-value:entity-ref-key');
-    expect(result.QAPAQ_TEAMS_WORKFLOW_URL).toBe('synthetic-value:teams-workflow-url');
-    expect(result.QAPAQ_VAPID_PRIVATE_KEY).toBe('synthetic-value:vapid-private-key');
-    expect(keyVaultEnvironment.QAPAQ_ENTRA_CLIENT_SECRET).toBeUndefined();
-    expect(keyVaultEnvironment.QAPAQ_ENTRA_CLIENT_SECRET_REF).toBe(
+    expect(result.B89_ENTRA_CLIENT_SECRET).toBe('synthetic-value:entra-client-secret');
+    expect(result.B89_POSTGRES_PASSWORD).toBe('synthetic-value:postgres-runtime-password');
+    expect(result.B89_ENTITY_REF_KEY).toBe('synthetic-value:entity-ref-key');
+    expect(result.B89_TEAMS_WORKFLOW_URL).toBe('synthetic-value:teams-workflow-url');
+    expect(result.B89_VAPID_PRIVATE_KEY).toBe('synthetic-value:vapid-private-key');
+    expect(keyVaultEnvironment.B89_ENTRA_CLIENT_SECRET).toBeUndefined();
+    expect(keyVaultEnvironment.B89_ENTRA_CLIENT_SECRET_REF).toBe(
       'secret://keyvault/entra-client-secret',
     );
   });
 
   it('preserves the existing AWS/local raw-environment path when Key Vault is not selected', async () => {
     const environment: EnvironmentInput = {
-      QAPAQ_PROFILE: 'production',
-      QAPAQ_ENTRA_CLIENT_SECRET: 'existing-aws-secret',
-      QAPAQ_ENTRA_CLIENT_SECRET_REF: 'legacy-provider-specific-reference',
+      B89_PROFILE: 'production',
+      B89_ENTRA_CLIENT_SECRET: 'existing-aws-secret',
+      B89_ENTRA_CLIENT_SECRET_REF: 'legacy-provider-specific-reference',
     };
     const providerFactory = vi.fn(() => ({ resolve: vi.fn() }));
 
@@ -336,7 +336,7 @@ describe('resolveApiSecretEnvironment', () => {
 
   it('fails closed when a Key Vault ref is present without the explicit Azure provider', async () => {
     const environment: EnvironmentInput = {
-      QAPAQ_ENTRA_CLIENT_SECRET_REF: 'secret://keyvault/entra-client-secret',
+      B89_ENTRA_CLIENT_SECRET_REF: 'secret://keyvault/entra-client-secret',
     };
 
     await expect(resolveApiSecretEnvironment(environment)).rejects.toMatchObject({
@@ -347,7 +347,7 @@ describe('resolveApiSecretEnvironment', () => {
   it('rejects plaintext and reference duplication', async () => {
     const environment = {
       ...keyVaultEnvironment,
-      QAPAQ_ENTRA_CLIENT_SECRET: 'plaintext-must-not-be-used',
+      B89_ENTRA_CLIENT_SECRET: 'plaintext-must-not-be-used',
     };
     const providerFactory = vi.fn(() => ({ resolve: vi.fn() }));
 
@@ -360,22 +360,22 @@ describe('resolveApiSecretEnvironment', () => {
   it('rejects every plaintext API secret in Azure mode even when a ref is omitted', async () => {
     const environment = {
       ...keyVaultEnvironment,
-      QAPAQ_POSTGRES_PASSWORD_REF: undefined,
-      QAPAQ_POSTGRES_PASSWORD: 'plaintext-must-not-be-used',
+      B89_POSTGRES_PASSWORD_REF: undefined,
+      B89_POSTGRES_PASSWORD: 'plaintext-must-not-be-used',
     };
 
     await expect(
       resolveApiSecretEnvironment(environment, () => ({ resolve: vi.fn() })),
     ).rejects.toMatchObject({
       code: 'CONFIG_VALUE_INVALID',
-      path: 'QAPAQ_POSTGRES_PASSWORD',
+      path: 'B89_POSTGRES_PASSWORD',
     });
   });
 
   it('rejects references outside the keyvault namespace in Azure mode', async () => {
     const environment = {
       ...keyVaultEnvironment,
-      QAPAQ_ENTRA_CLIENT_SECRET_REF: 'secret://environment/ENTRA_CLIENT_SECRET',
+      B89_ENTRA_CLIENT_SECRET_REF: 'secret://environment/ENTRA_CLIENT_SECRET',
     };
     const providerFactory = vi.fn(() => ({ resolve: vi.fn() }));
 

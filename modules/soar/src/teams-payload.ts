@@ -2,7 +2,7 @@
  * C-20 — carga mínima para el canal de Teams.
  *
  * El canal de Teams no es un sistema de evidencia y no debe convertirse en uno. El
- * mensaje lleva lo justo para que alguien decida abrir QAPAQ: qué pasó, con qué
+ * mensaje lleva lo justo para que alguien decida abrir B89: qué pasó, con qué
  * severidad y dónde mirarlo. Nada de identidades, direcciones, referencias al crudo ni
  * contenido del evento: todo eso vive detrás de autorización, y un canal de chat no la
  * aplica.
@@ -12,7 +12,7 @@
  * mencionan identidades afectadas por la alerta.
  */
 
-import type { SocEventType } from '@qapaq/soc';
+import type { SocEventType } from '@b89/soc';
 
 import type { NotificationRecipient } from './notification-routing.js';
 
@@ -40,7 +40,7 @@ export interface TeamsMessage {
       readonly content: Readonly<Record<string, unknown>>;
     },
   ];
-  readonly qapaq: {
+  readonly b89: {
     readonly version: string;
     readonly clientRequestId: string;
     readonly aggregateId: string;
@@ -87,7 +87,7 @@ export function buildTeamsMessage(input: CriticalNotificationInput): TeamsMessag
               size: 'Medium',
               weight: 'Bolder',
               wrap: true,
-              text: `QAPAQ SecOps · ${input.severity.toUpperCase()}`,
+              text: `B89 SecOps · ${input.severity.toUpperCase()}`,
             },
             { type: 'TextBlock', wrap: true, text: input.title },
             ...(mentions.length > 0
@@ -108,7 +108,7 @@ export function buildTeamsMessage(input: CriticalNotificationInput): TeamsMessag
               ],
             },
           ],
-          actions: [{ type: 'Action.OpenUrl', title: 'Abrir en QAPAQ', url: link }],
+          actions: [{ type: 'Action.OpenUrl', title: 'Abrir en B89', url: link }],
           ...(mentions.length > 0
             ? {
                 msteams: {
@@ -123,7 +123,7 @@ export function buildTeamsMessage(input: CriticalNotificationInput): TeamsMessag
         },
       },
     ],
-    qapaq: {
+    b89: {
       version: TEAMS_PAYLOAD_VERSION,
       clientRequestId: input.clientRequestId,
       aggregateId: input.aggregateId,

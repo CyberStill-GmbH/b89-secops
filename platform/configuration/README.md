@@ -1,15 +1,15 @@
 # Configuración de runtime
 
-`@qapaq/configuration` es la única frontera para interpretar el entorno bruto y
+`@b89/configuration` es la única frontera para interpretar el entorno bruto y
 producir configuración tipada. No abre conexiones ni selecciona un proveedor de
 secretos productivo. El dominio y la aplicación reciben valores ya validados desde
 el composition root.
 
 ## Flujo
 
-1. `QAPAQ_PROFILE` selecciona explícitamente `development`, `test` o `production`.
+1. `B89_PROFILE` selecciona explícitamente `development`, `test` o `production`.
 2. Solo se extraen variables conocidas; una variable desconocida con prefijo
-   `QAPAQ_` detiene el arranque.
+   `B89_` detiene el arranque.
 3. Se validan tipos, unidades, protocolos y límites sin coerción ambigua.
 4. Las referencias `secret://<namespace>/<name>` se validan antes de llamar al
    `SecretProvider`.
@@ -23,7 +23,7 @@ Indexer. Ninguna URL admite usuario o contraseña embebidos.
 
 El adaptador de secretos basado en variables de entorno solo se usa mediante
 `loadLocalWorkerConfig` y rechaza `production`. El worker inactivo de C-02 usa
-`loadWorkerEntrypointConfig`: valida el perfil y rechaza variables QAPAQ desconocidas,
+`loadWorkerEntrypointConfig`: valida el perfil y rechaza variables B89 desconocidas,
 sin resolver secretos de dependencias que todavía no consume. Los loaders anteriores
 conservan su API. El proveedor productivo y su
 identidad técnica siguen pendientes de Infraestructura conforme a ADR-013.
@@ -37,8 +37,8 @@ entregar sus bytes al provider los sobrescribe y su serialización siempre produ
 `[REDACTED]`. Las respuestas contienen exclusivamente metadata segura.
 
 `loadControlPlaneSecretConfig` conserva el schema, validación fail-fast, perfiles,
-referencias y redacción de C-03. Requiere `QAPAQ_SECRET_PROVIDER_TYPE`,
-`QAPAQ_SECRET_PROVIDER_TIMEOUT` y `QAPAQ_SECRET_FINGERPRINT_KEY_REF`; la última se
+referencias y redacción de C-03. Requiere `B89_SECRET_PROVIDER_TYPE`,
+`B89_SECRET_PROVIDER_TIMEOUT` y `B89_SECRET_FINGERPRINT_KEY_REF`; la última se
 resuelve por C-03 y nunca se serializa en claro. `test-only` está prohibido en
 producción. El backend productivo continúa `TO_BE_PROVIDED`.
 
@@ -67,7 +67,7 @@ normal nunca registra la configuración completa.
 
 ## Límites C-03
 
-- puertos: 1–65535; solo `QAPAQ_API_PORT=0` bajo el perfil `test` permite que el
+- puertos: 1–65535; solo `B89_API_PORT=0` bajo el perfil `test` permite que el
   sistema operativo asigne un puerto efímero de forma atómica;
 - duraciones: unidad obligatoria `ms`, `s` o `m`, entre 100 ms y 120 s;
 - reintentos adicionales: 0–5;
@@ -92,11 +92,11 @@ arranque únicamente después de completar toda la validación y resolución.
 El export público usa JavaScript de `dist/` en ejecución normal y TypeScript de
 `src/` bajo la condición `development`, usada por Vitest y los comandos `dev`.
 Construir consumidores con el filtro de dependencias de pnpm, por ejemplo
-`pnpm --filter @qapaq/api... build`. La configuración pública de React vive
+`pnpm --filter @b89/api... build`. La configuración pública de React vive
 exclusivamente en `apps/web/src/bootstrap/public-config.ts`.
 
 ```powershell
 pnpm exec vitest run platform/configuration/test/runtime-config.spec.ts --config vitest.config.ts
-pnpm --filter @qapaq/configuration typecheck
-pnpm --filter @qapaq/configuration build
+pnpm --filter @b89/configuration typecheck
+pnpm --filter @b89/configuration build
 ```

@@ -9,18 +9,18 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { SecurityEventProviderError } from '@qapaq/connectors';
+import { SecurityEventProviderError } from '@b89/connectors';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 
 import { buildApi } from '../src/bootstrap.js';
 import type { EventsReader } from '../src/runtime/events-reader.js';
 import { wazuhRecordToEvent } from '../src/runtime/wazuh-ingestion.js';
-import type { InMemoryAttemptStore } from '@qapaq/soar';
-import type { InMemorySoc } from '@qapaq/soc';
+import type { InMemoryAttemptStore } from '@b89/soar';
+import type { InMemorySoc } from '@b89/soc';
 
 import type { SecOpsRuntime } from '../src/runtime/secops-runtime.js';
 
-const ENVIRONMENT = { QAPAQ_PROFILE: 'test' } as const;
+const ENVIRONMENT = { B89_PROFILE: 'test' } as const;
 
 const OFFICE_IP = '10.20.5.9';
 const REMOTE_IP = '203.0.113.7';
@@ -95,7 +95,7 @@ async function signIn(
       ? [response.headers['set-cookie'] as string]
       : [];
   const cookie =
-    responseCookies.find((value) => value.startsWith('qapaq_session='))?.split(';', 1)[0] ?? '';
+    responseCookies.find((value) => value.startsWith('b89_session='))?.split(';', 1)[0] ?? '';
   const session = cookie
     ? await server().inject({
         method: 'GET',
@@ -119,7 +119,7 @@ function securityEvent(recordId: string, severity: 'critical' | 'low') {
   return {
     schemaVersion: '1.0.0',
     recordId,
-    eventUid: `siem-qapaq-lab:alerts:${recordId}`,
+    eventUid: `siem-b89-lab:alerts:${recordId}`,
     eventUidType: 'native',
     kind: 'alert',
     occurredAt: '2026-10-08T09:00:00.000Z',
@@ -130,7 +130,7 @@ function securityEvent(recordId: string, severity: 'critical' | 'low') {
       vendor: 'Wazuh, Inc.',
       product: 'Wazuh',
       dataset: 'alerts',
-      instanceId: 'siem-qapaq-lab',
+      instanceId: 'siem-b89-lab',
       nativeEventId: recordId,
     },
     tenant: { id: runtime.tenantId },
@@ -140,7 +140,7 @@ function securityEvent(recordId: string, severity: 'critical' | 'low') {
       originalValue: severity === 'critical' ? 14 : 3,
       originalLabel: severity,
       originalScale: 'wazuh-level-0-15',
-      mappingId: 'qapaq.wazuh.severity',
+      mappingId: 'b89.wazuh.severity',
       mappingVersion: '1.0.0',
     },
     category: ['intrusion_detection'],
@@ -149,8 +149,8 @@ function securityEvent(recordId: string, severity: 'critical' | 'low') {
     outcome: severity === 'critical' ? 'success' : 'unknown',
     action: 'alert.created',
     entities: {
-      identities: [{ kind: 'user', id: 'identity-1', principal: 'jperez@qapaq.pe' }],
-      resources: [{ kind: 'host', id: 'host-1', name: 'srv-app-01.qapaq.local', type: 'endpoint' }],
+      identities: [{ kind: 'user', id: 'identity-1', principal: 'jperez@b89.example' }],
+      resources: [{ kind: 'host', id: 'host-1', name: 'srv-app-01.b89.local', type: 'endpoint' }],
     },
     detection: {
       rule: {
@@ -168,7 +168,7 @@ function securityEvent(recordId: string, severity: 'critical' | 'low') {
       sizeBytes: 1024,
     },
     provenance: {
-      connector: 'qapaq-wazuh-indexer',
+      connector: 'b89-wazuh-indexer',
       connectorVersion: '1.0.0',
       parserVersion: '1.0.0',
       mappingVersion: '1.0.0',
@@ -178,9 +178,9 @@ function securityEvent(recordId: string, severity: 'critical' | 'low') {
           kind: 'collector',
           vendor: 'Wazuh, Inc.',
           product: 'Wazuh',
-          instanceId: 'siem-qapaq-lab',
+          instanceId: 'siem-b89-lab',
         },
-        { kind: 'adapter', vendor: 'QAPAQ', product: 'QAPAQ SecOps' },
+        { kind: 'adapter', vendor: 'B89', product: 'B89 SecOps' },
       ],
     },
   };
@@ -217,7 +217,7 @@ beforeEach(() => {
   memorySoc().outboxState.clear();
   (runtime.notifications as InMemoryAttemptStore).rows.clear();
   runtime.detectionContext = {
-    privilegedIdentities: new Set(['jperez@qapaq.pe']),
+    privilegedIdentities: new Set(['jperez@b89.example']),
     criticalAssets: new Set(['host-1']),
   };
 });
@@ -238,11 +238,11 @@ describe('C-18 · inicio de sesión por el BFF', () => {
   });
 
   it('abre sesión, devuelve una cookie HttpOnly opaca y vuelve a la consola', async () => {
-    const { response, cookie } = await signIn('analista@qapaq.pe');
+    const { response, cookie } = await signIn('analista@b89.example');
     const headers = Array.isArray(response.headers['set-cookie'])
       ? (response.headers['set-cookie'] as string[])
       : [response.headers['set-cookie'] as string];
-    const header = headers.find((value) => value.startsWith('qapaq_session=')) ?? '';
+    const header = headers.find((value) => value.startsWith('b89_session=')) ?? '';
 
     expect(response.statusCode).toBe(303);
     expect(new URL(response.headers.location as string, 'http://local').pathname).toBe('/');
@@ -251,12 +251,12 @@ describe('C-18 · inicio de sesión por el BFF', () => {
     expect(response.body).toBe('');
     expect(header).toContain('HttpOnly');
     expect(header).toContain('SameSite=Lax');
-    expect(header).not.toContain('analista@qapaq.pe');
+    expect(header).not.toContain('analista@b89.example');
     expect(cookie.length).toBeGreaterThan(20);
   });
 
   it('expone la sesión vigente con sus capabilities', async () => {
-    const { cookie } = await signIn('lider@qapaq.pe');
+    const { cookie } = await signIn('lider@b89.example');
     const session = await server().inject({
       method: 'GET',
       url: '/api/auth/session',
@@ -271,7 +271,7 @@ describe('C-18 · inicio de sesión por el BFF', () => {
   });
 
   it('introspect entrega persona y roles al proxy del dashboard sin cuerpo', async () => {
-    const { cookie } = await signIn('lider@qapaq.pe');
+    const { cookie } = await signIn('lider@b89.example');
     const response = await server().inject({
       method: 'GET',
       url: '/api/auth/introspect',
@@ -282,11 +282,11 @@ describe('C-18 · inicio de sesión por el BFF', () => {
     expect(response.statusCode).toBe(204);
     expect(response.body).toBe('');
     expect(response.headers['cache-control']).toBe('no-store');
-    expect(response.headers['x-qapaq-user']).toMatch(/^[A-Za-z0-9._@+-]+$/u);
-    expect(String(response.headers['x-qapaq-roles']).split(',')).toContain('qapaq.soc.lead');
+    expect(response.headers['x-b89-user']).toMatch(/^[A-Za-z0-9._@+-]+$/u);
+    expect(String(response.headers['x-b89-roles']).split(',')).toContain('b89.soc.lead');
   });
 
-  it('introspect sin sesión responde 401 para que el proxy lleve al login QAPAQ', async () => {
+  it('introspect sin sesión responde 401 para que el proxy lleve al login B89', async () => {
     const response = await server().inject({
       method: 'GET',
       url: '/api/auth/introspect',
@@ -294,12 +294,12 @@ describe('C-18 · inicio de sesión por el BFF', () => {
     });
 
     expect(response.statusCode).toBe(401);
-    expect(response.headers['x-qapaq-user']).toBeUndefined();
+    expect(response.headers['x-b89-user']).toBeUndefined();
   });
 
   it('introspect deja fuera del dashboard a la sesión reemplazada por un nuevo inicio', async () => {
-    const first = await signIn('lider@qapaq.pe');
-    const second = await signIn('lider@qapaq.pe');
+    const first = await signIn('lider@b89.example');
+    const second = await signIn('lider@b89.example');
     const introspect = (cookie: string) =>
       server().inject({
         method: 'GET',
@@ -321,10 +321,10 @@ describe('C-18 · inicio de sesión por el BFF', () => {
     const state = new URL(start.headers.location as string, 'http://local').searchParams.get(
       'state',
     );
-    const flowCookie = cookiePair(start, 'qapaq_oidc_flow_');
+    const flowCookie = cookiePair(start, 'b89_oidc_flow_');
     const authorize = await server().inject({
       method: 'GET',
-      url: `/api/auth/local/authorize?state=${state}&username=analista%40qapaq.pe`,
+      url: `/api/auth/local/authorize?state=${state}&username=analista%40b89.example`,
       remoteAddress: OFFICE_IP,
     });
     const search = new URL(authorize.headers.location as string, 'http://local').search;
@@ -346,7 +346,7 @@ describe('C-18 · inicio de sesión por el BFF', () => {
     expect(authErrorOf(first)).toBeNull();
     expect(replay.statusCode).toBe(303);
     expect(replay.headers['set-cookie']).toBeDefined();
-    expect(replay.headers['set-cookie']).not.toContain('qapaq_session=');
+    expect(replay.headers['set-cookie']).not.toContain('b89_session=');
     expect(authErrorOf(replay)).toBe('AUTH_FAILED');
   });
 
@@ -359,10 +359,10 @@ describe('C-18 · inicio de sesión por el BFF', () => {
     const state = new URL(start.headers.location as string, 'http://local').searchParams.get(
       'state',
     );
-    const flowCookie = cookiePair(start, 'qapaq_oidc_flow_');
+    const flowCookie = cookiePair(start, 'b89_oidc_flow_');
     const authorize = await server().inject({
       method: 'GET',
-      url: `/api/auth/local/authorize?state=${encodeURIComponent(state ?? '')}&username=analista%40qapaq.pe`,
+      url: `/api/auth/local/authorize?state=${encodeURIComponent(state ?? '')}&username=analista%40b89.example`,
       remoteAddress: OFFICE_IP,
     });
     const search = new URL(authorize.headers.location as string, 'http://local').search;
@@ -373,7 +373,7 @@ describe('C-18 · inicio de sesión por el BFF', () => {
       remoteAddress: OFFICE_IP,
     });
     expect(authErrorOf(injected)).toBe('AUTH_FAILED');
-    expect(injected.headers['set-cookie']).not.toContain('qapaq_session=');
+    expect(injected.headers['set-cookie']).not.toContain('b89_session=');
 
     const originalBrowser = await server().inject({
       method: 'GET',
@@ -382,11 +382,11 @@ describe('C-18 · inicio de sesión por el BFF', () => {
       remoteAddress: OFFICE_IP,
     });
     expect(authErrorOf(originalBrowser)).toBeNull();
-    expect(cookiePair(originalBrowser, 'qapaq_session=')).toMatch(/^qapaq_session=/u);
+    expect(cookiePair(originalBrowser, 'b89_session=')).toMatch(/^b89_session=/u);
   });
 
   it('cierra la sesión y la cookie deja de servir', async () => {
-    const { cookie, mutation } = await signIn('analista@qapaq.pe');
+    const { cookie, mutation } = await signIn('analista@b89.example');
     const logout = await server().inject({
       method: 'POST',
       url: '/api/auth/logout',
@@ -420,20 +420,20 @@ describe('C-18 · inicio de sesión por el BFF', () => {
 });
 
 describe('C-25 · red, passkey y sesión única', () => {
-  it('exige passkey desde fuera de la red QAPAQ', async () => {
-    const withoutPasskey = await signIn('analista@qapaq.pe', REMOTE_IP);
+  it('exige passkey desde fuera de la red B89', async () => {
+    const withoutPasskey = await signIn('analista@b89.example', REMOTE_IP);
 
     expect(withoutPasskey.cookie).toBe('');
     expect(authErrorOf(withoutPasskey.response)).toBe('PASSKEY_REQUIRED');
 
-    const withPasskey = await signIn('lider@qapaq.pe', REMOTE_IP);
+    const withPasskey = await signIn('lider@b89.example', REMOTE_IP);
 
     expect(withPasskey.cookie).not.toBe('');
     expect(authErrorOf(withPasskey.response)).toBeNull();
   });
 
   it('ignora un X-Forwarded-For forjado desde una conexión no confiable', async () => {
-    const forged = await signIn('analista@qapaq.pe', REMOTE_IP, {
+    const forged = await signIn('analista@b89.example', REMOTE_IP, {
       'x-forwarded-for': OFFICE_IP,
     });
 
@@ -442,7 +442,7 @@ describe('C-25 · red, passkey y sesión única', () => {
   });
 
   it('acepta la cadena cuando el proxy sí es confiable', async () => {
-    const viaProxy = await signIn('analista@qapaq.pe', PROXY_IP, {
+    const viaProxy = await signIn('analista@b89.example', PROXY_IP, {
       'x-forwarded-for': `${OFFICE_IP}, ${PROXY_IP}`,
     });
 
@@ -451,7 +451,7 @@ describe('C-25 · red, passkey y sesión única', () => {
   });
 
   it('rechaza una cadena de proxies que no identifica cliente', async () => {
-    const opaque = await signIn('analista@qapaq.pe', PROXY_IP, {
+    const opaque = await signIn('analista@b89.example', PROXY_IP, {
       'x-forwarded-for': `${PROXY_IP}, ${PROXY_IP}`,
     });
 
@@ -460,8 +460,8 @@ describe('C-25 · red, passkey y sesión única', () => {
   });
 
   it('invalida la sesión anterior al abrir una nueva', async () => {
-    const first = await signIn('analista@qapaq.pe');
-    const second = await signIn('analista@qapaq.pe');
+    const first = await signIn('analista@b89.example');
+    const second = await signIn('analista@b89.example');
 
     const oldSession = await server().inject({
       method: 'GET',
@@ -481,7 +481,7 @@ describe('C-25 · red, passkey y sesión única', () => {
   });
 
   it('no admite a una cuenta sin rol y no revela el motivo', async () => {
-    const { response, cookie } = await signIn('sinrol@qapaq.pe');
+    const { response, cookie } = await signIn('sinrol@b89.example');
     const location = new URL(response.headers.location as string, 'http://local');
 
     expect(cookie).toBe('');
@@ -494,7 +494,7 @@ describe('C-25 · red, passkey y sesión única', () => {
 describe('C-16/C-17 · recorrido operativo sobre HTTP', () => {
   it('promueve un evento crítico y lo publica como alerta consultable', async () => {
     const ingested = await ingest('01890f47-7abc-7def-8abc-00000000a001');
-    const { cookie } = await signIn('analista@qapaq.pe');
+    const { cookie } = await signIn('analista@b89.example');
     const alerts = await server().inject({
       method: 'GET',
       url: '/api/alerts',
@@ -526,7 +526,7 @@ describe('C-16/C-17 · recorrido operativo sobre HTTP', () => {
 
   it('recorre reconocer, triar, escalar y abrir caso', async () => {
     await ingest('01890f47-7abc-7def-8abc-00000000a004');
-    const analyst = await signIn('analista@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
     const [alert] = JSON.parse(
       (
         await server().inject({
@@ -565,7 +565,7 @@ describe('C-16/C-17 · recorrido operativo sobre HTTP', () => {
       remoteAddress: OFFICE_IP,
     });
 
-    const lead = await signIn('lider@qapaq.pe');
+    const lead = await signIn('lider@b89.example');
     const incident = await server().inject({
       method: 'POST',
       url: '/api/incidents',
@@ -624,7 +624,7 @@ describe('C-16/C-17 · recorrido operativo sobre HTTP', () => {
 
   it('devuelve conflicto ante una revisión obsoleta', async () => {
     await ingest('01890f47-7abc-7def-8abc-00000000a005');
-    const analyst = await signIn('analista@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
     const [alert] = JSON.parse(
       (
         await server().inject({
@@ -664,8 +664,8 @@ describe('C-16/C-17 · recorrido operativo sobre HTTP', () => {
 describe('C-18/C-27 · denegación y no enumeración', () => {
   it('oculta el crudo al rol que no tiene events.read_raw', async () => {
     await ingest('01890f47-7abc-7def-8abc-00000000a006');
-    const analyst = await signIn('analista@qapaq.pe');
-    const lead = await signIn('lider@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
+    const lead = await signIn('lider@b89.example');
 
     const asAnalyst = JSON.parse(
       (
@@ -694,7 +694,7 @@ describe('C-18/C-27 · denegación y no enumeración', () => {
 
   it('responde igual para un recurso inexistente y para uno no autorizado', async () => {
     await ingest('01890f47-7abc-7def-8abc-00000000a007');
-    const auditor = await signIn('auditor@qapaq.pe');
+    const auditor = await signIn('auditor@b89.example');
     const existingId = [...memorySoc().alertRows.values()][0]!.id;
 
     const notAuthorized = await server().inject({
@@ -717,7 +717,7 @@ describe('C-18/C-27 · denegación y no enumeración', () => {
 
   it('rechaza un comando mal formado con los campos afectados y sin el valor', async () => {
     await ingest('01890f47-7abc-7def-8abc-00000000a008');
-    const analyst = await signIn('analista@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
     const alertId = [...memorySoc().alertRows.values()][0]!.id;
 
     const response = await server().inject({
@@ -760,8 +760,8 @@ describe('C-18/C-27 · denegación y no enumeración', () => {
 
 describe('C-19/C-20 · auditoría y notificación sobre HTTP', () => {
   it('entrega auditoría redactada al rol sin capability sensible', async () => {
-    await signIn('analista@qapaq.pe');
-    const lead = await signIn('lider@qapaq.pe');
+    await signIn('analista@b89.example');
+    const lead = await signIn('lider@b89.example');
     const response = await server().inject({
       method: 'GET',
       url: '/api/audit/events?from=2026-10-01T00:00:00.000Z&to=2026-12-01T00:00:00.000Z',
@@ -778,7 +778,7 @@ describe('C-19/C-20 · auditoría y notificación sobre HTTP', () => {
   });
 
   it('entrega auditoría completa al auditor y verifica la cadena', async () => {
-    const auditor = await signIn('auditor@qapaq.pe');
+    const auditor = await signIn('auditor@b89.example');
     const events = await server().inject({
       method: 'GET',
       url: '/api/audit/events?from=2026-10-01T00:00:00.000Z&to=2026-12-01T00:00:00.000Z',
@@ -797,7 +797,7 @@ describe('C-19/C-20 · auditoría y notificación sobre HTTP', () => {
   });
 
   it('deniega la auditoría a quien no tiene la capability', async () => {
-    const analyst = await signIn('analista@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
     const response = await server().inject({
       method: 'GET',
       url: '/api/audit/events?from=2026-10-01T00:00:00.000Z&to=2026-12-01T00:00:00.000Z',
@@ -811,7 +811,7 @@ describe('C-19/C-20 · auditoría y notificación sobre HTTP', () => {
 
   it('drena el outbox y registra el intento de notificación crítica', async () => {
     await ingest('01890f47-7abc-7def-8abc-00000000a009');
-    const analyst = await signIn('analista@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
     const alert = [...memorySoc().alertRows.values()][0]!;
     const acknowledged = await server().inject({
       method: 'POST',
@@ -847,7 +847,7 @@ describe('C-19/C-20 · auditoría y notificación sobre HTTP', () => {
       headers: analyst.mutation,
       remoteAddress: OFFICE_IP,
     });
-    const lead = await signIn('lider@qapaq.pe');
+    const lead = await signIn('lider@b89.example');
     // La pasada manual procesa un mensaje por llamada (cabe en el timeout del gateway): se
     // repite hasta que no quede nada reclamable.
     let drained = await server().inject({
@@ -891,7 +891,7 @@ describe('B-03 · el callback devuelve al navegador a la consola', () => {
   }
 
   it('vuelve a la ruta pedida al iniciar la sesión', async () => {
-    const { response } = await signIn('analista@qapaq.pe', undefined, {}, '/alerts?status=new');
+    const { response } = await signIn('analista@b89.example', undefined, {}, '/alerts?status=new');
 
     expect(response.statusCode).toBe(303);
     expect(destinationOf(response)).toBe('/alerts?status=new');
@@ -905,25 +905,25 @@ describe('B-03 · el callback devuelve al navegador a la consola', () => {
     'alerts',
     `/${'a'.repeat(600)}`,
   ])('no redirige fuera de la consola: %s', async (returnTo) => {
-    const { response } = await signIn('analista@qapaq.pe', undefined, {}, returnTo);
+    const { response } = await signIn('analista@b89.example', undefined, {}, returnTo);
 
     expect(destinationOf(response)).toBe('/');
   });
 
   it('un fallo vuelve al mismo destino con código público y correlación', async () => {
-    const { response } = await signIn('analista@qapaq.pe', REMOTE_IP, {}, '/console.html');
+    const { response } = await signIn('analista@b89.example', REMOTE_IP, {}, '/console.html');
     const location = new URL(response.headers.location as string, 'http://local');
 
     expect(response.statusCode).toBe(303);
     expect(location.pathname).toBe('/console.html');
     expect(location.searchParams.get('authError')).toBe('PASSKEY_REQUIRED');
     expect(location.searchParams.get('correlationId')).toMatch(/^[0-9a-f-]{36}$/u);
-    expect(response.headers['set-cookie']).not.toContain('qapaq_session=');
+    expect(response.headers['set-cookie']).not.toContain('b89_session=');
   });
 
   it('avisa en el retorno cuando la nueva sesión cerró otra', async () => {
-    await signIn('analista@qapaq.pe');
-    const second = await signIn('analista@qapaq.pe');
+    await signIn('analista@b89.example');
+    const second = await signIn('analista@b89.example');
 
     expect(second.response.headers.location).toBe('/?sessionNotice=superseded');
   });
@@ -946,8 +946,8 @@ describe('B-01 · CSRF en las mutaciones', () => {
   }
 
   it('entrega un token distinto por sesión', async () => {
-    const analyst = await signIn('analista@qapaq.pe');
-    const lead = await signIn('lider@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
+    const lead = await signIn('lider@b89.example');
 
     expect(analyst.csrf).toMatch(/^[A-Za-z0-9_-]{43}$/u);
     expect(analyst.csrf).not.toBe(lead.csrf);
@@ -955,7 +955,7 @@ describe('B-01 · CSRF en las mutaciones', () => {
 
   it('rechaza una mutación sin token y no ejecuta el comando', async () => {
     const alert = await newAlert('01890f47-7abc-7def-8abc-00000000b001');
-    const analyst = await signIn('analista@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
 
     const response = await acknowledge(alert.id, alert.revision, { cookie: analyst.cookie });
 
@@ -969,8 +969,8 @@ describe('B-01 · CSRF en las mutaciones', () => {
 
   it('rechaza el token de otra sesión', async () => {
     const alert = await newAlert('01890f47-7abc-7def-8abc-00000000b002');
-    const analyst = await signIn('analista@qapaq.pe');
-    const lead = await signIn('lider@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
+    const lead = await signIn('lider@b89.example');
 
     const response = await acknowledge(alert.id, alert.revision, {
       cookie: analyst.cookie,
@@ -982,7 +982,7 @@ describe('B-01 · CSRF en las mutaciones', () => {
 
   it('rechaza una petición iniciada desde otro sitio aunque traiga token', async () => {
     const alert = await newAlert('01890f47-7abc-7def-8abc-00000000b003');
-    const analyst = await signIn('analista@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
 
     const response = await acknowledge(alert.id, alert.revision, {
       ...analyst.mutation,
@@ -994,7 +994,7 @@ describe('B-01 · CSRF en las mutaciones', () => {
 
   it('acepta la mutación del mismo origen con su token', async () => {
     const alert = await newAlert('01890f47-7abc-7def-8abc-00000000b004');
-    const analyst = await signIn('analista@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
 
     const response = await acknowledge(alert.id, alert.revision, {
       ...analyst.mutation,
@@ -1014,7 +1014,7 @@ describe('B-01 · CSRF en las mutaciones', () => {
   });
 
   it('otro sitio no puede cerrar la sesión de la persona', async () => {
-    const analyst = await signIn('analista@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
 
     const forged = await server().inject({
       method: 'POST',
@@ -1048,7 +1048,7 @@ describe('B-02 · paginación por cursor de los listados', () => {
     for (let index = 1; index <= 5; index += 1) {
       await ingest(`01890f47-7abc-7def-8abc-00000000c00${index}`);
     }
-    const analyst = await signIn('analista@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
     const seen: string[] = [];
     let cursor: string | null = null;
     let pages = 0;
@@ -1072,7 +1072,7 @@ describe('B-02 · paginación por cursor de los listados', () => {
   it('una alerta nueva entre páginas no desplaza las ya entregadas', async () => {
     await ingest('01890f47-7abc-7def-8abc-00000000c101');
     await ingest('01890f47-7abc-7def-8abc-00000000c102');
-    const analyst = await signIn('analista@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
     const first = JSON.parse((await listAlerts(analyst.cookie, '?pageSize=1')).body);
 
     await ingest('01890f47-7abc-7def-8abc-00000000c1ff');
@@ -1091,7 +1091,7 @@ describe('B-02 · paginación por cursor de los listados', () => {
 
   it('usa 50 por defecto y no devuelve cursor cuando no hay más', async () => {
     await ingest('01890f47-7abc-7def-8abc-00000000c201');
-    const analyst = await signIn('analista@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
     const body = JSON.parse((await listAlerts(analyst.cookie, '')).body);
 
     expect(body.items).toHaveLength(1);
@@ -1102,7 +1102,7 @@ describe('B-02 · paginación por cursor de los listados', () => {
   it('busca alertas en todo el conjunto y liga el cursor al término', async () => {
     await ingest('01890f47-7abc-7def-8abc-00000000c251');
     await ingest('01890f47-7abc-7def-8abc-00000000c252');
-    const analyst = await signIn('analista@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
     const firstResponse = await listAlerts(analyst.cookie, '?q=Acceso+sospechoso&pageSize=1');
     const first = JSON.parse(firstResponse.body) as {
       items: { title: string }[];
@@ -1129,7 +1129,7 @@ describe('B-02 · paginación por cursor de los listados', () => {
   });
 
   it('limita la longitud de búsqueda del servidor', async () => {
-    const analyst = await signIn('analista@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
     const response = await listAlerts(analyst.cookie, `?q=${'a'.repeat(121)}`);
 
     expect(response.statusCode).toBe(422);
@@ -1139,7 +1139,7 @@ describe('B-02 · paginación por cursor de los listados', () => {
   it.each(['0', '201', 'abc', '-1', '1.5'])(
     'rechaza pageSize=%s en lugar de recortarlo',
     async (pageSize) => {
-      const analyst = await signIn('analista@qapaq.pe');
+      const analyst = await signIn('analista@b89.example');
       const response = await listAlerts(analyst.cookie, `?pageSize=${pageSize}`);
 
       expect(response.statusCode).toBe(422);
@@ -1154,7 +1154,7 @@ describe('B-02 · paginación por cursor de los listados', () => {
     for (let index = 1; index <= 2; index += 1) {
       await ingest(`01890f47-7abc-7def-8abc-00000000c30${index}`);
     }
-    const analyst = await signIn('analista@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
     const filtered = JSON.parse((await listAlerts(analyst.cookie, '?status=new&pageSize=1')).body);
 
     const reused = await listAlerts(
@@ -1169,7 +1169,7 @@ describe('B-02 · paginación por cursor de los listados', () => {
   });
 
   it('pagina también incidentes y notificaciones', async () => {
-    const analyst = await signIn('analista@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
     const incidents = await server().inject({
       method: 'GET',
       url: '/api/incidents?pageSize=10',
@@ -1201,7 +1201,7 @@ describe('C-16 · correlación por entidad expuesta por la API', () => {
   it('la alerta declara sus claves de entidad y referencia las relacionadas previas', async () => {
     await ingest('01890f47-7abc-7def-8abc-00000000c401');
     await ingest('01890f47-7abc-7def-8abc-00000000c402');
-    const analyst = await signIn('analista@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
     const body = JSON.parse((await alerts(analyst.cookie)).body) as {
       items: {
         id: string;
@@ -1214,7 +1214,7 @@ describe('C-16 · correlación por entidad expuesta por la API', () => {
     expect(body.items).toHaveLength(2);
     expect(
       body.items.every((item) =>
-        item.entities.some((entity) => entity.label === 'jperez@qapaq.pe'),
+        item.entities.some((entity) => entity.label === 'jperez@b89.example'),
       ),
     ).toBe(true);
     // Las claves internas `user:`/`ip:` no salen de la API (D-10b).
@@ -1227,7 +1227,7 @@ describe('C-16 · correlación por entidad expuesta por la API', () => {
 
   it('pivota por referencia opaca y rechaza UPN o IP crudos en la URL (D-10b)', async () => {
     await ingest('01890f47-7abc-7def-8abc-00000000c403');
-    const analyst = await signIn('analista@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
     const listed = JSON.parse((await alerts(analyst.cookie)).body) as {
       items: { entities: { ref: string; kind: string; label: string }[] }[];
     };
@@ -1239,9 +1239,9 @@ describe('C-16 · correlación por entidad expuesta por la API', () => {
     const unknownRef = JSON.parse(
       (await alerts(analyst.cookie, `?entity=ent_${'A'.repeat(22)}`)).body,
     ) as { totalCount: number };
-    const rawUpn = await alerts(analyst.cookie, '?entity=user%3Ajperez%40qapaq.pe');
+    const rawUpn = await alerts(analyst.cookie, '?entity=user%3Ajperez%40b89.example');
 
-    expect(user.label).toBe('jperez@qapaq.pe');
+    expect(user.label).toBe('jperez@b89.example');
     expect(user.ref).toMatch(/^ent_[A-Za-z0-9_-]{22}$/u);
     expect(user.ref).not.toContain('jperez');
     expect(mine.totalCount).toBe(1);
@@ -1252,7 +1252,7 @@ describe('C-16 · correlación por entidad expuesta por la API', () => {
 
   it('acepta los estados reales de alerta como filtro', async () => {
     await ingest('01890f47-7abc-7def-8abc-00000000c404');
-    const analyst = await signIn('analista@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
 
     const fresh = await alerts(analyst.cookie, '?status=new');
     const unknown = await alerts(analyst.cookie, '?status=contained');
@@ -1310,7 +1310,7 @@ describe('Observabilidad · GET /api/operations/health por rol', () => {
   }
 
   it('el analista ve solo el resumen', async () => {
-    const analyst = await signIn('analista@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
     const body = JSON.parse((await health(analyst.cookie)).body);
 
     expect(Object.keys(body.sections)).toEqual(['summary']);
@@ -1319,7 +1319,7 @@ describe('Observabilidad · GET /api/operations/health por rol', () => {
 
   it('el líder ve resumen y SOC, pero no plataforma', async () => {
     await ingest('01890f47-7abc-7def-8abc-00000000c501');
-    const lead = await signIn('lider@qapaq.pe');
+    const lead = await signIn('lider@b89.example');
     const body = JSON.parse((await health(lead.cookie)).body);
 
     expect(Object.keys(body.sections).sort()).toEqual(['soc', 'summary']);
@@ -1332,7 +1332,7 @@ describe('Observabilidad · GET /api/operations/health por rol', () => {
   });
 
   it('el administrador de plataforma ve las tres secciones', async () => {
-    const admin = await signIn('admin@qapaq.pe');
+    const admin = await signIn('admin@b89.example');
     const body = JSON.parse((await health(admin.cookie)).body);
 
     expect(Object.keys(body.sections).sort()).toEqual(['platform', 'soc', 'summary']);
@@ -1340,7 +1340,7 @@ describe('Observabilidad · GET /api/operations/health por rol', () => {
   });
 
   it('el auditor no tiene acceso y no se revela la existencia de la ruta', async () => {
-    const auditor = await signIn('auditor@qapaq.pe');
+    const auditor = await signIn('auditor@b89.example');
     const response = await health(auditor.cookie);
 
     expect(response.statusCode).not.toBe(200);
@@ -1349,11 +1349,11 @@ describe('Observabilidad · GET /api/operations/health por rol', () => {
 
   it('la respuesta no contiene identidades ni IPs de las alertas', async () => {
     await ingest('01890f47-7abc-7def-8abc-00000000c502');
-    const admin = await signIn('admin@qapaq.pe');
+    const admin = await signIn('admin@b89.example');
     const text = (await health(admin.cookie)).body;
 
     expect(text).not.toContain('jperez');
-    expect(text).not.toContain('@qapaq.pe');
+    expect(text).not.toContain('@b89.example');
   });
 });
 
@@ -1384,16 +1384,16 @@ describe('C-10(b) · administración de sesiones', () => {
   type SessionRow = { ref: string; subjectId: string; current: boolean; revision: number };
 
   it('el analista y el líder no pueden ver sesiones', async () => {
-    const analyst = await signIn('analista@qapaq.pe');
-    const lead = await signIn('lider@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
+    const lead = await signIn('lider@b89.example');
 
     expect(JSON.parse((await listSessions(analyst.cookie)).body).code).toBe('RESOURCE_UNAVAILABLE');
     expect(JSON.parse((await listSessions(lead.cookie)).body).code).toBe('RESOURCE_UNAVAILABLE');
   });
 
   it('el administrador lista sesiones con referencias que no son cookies', async () => {
-    const analyst = await signIn('analista@qapaq.pe');
-    const admin = await signIn('admin@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
+    const admin = await signIn('admin@b89.example');
     const body = JSON.parse((await listSessions(admin.cookie)).body) as { items: SessionRow[] };
 
     const own = body.items.find((row) => row.current);
@@ -1411,8 +1411,8 @@ describe('C-10(b) · administración de sesiones', () => {
   });
 
   it('revoca la sesión de otra persona con motivo, la deja sin acceso y lo audita', async () => {
-    const analyst = await signIn('analista@qapaq.pe');
-    const admin = await signIn('admin@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
+    const admin = await signIn('admin@b89.example');
     const rows = JSON.parse((await listSessions(admin.cookie)).body).items as SessionRow[];
     const target = rows.find((row) => row.subjectId === 'local-analyst-1' && !row.current)!;
 
@@ -1443,7 +1443,7 @@ describe('C-10(b) · administración de sesiones', () => {
   });
 
   it('no permite revocar la propia sesión ni actuar sin CSRF', async () => {
-    const admin = await signIn('admin@qapaq.pe');
+    const admin = await signIn('admin@b89.example');
     const rows = JSON.parse((await listSessions(admin.cookie)).body).items as SessionRow[];
     const own = rows.find((row) => row.current)!;
 
@@ -1465,7 +1465,7 @@ describe('Sprint 5 · tareas, bitácora y timeline del incidente', () => {
   /** Abre un caso desde una alerta crítica triada y escalada, todo por HTTP. */
   async function openIncidentAsLead(recordId: string) {
     await ingest(recordId);
-    const lead = await signIn('lider@qapaq.pe');
+    const lead = await signIn('lider@b89.example');
     const call = (method: 'GET' | 'POST', url: string, payload?: object) =>
       server().inject({
         method,
@@ -1580,13 +1580,13 @@ describe('Sprint 5 · tareas, bitácora y timeline del incidente', () => {
     const linkedAlert = timeline.items.find((item) => item.kind === 'alert.linked') as
       { timeSource: string; at: string; recordedAt: string } | undefined;
     expect(linkedAlert?.timeSource).toBe('provider');
-    // La alerta trae ambas horas: ocurrencia en la fuente y alta en QAPAQ.
+    // La alerta trae ambas horas: ocurrencia en la fuente y alta en B89.
     expect(Date.parse(linkedAlert!.recordedAt)).toBeGreaterThanOrEqual(Date.parse(linkedAlert!.at));
   });
 
   it('el auditor lee pero no escribe, y un id ajeno o inválido no revela nada', async () => {
     const { incident } = await openIncidentAsLead('01890f47-7abc-7def-8abc-00000000c503');
-    const auditor = await signIn('auditor@qapaq.pe');
+    const auditor = await signIn('auditor@b89.example');
     const read = await server().inject({
       method: 'GET',
       url: `/api/incidents/${incident.id}/timeline`,
@@ -1617,7 +1617,7 @@ describe('Sprint 5 · tareas, bitácora y timeline del incidente', () => {
     const base = `/api/incidents/${incident.id}/alerts`;
 
     // El auditor lee incidentes pero no alertas: mismo 404 que un incidente inexistente.
-    const auditor = await signIn('auditor@qapaq.pe');
+    const auditor = await signIn('auditor@b89.example');
     const denied = await server().inject({
       method: 'GET',
       url: base,
@@ -1683,8 +1683,8 @@ describe('S5-D10 · feed de cambios en vivo', () => {
   }
 
   it('anuncia la alerta nueva solo a quien puede leerla, sin contenido', async () => {
-    const analyst = await signIn('analista@qapaq.pe');
-    const auditor = await signIn('auditor@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
+    const auditor = await signIn('auditor@b89.example');
     const start = (await changes(analyst.cookie)).body.cursor;
     const auditorStart = (await changes(auditor.cookie)).body.cursor;
 
@@ -1703,7 +1703,7 @@ describe('S5-D10 · feed de cambios en vivo', () => {
   });
 
   it('sin cambios retiene la petición y responde vacío antes del timeout del gateway', async () => {
-    const analyst = await signIn('analista@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
     const start = (await changes(analyst.cookie)).body.cursor;
     const began = Date.now();
     const idle = await changes(analyst.cookie, start);
@@ -1714,7 +1714,7 @@ describe('S5-D10 · feed de cambios en vivo', () => {
   });
 
   it('rechaza un cursor mal formado y exige sesión', async () => {
-    const analyst = await signIn('analista@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
     expect((await changes(analyst.cookie, 'abc')).status).toBe(422);
     const anonymous = await server().inject({
       method: 'GET',
@@ -1786,8 +1786,8 @@ describe('Sprint 5 · fase 1 · GET /api/events', () => {
   });
 
   it('el analista ve el evento normalizado sin el documento original; el lead, con él', async () => {
-    const analyst = await signIn('analista@qapaq.pe');
-    const lead = await signIn('lider@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
+    const lead = await signIn('lider@b89.example');
     const forAnalyst = await get(analyst.cookie, '?severity=critical,high&category=iam');
     expect(forAnalyst.status).toBe(200);
     expect(forAnalyst.body).toMatchObject({ status: 'ok', unparsedCount: 0, nextCursor: null });
@@ -1800,7 +1800,7 @@ describe('Sprint 5 · fase 1 · GET /api/events', () => {
   });
 
   it('valida rango, tamaño de página y filtros sin aceptar lenguaje de consulta', async () => {
-    const analyst = await signIn('analista@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
     const tooWide = await get(
       analyst.cookie,
       '?from=2026-08-01T00:00:00.000Z&to=2026-10-12T00:00:00.000Z',
@@ -1812,7 +1812,7 @@ describe('Sprint 5 · fase 1 · GET /api/events', () => {
   });
 
   it('cursor incompatible es 422 y una caída del proveedor es 503 sin detalles', async () => {
-    const analyst = await signIn('analista@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
     failWith = new SecurityEventProviderError('PROVIDER_CURSOR_INCOMPATIBLE', 'readPage', false);
     expect((await get(analyst.cookie, `?cursor=${'x'.repeat(32)}`)).status).toBe(422);
     failWith = new SecurityEventProviderError('PROVIDER_TIMEOUT', 'readPage', true, 'host interno');
@@ -1821,13 +1821,13 @@ describe('Sprint 5 · fase 1 · GET /api/events', () => {
     expect(JSON.stringify(degraded.body)).not.toContain('host interno');
   });
 
-  it('q (qapaq-events-v1) produce los mismos filtros, excluye los tipados y no repite errores', async () => {
-    const analyst = await signIn('analista@qapaq.pe');
+  it('q (b89-events-v1) produce los mismos filtros, excluye los tipados y no repite errores', async () => {
+    const analyst = await signIn('analista@b89.example');
     const q = encodeURIComponent('Category:IAM and severity:critical,high');
     const parsed = await get(analyst.cookie, `?q=${q}`);
     expect(parsed.status).toBe(200);
     expect(parsed.body.query).toEqual({
-      grammar: 'qapaq-events-v1',
+      grammar: 'b89-events-v1',
       canonical: 'severity:high,critical AND category:iam',
     });
     expect(reads.at(-1)).toMatchObject({
@@ -1845,7 +1845,7 @@ describe('Sprint 5 · fase 1 · GET /api/events', () => {
 
   it('sin fuente configurada responde disabled y sin filas', async () => {
     delete (runtime as unknown as Mutable).options.events;
-    const analyst = await signIn('analista@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
     const disabled = await get(analyst.cookie);
     expect(disabled.body).toMatchObject({ status: 'disabled', items: [], nextCursor: null });
   });
@@ -1863,7 +1863,7 @@ describe('Sprint 5 · fase 2 · GET /api/sources/health', () => {
   }
 
   it('lead y auditor ven la fuente declarada como deshabilitada; el analista no accede', async () => {
-    const lead = await health((await signIn('lider@qapaq.pe')).cookie);
+    const lead = await health((await signIn('lider@b89.example')).cookie);
     expect(lead.status).toBe(200);
     expect(lead.body.sources).toEqual([
       expect.objectContaining({
@@ -1876,14 +1876,14 @@ describe('Sprint 5 · fase 2 · GET /api/sources/health', () => {
         transitions: [],
       }),
     ]);
-    expect((await health((await signIn('auditor@qapaq.pe')).cookie)).status).toBe(200);
-    expect((await health((await signIn('analista@qapaq.pe')).cookie)).status).toBe(404);
+    expect((await health((await signIn('auditor@b89.example')).cookie)).status).toBe(200);
+    expect((await health((await signIn('analista@b89.example')).cookie)).status).toBe(404);
   });
 });
 
 describe('Sprint 5 · fase 3 · GET /api/admin/users', () => {
   it('el admin ve el estado de la sincronización; sin padrón no se inventa nadie', async () => {
-    const admin = await signIn('admin@qapaq.pe');
+    const admin = await signIn('admin@b89.example');
     const response = await server().inject({
       method: 'GET',
       url: '/api/admin/users',
@@ -1899,7 +1899,7 @@ describe('Sprint 5 · fase 3 · GET /api/admin/users', () => {
   });
 
   it('sin users.read responde igual que un recurso inexistente', async () => {
-    const lead = await signIn('lider@qapaq.pe');
+    const lead = await signIn('lider@b89.example');
     for (const url of [
       '/api/admin/users',
       '/api/admin/users/11111111-1111-4111-8111-111111111111',
@@ -1923,8 +1923,8 @@ describe('Sprint 5 · avisos al dispositivo · /api/me/push', () => {
   };
 
   it('cada persona registra, lista y quita solo sus dispositivos', async () => {
-    const analyst = await signIn('analista@qapaq.pe');
-    const lead = await signIn('lider@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
+    const lead = await signIn('lider@b89.example');
     const call = (who: typeof analyst, method: 'GET' | 'POST', url: string, payload?: object) =>
       server().inject({
         method,
@@ -1960,7 +1960,7 @@ describe('Sprint 5 · avisos al dispositivo · /api/me/push', () => {
   });
 
   it('rechaza endpoints que no son de un servicio de push y exige la capability', async () => {
-    const analyst = await signIn('analista@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
     const hostile = await server().inject({
       method: 'POST',
       url: '/api/me/push/subscriptions',
@@ -1971,7 +1971,7 @@ describe('Sprint 5 · avisos al dispositivo · /api/me/push', () => {
     expect(hostile.statusCode).toBe(422);
     expect(JSON.parse(hostile.body).fields).toEqual(['endpoint']);
 
-    const auditor = await signIn('auditor@qapaq.pe');
+    const auditor = await signIn('auditor@b89.example');
     const denied = await server().inject({
       method: 'GET',
       url: '/api/me/push/config',
@@ -1983,7 +1983,7 @@ describe('Sprint 5 · avisos al dispositivo · /api/me/push', () => {
 
   it('pendientes: las P1 abiertas recientes que la sesión puede ver, con enlace', async () => {
     await ingest('01890f47-7abc-7def-8abc-00000000e001');
-    const analyst = await signIn('analista@qapaq.pe');
+    const analyst = await signIn('analista@b89.example');
     const pending = JSON.parse(
       (
         await server().inject({

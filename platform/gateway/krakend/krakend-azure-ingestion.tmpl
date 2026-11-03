@@ -1,6 +1,6 @@
 {
   "version": 4,
-  "name": "qapaq-azure-wazuh-ingestion-gateway",
+  "name": "b89-azure-wazuh-ingestion-gateway",
   "port": 8080,
   "timeout": "{{ env "GATEWAY_ENDPOINT_TIMEOUT" }}",
   "client_tls": {
@@ -18,12 +18,12 @@
       "stdout": true
     },
     "telemetry/opentelemetry": {
-      "service_name": "qapaq-azure-wazuh-ingestion-gateway",
+      "service_name": "b89-azure-wazuh-ingestion-gateway",
       "metric_reporting_period": 10,
       "exporters": {
         "prometheus": [
           {
-            "name": "qapaq_prometheus",
+            "name": "b89_prometheus",
             "port": {{ env "GATEWAY_METRICS_PORT" }},
             "listen_ip": "0.0.0.0",
             "process_metrics": true
@@ -55,20 +55,20 @@
           "issuer": "{{ env "OIDC_ISSUER" }}",
           "audience": ["{{ env "OIDC_AUDIENCE" }}"],
           "roles_key": "roles",
-          "roles": ["Qapaq.Wazuh.Read"],
+          "roles": ["B89.Wazuh.Read"],
           "cache": true,
-          "propagate_claims": [["sub", "X-Qapaq-Workload"]]
+          "propagate_claims": [["sub", "X-B89-Workload"]]
         },
         "validation/cel": [
           {
-            "check_expr": "(has(JWT.appid) && JWT.appid == '{{ env "QAPAQ_CORE_CLIENT_ID" }}') || (has(JWT.azp) && JWT.azp == '{{ env "QAPAQ_CORE_CLIENT_ID" }}')"
+            "check_expr": "(has(JWT.appid) && JWT.appid == '{{ env "B89_CORE_CLIENT_ID" }}') || (has(JWT.azp) && JWT.azp == '{{ env "B89_CORE_CLIENT_ID" }}')"
           }
         ],
         "qos/ratelimit/router": {
           "client_max_rate": {{ env "GATEWAY_RATE_PER_SECOND" }},
           "client_capacity": {{ env "GATEWAY_RATE_BURST" }},
           "strategy": "header",
-          "key": "X-Qapaq-Workload"
+          "key": "X-B89-Workload"
         }
       },
       "backend": [
@@ -125,20 +125,20 @@
           "issuer": "{{ env "OIDC_ISSUER" }}",
           "audience": ["{{ env "OIDC_AUDIENCE" }}"],
           "roles_key": "roles",
-          "roles": ["Qapaq.Wazuh.Read"],
+          "roles": ["B89.Wazuh.Read"],
           "cache": true,
-          "propagate_claims": [["sub", "X-Qapaq-Workload"]]
+          "propagate_claims": [["sub", "X-B89-Workload"]]
         },
         "validation/cel": [
           {
-            "check_expr": "(has(JWT.appid) && JWT.appid == '{{ env "QAPAQ_CORE_CLIENT_ID" }}') || (has(JWT.azp) && JWT.azp == '{{ env "QAPAQ_CORE_CLIENT_ID" }}')"
+            "check_expr": "(has(JWT.appid) && JWT.appid == '{{ env "B89_CORE_CLIENT_ID" }}') || (has(JWT.azp) && JWT.azp == '{{ env "B89_CORE_CLIENT_ID" }}')"
           }
         ],
         "qos/ratelimit/router": {
           "client_max_rate": {{ env "GATEWAY_RATE_PER_SECOND" }},
           "client_capacity": {{ env "GATEWAY_RATE_BURST" }},
           "strategy": "header",
-          "key": "X-Qapaq-Workload"
+          "key": "X-B89-Workload"
         }
       },
       "backend": [

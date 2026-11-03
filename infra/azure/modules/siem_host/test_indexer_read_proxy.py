@@ -50,7 +50,7 @@ class IndexerReadProxyTests(unittest.TestCase):
         )
 
     def test_existing_basic_auth_reference_is_reused(self) -> None:
-        basic_auth = base64.b64encode(b"qapaq_reader:Existing-R3ader!Credential").decode("ascii")
+        basic_auth = base64.b64encode(b"b89_reader:Existing-R3ader!Credential").decode("ascii")
         password, result, publish = proxy.reader_password_from_secret(basic_auth)
         self.assertEqual(password, "Existing-R3ader!Credential")
         self.assertEqual(result, basic_auth)
@@ -155,7 +155,7 @@ class IndexerReadProxyTests(unittest.TestCase):
         self.assertEqual(_probe.call_count, 4)
         role_write = next(
             call for call in _indexer_request.call_args_list
-            if call.args[1] == "PUT" and call.args[2].endswith("/roles/qapaq_alerts_read")
+            if call.args[1] == "PUT" and call.args[2].endswith("/roles/b89_alerts_read")
         )
         self.assertEqual(
             role_write.args[4]["cluster_permissions"],
@@ -270,9 +270,9 @@ class IndexerReadProxyTests(unittest.TestCase):
                 for call in _indexer_request.call_args_list[7:]
             ],
             [
-                ("DELETE", "/_plugins/_security/api/internalusers/qapaq_reader"),
-                ("DELETE", "/_plugins/_security/api/rolesmapping/qapaq_alerts_read"),
-                ("DELETE", "/_plugins/_security/api/roles/qapaq_alerts_read"),
+                ("DELETE", "/_plugins/_security/api/internalusers/b89_reader"),
+                ("DELETE", "/_plugins/_security/api/rolesmapping/b89_alerts_read"),
+                ("DELETE", "/_plugins/_security/api/roles/b89_alerts_read"),
             ],
         )
 
@@ -324,7 +324,7 @@ class IndexerReadProxyTests(unittest.TestCase):
         _admin_password: MagicMock,
         indexer_request: MagicMock,
     ) -> None:
-        credential = base64.b64encode(b"qapaq_reader:Existing-R3ader!Credential").decode("ascii")
+        credential = base64.b64encode(b"b89_reader:Existing-R3ader!Credential").decode("ascii")
         with self.assertRaises(proxy.IndexerProxyError):
             proxy.configure(
                 valid_config(),
@@ -349,7 +349,7 @@ class IndexerReadProxyTests(unittest.TestCase):
         _admin_password: MagicMock,
     ) -> None:
         credential = base64.b64encode(
-            b"qapaq_reader:Existing-R3ader!Credential"
+            b"b89_reader:Existing-R3ader!Credential"
         ).decode("ascii")
         for hosts in (
             ["*"],
@@ -391,7 +391,7 @@ class IndexerReadProxyTests(unittest.TestCase):
         _admin_password: MagicMock,
     ) -> None:
         credential = base64.b64encode(
-            b"qapaq_reader:Existing-R3ader!Credential"
+            b"b89_reader:Existing-R3ader!Credential"
         ).decode("ascii")
         existing_mappings = (
             {
@@ -444,7 +444,7 @@ class IndexerReadProxyTests(unittest.TestCase):
             )
         )
 
-    def test_existing_reader_mapping_accepts_only_the_qapaq_user_and_empty_matchers(self) -> None:
+    def test_existing_reader_mapping_accepts_only_the_b89_user_and_empty_matchers(self) -> None:
         for mapping in (
             {"users": [], "backend_roles": [], "hosts": []},
             {

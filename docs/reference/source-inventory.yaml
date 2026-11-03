@@ -81,7 +81,7 @@ sources:
       # App registration creada 2026-09-22; el valor real vive solo en .env local
       # (gitignored) y debe migrar a un secret manager antes de cualquier
       # entorno compartido. Este nombre es una referencia, no el secreto.
-      credential_ref: secret://qapaq/microsoft/entra-app
+      credential_ref: secret://b89/microsoft/entra-app
     authorization: { approved_scopes: [], approval_ticket: TO_BE_PROVIDED }
     datasets:
       - id: TO_BE_PROVIDED

@@ -101,7 +101,7 @@ export function checkEntrypoints(root = process.cwd()) {
           report('environment-at-process-boundary');
         if (
           main &&
-          !/^(?:node:url|@qapaq\/configuration|\.\/bootstrap(?:\/bootstrap)?\.js|\.\/app\/styles\.css)$/u.test(
+          !/^(?:node:url|@b89\/configuration|\.\/bootstrap(?:\/bootstrap)?\.js|\.\/app\/styles\.css)$/u.test(
             specifier,
           )
         )

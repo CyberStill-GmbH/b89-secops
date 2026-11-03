@@ -37,8 +37,8 @@ pero no prueban que una compilación futura produzca bytes idénticos. El manifi
 como experimental y enumera estos límites.
 
 Este resultado **no** es un release bundle ni satisface el contrato de
-[`siem_host`](../../../infra/azure/modules/siem_host/README.md). No incluye el Dashboard QAPAQ,
-`qapaq-core`, su instalador idempotente, configuración de servicios, políticas, ni pruebas de
+[`siem_host`](../../../infra/azure/modules/siem_host/README.md). No incluye el Dashboard B89,
+`b89-core`, su instalador idempotente, configuración de servicios, políticas, ni pruebas de
 integración. No cargar estos artefactos en Azure ni habilitar el módulo con ellos. La posterior fase
 de release debe unir componentes, scripts, configuración y pruebas; validar el contrato del
 bootstrap y revisar el manifiesto antes de publicar a un almacenamiento privado.

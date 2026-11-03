@@ -9,8 +9,8 @@
  * `unparsedCount` para que la UI diga que la página tiene registros que no se pudieron mostrar.
  */
 
-import type { EventFilters, ProviderRecord, SecurityEventProvider } from '@qapaq/connectors';
-import type { SecurityEvent } from '@qapaq/contracts';
+import type { EventFilters, ProviderRecord, SecurityEventProvider } from '@b89/connectors';
+import type { SecurityEvent } from '@b89/contracts';
 
 import type { RecordConversion } from './ingestion-poller.js';
 

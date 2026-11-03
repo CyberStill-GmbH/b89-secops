@@ -100,7 +100,7 @@ describe('C-18 · validación del id_token', () => {
     const malformed = {
       ...baseClaims(NOW),
       aud: 7,
-      roles: 'qapaq.platform.admin',
+      roles: 'b89.platform.admin',
     } as unknown as Partial<ReturnType<typeof baseClaims>>;
 
     expect(validate(identity.sign(malformed))).toMatchObject({

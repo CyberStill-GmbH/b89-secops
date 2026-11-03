@@ -53,7 +53,7 @@ describe('PostgreSQL · SoD de cierre de solicitud de rol', () => {
         "access_reason", "closed_by_oid", "closed_by", "closed_at", "closed_reason",
         "revision", "updated_at"
       ) VALUES (
-        $1, $2::uuid, $3::uuid, 'grant', 'qapaq.platform.admin',
+        $1, $2::uuid, $3::uuid, 'grant', 'b89.platform.admin',
         'Elevación de acceso para cobertura del SOC.', NULL, 0, $4::uuid, 'requester-subject',
         now(), 'rejected', $5::uuid, 'access-subject', now(), 'Aprobación de Acceso.',
         $5::uuid, 'access-subject', now(), 'Rechazo de Seguridad.', 3, now()

@@ -15,7 +15,7 @@ Resumen: PASS: 14 · FAIL: 0 · BLOCKED: 6 · NOT_RUN: 0
 | --- | --- | --- | --- | --- | --- | --- |
 | C-16-prioritization | C-16 | P0 | ✅ PASS | Priorización con reason codes y promoción idempotente. | pnpm exec vitest run --config vitest.config.ts modules/detection/test · 1.7s | — |
 | C-17-lifecycle | C-17 | P0 | ✅ PASS | Lifecycle, concurrencia y atomicidad estado/auditoría/outbox. | pnpm exec vitest run --config vitest.config.ts modules/soc/test · 1.4s | — |
-| C-18-C-25-access | C-18/C-25 | P0 | ✅ PASS | OIDC, sesión única, red QAPAQ, passkey, Smart Lockout y rate limit. | pnpm exec vitest run --config vitest.config.ts modules/access/test · 1.5s | — |
+| C-18-C-25-access | C-18/C-25 | P0 | ✅ PASS | OIDC, sesión única, red B89, passkey, Smart Lockout y rate limit. | pnpm exec vitest run --config vitest.config.ts modules/access/test · 1.5s | — |
 | C-19-audit | C-19 | P0 | ✅ PASS | Cadena de hash, tamper/gap, archivo y reconciliación. | pnpm exec vitest run --config vitest.config.ts platform/audit/test · 1.6s | — |
 | C-20-notification | C-20 | P0 | ✅ PASS | Outbox, reintento, timeout ambiguo, fallback y acuse. | pnpm exec vitest run --config vitest.config.ts modules/soar/test · 4.6s | — |
 | C-18-bff-http | C-18/C-27 | P0 | ✅ PASS | Autorización, denegación y catálogo de errores sobre HTTP real. | pnpm exec vitest run --config vitest.config.ts apps/api/test · 5.7s | — |

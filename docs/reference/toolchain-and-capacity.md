@@ -30,7 +30,7 @@ Prisma 8 RC ni BullMQ 6 sin la revisión descrita en ADR-016.
 
 NestJS usa ESM y `@nestjs/platform-fastify`. Todos los paquetes oficiales de NestJS
 comparten major. Fastify aporta schemas, serialización y límites configurables;
-su rendimiento público no constituye capacidad de QAPAQ SecOps.
+su rendimiento público no constituye capacidad de B89 SecOps.
 
 TypeScript requiere como mínimo:
 
@@ -60,7 +60,7 @@ cuello de botella. PostgreSQL no almacena telemetría masiva.
 Monorepo con pnpm workspaces, sin Nx ni Turborepo inicialmente:
 
 ```text
-qapaq-secops/
+b89-secops/
 ├── apps/
 │   ├── api/                    # NestJS HTTP
 │   ├── worker/                 # BullMQ consumers/schedulers

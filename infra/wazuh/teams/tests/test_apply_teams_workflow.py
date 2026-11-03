@@ -17,14 +17,14 @@ SPEC.loader.exec_module(MODULE)
 class TeamsWorkflowInstallerTests(unittest.TestCase):
     def test_adds_block_once_and_replaces_owned_block_idempotently(self):
         config = "<ossec_config>\n  <global/>\n</ossec_config>\n"
-        block = "<integration><name>custom-qapaq-teams</name></integration>"
+        block = "<integration><name>custom-b89-teams</name></integration>"
         installed = MODULE.merge_config(config, block)
-        self.assertEqual(installed.count("<name>custom-qapaq-teams</name>"), 1)
+        self.assertEqual(installed.count("<name>custom-b89-teams</name>"), 1)
         self.assertEqual(MODULE.merge_config(installed, block), installed)
 
     def test_refuses_unmarked_existing_integration(self):
         config = (
-            "<ossec_config><integration><name>custom-qapaq-teams</name>"
+            "<ossec_config><integration><name>custom-b89-teams</name>"
             "</integration></ossec_config>"
         )
         with self.assertRaisesRegex(ValueError, "sin los marcadores"):

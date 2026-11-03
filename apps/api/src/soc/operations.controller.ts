@@ -11,8 +11,8 @@
 import { Body, Controller, Get, Inject, Param, Post, Query, Req } from '@nestjs/common';
 import type { IncomingRequest } from '../http/http-contracts.js';
 
-import { validateSecurityEvent } from '@qapaq/contracts';
-import { acknowledge, drainOutbox } from '@qapaq/soar';
+import { validateSecurityEvent } from '@b89/contracts';
+import { acknowledge, drainOutbox } from '@b89/soar';
 
 import { ApiError } from '../http/api-error.js';
 import {

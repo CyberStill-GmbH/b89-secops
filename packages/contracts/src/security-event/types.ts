@@ -13,4 +13,4 @@ export type {
   Source,
   Tenant,
 } from './generated.js';
-export type { QapaqSecurityEvent as SecurityEvent } from './generated.js';
+export type { B89SecurityEvent as SecurityEvent } from './generated.js';

@@ -47,17 +47,17 @@ variable "key_vault_id" { type = string }
 variable "key_vault_uri" { type = string }
 
 variable "image" {
-  description = "Imagen QAPAQ KrakenD en el ACR del entorno, fijada a digest inmutable."
+  description = "Imagen B89 KrakenD en el ACR del entorno, fijada a digest inmutable."
   type        = string
 
   validation {
-    condition     = can(regex("^[a-z0-9]+\\.azurecr\\.io/qapaq-secops-krakend@sha256:[0-9a-f]{64}$", var.image))
-    error_message = "La imagen debe apuntar al repositorio qapaq-secops-krakend del ACR y fijarse a un digest SHA-256."
+    condition     = can(regex("^[a-z0-9]+\\.azurecr\\.io/b89-secops-krakend@sha256:[0-9a-f]{64}$", var.image))
+    error_message = "La imagen debe apuntar al repositorio b89-secops-krakend del ACR y fijarse a un digest SHA-256."
   }
 }
 
 variable "tenant_id" {
-  description = "Tenant Entra que emite los tokens de workload del QAPAQ Core."
+  description = "Tenant Entra que emite los tokens de workload del B89 Core."
   type        = string
 
   validation {
@@ -72,17 +72,17 @@ variable "client_scope" {
 
   validation {
     condition     = can(regex("^api://[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/\\.default$", var.client_scope))
-    error_message = "client_scope debe ser api://<client-id>/.default para la aplicación de QAPAQ Core."
+    error_message = "client_scope debe ser api://<client-id>/.default para la aplicación de B89 Core."
   }
 }
 
 variable "core_client_id" {
-  description = "Client ID de la única aplicación QAPAQ Core autorizada a consumir el gateway."
+  description = "Client ID de la única aplicación B89 Core autorizada a consumir el gateway."
   type        = string
 
   validation {
     condition     = can(regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", var.core_client_id))
-    error_message = "core_client_id debe ser el GUID de la aplicación Entra QAPAQ Core."
+    error_message = "core_client_id debe ser el GUID de la aplicación Entra B89 Core."
   }
 }
 

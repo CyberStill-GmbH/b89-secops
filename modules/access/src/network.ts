@@ -3,7 +3,7 @@
  *
  * La IP del cliente solo es un dato de seguridad si se deriva de una cadena de proxies
  * conocida. `X-Forwarded-For` lo escribe cualquiera: si se lee de izquierda a derecha,
- * basta con enviar `X-Forwarded-For: 10.20.0.1` para aparecer dentro de la red QAPAQ.
+ * basta con enviar `X-Forwarded-For: 10.20.0.1` para aparecer dentro de la red B89.
  *
  * Por eso la cadena se recorre de derecha a izquierda —del salto más cercano al más
  * lejano— y se detiene en el primer salto que no sea un proxy confiable. Ese es el
@@ -14,7 +14,7 @@ export const NETWORK_DECISIONS = ['inside', 'outside', 'untrusted_chain'] as con
 export type NetworkDecisionCode = (typeof NETWORK_DECISIONS)[number];
 
 export interface NetworkPolicy {
-  /** CIDR de la red QAPAQ aprobada (oficinas y VPN). */
+  /** CIDR de la red B89 aprobada (oficinas y VPN). */
   readonly allowedCidrs: readonly string[];
   /** Proxies e ingress cuya cabecera sí tiene autoridad. */
   readonly trustedProxyCidrs: readonly string[];
@@ -133,6 +133,6 @@ export function evaluateNetwork(origin: RequestOrigin, policy: NetworkPolicy): N
     };
   }
   return inAny(clientIp, policy.allowedCidrs)
-    ? { decision: 'inside', clientIp, detail: 'Origen dentro de la red QAPAQ.' }
-    : { decision: 'outside', clientIp, detail: 'Origen fuera de la red QAPAQ.' };
+    ? { decision: 'inside', clientIp, detail: 'Origen dentro de la red B89.' }
+    : { decision: 'outside', clientIp, detail: 'Origen fuera de la red B89.' };
 }

@@ -20,15 +20,15 @@
 
 import { randomUUID } from 'node:crypto';
 
-import type { EventQuery, ProviderRecord } from '@qapaq/connectors';
-import type { SecurityEvent } from '@qapaq/contracts';
+import type { EventQuery, ProviderRecord } from '@b89/connectors';
+import type { SecurityEvent } from '@b89/contracts';
 import {
   planIngestionWindow,
   type IngestionCursorKey,
   type IngestionStateStore,
   type IngestionWindowPolicy,
   type PollOutcome,
-} from '@qapaq/soc';
+} from '@b89/soc';
 
 export type RecordConversion =
   | { readonly status: 'normalized'; readonly event: SecurityEvent }

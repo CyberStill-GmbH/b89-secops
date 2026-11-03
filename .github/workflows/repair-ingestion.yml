@@ -24,9 +24,9 @@ jobs:
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
-          role-to-assume: arn:aws:iam::955200662475:role/qapaq-secops-github-terraform-demo
+          role-to-assume: arn:aws:iam::955200662475:role/b89-secops-github-terraform-demo
           aws-region: us-east-1
-          role-session-name: qapaq-secops-repair-ingestion
+          role-session-name: b89-secops-repair-ingestion
           allowed-account-ids: 955200662475
 
       - name: Restart filebeat and wazuh-manager, report pipeline
@@ -34,7 +34,7 @@ jobs:
         run: |
           set -euo pipefail
           instance_id="$(aws ec2 describe-instances \
-            --filters 'Name=tag:Name,Values=qapaq-secops-demo-wazuh' 'Name=instance-state-name,Values=running' \
+            --filters 'Name=tag:Name,Values=b89-secops-demo-wazuh' 'Name=instance-state-name,Values=running' \
             --query 'Reservations[].Instances[].InstanceId | [0]' --output text)"
           if [[ -z "$instance_id" || "$instance_id" == None ]]; then
             echo 'No running Wazuh EC2 instance found.'; exit 1
@@ -45,25 +45,25 @@ jobs:
           set +e
           R=us-east-1; T=45f2f938-dbe3-4a3e-8a54-930893f94ef8; C=336d44fe-b99d-4cfd-9c6e-0ed2d7e48998
           echo '=== replica API->KrakenD (token v1 de workload) ==='
-          SV=$(aws secretsmanager get-secret-value --secret-id qapaq-secops/demo/entra/client-secret --query SecretString --output text --region $R 2>/dev/null)
+          SV=$(aws secretsmanager get-secret-value --secret-id b89-secops/demo/entra/client-secret --query SecretString --output text --region $R 2>/dev/null)
           CS=$(printf '%s' "$SV" | python3 -c 'import sys,json;v=sys.stdin.read().strip();print(json.loads(v).get("client_secret",v) if v.startswith("{") else v)' 2>/dev/null)
           TOK=$(curl -s -X POST "https://login.microsoftonline.com/$T/oauth2/v2.0/token" -d "client_id=$C&client_secret=$CS&grant_type=client_credentials&scope=$C/.default" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("access_token",""))' 2>/dev/null)
           echo "token_len=${#TOK}"
-          GW=http://krakend.demo.qapaq.internal:8080
+          GW=http://krakend.demo.b89.internal:8080
           hc=$(curl -s -o /tmp/h.json -w '%{http_code}' --max-time 10 -H "Authorization: Bearer $TOK" "$GW/wazuh/_cluster/health"); echo "KrakenD /wazuh/_cluster/health HTTP=$hc"; head -c 300 /tmp/h.json; echo
           sc=$(curl -s -o /tmp/s.json -w '%{http_code}' --max-time 10 -H "Authorization: Bearer $TOK" -H 'Content-Type: application/json' -X POST "$GW/wazuh/_search" -d '{"size":1}'); echo "KrakenD /wazuh/_search HTTP=$sc"; head -c 500 /tmp/s.json; echo
           rm -f /tmp/h.json /tmp/s.json
           echo '=== indices wazuh (admin localhost) ==='
-          ADM=$(aws secretsmanager get-secret-value --secret-id qapaq-secops/demo/wazuh/dashboard-admin --query SecretString --output text --region $R 2>/dev/null)
+          ADM=$(aws secretsmanager get-secret-value --secret-id b89-secops/demo/wazuh/dashboard-admin --query SecretString --output text --region $R 2>/dev/null)
           AU=$(printf '%s' "$ADM" | python3 -c 'import sys,json;v=sys.stdin.read().strip();d=json.loads(v) if v.startswith("{") else {};print(d.get("username","admin"))' 2>/dev/null)
           AP=$(printf '%s' "$ADM" | python3 -c 'import sys,json;v=sys.stdin.read().strip();d=json.loads(v) if v.startswith("{") else {};print(d.get("password",v))' 2>/dev/null)
           curl -ks -u "$AU:$AP" "https://localhost:9200/_cat/indices/wazuh-*?h=index,health,docs.count" | sort | head -40
           echo '=== reader via PROXY, patron KrakenD wazuh-alerts-4.x-* ==='
-          RD=$(aws secretsmanager get-secret-value --secret-id qapaq-secops/demo/wazuh/indexer-reader --query SecretString --output text --region $R 2>/dev/null)
+          RD=$(aws secretsmanager get-secret-value --secret-id b89-secops/demo/wazuh/indexer-reader --query SecretString --output text --region $R 2>/dev/null)
           RU=$(printf '%s' "$RD" | python3 -c 'import sys,json;print(json.load(sys.stdin)["username"])' 2>/dev/null)
           RP=$(printf '%s' "$RD" | python3 -c 'import sys,json;print(json.load(sys.stdin)["password"])' 2>/dev/null)
           PIP=$(hostname -I | awk '{print $1}'); echo "private_ip=$PIP"
-          aws secretsmanager get-secret-value --secret-id qapaq-secops/demo/wazuh/indexer-proxy-ca --query SecretString --output text --region $R > /tmp/qca.pem 2>/dev/null
+          aws secretsmanager get-secret-value --secret-id b89-secops/demo/wazuh/indexer-proxy-ca --query SecretString --output text --region $R > /tmp/qca.pem 2>/dev/null
           c1=$(curl -s -o /tmp/qr.json -w '%{http_code}' --cacert /tmp/qca.pem -u "$RU:$RP" -X POST "https://$PIP:9200/wazuh-alerts-4.x-*/_search" -H 'Content-Type: application/json' -d '{"size":1}')
           echo "HTTP(4.x-*)=$c1"; head -c 500 /tmp/qr.json; echo
           echo '=== reader via PROXY, patron plano wazuh-alerts-* ==='

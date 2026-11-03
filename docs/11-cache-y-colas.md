@@ -15,7 +15,7 @@ documento fija **dónde** es fundamental, **qué técnica** usa cada punto y **q
 4. **Toda clave de caché tiene TTL.** Valkey usa `maxmemory-policy noeviction`, que BullMQ exige para no
    perder jobs. Por eso la caché nunca crece sin límite.
 5. **Sin Valkey, el sistema funciona** con el comportamiento actual (una réplica, loops en proceso). Se
-   activa solo si `QAPAQ_REDIS_HOST` está definido.
+   activa solo si `B89_REDIS_HOST` está definido.
 
 ## Dónde es fundamental
 
@@ -33,13 +33,13 @@ indicado abajo.
 
 ## Caché que sirve al SIEM (lecturas del Wazuh Indexer)
 
-El SIEM tiene dos lectores del Indexer: el **dashboard** (OSD lee directo) y la **API QAPAQ** (enriquecer
+El SIEM tiene dos lectores del Indexer: el **dashboard** (OSD lee directo) y la **API B89** (enriquecer
 una alerta, conteos de la cola, frescura de las fuentes, salud). Cada uno usa una capa distinta:
 
 | Capa | Para quién | Qué cachea | TTL |
 | --- | --- | --- | --- |
 | **Request cache de OpenSearch** (nativa, por shard) | Dashboard y API | Agregaciones (`size: 0`): histogramas, conteos, top N de los paneles | Hasta que el índice cambia |
-| **Lazy loading en Valkey** (`siem:{scope}:{sha256(consulta normalizada)}`) | API QAPAQ | Conteos y agregados de la cola, frescura por fuente, y el **evento original de una alerta por `_id`** (inmutable una vez indexado) | Según el tier del índice consultado, abajo |
+| **Lazy loading en Valkey** (`siem:{scope}:{sha256(consulta normalizada)}`) | API B89 | Conteos y agregados de la cola, frescura por fuente, y el **evento original de una alerta por `_id`** (inmutable una vez indexado) | Según el tier del índice consultado, abajo |
 
 El TTL depende del tier, porque cuanto más frío es el dato, menos cambia:
 
@@ -99,9 +99,9 @@ optimista, así que no necesitan la cabecera.
   restaura dos veces el mismo snapshot.
 - Cola `history-restore`, con concurrencia 1, porque restaurar consume disco y CPU del Indexer. El
   estado (`queued`, `restoring`, `ready`, `expired`) queda en Postgres y se cachea para la UI.
-- **Catálogo de snapshots** (`GET _snapshot/qapaq-s3/_all`, lento) cacheado 10 min, e invalidado cuando
+- **Catálogo de snapshots** (`GET _snapshot/b89-s3/_all`, lento) cacheado 10 min, e invalidado cuando
   ISM crea un snapshot nuevo.
-- **Registro de índices restaurados** con el mismo TTL de 7 días que la política `qapaq-restored-ttl`.
+- **Registro de índices restaurados** con el mismo TTL de 7 días que la política `b89-restored-ttl`.
 
 ## Colas (BullMQ sobre Valkey)
 
@@ -114,7 +114,7 @@ La cola es transporte rápido; Postgres conserva qué falta procesar.
 | `ingestion` (polling de Wazuh por fuente o dataset) | Scheduler repetible con jitter | Worker, concurrencia 1 por fuente | `jobId = ingest:{source}:{ventana}`: nunca dos ejecuciones de la misma ventana. El lease con fencing en Postgres sigue siendo la autoridad |
 | `directory-sync` (delta del grupo SOC en Graph) | Scheduler repetible cada 5 min | Worker, concurrencia 1 | Al terminar invalida el padrón (punto 5) y dispara las revocaciones (punto 3) |
 | `history-restore` (warm/cold) | La API, tras la aprobación | Worker, concurrencia 1 | `jobId` = hash de los índices. Antes de restaurar comprueba `done:` y si ya existe `restored-*` |
-| `ankay` (siguiente scope: Shuffle) | La API, tras una aprobación | Worker | Un timeout queda en `UNKNOWN`, sin reintento ciego (ADR-028) |
+| `b89-respond` (siguiente scope: Shuffle) | La API, tras una aprobación | Worker | Un timeout queda en `UNKNOWN`, sin reintento ciego (ADR-028) |
 | `*:dlq` | Jobs que agotan sus intentos | Visible en «Salud operativa» | No se reintentan solos |
 
 **Dónde corren:** la API **produce** y el worker (`apps/worker`, servicio ECS) **consume**. Así la API
@@ -125,7 +125,7 @@ volver.
 ## Infraestructura
 
 - ElastiCache Valkey 8, `cache.t4g.micro` (demo), un nodo, TLS obligatorio y AUTH. El token AUTH vive en
-  Secrets Manager (`qapaq-secops/demo/valkey/auth-token`) y llega a la API y al worker como secreto de ECS.
+  Secrets Manager (`b89-secops/demo/valkey/auth-token`) y llega a la API y al worker como secreto de ECS.
 - Parameter group propio `valkey8` con `maxmemory-policy = noeviction`.
 - Producción: réplica con failover automático (`num_cache_clusters = 2`).
 - Señales en «Salud operativa»: hit ratio por punto, profundidad y antigüedad de cada cola, tamaño de las

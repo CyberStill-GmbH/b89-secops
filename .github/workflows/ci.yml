@@ -156,7 +156,7 @@ jobs:
       - name: Install locked dependencies without lifecycle scripts
         run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Generate the Prisma client for clean checkout checks
-        run: pnpm --filter @qapaq/database generate
+        run: pnpm --filter @b89/database generate
       - name: C-24 lifecycle contract and security specs
         run: >-
           pnpm exec vitest run --config vitest.config.ts
@@ -198,14 +198,14 @@ jobs:
       - run: corepack enable
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Generate the Prisma client for clean checkout checks
-        run: pnpm --filter @qapaq/database generate
+        run: pnpm --filter @b89/database generate
       - name: C-02 checks without external services
         run: |
           pnpm run typecheck
           pnpm run lint
           pnpm run test:unit
           pnpm run boundaries
-          pnpm --filter @qapaq/api... --filter @qapaq/worker... build
+          pnpm --filter @b89/api... --filter @b89/worker... build
           pnpm run smoke:built
 
   c04-postgres:
@@ -251,9 +251,9 @@ jobs:
       - run: corepack enable
       - run: pnpm install --frozen-lockfile --ignore-scripts
       - name: Generate Prisma client for integration tests
-        run: pnpm --filter @qapaq/database generate
+        run: pnpm --filter @b89/database generate
       - name: Typecheck integration environment
-        run: pnpm --filter @qapaq/testing typecheck
+        run: pnpm --filter @b89/testing typecheck
       - name: Record Docker runner capacity
         run: docker info --format 'Docker {{.ServerVersion}} · {{.NCPU}} CPU · {{.MemTotal}} bytes RAM'
       - name: Run two isolated PostgreSQL, Redis and MinIO environments
@@ -293,7 +293,7 @@ jobs:
         run: |
           set -euo pipefail
           docker build --file platform/gateway/krakend/Dockerfile \
-            --tag qapaq-ci:krakend platform/gateway/krakend
+            --tag b89-ci:krakend platform/gateway/krakend
           docker run --rm --entrypoint /usr/bin/krakend \
             --env GATEWAY_ENDPOINT_TIMEOUT=4s \
             --env GATEWAY_METRICS_PORT=9091 \
@@ -303,12 +303,12 @@ jobs:
             --env OIDC_DISABLE_JWK_SECURITY=false \
             --env OIDC_ISSUER=https://login.microsoftonline.com/00000000-0000-0000-0000-000000000001/v2.0 \
             --env OIDC_AUDIENCE=api://00000000-0000-0000-0000-000000000002 \
-            --env QAPAQ_CORE_CLIENT_ID=00000000-0000-0000-0000-000000000003 \
+            --env B89_CORE_CLIENT_ID=00000000-0000-0000-0000-000000000003 \
             --env WAZUH_INDEXER_URL=https://10.80.0.4:9200 \
             --env WAZUH_INDEXER_CA_FILE=/etc/ssl/certs/ca-certificates.crt \
             --env WAZUH_BASIC_AUTH_B64=dGVzdDp0ZXN0 \
             --env WAZUH_INDEX_PATTERN=wazuh-alerts-* \
-            qapaq-ci:krakend check -t -n -c /etc/krakend/krakend-azure-ingestion.tmpl
+            b89-ci:krakend check -t -n -c /etc/krakend/krakend-azure-ingestion.tmpl
       - name: Validate Compose input
         run: docker compose --env-file platform/gateway/krakend/.env.example -f platform/gateway/krakend/compose.yaml config --quiet
       - name: Runtime integration with controlled JWKS and Wazuh backend

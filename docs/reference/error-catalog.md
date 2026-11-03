@@ -1,4 +1,4 @@
-# Catálogo de errores de QAPAQ
+# Catálogo de errores de B89
 
 Estado: **BASELINE DE CONTRATO** · Owner: Product + SOC + Development + Security.
 
@@ -30,9 +30,9 @@ pero no autoriza ni funciona como ID de recurso.
 
 | Help ref / code | HTTP | Qué significa para el usuario | Qué hacer | Reintento |
 | --- | ---: | --- | --- | --- |
-| ERR-AUTH-001 / `AUTH_REQUIRED` | 401 | La sesión no existe o dejó de ser válida. | Iniciar sesión nuevamente desde la red QAPAQ. | después de autenticar |
+| ERR-AUTH-001 / `AUTH_REQUIRED` | 401 | La sesión no existe o dejó de ser válida. | Iniciar sesión nuevamente desde la red B89. | después de autenticar |
 | ERR-AUTH-002 / `AUTH_SIGN_IN_FAILED` | 401 | No se pudo completar el ingreso. | Reintentar; si persiste, entregar el correlationId a soporte. | sí, acotado |
-| ERR-AUTH-003 / `AUTH_NETWORK_NOT_ALLOWED` | 403 | La conexión no proviene de una red QAPAQ autorizada. | Conectar a oficina/VPN aprobada. | al cambiar de red |
+| ERR-AUTH-003 / `AUTH_NETWORK_NOT_ALLOWED` | 403 | La conexión no proviene de una red B89 autorizada. | Conectar a oficina/VPN aprobada. | al cambiar de red |
 | ERR-AUTH-004 / `AUTH_SESSION_ALREADY_ACTIVE` | 409 | Ya existe una sesión activa para el usuario. | Cerrar la sesión anterior o pedir revocación a Access Admin. | no |
 | ERR-AUTH-005 / `AUTH_METHOD_NOT_ALLOWED` | 403 | El método de autenticación no cumple la política. | Ingresar con passkey/FIDO2 o método indicado por Identity. | sí |
 | ERR-AUTH-006 / `AUTH_TEMPORARILY_THROTTLED` | 429 | Hay demasiados intentos en un periodo corto. | Esperar el tiempo indicado. | `Retry-After` |

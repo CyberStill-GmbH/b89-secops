@@ -33,8 +33,8 @@ function sampleEvent() {
             description: 'Intento de autenticación fallido',
             groups: ['sshd', 'authentication_failed'],
           },
-          agent: { id: '003', name: 'srv-app-01.qapaq.local' },
-          data: { srcuser: 'jperez@qapaq.pe' },
+          agent: { id: '003', name: 'srv-app-01.b89.local' },
+          data: { srcuser: 'jperez@b89.example' },
         },
       },
       raw: {
@@ -47,7 +47,7 @@ function sampleEvent() {
     {
       tenantId: 'tenant-1',
       instanceId: 'siem-1',
-      connector: 'qapaq-wazuh-indexer',
+      connector: 'b89-wazuh-indexer',
       connectorVersion: '1.0.0',
       receivedAt: AT,
     },
@@ -71,8 +71,8 @@ describe('C-14 proyección', () => {
     expect(document.projectionVersion).toBe(PROJECTION_VERSION);
     expect(document.severity).toBe('high');
     expect(document.category).toEqual(['authentication']);
-    expect(document.principals).toEqual(['jperez@qapaq.pe']);
-    expect(document.resources).toEqual(['srv-app-01.qapaq.local']);
+    expect(document.principals).toEqual(['jperez@b89.example']);
+    expect(document.resources).toEqual(['srv-app-01.b89.local']);
     // Referencia y huella sí; contenido jamás.
     expect(document.rawRef).toBe('raw:tenant-1/2026/10/01/evt-77');
     expect(JSON.stringify(document)).not.toContain('"timestamp"');

@@ -28,7 +28,7 @@
     {
       "id": "C-18-C-25-access",
       "component": "C-18/C-25",
-      "requirement": "OIDC, sesión única, red QAPAQ, passkey, Smart Lockout y rate limit.",
+      "requirement": "OIDC, sesión única, red B89, passkey, Smart Lockout y rate limit.",
       "priority": "P0",
       "status": "PASS",
       "evidence": "pnpm exec vitest run --config vitest.config.ts modules/access/test · 1.5s"

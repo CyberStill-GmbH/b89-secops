@@ -1,11 +1,11 @@
 /**
- * Contrato entre las reglas locales de Wazuh (wazuh/office365) y QAPAQ.
+ * Contrato entre las reglas locales de Wazuh (wazuh/office365) y B89.
  *
  * Las reglas se prueban contra un manager real con `tests/run-logtest.sh`. Esta spec
  * cubre lo que no necesita Wazuh y que se rompería en silencio si alguien edita un lado:
  *
  * - IDs dentro del rango reservado 100500-100549 y sin duplicados;
- * - toda regla operativa (nivel >= 7) declara técnica MITRE y un grupo `qapaq_<táctica>`
+ * - toda regla operativa (nivel >= 7) declara técnica MITRE y un grupo `b89_<táctica>`
  *   que la correlación de C-16 reconoce;
  * - toda regla referencia como padre una regla oficial conocida o una local existente;
  * - los casos de logtest y sus expectativas están alineados y solo usan datos sintéticos.
@@ -16,7 +16,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { signalOf, SIGNAL_CLASSES } from '../../modules/detection/src/correlation.js';
-import type { SecurityEvent } from '@qapaq/contracts';
+import type { SecurityEvent } from '@b89/contracts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const BASE = resolve(ROOT, 'wazuh/office365');
@@ -31,7 +31,7 @@ interface ParsedRule {
 }
 
 async function rules(): Promise<readonly ParsedRule[]> {
-  const xml = await readFile(resolve(BASE, 'rules/qapaq_office365_rules.xml'), 'utf8');
+  const xml = await readFile(resolve(BASE, 'rules/b89_office365_rules.xml'), 'utf8');
   const withoutComments = xml.replace(/<!--[\s\S]*?-->/gu, '');
   return [
     ...withoutComments.matchAll(/<rule id="(\d+)" level="(\d+)"[^>]*>([\s\S]*?)<\/rule>/gu),
@@ -40,7 +40,7 @@ async function rules(): Promise<readonly ParsedRule[]> {
 
 function groupsOf(rule: ParsedRule): readonly string[] {
   const declared = /<group>([^<]*)<\/group>/u.exec(rule.body)?.[1] ?? '';
-  return ['office365', 'qapaq_m365', ...declared.split(',').map((group) => group.trim())].filter(
+  return ['office365', 'b89_m365', ...declared.split(',').map((group) => group.trim())].filter(
     (group) => group.length > 0,
   );
 }
@@ -75,7 +75,7 @@ describe('Wazuh Office 365 · reglas locales', () => {
     for (const rule of await rules()) {
       const signal = signalOf(eventWithGroups(groupsOf(rule)));
       expect(SIGNAL_CLASSES, `regla ${rule.id}`).toContain(signal);
-      expect(signal, `regla ${rule.id} sin grupo qapaq_<táctica>`).not.toBe('other');
+      expect(signal, `regla ${rule.id} sin grupo b89_<táctica>`).not.toBe('other');
     }
   });
 

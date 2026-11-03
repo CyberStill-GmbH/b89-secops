@@ -16,8 +16,8 @@
 
 import { randomUUID } from 'node:crypto';
 
-import { recordAudit, type AuditStore } from '@qapaq/audit';
-import type { ActivityQuery, StreamActivity } from '@qapaq/connectors';
+import { recordAudit, type AuditStore } from '@b89/audit';
+import type { ActivityQuery, StreamActivity } from '@b89/connectors';
 import {
   DEFAULT_SOURCE_HEALTH_POLICY,
   evaluateSourceHealth,
@@ -25,7 +25,7 @@ import {
   type IngestionStateStore,
   type SourceHealthEvaluation,
   type SourceHealthPolicy,
-} from '@qapaq/soc';
+} from '@b89/soc';
 
 /** Observaciones que alcanzan para decidir: cubren varias ventanas de falla. */
 export const SOURCE_HEALTH_OBSERVATION_WINDOW = 50;

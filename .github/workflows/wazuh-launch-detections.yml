@@ -1,4 +1,4 @@
-name: QAPAQ launch detection pack
+name: B89 launch detection pack
 
 on:
   pull_request:
@@ -18,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: qapaq-wazuh-launch-detections-${{ github.ref }}
+  group: b89-wazuh-launch-detections-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -33,22 +33,22 @@ jobs:
         run: python3 infra/wazuh/launch-detections/validate_catalog.py
       - name: Start isolated Wazuh Manager 4.14.8
         run: >-
-          docker run --detach --rm --name qapaq-wazuh-launch-test
+          docker run --detach --rm --name b89-wazuh-launch-test
           --ulimit nofile=458752:458752
-          --volume "${GITHUB_WORKSPACE}/infra/wazuh/launch-detections/rules/qapaq_launch_provider_rules.xml:/var/ossec/etc/rules/qapaq_launch_provider_rules.xml:ro"
+          --volume "${GITHUB_WORKSPACE}/infra/wazuh/launch-detections/rules/b89_launch_provider_rules.xml:/var/ossec/etc/rules/b89_launch_provider_rules.xml:ro"
           wazuh/wazuh-manager:4.14.8
       - name: Start Manager daemons and run positive/negative fixtures
         run: |
-          if ! docker exec qapaq-wazuh-launch-test /var/ossec/bin/wazuh-control start; then
+          if ! docker exec b89-wazuh-launch-test /var/ossec/bin/wazuh-control start; then
             echo 'Manager start returned a nonzero status; verify the required analysis daemon below.'
           fi
           ready=false
           for attempt in $(seq 1 60); do
-            if docker exec qapaq-wazuh-launch-test /var/ossec/bin/wazuh-control status 2>/dev/null | grep -q 'wazuh-analysisd is running'; then
+            if docker exec b89-wazuh-launch-test /var/ossec/bin/wazuh-control status 2>/dev/null | grep -q 'wazuh-analysisd is running'; then
               ready=true
               break
             fi
             sleep 2
           done
           test "$ready" = true
-          bash infra/wazuh/launch-detections/tests/run-logtest.sh qapaq-wazuh-launch-test
+          bash infra/wazuh/launch-detections/tests/run-logtest.sh b89-wazuh-launch-test

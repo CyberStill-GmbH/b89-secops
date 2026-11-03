@@ -29,14 +29,14 @@ describe('harness de integración C-06', () => {
       [
         {
           id: 'owned',
-          labels: { 'qapaq.test': 'true', 'qapaq.test.run-id': 'run-a' },
+          labels: { 'b89.test': 'true', 'b89.test.run-id': 'run-a' },
           remove: async () => {
             removed.push('owned');
           },
         },
         {
           id: 'foreign',
-          labels: { 'qapaq.test': 'false' },
+          labels: { 'b89.test': 'false' },
           remove: async () => {
             removed.push('foreign');
           },

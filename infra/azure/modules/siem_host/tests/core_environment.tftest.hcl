@@ -1,10 +1,10 @@
 mock_provider "azurerm" {}
 
 variables {
-  resource_group_name          = "rg-qapaq-test"
+  resource_group_name          = "rg-b89-test"
   location                     = "chilecentral"
-  name_base                    = "qapaq-test"
-  virtual_network_name         = "vnet-qapaq-test"
+  name_base                    = "b89-test"
+  virtual_network_name         = "vnet-b89-test"
   firewall_private_ip          = "10.20.0.4"
   firewall_policy_reference    = "policy-test"
   private_endpoint_subnet_cidr = "10.20.1.0/24"
@@ -15,13 +15,13 @@ variables {
   ubuntu_image_version         = "24.04.1"
   data_disk_size_gb            = 128
   dashboard_ingress_cidrs      = ["0.0.0.0/0"]
-  core_secret_names            = { QAPAQ_ENTRA_CLIENT_SECRET = "entra-client-secret" }
+  core_secret_names            = { B89_ENTRA_CLIENT_SECRET = "entra-client-secret" }
   wazuh_secret_names           = { "wazuh-install-files.tar.b64" = "wazuh-install-files-tar-b64" }
-  key_vault_id                 = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-qapaq-test/providers/Microsoft.KeyVault/vaults/kv-qapaq-test"
-  key_vault_uri                = "https://kv-qapaq-test.vault.azure.net/"
-  container_registry_id        = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-qapaq-test/providers/Microsoft.ContainerRegistry/registries/acrqapaqtest"
-  artifact_container_scope_id  = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-qapaq-test/providers/Microsoft.Storage/storageAccounts/stqapaqtest/blobServices/default/containers/artifacts"
-  bootstrap_bundle_blob_url    = "https://stqapaqtest.blob.core.windows.net/artifacts/siem-bootstrap.tar.gz"
+  key_vault_id                 = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-b89-test/providers/Microsoft.KeyVault/vaults/kv-b89-test"
+  key_vault_uri                = "https://kv-b89-test.vault.azure.net/"
+  container_registry_id        = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-b89-test/providers/Microsoft.ContainerRegistry/registries/acrb89test"
+  artifact_container_scope_id  = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-b89-test/providers/Microsoft.Storage/storageAccounts/stb89test/blobServices/default/containers/artifacts"
+  bootstrap_bundle_blob_url    = "https://stb89test.blob.core.windows.net/artifacts/siem-bootstrap.tar.gz"
   bootstrap_bundle_sha256      = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   office365 = {
     tenant_id  = "00000000-0000-0000-0000-000000000001"
@@ -36,10 +36,10 @@ run "accepts_matching_key_vault_reference" {
 
   variables {
     core_environment = {
-      QAPAQ_ENTRA_CLIENT_SECRET_REF = "secret://keyvault/entra-client-secret"
+      B89_ENTRA_CLIENT_SECRET_REF = "secret://keyvault/entra-client-secret"
     }
     core_secret_names = {
-      QAPAQ_ENTRA_CLIENT_SECRET = "entra-client-secret"
+      B89_ENTRA_CLIENT_SECRET = "entra-client-secret"
     }
   }
 
@@ -77,14 +77,14 @@ run "accepts_postgres_with_matching_key_vault_references" {
 
   variables {
     core_environment = {
-      QAPAQ_SOC_PERSISTENCE       = "postgres"
-      QAPAQ_POSTGRES_PASSWORD_REF = "secret://keyvault/qapaq-postgres-password"
-      QAPAQ_ENTITY_REF_KEY_REF    = "secret://keyvault/qapaq-entity-ref-key"
+      B89_SOC_PERSISTENCE       = "postgres"
+      B89_POSTGRES_PASSWORD_REF = "secret://keyvault/b89-postgres-password"
+      B89_ENTITY_REF_KEY_REF    = "secret://keyvault/b89-entity-ref-key"
     }
     core_secret_names = {
-      QAPAQ_ENTRA_CLIENT_SECRET = "entra-client-secret"
-      QAPAQ_POSTGRES_PASSWORD   = "qapaq-postgres-password"
-      QAPAQ_ENTITY_REF_KEY      = "qapaq-entity-ref-key"
+      B89_ENTRA_CLIENT_SECRET = "entra-client-secret"
+      B89_POSTGRES_PASSWORD   = "b89-postgres-password"
+      B89_ENTITY_REF_KEY      = "b89-entity-ref-key"
     }
   }
 }
@@ -94,11 +94,11 @@ run "rejects_postgres_without_password_secret_mapping" {
 
   variables {
     core_environment = {
-      QAPAQ_SOC_PERSISTENCE = "postgres"
+      B89_SOC_PERSISTENCE = "postgres"
     }
     core_secret_names = {
-      QAPAQ_ENTRA_CLIENT_SECRET = "entra-client-secret"
-      QAPAQ_ENTITY_REF_KEY      = "qapaq-entity-ref-key"
+      B89_ENTRA_CLIENT_SECRET = "entra-client-secret"
+      B89_ENTITY_REF_KEY      = "b89-entity-ref-key"
     }
   }
 
@@ -110,11 +110,11 @@ run "rejects_postgres_without_entity_reference_key_mapping" {
 
   variables {
     core_environment = {
-      QAPAQ_SOC_PERSISTENCE = "postgres"
+      B89_SOC_PERSISTENCE = "postgres"
     }
     core_secret_names = {
-      QAPAQ_ENTRA_CLIENT_SECRET = "entra-client-secret"
-      QAPAQ_POSTGRES_PASSWORD   = "qapaq-postgres-password"
+      B89_ENTRA_CLIENT_SECRET = "entra-client-secret"
+      B89_POSTGRES_PASSWORD   = "b89-postgres-password"
     }
   }
 
@@ -126,14 +126,14 @@ run "rejects_postgres_reference_that_does_not_match_key_vault_mapping" {
 
   variables {
     core_environment = {
-      QAPAQ_SOC_PERSISTENCE       = "postgres"
-      QAPAQ_POSTGRES_PASSWORD_REF = "secret://keyvault/qapaq-postgres-password"
-      QAPAQ_ENTITY_REF_KEY_REF    = "secret://keyvault/unmapped-entity-ref-key"
+      B89_SOC_PERSISTENCE       = "postgres"
+      B89_POSTGRES_PASSWORD_REF = "secret://keyvault/b89-postgres-password"
+      B89_ENTITY_REF_KEY_REF    = "secret://keyvault/unmapped-entity-ref-key"
     }
     core_secret_names = {
-      QAPAQ_ENTRA_CLIENT_SECRET = "entra-client-secret"
-      QAPAQ_POSTGRES_PASSWORD   = "qapaq-postgres-password"
-      QAPAQ_ENTITY_REF_KEY      = "qapaq-entity-ref-key"
+      B89_ENTRA_CLIENT_SECRET = "entra-client-secret"
+      B89_POSTGRES_PASSWORD   = "b89-postgres-password"
+      B89_ENTITY_REF_KEY      = "b89-entity-ref-key"
     }
   }
 
@@ -145,10 +145,10 @@ run "rejects_plaintext_client_secret_reference" {
 
   variables {
     core_environment = {
-      QAPAQ_ENTRA_CLIENT_SECRET_REF = "client-secret-value-must-not-be-here"
+      B89_ENTRA_CLIENT_SECRET_REF = "client-secret-value-must-not-be-here"
     }
     core_secret_names = {
-      QAPAQ_ENTRA_CLIENT_SECRET = "entra-client-secret"
+      B89_ENTRA_CLIENT_SECRET = "entra-client-secret"
     }
   }
 
@@ -160,10 +160,10 @@ run "rejects_reference_not_backed_by_secret_mapping" {
 
   variables {
     core_environment = {
-      QAPAQ_ENTRA_CLIENT_SECRET_REF = "secret://keyvault/entra-client-secret"
+      B89_ENTRA_CLIENT_SECRET_REF = "secret://keyvault/entra-client-secret"
     }
     core_secret_names = {
-      QAPAQ_ENTRA_CLIENT_SECRET = "a-different-secret"
+      B89_ENTRA_CLIENT_SECRET = "a-different-secret"
     }
   }
 
@@ -175,7 +175,7 @@ run "rejects_provider_endpoint_outside_configured_vault" {
 
   variables {
     core_environment = {
-      QAPAQ_SECRET_PROVIDER_ENDPOINT = "https://other-vault.vault.azure.net"
+      B89_SECRET_PROVIDER_ENDPOINT = "https://other-vault.vault.azure.net"
     }
   }
 
@@ -187,7 +187,7 @@ run "rejects_non_azure_secret_provider_type" {
 
   variables {
     core_environment = {
-      QAPAQ_SECRET_PROVIDER_TYPE = "environment"
+      B89_SECRET_PROVIDER_TYPE = "environment"
     }
   }
 
@@ -199,10 +199,10 @@ run "rejects_secret_value_in_environment" {
 
   variables {
     core_environment = {
-      QAPAQ_ENTRA_CLIENT_SECRET = "secret://keyvault/entra-client-secret"
+      B89_ENTRA_CLIENT_SECRET = "secret://keyvault/entra-client-secret"
     }
     core_secret_names = {
-      QAPAQ_ENTRA_CLIENT_SECRET = "entra-client-secret"
+      B89_ENTRA_CLIENT_SECRET = "entra-client-secret"
     }
   }
 
@@ -214,11 +214,11 @@ run "rejects_plaintext_entity_reference_key" {
 
   variables {
     core_environment = {
-      QAPAQ_ENTITY_REF_KEY = "synthetic-entity-key-must-not-enter-terraform"
+      B89_ENTITY_REF_KEY = "synthetic-entity-key-must-not-enter-terraform"
     }
     core_secret_names = {
-      QAPAQ_ENTRA_CLIENT_SECRET = "entra-client-secret"
-      QAPAQ_ENTITY_REF_KEY      = "qapaq-entity-ref-key"
+      B89_ENTRA_CLIENT_SECRET = "entra-client-secret"
+      B89_ENTITY_REF_KEY      = "b89-entity-ref-key"
     }
   }
 
@@ -230,11 +230,11 @@ run "rejects_plaintext_teams_workflow_url" {
 
   variables {
     core_environment = {
-      QAPAQ_TEAMS_WORKFLOW_URL = "https://example.invalid/workflows/demo?sig=synthetic"
+      B89_TEAMS_WORKFLOW_URL = "https://example.invalid/workflows/demo?sig=synthetic"
     }
     core_secret_names = {
-      QAPAQ_ENTRA_CLIENT_SECRET = "entra-client-secret"
-      QAPAQ_TEAMS_WORKFLOW_URL  = "qapaq-teams-workflow-url"
+      B89_ENTRA_CLIENT_SECRET = "entra-client-secret"
+      B89_TEAMS_WORKFLOW_URL  = "b89-teams-workflow-url"
     }
   }
 
@@ -247,7 +247,7 @@ run "rejects_secret_reference_in_secret_names" {
   variables {
     core_environment = {}
     core_secret_names = {
-      QAPAQ_ENTRA_CLIENT_SECRET_REF = "entra-client-secret-reference"
+      B89_ENTRA_CLIENT_SECRET_REF = "entra-client-secret-reference"
     }
   }
 

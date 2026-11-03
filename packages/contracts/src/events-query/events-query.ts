@@ -1,5 +1,5 @@
 /**
- * Lenguaje de consulta del explorador de eventos — gramática `qapaq-events-v1`.
+ * Lenguaje de consulta del explorador de eventos — gramática `b89-events-v1`.
  *
  * Es deliberadamente pequeño y **no** es SQL, PPL ni el DSL de búsqueda del proveedor: el navegador nunca
  * envía lenguaje del proveedor (events-read-through.md). El resultado del parser es el mismo
@@ -27,7 +27,7 @@
 
 import { NORMALIZED_SEVERITIES, SECURITY_EVENT_CATEGORIES } from '../security-event/catalogs.js';
 
-export const EVENTS_QUERY_GRAMMAR = 'qapaq-events-v1' as const;
+export const EVENTS_QUERY_GRAMMAR = 'b89-events-v1' as const;
 
 export const EVENTS_QUERY_LIMITS = Object.freeze({
   maximumLength: 512,

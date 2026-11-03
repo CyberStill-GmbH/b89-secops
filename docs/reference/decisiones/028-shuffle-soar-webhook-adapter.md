@@ -1,25 +1,25 @@
 # ADR-028 · Shuffle como motor SOAR no-code
 
 - Estado: aceptada como decisión de producto; integración técnica pendiente.
-- Alcance: orquestación de playbooks con Shuffle en la edición QAPAQ Wazuh.
+- Alcance: orquestación de playbooks con Shuffle en la edición B89 Wazuh.
 - No modifica la fuente de verdad de incidentes, permisos ni auditoría.
 
 ## Decisión
 
-Usar Shuffle como motor no-code de flujos mediante webhook. QAPAQ conserva los
+Usar Shuffle como motor no-code de flujos mediante webhook. B89 conserva los
 controles y el estado de ejecución: capability por acción, alcance del recurso,
 aprobación, versión del playbook autorizado, clave idempotente, correlación, resultado
 ambiguo y auditoría. Wazuh conserva agentes, detección y Active Response.
 
-El flujo inicia desde un evento/outbox persistido. Un worker QAPAQ realiza una llamada
+El flujo inicia desde un evento/outbox persistido. Un worker B89 realiza una llamada
 saliente al webhook de un workflow Shuffle; el navegador nunca conoce la URL ni el
 secreto. Shuffle no recibe credenciales del Indexer o Manager y no escribe directamente
-en sus índices o APIs. Las acciones Wazuh pasan por un adapter QAPAQ con allowlist y
+en sus índices o APIs. Las acciones Wazuh pasan por un adapter B89 con allowlist y
 autorización vigentes. La respuesta de Shuffle vuelve con `executionId`, correlación y
 estado; los timeouts se registran como resultado desconocido y no se reintentan a ciegas.
 
-La primera versión no migra el editor de playbooks a QAPAQ ni implementa otro motor.
-La UI Wazuh mostrará catálogo/versiones, estado y aprobaciones del lado QAPAQ cuando esas
+La primera versión no migra el editor de playbooks a B89 ni implementa otro motor.
+La UI Wazuh mostrará catálogo/versiones, estado y aprobaciones del lado B89 cuando esas
 rutas estén portadas. El editor visual se opera en Shuffle para usuarios autorizados.
 
 ## Contrato mínimo del adaptador
@@ -42,7 +42,7 @@ rutas estén portadas. El editor visual se opera en Shuffle para usuarios autori
 
 ## Consecuencias y gates
 
-Se reutiliza Shuffle para no construir un editor/ejecutor general. QAPAQ mantiene la
+Se reutiliza Shuffle para no construir un editor/ejecutor general. B89 mantiene la
 política de seguridad y el ledger de ejecución, por lo que perder Shuffle no elimina el
 estado ni permite repetir una acción a ciegas. Antes de producción se requiere instancia
 Shuffle soportada, identidad/red privada, secret provider, workflow de prueba, callback o

@@ -14,7 +14,7 @@ La identidad administrada debe tener una credencial federada con:
 
 - Issuer: `https://token.actions.githubusercontent.com`
 - Audience: `api://AzureADTokenExchange`
-- Subject inmutable: `repo:CyberStill-GmbH@220633794/qapaq-secops@1374673243:environment:azure-demo-eus`
+- Subject inmutable: `repo:CyberStill-GmbH@220633794/b89-secops@1374673243:environment:azure-demo-eus`
 
 Configurar secretos **en el environment**:
 
@@ -32,16 +32,16 @@ Configurar variables **en el environment**:
 | `AZURE_EUS_TF_STATE_RESOURCE_GROUP` | Grupo que contiene el Storage de state dedicado EUS |
 | `AZURE_EUS_TF_STATE_STORAGE_ACCOUNT` | Storage de state dedicado EUS |
 | `AZURE_EUS_TF_STATE_CONTAINER` | Debe ser `tfstate` |
-| `AZURE_EUS_TF_STATE_KEY` | Debe ser `qapaq-secops/demo-eus/terraform.tfstate` |
+| `AZURE_EUS_TF_STATE_KEY` | Debe ser `b89-secops/demo-eus/terraform.tfstate` |
 | `AZURE_EUS_SIEM_HOST_JSON` | Perfil no secreto del host Wazuh, CIDR, referencias Key Vault y bundle inmutable |
-| `AZURE_EUS_ANKAY_HOST_JSON` | Perfil no secreto y Compose revisado de Ankay con imágenes fijadas por digest |
-| `AZURE_EUS_ACR_LOGIN_SERVER` | ACR EUS usado por las imágenes Ankay |
+| `AZURE_EUS_B89_RESPOND_HOST_JSON` | Perfil no secreto y Compose revisado de B89 Respond con imágenes fijadas por digest |
+| `AZURE_EUS_ACR_LOGIN_SERVER` | ACR EUS usado por las imágenes B89 Respond |
 | `AZURE_EUS_CONTAINER_IMAGES_JSON` | Digests de imágenes opcionales de Container Apps, si ese runtime fuese aprobado |
 | `AZURE_EUS_ENABLE_RUNTIME` | Debe permanecer `false` hasta aprobar esos servicios |
 | `AZURE_EUS_KEY_VAULT_SECRET_IDS_JSON` | IDs/refs de secretos existentes, nunca valores de secretos |
 
 El plan valida el prefijo del backend EUS y rechaza la key de state de Chile.
-El scope `soc` del apply requiere perfiles de SIEM y Ankay completos. Las
+El scope `soc` del apply requiere perfiles de SIEM y B89 Respond completos. Las
 referencias deben apuntar a secretos existentes y a artefactos realmente
 publicados en el destino EUS; el workflow no importa secretos ni copia datos.
 
@@ -56,7 +56,7 @@ publicados en el destino EUS; el workflow no importa secretos ni copia datos.
    `apply=true`. El resumen Terraform bloquea acciones `delete` y `forget`; el
    job aplica el artifact protegido solo si SHA y checksum coinciden.
 4. Ejecutar health checks y pruebas sintéticas de M365, Sophos, Cato, Teams,
-   Wazuh, Ankay, administración y roles antes de cambiar DNS. Un plan exitoso,
+   Wazuh, B89 Respond, administración y roles antes de cambiar DNS. Un plan exitoso,
    un host creado o un bundle publicado no prueban operación del SOC.
 
 Hasta que el environment, la federación, el backend y los perfiles existan,

@@ -16,7 +16,7 @@ import {
 
 for (const termination of ['SIGTERM', 'SIGINT']) {
   test(`compiled API health and ${termination}`, { timeout: startupTimeout + 10_000 }, async () => {
-    const runtime = startApp('api', { QAPAQ_API_PORT: '0' });
+    const runtime = startApp('api', { B89_API_PORT: '0' });
     try {
       await until(
         () => runtime.port && runtime.output.includes('application.ready'),
@@ -26,7 +26,7 @@ for (const termination of ['SIGTERM', 'SIGINT']) {
       for (const endpoint of ['live', 'ready']) {
         const response = await fetch(`${base}/health/${endpoint}`);
         assert.equal(response.status, 200);
-        assert.deepEqual(await response.json(), { status: 'ok', service: 'qapaq-secops-api' });
+        assert.deepEqual(await response.json(), { status: 'ok', service: 'b89-secops-api' });
         assert.equal(response.headers.get('x-powered-by'), null);
       }
       signal(runtime, termination);
@@ -53,7 +53,7 @@ for (const termination of ['SIGTERM', 'SIGINT']) {
 }
 
 test('invalid API config exits before listening without leaking input', async () => {
-  const runtime = startApp('api', { QAPAQ_PROFILE: '', QAPAQ_API_HOST: fixtureToken });
+  const runtime = startApp('api', { B89_PROFILE: '', B89_API_HOST: fixtureToken });
   try {
     assert.equal((await exitedWithin(runtime)).code, 1);
     assert.equal(runtime.port, undefined);
@@ -67,7 +67,7 @@ test('invalid API config exits before listening without leaking input', async ()
 test('occupied port fails safely without leaving a partial listener', async () => {
   const reserved = createServer();
   await new Promise((resolve) => reserved.listen(0, '127.0.0.1', resolve));
-  const runtime = startApp('api', { QAPAQ_API_PORT: String(reserved.address().port) });
+  const runtime = startApp('api', { B89_API_PORT: String(reserved.address().port) });
   try {
     assert.equal((await exitedWithin(runtime)).code, 1);
     assert.ok(events(runtime).some((item) => item.errorCode === 'PORT_IN_USE'));

@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from verify_core_archive import verify_archive
 
 
-ROOT = "qapaq-core-0123456789ab"
+ROOT = "b89-core-0123456789ab"
 
 
 def make_archive(entries: list[tuple[tarfile.TarInfo, bytes | None]]) -> Path:

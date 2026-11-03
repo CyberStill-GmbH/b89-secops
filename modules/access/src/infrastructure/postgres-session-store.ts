@@ -1,6 +1,6 @@
 /**
  * Adapter PostgreSQL de `SessionStore` (C-18/C-25). Se publica como subpath
- * (`@qapaq/access/postgres`) para que el runtime en memoria no cargue Prisma.
+ * (`@b89/access/postgres`) para que el runtime en memoria no cargue Prisma.
  *
  * El identificador de sesión es el valor de la cookie, o sea, una credencial. La base
  * guarda solo `sha256(id)`:
@@ -21,8 +21,8 @@ import {
   closeDatabaseClient,
   createDatabaseClient,
   type DatabaseConnectionOptions,
-} from '@qapaq/database';
-import { PrismaSessionStore, type SessionRow } from '@qapaq/database/session-stores';
+} from '@b89/database';
+import { PrismaSessionStore, type SessionRow } from '@b89/database/session-stores';
 
 import { CAPABILITIES, type Capability } from '../capabilities.js';
 import {
@@ -173,7 +173,7 @@ export class PostgresSessionStore implements SessionStore {
   }
 }
 
-// Sprint 5 · fase 3: el padrón comparte el subpath `@qapaq/access/postgres`.
+// Sprint 5 · fase 3: el padrón comparte el subpath `@b89/access/postgres`.
 export { DirectoryIntegrityError, PostgresDirectoryStore } from './postgres-directory-store.js';
 // Administración de roles (grants y solicitudes): mismo subpath, sin tocar el `package.json`.
 export {

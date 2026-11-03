@@ -32,13 +32,13 @@ output "nat_gateway_id" {
   value = aws_nat_gateway.api_egress.id
 }
 
-# Núcleo QAPAQ dentro del SIEM (docs/12, opción B): mismo entorno de dominio que la API de ECS, pero
+# Núcleo B89 dentro del SIEM (docs/12, opción B): mismo entorno de dominio que la API de ECS, pero
 # escuchando solo en 127.0.0.1 detrás del edge nginx del host, que pasa a ser un proxy confiable.
 output "core_environment" {
   value = merge(local.api_environment, {
-    QAPAQ_API_HOST = "127.0.0.1"
-    QAPAQ_ACCESS_TRUSTED_PROXY_CIDRS = join(",", compact([
-      lookup(local.api_environment, "QAPAQ_ACCESS_TRUSTED_PROXY_CIDRS", ""),
+    B89_API_HOST = "127.0.0.1"
+    B89_ACCESS_TRUSTED_PROXY_CIDRS = join(",", compact([
+      lookup(local.api_environment, "B89_ACCESS_TRUSTED_PROXY_CIDRS", ""),
       "127.0.0.1/32",
     ]))
   })

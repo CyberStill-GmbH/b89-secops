@@ -1,8 +1,8 @@
 # Azure SIEM host module
 
-Este módulo agrega una VM privada al VNet existente para el SIEM QAPAQ. La combinación fijada por el
+Este módulo agrega una VM privada al VNet existente para el SIEM B89. La combinación fijada por el
 contrato es Wazuh Manager/Indexer/Filebeat/Dashboard **4.14.8**, OpenSearch Dashboards **2.19.6** y
-`qapaq-core` con Node **24.21.0**, según `docs/10-decisiones.md` y `docs/12-backend-en-el-siem.md`.
+`b89-core` con Node **24.21.0**, según `docs/10-decisiones.md` y `docs/12-backend-en-el-siem.md`.
 
 ## Controles incluidos
 
@@ -16,7 +16,7 @@ contrato es Wazuh Manager/Indexer/Filebeat/Dashboard **4.14.8**, OpenSearch Dash
   El puerto 443 se enruta desde `dashboard_ingress_cidrs`; `0.0.0.0/0` publica el Dashboard a todas
   las IPs por instrucción del dueño. El edge debe exigir TLS y `auth_request` antes de habilitarlo.
   El Firewall SNATea el DNAT a su IP privada, así que el NSG solo permite 80/443 desde esa IP. El TLS
-  termina en el edge Nginx QAPAQ de la VM, no en el Load Balancer. Nginx ve la IP privada del Firewall
+  termina en el edge Nginx B89 de la VM, no en el Load Balancer. Nginx ve la IP privada del Firewall
   como peer; la IP original se audita en logs NAT del Firewall. Los agentes continúan usando sus CIDR
   privados aprobados en 1514/1515.
 - Salida explícita: DNS al resolver de Azure, IMDS para Managed Identity y WireServer/VM Agent en TCP/80 y TCP/32526,
@@ -50,13 +50,13 @@ contrato es Wazuh Manager/Indexer/Filebeat/Dashboard **4.14.8**, OpenSearch Dash
   contenedor, lectura Key Vault limitada a los secretos nombrados y escritura opcional limitada al
   contenedor de evidencia indicado.
 - Terraform no acepta valores de secretos. El bootstrap escribe en `core.env` las referencias
-  `secret://keyvault/<nombre>` del API, no sus valores. `qapaq-core` selecciona explícitamente
+  `secret://keyvault/<nombre>` del API, no sus valores. `b89-core` selecciona explícitamente
   `azure-key-vault` y resuelve antes de iniciar el servidor únicamente los secretos que consume hoy:
   Entra, contraseña PostgreSQL, clave HMAC de entidad, Workflow de Teams y clave VAPID. Usa la UAMI
   de la VM por HTTPS, con tiempo límite y errores redactados; los valores quedan solo en memoria del
   proceso y no se registran. Terraform limita `Key Vault Secrets User` al scope de cada secreto
   nombrado. Las referencias de Redis, MinIO, KrakenD/gateway y firma de cursor aún no tienen un
-  consumidor Azure integrado en `qapaq-core`; no se consideran resueltas ni listas para producción.
+  consumidor Azure integrado en `b89-core`; no se consideran resueltas ni listas para producción.
   Los secretos que necesitan los adaptadores Wazuh siguen usando sus archivos root-only existentes,
   incluyendo el archivo de instalación; este flujo no los copia al entorno Core. Las claves privadas
   SSH no se admiten como input.
@@ -89,7 +89,7 @@ contrato es Wazuh Manager/Indexer/Filebeat/Dashboard **4.14.8**, OpenSearch Dash
 ## Contrato obligatorio del artefacto
 
 El flujo `.github/workflows/azure-siem-release-bundle.yml` ensambla el bundle offline a partir de
-artifacts CI verificados (Wazuh oficial, el `.deb` QAPAQ y core). El publisher OIDC ya lo promocionó
+artifacts CI verificados (Wazuh oficial, el `.deb` B89 y core). El publisher OIDC ya lo promocionó
 al contenedor Blob privado; la URI y el SHA-256 están en
 [`docs/cloud/azure/siem-release-bundle.md`](../../../../docs/cloud/azure/siem-release-bundle.md).
 La publicación no instala el release. El objeto `siem_host` debe fijar esa URI/SHA junto con red,
@@ -106,18 +106,18 @@ El `.tar.gz` privado debe tener un directorio raíz único que contenga:
 
 - `manifest.json`, versión 1, con `components` que fije `wazuhManager`, `wazuhIndexer`,
   `wazuhFilebeat` y `wazuhDashboard` a `4.14.8`, `openSearchDashboards` a `2.19.6` y
-  `qapaqCoreNode` a `24.21.0`; `qapaqDashboardPackage` debe ser `4.14.8-1qapaq1` y
-  `qapaqCoreSourceCommit` debe fijar el commit corto de 12 hex.
+  `b89CoreNode` a `24.21.0`; `b89DashboardPackage` debe ser `4.14.8-1b891` y
+  `b89CoreSourceCommit` debe fijar el commit corto de 12 hex.
 - `files`, un mapa de ruta relativa a SHA-256 minúsculo de **cada** script y paquete consumido,
   incluido `install.sh`.
 - `debianPackages`, con la versión exacta instalada de `wazuh-manager`, `wazuh-indexer`, `filebeat`
   y `wazuh-dashboard` (Filebeat se fija a `7.10.2-2`); y `artifacts`, con las rutas `managerDeb`,
   `indexerDeb`, `filebeatDeb`,
-  `qapaqDashboardDeb` y `qapaqCoreArchive` incluidas en el mapa de hashes.
+  `b89DashboardDeb` y `b89CoreArchive` incluidas en el mapa de hashes.
 - `install.sh`, instalador para host limpio que invoca el asistente oficial Wazuh 4.14.8 en modo
-  offline, valida las versiones Debian y ejecuta el instalador QAPAQ core, que ya aporta activación
+  offline, valida las versiones Debian y ejecuta el instalador B89 core, que ya aporta activación
   atómica y rollback de sus releases. El bootstrap compara metadatos y versiones Debian instaladas,
-  verifica Node 24.21.0, exige activos Manager, Indexer, Filebeat, Dashboard y QAPAQ Core y comprueba
+  verifica Node 24.21.0, exige activos Manager, Indexer, Filebeat, Dashboard y B89 Core y comprueba
   `/health/ready`. El instalador no reejecuta ni actualiza una instalación previa.
 - `official-wazuh/wazuh-offline.tar.gz`, el árbol de paquetes/documentos en el formato esperado por
   el asistente oficial, `official-wazuh/wazuh-install.sh` construido desde el commit oficial fijado y
@@ -140,13 +140,13 @@ paquetes/datos parcialmente creados. Se deja la VM sin marcar como instalada y r
 operador antes de un nuevo intento para preservar el fail-closed.
 
 `core_environment` acepta solo variables no secretas de una allowlist y referencias `_REF` respaldadas
-por `core_secret_names`. Valores directos como `QAPAQ_ENTITY_REF_KEY` o
-`QAPAQ_TEAMS_WORKFLOW_URL` fallan en la validación de Terraform y en el preflight del bootstrap; no
+por `core_secret_names`. Valores directos como `B89_ENTITY_REF_KEY` o
+`B89_TEAMS_WORKFLOW_URL` fallan en la validación de Terraform y en el preflight del bootstrap; no
 se codifican en `custom_data`, tfvars ni state. Para PostgreSQL, genera una clave de entidad nueva con
 un CSPRNG de 32 bytes (por ejemplo, `openssl rand -base64 32`) y guárdala directamente como secreto
-`qapaq-entity-ref-key` en Key Vault. En Terraform solo se configura el nombre, por ejemplo
-`core_secret_names.QAPAQ_ENTITY_REF_KEY = "qapaq-entity-ref-key"`; el bootstrap crea
-`QAPAQ_ENTITY_REF_KEY_REF` y nunca imprime ni materializa el valor en `core.env`. No reutilices
+`b89-entity-ref-key` en Key Vault. En Terraform solo se configura el nombre, por ejemplo
+`core_secret_names.B89_ENTITY_REF_KEY = "b89-entity-ref-key"`; el bootstrap crea
+`B89_ENTITY_REF_KEY_REF` y nunca imprime ni materializa el valor en `core.env`. No reutilices
 claves ni pegues su valor en archivos `.tfvars`, variables de GitHub o documentación. La rotación
 invalida referencias de entidad persistidas, por lo que requiere un procedimiento de migración y no
 debe hacerse automáticamente.
@@ -154,9 +154,9 @@ debe hacerse automáticamente.
 El candidato incluye conectores Wazuh opcionales para Sophos Central SIEM API y Cato `eventsFeed`.
 Solo se activan con configuración no secreta, referencias Key Vault explícitas y egress aprobado;
 un bundle/plan exitoso no demuestra permisos o ingestión del tenant. La notificación Wazuh a Teams
-Workflows se incluye si `wazuh_secret_names` referencia `qapaq-teams-workflow-url`; el bootstrap
+Workflows se incluye si `wazuh_secret_names` referencia `b89-teams-workflow-url`; el bootstrap
 valida el endpoint, instala el adaptador y su configuración con rollback ante fallas locales. No
-declara listo el overlay de acceso QAPAQ/roles, edge TLS y DNS, Ankay/Shuffle ni demuestra que Teams
+declara listo el overlay de acceso B89/roles, edge TLS y DNS, B89 Respond/Shuffle ni demuestra que Teams
 aceptó una alerta real. M365 instala reglas/configuración durante bootstrap, pero eso no demuestra
 permisos Graph, ingestión ni indexación real. Esos contratos requieren pruebas de extremo a extremo
 antes de abrir ingreso o marcar el SOC operativo.
@@ -185,14 +185,14 @@ arriba. Hasta cerrar esas comprobaciones, no se debe habilitar runtime ni declar
 - No copia ni elimina datos de AWS, no migra secretos, no crea DNS ni un certificado TLS. El output
   `siem_firewall_public_ip` entrega el destino estable para revisar antes del corte `app.jappi.net.pe`.
 - HTTPS queda denegado por defecto. Al indicar `dashboard_ingress_cidrs`, el operador debe haber
-  verificado que el bundle configura el edge QAPAQ con TLS y `auth_request`; el módulo no puede
+  verificado que el bundle configura el edge B89 con TLS y `auth_request`; el módulo no puede
   certificar esa condición desde Terraform.
 - Los agentes solo reciben conectividad cuando se especifican redes privadas aprobadas; no se abre
   enrolamiento a Internet.
 - No configura snapshots del Indexer en Azure Blob. El diseño vigente describe snapshots S3 y debe
   resolver compatibilidad/retención Azure antes de considerar cubierta la evidencia duradera.
-- No administra API Gateway/KrakenD, Ankay/Shuffle, conectores Sophos/Cato, validación de entrega Teams, reglas M365 ni roles de
-  usuarios QAPAQ. El bundle de instalación tampoco sustituye las pruebas de esos contratos.
+- No administra API Gateway/KrakenD, B89 Respond/Shuffle, conectores Sophos/Cato, validación de entrega Teams, reglas M365 ni roles de
+  usuarios B89. El bundle de instalación tampoco sustituye las pruebas de esos contratos.
 - El disco persistente de datos está protegido contra `terraform destroy`, pero no reemplaza
   backup/restauración comprobados. La VM conserva `prevent_destroy`; si se reconstruye deliberadamente,
   hay que volver a conectar y montar el disco de datos antes de reinstalar. El disco de sistema no es
@@ -215,7 +215,7 @@ debe verificar:
 3. El CIDR del Dashboard puede ser `0.0.0.0/0` para publicación pública; los CIDR de agentes
    deben ser privados/aprobados y nunca incluir `0.0.0.0/0` ni `::/0`.
    `address_prefix` debe pertenecer al address space de la VNet y no solaparse con las subnets
-   determinísticas de Container Apps, Ankay, KrakenD, PostgreSQL, Private Endpoints o Azure Firewall.
+   determinísticas de Container Apps, B89 Respond, KrakenD, PostgreSQL, Private Endpoints o Azure Firewall.
    El validador previo al plan calcula estas reservas usando el `address_space` efectivo; no
    reutilices un rango de las subnets ya desplegadas como atajo para habilitar el SIEM.
 4. SKU de VM, disco y disponibilidad de Secure Boot/encryption-at-host están confirmados en la región.

@@ -16,18 +16,18 @@ from urllib.parse import urlsplit
 
 
 SOURCE_TO_SECRET = {
-    "QAPAQ_EUS2_ENTRA_CLIENT_SECRET": "qapaq-entra-client-secret",
-    "QAPAQ_EUS2_OFFICE365_CLIENT_SECRET": "office365-client-secret",
-    "QAPAQ_EUS2_SOPHOS_CLIENT_ID": "sophos-client-id",
-    "QAPAQ_EUS2_SOPHOS_CLIENT_SECRET": "sophos-client-secret",
-    "QAPAQ_EUS2_CATO_API_KEY": "cato-api-key",
-    "QAPAQ_EUS2_CATO_API_ENDPOINT": "cato-api-endpoint",
-    "QAPAQ_EUS2_TEAMS_WORKFLOW_URL": "qapaq-teams-workflow-url",
-    "QAPAQ_EUS2_WAZUH_INSTALL_FILES_TAR_B64": "wazuh-install-files.tar.b64",
+    "B89_EUS2_ENTRA_CLIENT_SECRET": "b89-entra-client-secret",
+    "B89_EUS2_OFFICE365_CLIENT_SECRET": "office365-client-secret",
+    "B89_EUS2_SOPHOS_CLIENT_ID": "sophos-client-id",
+    "B89_EUS2_SOPHOS_CLIENT_SECRET": "sophos-client-secret",
+    "B89_EUS2_CATO_API_KEY": "cato-api-key",
+    "B89_EUS2_CATO_API_ENDPOINT": "cato-api-endpoint",
+    "B89_EUS2_TEAMS_WORKFLOW_URL": "b89-teams-workflow-url",
+    "B89_EUS2_WAZUH_INSTALL_FILES_TAR_B64": "wazuh-install-files.tar.b64",
 }
 BOOTSTRAP_SOURCE_TO_SECRET = {
-    "QAPAQ_EUS2_WAZUH_INDEXER_READER_BOOTSTRAP": "wazuh-reader-b64",
-    "QAPAQ_EUS2_WAZUH_INDEXER_PROXY_CA_BOOTSTRAP": "wazuh-proxy-ca",
+    "B89_EUS2_WAZUH_INDEXER_READER_BOOTSTRAP": "wazuh-reader-b64",
+    "B89_EUS2_WAZUH_INDEXER_PROXY_CA_BOOTSTRAP": "wazuh-proxy-ca",
 }
 BOOTSTRAP_PLACEHOLDER = "bootstrap-pending"
 
@@ -116,11 +116,11 @@ def _validate_secret(source_name: str, value: str) -> None:
         raise SeedInputError("Selected secret is not valid UTF-8.") from exc
     if byte_length > MAX_TEXT_BYTES:
         raise SeedInputError("Selected secret exceeds the Key Vault input limit.")
-    if source_name == "QAPAQ_EUS2_TEAMS_WORKFLOW_URL":
+    if source_name == "B89_EUS2_TEAMS_WORKFLOW_URL":
         parsed = urlsplit(value)
         if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password:
             raise SeedInputError("Teams workflow URL must be an HTTPS URL without embedded credentials.")
-    if source_name == "QAPAQ_EUS2_WAZUH_INSTALL_FILES_TAR_B64":
+    if source_name == "B89_EUS2_WAZUH_INSTALL_FILES_TAR_B64":
         _validate_wazuh_archive(value)
 
 
@@ -129,7 +129,7 @@ def _write_parameters(destination: Path, secret_name: str, value: str) -> None:
         "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
         "contentVersion": "1.0.0.0",
         "parameters": {
-            "vaultName": {"value": "kv-qapaqsecopsd-3a2405f3"},
+            "vaultName": {"value": "kv-b89secopsd-3a2405f3"},
             "secretName": {"value": secret_name},
             "secretValue": {"value": value},
         },

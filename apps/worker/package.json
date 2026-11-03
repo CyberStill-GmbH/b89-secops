@@ -1,5 +1,5 @@
 {
-  "name": "@qapaq/worker",
+  "name": "@b89/worker",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,7 +9,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@qapaq/configuration": "workspace:*",
+    "@b89/configuration": "workspace:*",
     "bullmq": "5.81.5",
     "ioredis": "6.0.0"
   },

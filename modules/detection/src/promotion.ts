@@ -14,7 +14,7 @@
 
 import { createHash } from 'node:crypto';
 
-import type { SecurityEvent } from '@qapaq/contracts';
+import type { SecurityEvent } from '@b89/contracts';
 
 import { entityKeysOf, signalOf, type SignalClass } from './correlation.js';
 import {

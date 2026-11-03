@@ -1,4 +1,4 @@
-import { loadWorkerEntrypointConfig, type EnvironmentInput } from '@qapaq/configuration';
+import { loadWorkerEntrypointConfig, type EnvironmentInput } from '@b89/configuration';
 import { composeWorker } from './composition-root.js';
 import type { WorkerEvent } from './lifecycle/worker-runtime.js';
 

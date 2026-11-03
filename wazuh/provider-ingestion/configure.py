@@ -19,8 +19,8 @@ except ImportError:  # Windows unit-test runner; deployment is Ubuntu 24.04.
     grp = None
 
 
-BEGIN = "<!-- QAPAQ:provider-ingestion:begin -->"
-END = "<!-- QAPAQ:provider-ingestion:end -->"
+BEGIN = "<!-- B89:provider-ingestion:begin -->"
+END = "<!-- B89:provider-ingestion:end -->"
 # Las cuentas de Cato viven en regiones con host de API propio. El host llega como secreto
 # opcional `cato-api-endpoint` porque se carga junto con la API key, sin tocar Terraform.
 CATO_ENDPOINT_PATTERN = re.compile(r"https://api(?:\.[a-z]{2}[0-9])?\.catonetworks\.com/api/v1/graphql2")
@@ -53,9 +53,9 @@ def install_sophos(config: dict[str, str], root: pathlib.Path, secrets: pathlib.
     client_secret = secrets / "sophos-client-secret"
     if any(not path.is_file() or path.is_symlink() for path in (client_id, client_secret)):
         raise ValueError("Sophos Key Vault references are missing")
-    home = root / "etc/qapaq-providers/sophos"
-    log_dir = root / "logs/qapaq-providers"
-    state_dir = root / "var/run/qapaq-providers/sophos"
+    home = root / "etc/b89-providers/sophos"
+    log_dir = root / "logs/b89-providers"
+    state_dir = root / "var/run/b89-providers/sophos"
     home.mkdir(mode=0o750, parents=True, exist_ok=True)
     (home / "log").mkdir(mode=0o750, exist_ok=True)
     log_dir.mkdir(mode=0o750, parents=True, exist_ok=True)
@@ -67,7 +67,7 @@ def install_sophos(config: dict[str, str], root: pathlib.Path, secrets: pathlib.
     state_dir.mkdir(mode=0o750, parents=True, exist_ok=True)
     os.chmod(state_dir, 0o750)
     upstream = pathlib.Path(__file__).with_name("sophos") / "upstream"
-    destination = root / "integrations/qapaq-sophos"
+    destination = root / "integrations/b89-sophos"
     destination.mkdir(mode=0o750, parents=True, exist_ok=True)
     for filename in ("siem.py", "state.py", "name_mapping.py", "config.py", "api_client.py", "vercheck.py"):
         shutil.copyfile(upstream / filename, destination / filename)
@@ -85,7 +85,7 @@ def install_sophos(config: dict[str, str], root: pathlib.Path, secrets: pathlib.
         "auth_url": "https://id.sophos.com/api/v2/oauth2/token",
         "api_host": "api.central.sophos.com",
         "format": "json",
-        "filename": "qapaq-sophos.jsonl",
+        "filename": "b89-sophos.jsonl",
         "endpoint": "all",
         "address": "/dev/log",
         "facility": "daemon",
@@ -97,7 +97,7 @@ def install_sophos(config: dict[str, str], root: pathlib.Path, secrets: pathlib.
     with config_path.open("w", encoding="utf-8") as stream:
         parser.write(stream)
     os.chmod(config_path, 0o600)
-    (root / "etc/qapaq-providers").mkdir(mode=0o750, parents=True, exist_ok=True)
+    (root / "etc/b89-providers").mkdir(mode=0o750, parents=True, exist_ok=True)
     return True
 
 
@@ -108,9 +108,9 @@ def install_cato(config: dict[str, str], root: pathlib.Path, secrets: pathlib.Pa
     api_key = secrets / "cato-api-key"
     if not account.isdigit() or not api_key.is_file() or api_key.is_symlink():
         raise ValueError("Cato account or Key Vault reference is missing")
-    home = root / "etc/qapaq-providers/cato"
-    log_dir = root / "logs/qapaq-providers"
-    state_dir = root / "var/run/qapaq-providers/cato"
+    home = root / "etc/b89-providers/cato"
+    log_dir = root / "logs/b89-providers"
+    state_dir = root / "var/run/b89-providers/cato"
     for directory in (home, log_dir, state_dir):
         directory.mkdir(mode=0o750, parents=True, exist_ok=True)
         os.chmod(directory, 0o750)
@@ -118,7 +118,7 @@ def install_cato(config: dict[str, str], root: pathlib.Path, secrets: pathlib.Pa
         os.chown(log_dir, 0, grp.getgrnam("wazuh").gr_gid)
     os.chmod(log_dir, 0o750)
     script = pathlib.Path(__file__).with_name("cato") / "events_feed.py"
-    destination = root / "integrations/qapaq-cato/events_feed.py"
+    destination = root / "integrations/b89-cato/events_feed.py"
     destination.parent.mkdir(mode=0o750, parents=True, exist_ok=True)
     shutil.copyfile(script, destination)
     cato_config = {
@@ -144,7 +144,7 @@ def provider_xml(sophos: bool, cato: bool) -> str:
         if active:
             blocks.append(
                 "  <localfile>\n"
-                f"    <location>/var/ossec/logs/qapaq-providers/{vendor}.jsonl</location>\n"
+                f"    <location>/var/ossec/logs/b89-providers/{vendor}.jsonl</location>\n"
                 "    <log_format>json</log_format>\n"
                 f"    <label key=\"integration.vendor\">{vendor}</label>\n"
                 "    <label key=\"integration.channel\">provider-api</label>\n"
@@ -169,7 +169,7 @@ def update_ossec_conf(path: pathlib.Path, managed_xml: str) -> None:
             raise ValueError("ossec.conf has no closing ossec_config tag")
         text = text[:closing] + managed_xml + "\n" + text[closing:]
     ET.fromstring(text)
-    temporary = path.with_suffix(".qapaq.tmp")
+    temporary = path.with_suffix(".b89.tmp")
     temporary.write_text(text, encoding="utf-8")
     os.chmod(temporary, path.stat().st_mode & 0o777)
     os.replace(temporary, path)
@@ -196,7 +196,7 @@ def run(
         update_ossec_conf(ossec_conf, provider_xml(sophos, cato))
         unit_source = pathlib.Path(__file__).with_name("systemd")
         unit_target = unit_dir
-        for unit_name, active in (("qapaq-sophos-ingest.timer", sophos), ("qapaq-cato-ingest.timer", cato)):
+        for unit_name, active in (("b89-sophos-ingest.timer", sophos), ("b89-cato-ingest.timer", cato)):
             service_name = unit_name.removesuffix(".timer") + ".service"
             for name in (unit_name, service_name):
                 source = unit_source / name
@@ -206,7 +206,7 @@ def run(
             if not active:
                 subprocess.run(["systemctl", "disable", "--now", unit_name], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.run(["systemctl", "daemon-reload"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        for unit_name, active in (("qapaq-sophos-ingest.timer", sophos), ("qapaq-cato-ingest.timer", cato)):
+        for unit_name, active in (("b89-sophos-ingest.timer", sophos), ("b89-cato-ingest.timer", cato)):
             if active:
                 subprocess.run(["systemctl", "enable", "--now", unit_name], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.run(["systemctl", "restart", "wazuh-manager"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -214,17 +214,17 @@ def run(
     except (OSError, ValueError, json.JSONDecodeError, KeyError, ET.ParseError, subprocess.SubprocessError):
         try:
             if original_conf is not None and ossec_conf.read_bytes() != original_conf:
-                temporary = ossec_conf.with_suffix(".qapaq-rollback.tmp")
+                temporary = ossec_conf.with_suffix(".b89-rollback.tmp")
                 temporary.write_bytes(original_conf)
                 os.chmod(temporary, original_mode)
                 os.replace(temporary, ossec_conf)
-            for unit_name in ("qapaq-sophos-ingest.timer", "qapaq-cato-ingest.timer"):
+            for unit_name in ("b89-sophos-ingest.timer", "b89-cato-ingest.timer"):
                 subprocess.run(["systemctl", "disable", "--now", unit_name], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             subprocess.run(["systemctl", "daemon-reload"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             subprocess.run(["systemctl", "restart", "wazuh-manager"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except OSError:
             pass
-        print("qapaq-provider-ingestion: invalid configuration; Wazuh config unchanged", file=sys.stderr)
+        print("b89-provider-ingestion: invalid configuration; Wazuh config unchanged", file=sys.stderr)
         return 1
 
 
@@ -234,7 +234,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=pathlib.Path, required=True)
     parser.add_argument("--root", type=pathlib.Path, default=pathlib.Path("/var/ossec"))
-    parser.add_argument("--secrets", type=pathlib.Path, default=pathlib.Path("/etc/qapaq-secrets"))
+    parser.add_argument("--secrets", type=pathlib.Path, default=pathlib.Path("/etc/b89-secrets"))
     parser.add_argument("--ossec-conf", type=pathlib.Path, default=pathlib.Path("/var/ossec/etc/ossec.conf"))
     parser.add_argument("--unit-dir", type=pathlib.Path, default=pathlib.Path("/etc/systemd/system"))
     args = parser.parse_args()

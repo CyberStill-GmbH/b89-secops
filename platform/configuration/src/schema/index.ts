@@ -1,4 +1,4 @@
-export { KNOWN_QAPAQ_VARIABLES } from './environment.schema.js';
+export { KNOWN_B89_VARIABLES } from './environment.schema.js';
 export {
   DETECTION_CONTEXT_LIMITS,
   parseDetectionContext,

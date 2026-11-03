@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { validateDeploymentInputs } from './validate-azure-deployment-inputs.mjs';
 
-const registry = 'qapaqdemo.azurecr.io';
+const registry = 'b89demo.azurecr.io';
 const sha = 'a'.repeat(64);
 const publicKey = 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEZha2VLZXlOb3RTZWNyZXQ= test';
 
@@ -13,7 +13,7 @@ function baseEnv(overrides = {}) {
     TF_VAR_enable_runtime: 'false',
     TF_VAR_container_images: '{}',
     TF_VAR_siem_host: 'null',
-    TF_VAR_ankay_host: 'null',
+    TF_VAR_b89_respond_host: 'null',
     TF_VAR_krakend_gateway: 'null',
     TF_VAR_key_vault_secret_ids: '{}',
     ...overrides,
@@ -32,8 +32,8 @@ function siemHost(overrides = {}) {
     agent_ingress_cidrs: ['10.80.0.0/16'],
     agent_public_cidrs: ['203.0.113.25/32'],
     core_secret_names: {
-      QAPAQ_ENTRA_CLIENT_SECRET: 'entra-client-secret',
-      QAPAQ_TEAMS_WORKFLOW_URL: 'teams-workflow-url',
+      B89_ENTRA_CLIENT_SECRET: 'entra-client-secret',
+      B89_TEAMS_WORKFLOW_URL: 'teams-workflow-url',
     },
     wazuh_secret_names: {
       'dashboard-password': 'wazuh-dashboard-password',
@@ -41,10 +41,10 @@ function siemHost(overrides = {}) {
       'wazuh-install-files.tar.b64': 'wazuh-install-files-tar-b64',
     },
     core_environment: {
-      QAPAQ_ENTRA_CLIENT_SECRET_REF: 'secret://keyvault/entra-client-secret',
-      QAPAQ_ENTRA_TENANT_ID: '45f2f938-dbe3-4a3e-8a54-930893f94ef8',
-      QAPAQ_ENTRA_CLIENT_ID: '336d44fe-b99d-4cfd-9c6e-0ed2d7e48998',
-      QAPAQ_INGESTION_SOURCE: 'wazuh',
+      B89_ENTRA_CLIENT_SECRET_REF: 'secret://keyvault/entra-client-secret',
+      B89_ENTRA_TENANT_ID: '45f2f938-dbe3-4a3e-8a54-930893f94ef8',
+      B89_ENTRA_CLIENT_ID: '336d44fe-b99d-4cfd-9c6e-0ed2d7e48998',
+      B89_INGESTION_SOURCE: 'wazuh',
     },
     office365: {
       tenant_id: '11111111-1111-4111-8111-111111111111',
@@ -52,7 +52,7 @@ function siemHost(overrides = {}) {
       api_type: 'commercial',
       enable_dlp: false,
     },
-    bootstrap_bundle_blob_url: 'https://qapaqdata.blob.core.windows.net/releases/siem.tar.gz',
+    bootstrap_bundle_blob_url: 'https://b89data.blob.core.windows.net/releases/siem.tar.gz',
     bootstrap_bundle_sha256: sha,
     ...overrides,
   };
@@ -60,7 +60,7 @@ function siemHost(overrides = {}) {
 
 function krakendGateway(overrides = {}) {
   return {
-    image: registry + '/qapaq-secops-krakend@sha256:' + sha,
+    image: registry + '/b89-secops-krakend@sha256:' + sha,
     tenant_id: '45f2f938-dbe3-4a3e-8a54-930893f94ef8',
     client_scope: 'api://00000000-0000-4000-8000-000000000002/.default',
     core_client_id: '336d44fe-b99d-4cfd-9c6e-0ed2d7e48998',
@@ -74,11 +74,11 @@ function digestMap(names) {
   return Object.fromEntries(names.map((name) => [name, `${registry}/${name}@sha256:${sha}`]));
 }
 
-test('defaults keep generic runtime, SIEM and Ankay disabled', () => {
+test('defaults keep generic runtime, SIEM and B89 Respond disabled', () => {
   assert.deepEqual(validateDeploymentInputs({}), {
     enableRuntime: false,
     hasSiem: false,
-    hasAnkay: false,
+    hasB89Respond: false,
     hasKrakendGateway: false,
   });
 });
@@ -89,7 +89,7 @@ test('accepts a complete SIEM configuration with Key Vault names and an immutabl
     {
       enableRuntime: false,
       hasSiem: true,
-      hasAnkay: false,
+      hasB89Respond: false,
       hasKrakendGateway: false,
     },
   );
@@ -106,7 +106,7 @@ test('accepts an opt-in private KrakenD profile with SIEM, matching Entra config
     {
       enableRuntime: false,
       hasSiem: true,
-      hasAnkay: false,
+      hasB89Respond: false,
       hasKrakendGateway: true,
     },
   );
@@ -124,7 +124,7 @@ test('rejects KrakenD without SIEM, mismatched Core identity, wrong secret names
   const invalidGateways = [
     krakendGateway({ core_client_id: '00000000-0000-4000-8000-000000000999' }),
     krakendGateway({ indexer_reader_secret_name: 'arbitrary-secret' }),
-    krakendGateway({ image: 'qapaqdemo.azurecr.io/krakend:latest' }),
+    krakendGateway({ image: 'b89demo.azurecr.io/krakend:latest' }),
     krakendGateway({ client_scope: 'not-an-app-scope' }),
   ];
   for (const gateway of invalidGateways) {
@@ -152,7 +152,7 @@ test('rejects KrakenD without SIEM, mismatched Core identity, wrong secret names
 test('rejects SIEM subnets that overlap any subnet reserved by the Azure network module', () => {
   const reservedPrefixes = [
     { cidr: '10.80.0.0/27', reason: /Container Apps/u },
-    { cidr: '10.80.0.32/27', reason: /Ankay/u },
+    { cidr: '10.80.0.32/27', reason: /B89 Respond/u },
     { cidr: '10.80.0.64/27', reason: /KrakenD/u },
     {
       cidr: '10.80.16.0/27',
@@ -218,7 +218,7 @@ test('rejects malformed JSON and missing required SIEM fields without echoing in
   );
 });
 
-test('rejects public addresses for private SIEM and Ankay network endpoints', () => {
+test('rejects public addresses for private SIEM and B89 Respond network endpoints', () => {
   assert.throws(
     () =>
       validateDeploymentInputs(
@@ -235,7 +235,7 @@ test('SIEM subnet must be aligned, inside the EUS2 VNet, and disjoint from reser
     ['10.80.0.65/27', /network-aligned/u],
     ['10.81.0.0/27', /contained in the configured Azure VNet/u],
     ['10.80.0.0/27', /overlaps reserved subnets: Container Apps/u],
-    ['10.80.0.32/27', /overlaps reserved subnets: Ankay/u],
+    ['10.80.0.32/27', /overlaps reserved subnets: B89 Respond/u],
     ['10.80.0.64/27', /overlaps reserved subnets: KrakenD/u],
     ['10.80.16.0/27', /overlaps reserved subnets: PostgreSQL, Private Endpoints/u],
     ['10.80.64.0/26', /overlaps reserved subnets: Azure Firewall/u],
@@ -418,7 +418,7 @@ test('requires the Wazuh certificate/password archive before enabling host creat
 
 test('requires the signed Teams Workflow URL from Key Vault and rejects it in plain environment config', () => {
   const missingTeamsSecret = siemHost();
-  delete missingTeamsSecret.core_secret_names.QAPAQ_TEAMS_WORKFLOW_URL;
+  delete missingTeamsSecret.core_secret_names.B89_TEAMS_WORKFLOW_URL;
   assert.throws(
     () =>
       validateDeploymentInputs(baseEnv({ TF_VAR_siem_host: JSON.stringify(missingTeamsSecret) })),
@@ -428,7 +428,7 @@ test('requires the signed Teams Workflow URL from Key Vault and rejects it in pl
   const plainTeamsUrl = siemHost({
     core_environment: {
       ...siemHost().core_environment,
-      QAPAQ_TEAMS_WORKFLOW_URL: 'https://example.logic.azure.com/workflow/signed-token',
+      B89_TEAMS_WORKFLOW_URL: 'https://example.logic.azure.com/workflow/signed-token',
     },
   });
   assert.throws(
@@ -480,24 +480,24 @@ test('runtime images must be complete and pinned to the configured ACR by SHA-25
 test('Key Vault references must be versioned IDs and may not contain values', () => {
   const ids = {
     api: {
-      QAPAQ_ENTRA_CLIENT_SECRET:
-        'https://qapaq.vault.azure.net/secrets/entra-client-secret/version123',
+      B89_ENTRA_CLIENT_SECRET:
+        'https://b89.vault.azure.net/secrets/entra-client-secret/version123',
     },
   };
   assert.doesNotThrow(() =>
     validateDeploymentInputs(baseEnv({ TF_VAR_key_vault_secret_ids: JSON.stringify(ids) })),
   );
-  ids.api.QAPAQ_ENTRA_CLIENT_SECRET = 'plaintext-secret-value';
+  ids.api.B89_ENTRA_CLIENT_SECRET = 'plaintext-secret-value';
   assert.throws(
     () => validateDeploymentInputs(baseEnv({ TF_VAR_key_vault_secret_ids: JSON.stringify(ids) })),
     /versioned HTTPS Key Vault secret IDs/u,
   );
 });
 
-test('Ankay requires SIEM, six registry digests, and Compose whose hash matches', () => {
+test('B89 Respond requires SIEM, six registry digests, and Compose whose hash matches', () => {
   const compose =
-    'services:\n  frontend:\n    image: qapaqdemo.azurecr.io/frontend@sha256:' + sha + '\n';
-  const ankay = {
+    'services:\n  frontend:\n    image: b89demo.azurecr.io/frontend@sha256:' + sha + '\n';
+  const b89Respond = {
     private_ip_address: '10.80.0.36',
     admin_ssh_public_key: publicKey,
     vm_size: 'Standard_D4s_v5',
@@ -512,7 +512,7 @@ test('Ankay requires SIEM, six registry digests, and Compose whose hash matches'
     ]),
     compose_yaml: compose,
     compose_sha256: createHash('sha256').update(compose).digest('hex'),
-    secret_names: { SHUFFLE_OPENSEARCH_PASSWORD: 'ankay-opensearch-password' },
+    secret_names: { SHUFFLE_OPENSEARCH_PASSWORD: 'b89-respond-opensearch-password' },
     docker_package_versions: {
       'docker-ce': '5:1.2.3-1',
       'docker-ce-cli': '5:1.2.3-1',
@@ -524,12 +524,12 @@ test('Ankay requires SIEM, six registry digests, and Compose whose hash matches'
   };
   const env = baseEnv({
     TF_VAR_siem_host: JSON.stringify(siemHost()),
-    TF_VAR_ankay_host: JSON.stringify(ankay),
+    TF_VAR_b89_respond_host: JSON.stringify(b89Respond),
   });
   assert.deepEqual(validateDeploymentInputs(env), {
     enableRuntime: false,
     hasSiem: true,
-    hasAnkay: true,
+    hasB89Respond: true,
     hasKrakendGateway: false,
   });
   for (const privateIpAddress of ['10.80.0.35', '10.80.0.63', '10.80.0.64']) {
@@ -538,30 +538,30 @@ test('Ankay requires SIEM, six registry digests, and Compose whose hash matches'
         validateDeploymentInputs(
           baseEnv({
             TF_VAR_siem_host: JSON.stringify(siemHost()),
-            TF_VAR_ankay_host: JSON.stringify({ ...ankay, private_ip_address: privateIpAddress }),
+            TF_VAR_b89_respond_host: JSON.stringify({ ...b89-respond, private_ip_address: privateIpAddress }),
           }),
         ),
-      /usable Azure host address in the reserved Ankay subnet/u,
+      /usable Azure host address in the reserved B89 Respond subnet/u,
       `expected ${privateIpAddress} to be rejected`,
     );
   }
-  ankay.compose_sha256 = sha;
+  b89Respond.compose_sha256 = sha;
   assert.throws(
     () =>
       validateDeploymentInputs(
         baseEnv({
           TF_VAR_siem_host: JSON.stringify(siemHost()),
-          TF_VAR_ankay_host: JSON.stringify(ankay),
+          TF_VAR_b89_respond_host: JSON.stringify(b89Respond),
         }),
       ),
     /does not match compose_yaml/u,
   );
 });
 
-test('Ankay cannot be enabled without SIEM and literal Compose credentials are rejected', () => {
+test('B89 Respond cannot be enabled without SIEM and literal Compose credentials are rejected', () => {
   const compose =
     'services:\n  backend:\n    environment:\n      AWS_ACCESS_KEY_ID: literal-access-key\n';
-  const ankay = {
+  const b89Respond = {
     private_ip_address: '10.80.0.36',
     admin_ssh_public_key: publicKey,
     vm_size: 'Standard_D4s_v5',
@@ -576,7 +576,7 @@ test('Ankay cannot be enabled without SIEM and literal Compose credentials are r
     ]),
     compose_yaml: compose,
     compose_sha256: createHash('sha256').update(compose).digest('hex'),
-    secret_names: { SHUFFLE_OPENSEARCH_PASSWORD: 'ankay-opensearch-password' },
+    secret_names: { SHUFFLE_OPENSEARCH_PASSWORD: 'b89-respond-opensearch-password' },
     docker_package_versions: {
       'docker-ce': '5:1.2.3-1',
       'docker-ce-cli': '5:1.2.3-1',
@@ -587,7 +587,7 @@ test('Ankay cannot be enabled without SIEM and literal Compose credentials are r
     },
   };
   assert.throws(
-    () => validateDeploymentInputs(baseEnv({ TF_VAR_ankay_host: JSON.stringify(ankay) })),
+    () => validateDeploymentInputs(baseEnv({ TF_VAR_b89_respond_host: JSON.stringify(b89Respond) })),
     /requires a configured siem_host/u,
   );
   assert.throws(
@@ -595,7 +595,7 @@ test('Ankay cannot be enabled without SIEM and literal Compose credentials are r
       validateDeploymentInputs(
         baseEnv({
           TF_VAR_siem_host: JSON.stringify(siemHost()),
-          TF_VAR_ankay_host: JSON.stringify(ankay),
+          TF_VAR_b89_respond_host: JSON.stringify(b89Respond),
         }),
       ),
     /literal credential/u,

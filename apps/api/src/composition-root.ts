@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
-import type { ApiConfig } from '@qapaq/configuration';
+import type { ApiConfig } from '@b89/configuration';
 import { AppModule } from './app.module.js';
 import type { ApiLifecycle } from './lifecycle.js';
 import type { SecOpsRuntime } from './runtime/secops-runtime.js';

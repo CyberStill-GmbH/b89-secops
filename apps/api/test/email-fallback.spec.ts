@@ -7,20 +7,20 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { InMemoryAuditStore } from '@qapaq/audit';
+import { InMemoryAuditStore } from '@b89/audit';
 import {
   ConsoleFallbackChannel,
   dispatchMessage,
   InMemoryAttemptStore,
   InMemoryOutbox,
   type NotificationTransport,
-} from '@qapaq/soar';
+} from '@b89/soar';
 
 import { GraphMailFallbackChannel } from '../src/runtime/email-fallback.js';
 
 const RECIPIENTS = [
-  { upn: 'analista@qapaq-lab.example', displayName: 'Analista' },
-  { upn: 'lider@qapaq-lab.example', displayName: 'Líder' },
+  { upn: 'analista@b89-lab.example', displayName: 'Analista' },
+  { upn: 'lider@b89-lab.example', displayName: 'Líder' },
 ];
 const NOTIFICATION = {
   tenantId: 't',
@@ -38,7 +38,7 @@ function channel(status: number | 'throw') {
   const requests: { url: string; body: Record<string, unknown> }[] = [];
   const console = new ConsoleFallbackChannel();
   const mail = new GraphMailFallbackChannel({
-    sender: 'soc-alertas@qapaq-lab.example',
+    sender: 'soc-alertas@b89-lab.example',
     accessToken: async () => 'token-sintetico',
     next: console,
     fetch: (async (url: URL, init: RequestInit) => {
@@ -56,15 +56,15 @@ describe('respaldo por correo', () => {
     expect(await mail.notify(NOTIFICATION)).toMatchObject({ channel: 'fallback_email' });
     expect(console.delivered).toHaveLength(0);
     expect(requests[0]!.url).toBe(
-      'https://graph.microsoft.com/v1.0/users/soc-alertas%40qapaq-lab.example/sendMail',
+      'https://graph.microsoft.com/v1.0/users/soc-alertas%40b89-lab.example/sendMail',
     );
     const message = requests[0]!.body['message'] as {
       toRecipients: { emailAddress: { address: string } }[];
       body: { content: string };
     };
     expect(message.toRecipients.map((item) => item.emailAddress.address)).toEqual([
-      'analista@qapaq-lab.example',
-      'lider@qapaq-lab.example',
+      'analista@b89-lab.example',
+      'lider@b89-lab.example',
     ]);
     expect(message.body.content).toContain('https://app.jappi.net.pe/alerts/a-1');
   });

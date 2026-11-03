@@ -17,8 +17,8 @@ const config: EntraEndpointConfig = {
   tenantId: TENANT_ID,
   clientId: CLIENT_ID,
   authorizationEndpoint: `https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/authorize`,
-  redirectUri: 'https://soc.qapaq.pe/auth/callback',
-  allowedRedirectUris: ['https://soc.qapaq.pe/auth/callback'],
+  redirectUri: 'https://soc.b89.example/auth/callback',
+  allowedRedirectUris: ['https://soc.b89.example/auth/callback'],
   scopes: ['openid', 'profile', 'offline_access'],
 };
 

@@ -145,8 +145,8 @@ describe('C-23 · acoplamiento a proveedor', () => {
       '\n',
     );
 
-    expect(imports).not.toMatch(/from '@qapaq\/connectors/u);
-    expect(imports).toMatch(/from '@qapaq\/detection/u);
+    expect(imports).not.toMatch(/from '@b89\/connectors/u);
+    expect(imports).toMatch(/from '@b89\/detection/u);
   });
 });
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the QAPAQ core tarball layout and link targets before extraction."""
+"""Validate the B89 core tarball layout and link targets before extraction."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import sys
 import tarfile
 from pathlib import Path
 
-ROOT_PATTERN = re.compile(r"qapaq-core-[0-9a-f]{12}\Z")
+ROOT_PATTERN = re.compile(r"b89-core-[0-9a-f]{12}\Z")
 REQUIRED_MEMBERS = (
     "node/bin/node",
     "api",
@@ -76,7 +76,7 @@ def verify_archive(archive_path: str | Path) -> str:
             if not release_info.isfile():
                 raise ValueError("RELEASE no es un archivo regular")
             release_file = archive.extractfile(release_info)
-            if release_file is None or release_file.read().decode("ascii").strip() != root.removeprefix("qapaq-core-"):
+            if release_file is None or release_file.read().decode("ascii").strip() != root.removeprefix("b89-core-"):
                 raise ValueError("marcador RELEASE no coincide con el nombre del archive")
     except (KeyError, OSError, UnicodeError, tarfile.TarError) as exc:
         raise ValueError(f"archive ilegible: {exc}") from exc
@@ -91,9 +91,9 @@ def main() -> int:
     try:
         root = verify_archive(sys.argv[1])
     except ValueError as exc:
-        print(f"qapaq-core-azure: ERROR archive inseguro o inválido: {exc}", file=sys.stderr)
+        print(f"b89-core-azure: ERROR archive inseguro o inválido: {exc}", file=sys.stderr)
         return 1
-    print(f"qapaq-core-azure: archive válido ({root})")
+    print(f"b89-core-azure: archive válido ({root})")
     return 0
 
 

@@ -129,8 +129,8 @@ output "runtime_private_api_hostname" {
   value       = module.runtime.private_api_hostname
 }
 
-output "qapaq_edge_api_origin" {
-  description = "Origen privado de la API para el edge unificado (QAPAQ_API de wazuh/edge/apply-edge.sh)."
+output "b89_edge_api_origin" {
+  description = "Origen privado de la API para el edge unificado (B89_API de wazuh/edge/apply-edge.sh)."
   value       = "http://${module.runtime.private_api_hostname}:${var.api_port}"
 }
 

@@ -1,0 +1,174 @@
+<!--
+  Reglas locales del perfil multifuente B89. IDs reservados: 101200-101214.
+  Requieren eventos JSON normalizados por adapters autorizados con integration=b89-provider.
+  Estos patrones no simulan un conector: hasta que el adapter entregue el contrato, la regla
+  no verá eventos. Monitor-only; ninguna regla ejecuta Active Response.
+-->
+<group name="b89_provider,b89_multisource,">
+  <rule id="101200" level="0">
+    <decoded_as>json</decoded_as>
+    <field name="integration">b89-provider</field>
+    <description>B89: evento de proveedor normalizado recibido.</description>
+    <options>no_full_log</options>
+    <group>b89_provider_base,</group>
+  </rule>
+
+  <rule id="101201" level="15">
+    <if_sid>101200</if_sid>
+    <field name="b89_vendor">sophos</field>
+    <field name="b89_event_type">threat_detected</field>
+    <field name="b89_severity" type="pcre2">(?i)^(high|critical)$</field>
+    <field name="b89_status" type="pcre2">(?i)^(active|unresolved|detected)$</field>
+    <description>B89 P0: Sophos detectó una amenaza alta/crítica activa en endpoint $(b89_endpoint_id).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1204</id><id>T1059</id></mitre>
+    <group>b89_malware,b89_sophos,</group>
+  </rule>
+
+  <rule id="101202" level="14">
+    <if_sid>101200</if_sid>
+    <field name="b89_vendor">sophos</field>
+    <field name="b89_event_type">remediation_result</field>
+    <field name="b89_remedy_result" type="pcre2">(?i)^(FAILED_TO_DELETE|OTHER_ERROR|FAILED_TO_DELETE_SYSTEM_PROTECTED)$</field>
+    <description>B89 P0: Sophos no pudo remediar la amenaza en $(b89_endpoint_id); requiere respuesta del SOC.</description>
+    <options>no_full_log</options>
+    <mitre><id>T1562</id></mitre>
+    <group>b89_malware,b89_sophos,b89_remediation_failed,</group>
+  </rule>
+
+  <rule id="101203" level="13">
+    <if_sid>101200</if_sid>
+    <field name="b89_vendor">cato</field>
+    <field name="b89_event_type">threat_verdict</field>
+    <field name="b89_action">allowed</field>
+    <field name="b89_severity" type="pcre2">(?i)^(high|critical)$</field>
+    <description>B89 P1: Cato permitió tráfico con veredicto de amenaza alta/crítica desde $(b89_source_ip) hacia $(b89_destination).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1071</id></mitre>
+    <group>b89_network,b89_cato,b89_threat_allowed,</group>
+  </rule>
+
+  <rule id="101204" level="5">
+    <if_sid>101200</if_sid>
+    <field name="b89_vendor">cato</field>
+    <field name="b89_event_type">threat_verdict</field>
+    <field name="b89_action">blocked</field>
+    <description>B89: Cato bloqueó un evento de amenaza; correlacionar antes de elevar prioridad.</description>
+    <options>no_full_log</options>
+    <group>b89_network,b89_cato,b89_blocked,</group>
+  </rule>
+
+  <rule id="101205" level="13">
+    <if_sid>101200</if_sid>
+    <field name="b89_vendor">entra</field>
+    <field name="b89_event_type">risky_signin</field>
+    <field name="b89_severity" type="pcre2">(?i)^(high|critical)$</field>
+    <description>B89 P1: Entra informó un inicio de sesión de riesgo alto para $(b89_user_id) desde $(b89_source_ip).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1078.004</id></mitre>
+    <group>b89_identity,b89_entra,b89_risky_signin,</group>
+  </rule>
+
+  <rule id="101206" level="13">
+    <if_sid>101200</if_sid>
+    <field name="b89_vendor">entra</field>
+    <field name="b89_event_type">privileged_role_assigned</field>
+    <field name="b89_change_status">unapproved</field>
+    <description>B89 P0: asignación de rol privilegiado Entra sin cambio aprobado; actor $(b89_actor), destino $(b89_user_id).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1098.003</id></mitre>
+    <group>b89_identity,b89_entra,b89_privilege_escalation,</group>
+  </rule>
+
+  <rule id="101207" level="13">
+    <if_sid>101200</if_sid>
+    <field name="b89_vendor">active_directory</field>
+    <field name="b89_event_type">privileged_group_member_added</field>
+    <field name="b89_change_status">unapproved</field>
+    <description>B89 P0: miembro agregado a grupo privilegiado de AD sin cambio aprobado; host $(b89_host), destino $(b89_user_id).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1098.007</id></mitre>
+    <group>b89_identity,b89_active_directory,b89_privilege_escalation,</group>
+  </rule>
+
+  <rule id="101208" level="14">
+    <if_sid>101200</if_sid>
+    <field name="b89_vendor">windows</field>
+    <field name="b89_event_type">security_log_cleared</field>
+    <description>B89 P0: se limpió el registro Security de Windows en $(b89_host).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1070.001</id></mitre>
+    <group>b89_defense_evasion,b89_windows,</group>
+  </rule>
+
+  <rule id="101209" level="13">
+    <if_sid>101200</if_sid>
+    <field name="b89_vendor">windows</field>
+    <field name="b89_event_type">antivirus_realtime_disabled</field>
+    <description>B89 P0: protección antimalware en tiempo real deshabilitada en $(b89_host).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1562.001</id></mitre>
+    <group>b89_defense_evasion,b89_windows,</group>
+  </rule>
+
+  <rule id="101210" level="10">
+    <if_sid>101200</if_sid>
+    <field name="b89_vendor">windows</field>
+    <field name="b89_event_type">powershell_encoded_suspicious_parent</field>
+    <description>B89 P1: PowerShell codificado iniciado por proceso no habitual en $(b89_host).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1059.001</id><id>T1027</id></mitre>
+    <group>b89_execution,b89_windows,</group>
+  </rule>
+
+  <rule id="101211" level="10">
+    <if_sid>101200</if_sid>
+    <field name="b89_vendor">windows</field>
+    <field name="b89_event_type" type="pcre2">^(scheduled_task_created|service_installed)$</field>
+    <field name="b89_change_status" type="pcre2">^(unapproved|unknown)$</field>
+    <description>B89 P1: nueva tarea o servicio sin cambio aprobado en $(b89_host).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1053.005</id><id>T1543.003</id></mitre>
+    <group>b89_persistence,b89_windows,</group>
+  </rule>
+
+  <rule id="101212" level="9">
+    <if_sid>101200</if_sid>
+    <field name="b89_vendor">wazuh</field>
+    <field name="b89_event_type">persistence_path_change</field>
+    <field name="b89_path_scope">approved_persistence_path</field>
+    <description>B89 P1: cambio de archivo bajo ruta de persistencia monitoreada en $(b89_host).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1547</id></mitre>
+    <group>b89_persistence,b89_fim,</group>
+  </rule>
+
+  <rule id="101215" level="3">
+    <if_sid>101200</if_sid>
+    <field name="b89_vendor">linux</field>
+    <field name="b89_event_type">ssh_auth_failure</field>
+    <description>B89: fallo de autenticación SSH desde $(b89_source_ip) en $(b89_host).</description>
+    <options>no_full_log</options>
+    <group>b89_linux,b89_authentication_failed,</group>
+  </rule>
+
+  <rule id="101213" level="12" frequency="8" timeframe="300" ignore="300">
+    <if_matched_sid>101215</if_matched_sid>
+    <same_field>b89_source_ip</same_field>
+    <description>B89 P1: ráfaga de fallos SSH desde $(b89_source_ip) en cinco minutos.</description>
+    <options>no_full_log</options>
+    <mitre><id>T1110.001</id></mitre>
+    <group>b89_linux,b89_brute_force,</group>
+  </rule>
+
+  <rule id="101214" level="9">
+    <if_sid>101200</if_sid>
+    <field name="b89_vendor">linux</field>
+    <field name="b89_event_type">sudo_privileged_command</field>
+    <field name="b89_change_status">unapproved</field>
+    <description>B89 P1: uso privilegiado de sudo fuera de cambio aprobado en $(b89_host).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1548.003</id></mitre>
+    <group>b89_linux,b89_privilege_escalation,</group>
+  </rule>
+</group>

@@ -10,9 +10,9 @@
  */
 
 import { createSign, generateKeyPairSync, randomUUID, type KeyObject } from 'node:crypto';
-import type { JsonWebKey } from '@qapaq/access';
+import type { JsonWebKey } from '@b89/access';
 
-export const LOCAL_ISSUER_KID = 'qapaq-local-dev';
+export const LOCAL_ISSUER_KID = 'b89-local-dev';
 
 export interface LocalPrincipal {
   readonly subjectId: string;
@@ -24,37 +24,37 @@ export interface LocalPrincipal {
 
 /** Personas sintéticas del entorno local, una por rol del catálogo. */
 export const LOCAL_PRINCIPALS: Readonly<Record<string, LocalPrincipal>> = Object.freeze({
-  'analista@qapaq.pe': {
+  'analista@b89.example': {
     subjectId: 'local-analyst-1',
-    username: 'analista@qapaq.pe',
+    username: 'analista@b89.example',
     displayName: 'Ana Lista',
-    roles: ['qapaq.soc.analyst'],
+    roles: ['b89.soc.analyst'],
     amr: ['pwd', 'mfa'],
   },
-  'lider@qapaq.pe': {
+  'lider@b89.example': {
     subjectId: 'local-lead-1',
-    username: 'lider@qapaq.pe',
+    username: 'lider@b89.example',
     displayName: 'Luis Líder',
-    roles: ['qapaq.soc.lead'],
+    roles: ['b89.soc.lead'],
     amr: ['fido'],
   },
-  'auditor@qapaq.pe': {
+  'auditor@b89.example': {
     subjectId: 'local-auditor-1',
-    username: 'auditor@qapaq.pe',
+    username: 'auditor@b89.example',
     displayName: 'Aída Auditora',
-    roles: ['qapaq.auditor'],
+    roles: ['b89.auditor'],
     amr: ['pwd', 'mfa'],
   },
-  'admin@qapaq.pe': {
+  'admin@b89.example': {
     subjectId: 'local-platform-admin-1',
-    username: 'admin@qapaq.pe',
+    username: 'admin@b89.example',
     displayName: 'Ada Admin',
-    roles: ['qapaq.platform.admin'],
+    roles: ['b89.platform.admin'],
     amr: ['fido'],
   },
-  'sinrol@qapaq.pe': {
+  'sinrol@b89.example': {
     subjectId: 'local-norole-1',
-    username: 'sinrol@qapaq.pe',
+    username: 'sinrol@b89.example',
     displayName: 'Sin Rol',
     roles: [],
     amr: ['pwd', 'mfa'],

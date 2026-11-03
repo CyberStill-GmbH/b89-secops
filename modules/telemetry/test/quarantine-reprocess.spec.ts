@@ -75,7 +75,7 @@ describe('C-13 cuarentena con linaje', () => {
       {
         tenantId: 'tenant-1',
         instanceId: 'siem-1',
-        connector: 'qapaq-wazuh-indexer',
+        connector: 'b89-wazuh-indexer',
         connectorVersion: '1.0.0',
         receivedAt: AT,
       },

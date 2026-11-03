@@ -1,6 +1,6 @@
 # Telemetry
 
-`@qapaq/telemetry` owns the C-11 durable-admission orchestration. It consumes the
+`@b89/telemetry` owns the C-11 durable-admission orchestration. It consumes the
 public C-10 `ProviderRecord` contract, stores canonical raw JSON through a
 durable object-store port, verifies SHA-256, and delegates the PostgreSQL
 manifest/inbox/outbox/checkpoint transaction to C-04 through

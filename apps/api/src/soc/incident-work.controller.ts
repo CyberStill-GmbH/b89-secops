@@ -8,13 +8,13 @@
  *   la existencia de casos ajenos.
  * - El timeline se arma con datos del propio caso (alertas, tareas, notas, apertura y cierre)
  *   y declara de dónde sale cada hora: `provider` es la hora del evento en la fuente y
- *   `recorded`, la hora en que QAPAQ lo registró. Las transiciones intermedias (contener,
+ *   `recorded`, la hora en que B89 lo registró. Las transiciones intermedias (contener,
  *   erradicar…) salen de la auditoría y solo se incluyen si el lector tiene `audit.read`; si
  *   no, la respuesta lo dice en lugar de omitirlas en silencio.
  */
 
 import { Body, Controller, Get, Inject, Param, Post, Query, Req } from '@nestjs/common';
-import { AUDIT_QUERY_LIMITS, planAuditQuery } from '@qapaq/audit';
+import { AUDIT_QUERY_LIMITS, planAuditQuery } from '@b89/audit';
 import {
   addIncidentNote,
   createIncidentTask,
@@ -23,7 +23,7 @@ import {
   type IncidentNote,
   type IncidentTask,
   type TaskCommandName,
-} from '@qapaq/soc';
+} from '@b89/soc';
 
 import { ApiError, fromSocFailure } from '../http/api-error.js';
 import type { IncomingRequest } from '../http/http-contracts.js';
@@ -84,8 +84,8 @@ interface TimelineEntry {
   readonly at: Date;
   readonly timeSource: 'provider' | 'recorded';
   /**
-   * Hora en que QAPAQ registró la entrada. Igual a `at` salvo en alertas, donde `at` es la hora
-   * del evento en la fuente y esta, la de su alta en QAPAQ.
+   * Hora en que B89 registró la entrada. Igual a `at` salvo en alertas, donde `at` es la hora
+   * del evento en la fuente y esta, la de su alta en B89.
    */
   readonly recordedAt?: Date;
   readonly actorId: string | null;

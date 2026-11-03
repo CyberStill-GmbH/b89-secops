@@ -88,7 +88,7 @@ def main() -> int:
     try:
         normalize_sources(paths)
     except (OSError, UnicodeError, ValueError) as error:
-        print(f"qapaq-siem-apt: {error}", file=sys.stderr)
+        print(f"b89-siem-apt: {error}", file=sys.stderr)
         return 1
     return 0
 

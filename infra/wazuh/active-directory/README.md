@@ -1,4 +1,4 @@
-# Perfil QAPAQ de detección para Active Directory
+# Perfil B89 de detección para Active Directory
 
 Estado: **candidate/disabled**. Reglas y perfiles están versionados para revisión; no
 se instalan en el bundle ni se aplican a agentes o dominios. Se limita a observación:
@@ -6,19 +6,19 @@ no configura Active Response, aislamiento, bloqueo o cambios de identidad.
 
 ## Cobertura
 
-`rules/qapaq_active_directory_rules.xml` reserva IDs `101300–101307` y depende de
+`rules/b89_active_directory_rules.xml` reserva IDs `101300–101307` y depende de
 los decoders/reglas Windows de Wazuh 4.14.x:
 
-| ID QAPAQ | Señal                                                  | Requisito/precaución                                                                                                                                          |
-| -------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 101300   | Miembro añadido a grupo privilegiado conocido          | Eventos 4728/4732/4756; SID integrado para evitar nombres localizados. No cubre grupos delegados propios: añadir sus SIDs con revisión del dueño del dominio. |
-| 101301   | Cambio a política de auditoría                         | Evento 4719; regla base 60112.                                                                                                                                |
-| 101302   | Limpieza de Security log                               | Evento 1102; preservar evidencia del host antes de remediar.                                                                                                  |
-| 101303   | Cambio a AdminSDHolder o GPO                           | Eventos 5136/5137/5141; requiere Directory Service Changes y SACLs.                                                                                           |
-| 101304   | Ticket Kerberos de servicio con RC4                    | Evento 4769; hunting nivel 5. RC4 legado no es por sí solo Kerberoasting.                                                                                     |
-| 101305   | TGT emitido sin preautenticación                       | Evento 4768; revisar cuentas legacy aprobadas y otros campos antes de escalar.                                                                                |
-| 101306   | Acceso de replicación de directorio candidato a DCSync | Evento 4662 y GUIDs de replicación; nivel moderado porque la replicación legítima genera la misma señal.                                                      |
-| 101307   | Fallo de preautenticación Kerberos                     | Evento 4771; requiere correlación por identidad/origen/ventana para clasificar spray.                                                                         |
+| ID B89 | Señal                                                  | Requisito/precaución                                                                                                                                          |
+| ------ | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 101300 | Miembro añadido a grupo privilegiado conocido          | Eventos 4728/4732/4756; SID integrado para evitar nombres localizados. No cubre grupos delegados propios: añadir sus SIDs con revisión del dueño del dominio. |
+| 101301 | Cambio a política de auditoría                         | Evento 4719; regla base 60112.                                                                                                                                |
+| 101302 | Limpieza de Security log                               | Evento 1102; preservar evidencia del host antes de remediar.                                                                                                  |
+| 101303 | Cambio a AdminSDHolder o GPO                           | Eventos 5136/5137/5141; requiere Directory Service Changes y SACLs.                                                                                           |
+| 101304 | Ticket Kerberos de servicio con RC4                    | Evento 4769; hunting nivel 5. RC4 legado no es por sí solo Kerberoasting.                                                                                     |
+| 101305 | TGT emitido sin preautenticación                       | Evento 4768; revisar cuentas legacy aprobadas y otros campos antes de escalar.                                                                                |
+| 101306 | Acceso de replicación de directorio candidato a DCSync | Evento 4662 y GUIDs de replicación; nivel moderado porque la replicación legítima genera la misma señal.                                                      |
+| 101307 | Fallo de preautenticación Kerberos                     | Evento 4771; requiere correlación por identidad/origen/ventana para clasificar spray.                                                                         |
 
 Además, se mantienen las reglas base Wazuh para cuentas creadas/habilitadas (4720,
 4722; 60109), cambios de cuenta y grupos (60110–60114), bloqueo (4740; 60115),
@@ -26,19 +26,19 @@ fallos y éxitos de autenticación (60105/60106). Evitamos duplicarlas; el SOC d
 correlacionar los eventos base con identidad, origen, criticidad del activo y ventana.
 
 El perfil `agent-groups/windows-domain-controller.agent.conf` añade solo la etiqueta
-`qapaq_profile=active-directory-pilot`, sin canales adicionales: el grupo Windows
+`b89_profile=active-directory-pilot`, sin canales adicionales: el grupo Windows
 base ya recoge `Security` y `System`, y las reglas AD consumen `Security`. Se excluyen
-los canales `Directory Service`, DNS Server y Group Policy porque no tienen una regla QAPAQ consumidora
+los canales `Directory Service`, DNS Server y Group Policy porque no tienen una regla B89 consumidora
 vigente. La matriz exacta está en `profile-catalog.json`.
 
-| Fuente / canal                        | Event IDs mapeados                                                     | Dataset/campos Wazuh                                                                              | Reglas existentes                                                       | Decisión de recolección                                                                                                                                                                                                    |
-| ------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Windows Security · `Security`         | 4728, 4732, 4756; 4719; 1102; 5136, 5137, 5141; 4769; 4768; 4662; 4771 | `wazuh-alerts-*`; `win.system.channel=Security`, `win.system.eventID`                             | QAPAQ 101300–101307; el detalle evento→regla está en la tabla Cobertura | Ya lo recoge el Windows base para conservar el ruleset upstream; el perfil DC no crea un duplicado ni filtra otros eventos existentes.                                                                                     |
-| Windows System · `System`             | 7045                                                                   | `wazuh-alerts-*`; `win.system.channel=System`, `win.system.eventID`                               | Wazuh upstream 61138 (Wazuh 4.14.8)                                     | Heredado del Windows base; no duplicar.                                                                                                                                                                                    |
-| Directory Service                     | —                                                                      | No se recoge en este candidato                                                                    | Ninguna regla actual; los eventos 5136/5137/5141 llegan por `Security`  | Excluido hasta que exista caso de uso, regla consumidora y validación de volumen.                                                                                                                                          |
-| PowerShell Operational                | —                                                                      | No se recoge                                                                                      | Ninguna regla AD QAPAQ actual consume este canal                        | Excluido por minimización: eventos de scripts/módulos pueden incluir contenido y el evento 400 puede incluir argumentos de `HostApplication`. No habilitar 4103/4104 sin aprobación de privacidad y protección de eventos. |
-| Sysmon Operational                    | 1 (Process Create)                                                     | `wazuh-alerts-*`; `win.system.channel=Microsoft-Windows-Sysmon/Operational`, `win.system.eventID` | QAPAQ endpoint 101100                                                   | Perfil separado y disabled; Event ID 1 puede incluir command line. Requiere aprobación de privacidad/retención y revisar la configuración Sysmon antes de asignarlo.                                                       |
-| DNS Server / Group Policy Operational | —                                                                      | No se recoge en este candidato                                                                    | Ninguna regla QAPAQ vigente                                             | Excluidos hasta que una detección aprobada consuma señales específicas.                                                                                                                                                    |
+| Fuente / canal                        | Event IDs mapeados                                                     | Dataset/campos Wazuh                                                                              | Reglas existentes                                                      | Decisión de recolección                                                                                                                                                                                                    |
+| ------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Windows Security · `Security`         | 4728, 4732, 4756; 4719; 1102; 5136, 5137, 5141; 4769; 4768; 4662; 4771 | `wazuh-alerts-*`; `win.system.channel=Security`, `win.system.eventID`                             | B89 101300–101307; el detalle evento→regla está en la tabla Cobertura  | Ya lo recoge el Windows base para conservar el ruleset upstream; el perfil DC no crea un duplicado ni filtra otros eventos existentes.                                                                                     |
+| Windows System · `System`             | 7045                                                                   | `wazuh-alerts-*`; `win.system.channel=System`, `win.system.eventID`                               | Wazuh upstream 61138 (Wazuh 4.14.8)                                    | Heredado del Windows base; no duplicar.                                                                                                                                                                                    |
+| Directory Service                     | —                                                                      | No se recoge en este candidato                                                                    | Ninguna regla actual; los eventos 5136/5137/5141 llegan por `Security` | Excluido hasta que exista caso de uso, regla consumidora y validación de volumen.                                                                                                                                          |
+| PowerShell Operational                | —                                                                      | No se recoge                                                                                      | Ninguna regla AD B89 actual consume este canal                         | Excluido por minimización: eventos de scripts/módulos pueden incluir contenido y el evento 400 puede incluir argumentos de `HostApplication`. No habilitar 4103/4104 sin aprobación de privacidad y protección de eventos. |
+| Sysmon Operational                    | 1 (Process Create)                                                     | `wazuh-alerts-*`; `win.system.channel=Microsoft-Windows-Sysmon/Operational`, `win.system.eventID` | B89 endpoint 101100                                                    | Perfil separado y disabled; Event ID 1 puede incluir command line. Requiere aprobación de privacidad/retención y revisar la configuración Sysmon antes de asignarlo.                                                       |
+| DNS Server / Group Policy Operational | —                                                                      | No se recoge en este candidato                                                                    | Ninguna regla B89 vigente                                              | Excluidos hasta que una detección aprobada consuma señales específicas.                                                                                                                                                    |
 
 La configuración base `windows-pilot.agent.conf` conserva `Security` y `System`
 sin filtros para no perder detecciones upstream fuera de este paquete. Se quitó su
@@ -46,7 +46,7 @@ recolección PowerShell sin filtro. El candidato de Sysmon queda separado y no s
 activa con la instalación de reglas. Asignar grupos que duplican una misma fuente
 podría duplicar eventos; el operador debe confirmar la composición efectiva antes
 de un piloto. `profile-catalog.json` enumera las reglas padre upstream (601xx) para
-cada evento que usa una regla QAPAQ y fija el único ID upstream adicional de este
+cada evento que usa una regla B89 y fija el único ID upstream adicional de este
 mapa (61138) a Wazuh v4.14.8.
 
 ## Política de auditoría del DC
@@ -87,25 +87,25 @@ Sysmon no es requisito para estas reglas; su perfil se gestiona separadamente.
    en `candidate-disabled`, que el DC no tenga grupos duplicados y que se aprobaron
    privacidad, retención y volumen. El bundle solo adjunta los perfiles como archivos
    de referencia; su instalador no los copia a `/var/ossec/etc/shared` ni los aplica.
-5. Para rollback, retirar solo la referencia local QAPAQ y el perfil de grupo piloto;
+5. Para rollback, retirar solo la referencia local B89 y el perfil de grupo piloto;
    validar `wazuh-analysisd -t`, recargar según el procedimiento controlado del Manager
    y comprobar que la colección upstream sigue activa.
 
 ## Pruebas
 
 ```bash
-docker run --detach --rm --name qapaq-wazuh-ad-test \
+docker run --detach --rm --name b89-wazuh-ad-test \
   --ulimit nofile=458752:458752 \
-  --volume "$PWD/infra/wazuh/active-directory/rules/qapaq_active_directory_rules.xml:/var/ossec/etc/rules/qapaq_active_directory_rules.xml:ro" \
+  --volume "$PWD/infra/wazuh/active-directory/rules/b89_active_directory_rules.xml:/var/ossec/etc/rules/b89_active_directory_rules.xml:ro" \
   wazuh/wazuh-manager:4.14.8
-docker exec qapaq-wazuh-ad-test sed -i \
+docker exec b89-wazuh-ad-test sed -i \
   -e '/<category>ossec<\/category>/d' \
   -e 's|<decoded_as>windows_eventchannel</decoded_as>|<decoded_as>json</decoded_as>|' \
   /var/ossec/ruleset/rules/0575-win-base_rules.xml
-docker exec qapaq-wazuh-ad-test /var/ossec/bin/wazuh-control start
-bash infra/wazuh/active-directory/tests/run-logtest.sh qapaq-wazuh-ad-test
+docker exec b89-wazuh-ad-test /var/ossec/bin/wazuh-control start
+bash infra/wazuh/active-directory/tests/run-logtest.sh b89-wazuh-ad-test
 python -m unittest discover -s infra/wazuh/active-directory/tests -p 'test_profile_catalog.py' -v
-docker rm -f qapaq-wazuh-ad-test
+docker rm -f b89-wazuh-ad-test
 ```
 
 Fixtures `.example`/RFC 5737 sintéticas cubren positivos y negativos cercanos. Pasar

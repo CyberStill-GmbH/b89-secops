@@ -5,8 +5,8 @@ name: Configure Wazuh Office 365 collection
 # autorizado y una app de Entra con ActivityFeed.Read y consentimiento de administrador.
 #
 # Prerrequisitos fuera del repositorio:
-#   - Secrets Manager `qapaq-secops/demo/wazuh/office365-client-secret` con el client secret.
-#   - (Opcional) `qapaq-secops/demo/wazuh/break-glass-identities` con los UPN de emergencia.
+#   - Secrets Manager `b89-secops/demo/wazuh/office365-client-secret` con el client secret.
+#   - (Opcional) `b89-secops/demo/wazuh/break-glass-identities` con los UPN de emergencia.
 #   - Rol del host con GetSecretValue sobre ambos (módulo Terraform wazuh_public).
 
 on:
@@ -66,14 +66,14 @@ jobs:
           [[ "$CLIENT_ID" =~ $guid ]] || { echo 'client_id no es un GUID.' >&2; exit 1; }
           bash -n wazuh/office365/apply-office365.sh
           python3 -c "import xml.dom.minidom,sys; xml.dom.minidom.parseString('<root>'+open(sys.argv[1],encoding='utf-8').read().split('-->',1)[1]+'</root>')" \
-            wazuh/office365/rules/qapaq_office365_rules.xml
+            wazuh/office365/rules/b89_office365_rules.xml
 
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
-          role-to-assume: arn:aws:iam::955200662475:role/qapaq-secops-github-terraform-demo
+          role-to-assume: arn:aws:iam::955200662475:role/b89-secops-github-terraform-demo
           aws-region: us-east-1
-          role-session-name: qapaq-secops-wazuh-office365
+          role-session-name: b89-secops-wazuh-office365
           allowed-account-ids: 955200662475
 
       - name: Apply through SSM
@@ -87,7 +87,7 @@ jobs:
         run: |
           set -eu
           instance_id="$(aws ec2 describe-instances \
-            --filters 'Name=tag:Name,Values=qapaq-secops-demo-wazuh' 'Name=instance-state-name,Values=running' \
+            --filters 'Name=tag:Name,Values=b89-secops-demo-wazuh' 'Name=instance-state-name,Values=running' \
             --query 'Reservations[].Instances[].InstanceId | [0]' --output text)"
           if [[ -z "$instance_id" || "$instance_id" == None ]]; then
             echo 'No running Wazuh EC2 instance found.' >&2
@@ -101,14 +101,14 @@ jobs:
           work="\$(mktemp -d)"
           trap 'rm -rf "\$work"' EXIT
           printf '%s' '${bundle}' | base64 -d | tar -C "\$work" -xzf -
-          QAPAQ_APPLY_MODE='${MODE}' \
-          QAPAQ_O365_TENANT_ID='${TENANT_ID}' \
-          QAPAQ_O365_CLIENT_ID='${CLIENT_ID}' \
-          QAPAQ_O365_API_TYPE='${API_TYPE}' \
-          QAPAQ_O365_ENABLE_DLP='${ENABLE_DLP}' \
-          QAPAQ_AWS_REGION=us-east-1 \
-          QAPAQ_O365_SECRET_SOURCE='aws-secretsmanager:qapaq-secops/demo/wazuh/office365-client-secret' \
-          QAPAQ_BREAK_GLASS_SOURCE='aws-secretsmanager:qapaq-secops/demo/wazuh/break-glass-identities' \
+          B89_APPLY_MODE='${MODE}' \
+          B89_O365_TENANT_ID='${TENANT_ID}' \
+          B89_O365_CLIENT_ID='${CLIENT_ID}' \
+          B89_O365_API_TYPE='${API_TYPE}' \
+          B89_O365_ENABLE_DLP='${ENABLE_DLP}' \
+          B89_AWS_REGION=us-east-1 \
+          B89_O365_SECRET_SOURCE='aws-secretsmanager:b89-secops/demo/wazuh/office365-client-secret' \
+          B89_BREAK_GLASS_SOURCE='aws-secretsmanager:b89-secops/demo/wazuh/break-glass-identities' \
             bash "\$work/office365/apply-office365.sh"
           REMOTE
           )"
@@ -116,7 +116,7 @@ jobs:
           command_id="$(aws ssm send-command \
             --instance-ids "$instance_id" \
             --document-name AWS-RunShellScript \
-            --comment "QAPAQ Office 365 collection (${MODE})" \
+            --comment "B89 Office 365 collection (${MODE})" \
             --parameters "$payload" \
             --query 'Command.CommandId' --output text)"
 

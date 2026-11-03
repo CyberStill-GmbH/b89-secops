@@ -1,4 +1,4 @@
-import type { loadWorkerEntrypointConfig } from '@qapaq/configuration';
+import type { loadWorkerEntrypointConfig } from '@b89/configuration';
 import { WorkerRuntime, type WorkerEvent } from './lifecycle/worker-runtime.js';
 
 export function composeWorker(

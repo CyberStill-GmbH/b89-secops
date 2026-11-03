@@ -1,4 +1,4 @@
-# ADR-030 — Arquitectura resiliente y escalamiento progresivo de Qapaq SecOps
+# ADR-030 — Arquitectura resiliente y escalamiento progresivo de B89 SecOps
 
 - Estado: Accepted como arquitectura objetivo; implementación por etapas y con gates.
 - Fecha: 2026-10-13.
@@ -7,7 +7,7 @@
 
 ## Contexto
 
-Qapaq SecOps debe procesar señales de seguridad sin trasladar picos de carga a
+B89 SecOps debe procesar señales de seguridad sin trasladar picos de carga a
 Wazuh, las fuentes externas, la base operacional o la experiencia del analista.
 El repositorio ya establece una aplicación modular con API, worker y web; una
 cola Redis/BullMQ para trabajos recuperables; almacenamiento operacional y de
@@ -26,8 +26,8 @@ La arquitectura seguirá el diagrama C4 de despliegue en
 fronteras:
 
 1. **Acceso de usuarios:** un balanceador de entrada con health checks distribuye
-   solicitudes HTTPS entre réplicas sin estado de la web y de la API/BFF QAPAQ. La
-   sesión y la autorización residen en servicios de QAPAQ, no en memoria local de
+   solicitudes HTTPS entre réplicas sin estado de la web y de la API/BFF B89. La
+   sesión y la autorización residen en servicios de B89, no en memoria local de
    una réplica. Las rutas de API aplican autenticación, cuotas y controles acordes
    al usuario y al recurso.
 2. **Integraciones:** un balanceador interno distribuye el tráfico de proveedores
@@ -43,24 +43,24 @@ fronteras:
    vigente. Redis/BullMQ entrega jobs pequeños con referencias; no transporta
    grandes volúmenes de raw ni reemplaza el registro durable.
 4. **Admisión durable:** antes de avanzar un cursor o emitir un acuse que prometa
-   recepción, QAPAQ conserva el raw/manifiesto según la política aplicable y registra
+   recepción, B89 conserva el raw/manifiesto según la política aplicable y registra
    en PostgreSQL la admisión, deduplicación, checkpoint, inbox/outbox y auditoría
    requerida. Cada consumidor puede reintentarse de forma idempotente. Un fallo de
    Redis permite reconciliar jobs desde el registro durable sin perder evidencia.
-5. **Qapaq SecOps Core:** normaliza señales al contrato canónico, enriquece,
+5. **B89 SecOps Core:** normaliza señales al contrato canónico, enriquece,
    deduplica con cautela, correlaciona, prioriza y crea alertas/casos conforme a las
    políticas del SOC. Wazuh mantiene la recolección, agentes, decoders y detecciones
    nativas; el Core no replica su ruleset. El Wazuh Indexer se consulta con mínimo
-   privilegio. OpenSearch QAPAQ indexa proyecciones versionadas para investigación;
+   privilegio. OpenSearch B89 indexa proyecciones versionadas para investigación;
    PostgreSQL conserva la autoridad transaccional de los objetos operativos.
-6. **Investigación Ayni Qapaq:** las alertas relevantes abren o se relacionan con
+6. **Investigación B89 Cases:** las alertas relevantes abren o se relacionan con
    investigaciones colaborativas con asignados, tareas, notas, evidencias,
-   timeline y resolución. Ayni reutiliza el modelo SOC y el audit trail de QAPAQ;
+   timeline y resolución. B89 Cases reutiliza el modelo SOC y el audit trail de B89;
    no crea una segunda alerta ni un segundo motor de búsqueda.
 7. **Respuesta orquestada:** desde una alerta o investigación, una persona con
-   permisos puede solicitar un playbook disponible. QAPAQ valida scope, versión,
+   permisos puede solicitar un playbook disponible. B89 valida scope, versión,
    aprobación, parámetros y límites; un worker llama a Shuffle mediante credenciales
-   de servicio. El resultado queda correlacionado y auditado en QAPAQ. Un timeout
+   de servicio. El resultado queda correlacionado y auditado en B89. Un timeout
    ambiguo queda `UNKNOWN` hasta reconciliarse; no se reintenta a ciegas.
 8. **Retención por tiers:** eventos recientes consultables permanecen en HOT;
    conjuntos menos activos migran a WARM; archivo de largo plazo va a COLD en object
@@ -109,7 +109,7 @@ reconciliación, drenaje y ausencia de efectos externos duplicados.
 1. **Consolidar la fuente de verdad:** verificar módulos, contratos, migraciones,
    tests y estado de los repositorios. Mantener el monolito modular API/Web/Worker y
    cerrar discrepancias documentales antes de expandir la topología.
-2. **Cerrar la vertical MVP:** validar Microsoft 365 → Wazuh → QAPAQ en un tenant
+2. **Cerrar la vertical MVP:** validar Microsoft 365 → Wazuh → B89 en un tenant
    autorizado; medir admission, checkpoint, normalización, alertas y triaje. No usar
    eventos sintéticos como prueba de integración productiva.
 3. **Preparar el borde:** aprobar DNS, TLS, WAF/controles perimetrales según ambiente,
@@ -121,10 +121,10 @@ reconciliación, drenaje y ausencia de efectos externos duplicados.
 5. **Robustecer polling y colas:** introducir ventanas escalonadas, leases, jitter,
    cuotas, backpressure y reconstrucción desde outbox/checkpoints. Medir Redis,
    persistencia y drenaje con interrupciones controladas.
-6. **Escalar indexación:** validar el índice canónico QAPAQ y Wazuh Indexer como
+6. **Escalar indexación:** validar el índice canónico B89 y Wazuh Indexer como
    responsabilidades separadas; introducir bulk indexing, mappings/aliases,
    deduplicación y pruebas de reindexado/replay. Definir sizing por benchmark.
-7. **Entregar Ayni Qapaq:** ampliar las capacidades de incidentes ya existentes
+7. **Entregar B89 Cases:** ampliar las capacidades de incidentes ya existentes
    (asignación, tareas, notas, timeline y auditoría), conectar cada investigación con
    alertas/evidencia por referencia y probar concurrencia y scopes.
 8. **Integrar Shuffle:** implementar adapter, catálogo y estado de ejecución,
@@ -142,7 +142,7 @@ reconciliación, drenaje y ausencia de efectos externos duplicados.
 - capacidad medida para picos de entrada, búsquedas concurrentes, polling y replay;
 - fallos de una réplica, nodo KrakenD, Redis, PostgreSQL, OpenSearch, fuente y Shuffle;
 - no pérdida de eventos ya admitidos, cursor monotónico y replay sin duplicar acciones;
-- aislamiento por rol/scope en búsquedas, Ayni, exportaciones y playbooks;
+- aislamiento por rol/scope en búsquedas, B89 Cases, exportaciones y playbooks;
 - retención/restauración aprobadas y evidencia de restore;
 - alertas de cobertura, lag, oldest-job-age, index rejection, quota y circuit breaker;
 - rollback probado para aplicación, configuración KrakenD, mapping y migración de datos.
@@ -161,6 +161,6 @@ ello cada réplica y tier necesita owner, métricas, pruebas, presupuesto y runb
 
 [ADR-020 — continuidad](020-operations-and-continuity.md) ·
 [ADR-026 — KrakenD](026-on-premises-krakend-provider-api-gateway.md) ·
-[ADR-029 — producto](029-qapaq-secops-product-direction.md) ·
-[Arquitectura completa](../architecture/qapaq-secops-resilient-architecture.md) ·
+[ADR-029 — producto](029-b89-secops-product-direction.md) ·
+[Arquitectura completa](../architecture/b89-secops-resilient-architecture.md) ·
 [C4 deployment](../diagrams/15-resilient-deployment.mmd).

@@ -9,7 +9,7 @@
 import { Controller, Get, Inject, Query, Req } from '@nestjs/common';
 import type { IncomingRequest } from '../http/http-contracts.js';
 
-import { AUDIT_VERIFY, planAuditQuery, projectAuditEvent, verifyChain } from '@qapaq/audit';
+import { AUDIT_VERIFY, planAuditQuery, projectAuditEvent, verifyChain } from '@b89/audit';
 
 import { ApiError } from '../http/api-error.js';
 import { correlationIdOf, originOf, sessionIdOf } from '../http/request-context.js';

@@ -46,7 +46,7 @@ const CHECKS = [
     id: 'C-18-C-25-access',
     component: 'C-18/C-25',
     priority: 'P0',
-    requirement: 'OIDC, sesión única, red QAPAQ, passkey, Smart Lockout y rate limit.',
+    requirement: 'OIDC, sesión única, red B89, passkey, Smart Lockout y rate limit.',
     command: ['exec', 'vitest', 'run', '--config', 'vitest.config.ts', 'modules/access/test'],
   },
   {

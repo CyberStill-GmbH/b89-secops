@@ -10,7 +10,7 @@
  * duplicar. Una caída a mitad de página no deja copias.
  */
 
-import type { SecurityEvent } from '@qapaq/contracts';
+import type { SecurityEvent } from '@b89/contracts';
 
 /** Versión del esquema de proyección. Un cambio obliga a reindexar, y por eso viaja en el documento. */
 export const PROJECTION_VERSION = '1.0.0' as const;

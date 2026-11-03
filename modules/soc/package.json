@@ -1,5 +1,5 @@
 {
-  "name": "@qapaq/soc",
+  "name": "@b89/soc",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -21,11 +21,11 @@
     "test": "pnpm --dir ../.. exec vitest run --config vitest.config.ts modules/soc/test"
   },
   "dependencies": {
-    "@qapaq/access": "workspace:*",
-    "@qapaq/audit": "workspace:*",
-    "@qapaq/contracts": "workspace:*",
-    "@qapaq/database": "workspace:*",
-    "@qapaq/detection": "workspace:*"
+    "@b89/access": "workspace:*",
+    "@b89/audit": "workspace:*",
+    "@b89/contracts": "workspace:*",
+    "@b89/database": "workspace:*",
+    "@b89/detection": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "24.13.6",

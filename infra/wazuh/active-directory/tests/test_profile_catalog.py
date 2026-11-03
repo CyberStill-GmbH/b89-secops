@@ -57,7 +57,7 @@ class ActiveDirectoryProfileCatalogTests(unittest.TestCase):
         self.assertIsNone(base.find(".//syscollector"))
         self.assertNotIn("Microsoft-Windows-PowerShell/Operational", channels(base))
         self.assertEqual(channels(dc), [])
-        self.assertEqual(dc.findtext(".//label[@key='qapaq_profile']"), "active-directory-pilot")
+        self.assertEqual(dc.findtext(".//label[@key='b89_profile']"), "active-directory-pilot")
         self.assertEqual(channels(sysmon), ["Microsoft-Windows-Sysmon/Operational"])
         self.assertEqual(
             sysmon.findtext(".//localfile/query"),
@@ -83,13 +83,13 @@ class ActiveDirectoryProfileCatalogTests(unittest.TestCase):
             except ET.ParseError as error:
                 self.fail(f"invalid Wazuh XML at {path.relative_to(ROOT)}: {error}")
 
-        ad_rules = ET.parse(ROOT / "infra/wazuh/active-directory/rules/qapaq_active_directory_rules.xml").getroot()
+        ad_rules = ET.parse(ROOT / "infra/wazuh/active-directory/rules/b89_active_directory_rules.xml").getroot()
         ad_rule_ids = {rule.attrib["id"] for rule in ad_rules.findall(".//rule")}
         self.assertEqual(ad_rule_ids, {str(value) for value in range(101300, 101308)})
 
         mappings = self.catalog["eventRuleMappings"]
         actual = {
-            (mapping["channel"], tuple(mapping["eventIds"])): tuple(mapping["qapaqRuleRefs"])
+            (mapping["channel"], tuple(mapping["eventIds"])): tuple(mapping["b89RuleRefs"])
             for mapping in mappings
         }
         expected = {
@@ -116,7 +116,7 @@ class ActiveDirectoryProfileCatalogTests(unittest.TestCase):
             "101307": "60104",
         }
         for mapping in mappings:
-            for rule_id in mapping["qapaqRuleRefs"]:
+            for rule_id in mapping["b89RuleRefs"]:
                 self.assertIn(rule_id, rule_ids)
                 if mapping["channel"] == "Security":
                     rule = next(rule for rule in ad_rules.findall(".//rule") if rule.attrib["id"] == rule_id)
@@ -133,7 +133,7 @@ class ActiveDirectoryProfileCatalogTests(unittest.TestCase):
         for mapping in mappings:
             if mapping["channel"] != "Security":
                 continue
-            rule_id = mapping["qapaqRuleRefs"][0]
+            rule_id = mapping["b89RuleRefs"][0]
             rule = next(rule for rule in ad_rules.findall(".//rule") if rule.attrib["id"] == rule_id)
             configured_event_ids = {
                 value

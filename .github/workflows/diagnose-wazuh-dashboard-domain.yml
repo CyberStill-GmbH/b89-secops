@@ -21,16 +21,16 @@ jobs:
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
-          role-to-assume: arn:aws:iam::955200662475:role/qapaq-secops-github-terraform-demo
+          role-to-assume: arn:aws:iam::955200662475:role/b89-secops-github-terraform-demo
           aws-region: us-east-1
-          role-session-name: qapaq-secops-dashboard-diagnose
+          role-session-name: b89-secops-dashboard-diagnose
           allowed-account-ids: 955200662475
 
       - name: Read failed dashboard command output
         shell: bash
         run: |
           set -euo pipefail
-          association_id="$(aws ssm list-associations --query "Associations[?AssociationName=='qapaq-secops-demo-wazuh-dashboard-domain'] | [0].AssociationId" --output text)"
+          association_id="$(aws ssm list-associations --query "Associations[?AssociationName=='b89-secops-demo-wazuh-dashboard-domain'] | [0].AssociationId" --output text)"
           if [[ -z "$association_id" || "$association_id" == None ]]; then
             echo '::error::Dashboard domain association was not found.'
             exit 1
@@ -58,12 +58,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          aws ecs describe-services --cluster qapaq-secops-demo --services qapaq-secops-demo-api qapaq-secops-demo-krakend --query 'services[].{Name:serviceName,Desired:desiredCount,Running:runningCount,Pending:pendingCount,Deployments:deployments[].{Status:status,TaskDefinition:taskDefinition,FailedTasks:failedTasks,State:rolloutState,Reason:rolloutStateReason},Events:events[:8].message}' --output json
+          aws ecs describe-services --cluster b89-secops-demo --services b89-secops-demo-api b89-secops-demo-krakend --query 'services[].{Name:serviceName,Desired:desiredCount,Running:runningCount,Pending:pendingCount,Deployments:deployments[].{Status:status,TaskDefinition:taskDefinition,FailedTasks:failedTasks,State:rolloutState,Reason:rolloutStateReason},Events:events[:8].message}' --output json
           for service in api krakend; do
-            task_arns="$(aws ecs list-tasks --cluster qapaq-secops-demo --service-name "qapaq-secops-demo-$service" --desired-status STOPPED --max-results 5 --query taskArns --output text)"
+            task_arns="$(aws ecs list-tasks --cluster b89-secops-demo --service-name "b89-secops-demo-$service" --desired-status STOPPED --max-results 5 --query taskArns --output text)"
             if [[ -n "$task_arns" && "$task_arns" != None ]]; then
               read -r -a task_list <<< "$task_arns"
-              aws ecs describe-tasks --cluster qapaq-secops-demo --tasks "${task_list[@]}" --query 'tasks[].{Task:taskArn,TaskDefinition:taskDefinitionArn,StopCode:stopCode,StoppedReason:stoppedReason,Containers:containers[].{Name:name,ExitCode:exitCode,Reason:reason}}' --output json
+              aws ecs describe-tasks --cluster b89-secops-demo --tasks "${task_list[@]}" --query 'tasks[].{Task:taskArn,TaskDefinition:taskDefinitionArn,StopCode:stopCode,StoppedReason:stoppedReason,Containers:containers[].{Name:name,ExitCode:exitCode,Reason:reason}}' --output json
             fi
           done
 
@@ -72,7 +72,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          association_id="$(aws ssm list-associations --query "Associations[?AssociationName=='qapaq-secops-demo-wazuh-bootstrap'] | [0].AssociationId" --output text)"
+          association_id="$(aws ssm list-associations --query "Associations[?AssociationName=='b89-secops-demo-wazuh-bootstrap'] | [0].AssociationId" --output text)"
           if [[ -n "$association_id" && "$association_id" != None ]]; then
             execution_id="$(aws ssm describe-association-executions --association-id "$association_id" --query 'sort_by(AssociationExecutions, &CreatedTime)[-1].ExecutionId' --output text)"
             if [[ -n "$execution_id" && "$execution_id" != None ]]; then
@@ -84,9 +84,9 @@ jobs:
               done < <(printf '%s\n' "$targets" | jq -r '.AssociationExecutionTargets[] | select(.OutputSource.OutputSourceType == "RunCommand") | [.OutputSource.OutputSourceId, .ResourceId] | @tsv')
             fi
           fi
-          log_stream="$(aws logs describe-log-streams --log-group-name /qapaq-secops/demo/api --order-by LastEventTime --descending --limit 1 --query 'logStreams[0].logStreamName' --output text)"
+          log_stream="$(aws logs describe-log-streams --log-group-name /b89-secops/demo/api --order-by LastEventTime --descending --limit 1 --query 'logStreams[0].logStreamName' --output text)"
           if [[ -n "$log_stream" && "$log_stream" != None ]]; then
-            aws logs get-log-events --log-group-name /qapaq-secops/demo/api --log-stream-name "$log_stream" --limit 30 --query 'events[].message' --output json
+            aws logs get-log-events --log-group-name /b89-secops/demo/api --log-stream-name "$log_stream" --limit 30 --query 'events[].message' --output json
           fi
 
       - name: Read failed API revision startup logs
@@ -94,11 +94,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          aws ecs describe-tasks --cluster qapaq-secops-demo --tasks 4620f02dd87e4639bd54dca5d62f7c4b --query 'tasks[].{Task:taskArn,TaskDefinition:taskDefinitionArn,StopCode:stopCode,StoppedReason:stoppedReason,Containers:containers[].{Name:name,ExitCode:exitCode,Reason:reason}}' --output json
-          streams="$(aws logs describe-log-streams --log-group-name /qapaq-secops/demo/api --order-by LastEventTime --descending --limit 4 --query 'logStreams[].logStreamName' --output json)"
+          aws ecs describe-tasks --cluster b89-secops-demo --tasks 4620f02dd87e4639bd54dca5d62f7c4b --query 'tasks[].{Task:taskArn,TaskDefinition:taskDefinitionArn,StopCode:stopCode,StoppedReason:stoppedReason,Containers:containers[].{Name:name,ExitCode:exitCode,Reason:reason}}' --output json
+          streams="$(aws logs describe-log-streams --log-group-name /b89-secops/demo/api --order-by LastEventTime --descending --limit 4 --query 'logStreams[].logStreamName' --output json)"
           while IFS= read -r stream; do
             echo "API stream: $stream"
-            aws logs get-log-events --log-group-name /qapaq-secops/demo/api --log-stream-name "$stream" --limit 12 --query 'events[].message' --output json
+            aws logs get-log-events --log-group-name /b89-secops/demo/api --log-stream-name "$stream" --limit 12 --query 'events[].message' --output json
           done < <(printf '%s\n' "$streams" | jq -r '.[]')
 
       - name: Check required secret versions without reading values
@@ -107,7 +107,7 @@ jobs:
         run: |
           set -euo pipefail
           for suffix in entra/client-secret postgres/soc-runtime api/entity-ref-key api/vapid-private-key wazuh/indexer-reader wazuh/indexer-proxy-ca wazuh/dashboard-admin-user wazuh/dashboard-analyst-user; do
-            secret_id="qapaq-secops/demo/$suffix"
+            secret_id="b89-secops/demo/$suffix"
             count="$(aws secretsmanager list-secret-version-ids --secret-id "$secret_id" --query "length(Versions[?contains(VersionStages, 'AWSCURRENT')])" --output text)"
             echo "$secret_id: current_version_count=$count"
           done
@@ -115,7 +115,7 @@ jobs:
       - name: Inspect deployment OIDC trust conditions
         if: always()
         shell: bash
-        run: aws iam get-role --role-name qapaq-secops-github-terraform-demo --query 'Role.AssumeRolePolicyDocument.Statement[].Condition' --output json
+        run: aws iam get-role --role-name b89-secops-github-terraform-demo --query 'Role.AssumeRolePolicyDocument.Statement[].Condition' --output json
 
       - name: Inspect private Indexer TLS failure
         if: always()
@@ -134,26 +134,26 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          stream="$(aws logs describe-log-streams --log-group-name /qapaq-secops/demo/krakend --order-by LastEventTime --descending --limit 1 --query 'logStreams[0].logStreamName' --output text)"
-          aws logs get-log-events --log-group-name /qapaq-secops/demo/krakend --log-stream-name "$stream" --limit 30 --query 'events[].message' --output json
+          stream="$(aws logs describe-log-streams --log-group-name /b89-secops/demo/krakend --order-by LastEventTime --descending --limit 1 --query 'logStreams[0].logStreamName' --output text)"
+          aws logs get-log-events --log-group-name /b89-secops/demo/krakend --log-stream-name "$stream" --limit 30 --query 'events[].message' --output json
 
       - name: Read authentication audit and directory configuration
         if: always()
         shell: bash
         run: |
           set -euo pipefail
-          service="$(aws ecs describe-services --cluster qapaq-secops-demo --services qapaq-secops-demo-api --query 'services[0]' --output json)"
+          service="$(aws ecs describe-services --cluster b89-secops-demo --services b89-secops-demo-api --query 'services[0]' --output json)"
           network="$(jq -c '.networkConfiguration' <<< "$service")"
           definition="$(jq -r '.taskDefinition' <<< "$service")"
           cat > /tmp/auth-diagnostic-overrides.json <<'OVERRIDES'
-          {"containerOverrides":[{"name":"api","command":["-e","const {createRequire}=require('node:module'); const {readFileSync}=require('node:fs');\n(async()=>{const sr=createRequire(require.resolve('@qapaq/soc'));const dr=createRequire(sr.resolve('@qapaq/database'));const {Client}=dr('pg');const e=process.env;\nconst db=new Client({host:e.QAPAQ_POSTGRES_HOST,port:Number(e.QAPAQ_POSTGRES_PORT),database:e.QAPAQ_POSTGRES_DATABASE,user:e.QAPAQ_POSTGRES_USERNAME,password:e.QAPAQ_POSTGRES_PASSWORD,ssl:{rejectUnauthorized:true,ca:readFileSync('/etc/qapaq/rds-global-bundle.pem','utf8')},connectionTimeoutMillis:10000});\nawait db.connect();await db.query('BEGIN READ ONLY');const q=await db.query(\"select occurred_at, correlation_id, outcome, reason from audit_events where action='access.sign_in' order by occurred_at desc limit 12\");console.log(JSON.stringify({auth_audit:q.rows}));await db.query('ROLLBACK');await db.end();\nconst body=new URLSearchParams({client_id:e.QAPAQ_ENTRA_CLIENT_ID,client_secret:e.QAPAQ_ENTRA_CLIENT_SECRET,grant_type:'client_credentials',scope:'https://graph.microsoft.com/.default'});\nconst tr=await fetch('https://login.microsoftonline.com/'+e.QAPAQ_ENTRA_TENANT_ID+'/oauth2/v2.0/token',{method:'POST',body,signal:AbortSignal.timeout(15000)});const t=await tr.json();console.log(JSON.stringify({token_status:tr.status,error:t.error,error_codes:t.error_codes}));if(t.access_token){const appResponse=await fetch(\"https://graph.microsoft.com/v1.0/applications(appId='\"+e.QAPAQ_ENTRA_CLIENT_ID+\"')?$select=id,optionalClaims\",{headers:{Authorization:'Bearer '+t.access_token},signal:AbortSignal.timeout(15000)});const app=await appResponse.json();console.log(JSON.stringify({app_config_status:appResponse.status,app_object_id:app.id,optional_claims:app.optionalClaims,error_code:app.error?.code}));for(const route of [\"/v1.0/groups/bbf1d58b-19e6-4261-b196-5ebcd8176d85?$select=id,displayName\",\"/v1.0/groups/bbf1d58b-19e6-4261-b196-5ebcd8176d85/owners/microsoft.graph.user?$select=id&$top=100\",\"/v1.0/groups?$filter=\"+encodeURIComponent(\"displayName eq 'QAPAQ-SecOps-Users'\")+\"&$select=id\"]){const rr=await fetch('https://graph.microsoft.com'+route,{headers:{Authorization:'Bearer '+t.access_token},signal:AbortSignal.timeout(15000)});const j=await rr.json();console.log(JSON.stringify({graph_status:rr.status,group_id:j.id,group_name:j.displayName,match_count:j.value?.length,error_code:j.error?.code}));}}\n})().catch(e=>{console.error(JSON.stringify({diagnostic_error:e.code||e.name}));process.exitCode=1;});"]}]}
+          {"containerOverrides":[{"name":"api","command":["-e","const {createRequire}=require('node:module'); const {readFileSync}=require('node:fs');\n(async()=>{const sr=createRequire(require.resolve('@b89/soc'));const dr=createRequire(sr.resolve('@b89/database'));const {Client}=dr('pg');const e=process.env;\nconst db=new Client({host:e.B89_POSTGRES_HOST,port:Number(e.B89_POSTGRES_PORT),database:e.B89_POSTGRES_DATABASE,user:e.B89_POSTGRES_USERNAME,password:e.B89_POSTGRES_PASSWORD,ssl:{rejectUnauthorized:true,ca:readFileSync('/etc/b89/rds-global-bundle.pem','utf8')},connectionTimeoutMillis:10000});\nawait db.connect();await db.query('BEGIN READ ONLY');const q=await db.query(\"select occurred_at, correlation_id, outcome, reason from audit_events where action='access.sign_in' order by occurred_at desc limit 12\");console.log(JSON.stringify({auth_audit:q.rows}));await db.query('ROLLBACK');await db.end();\nconst body=new URLSearchParams({client_id:e.B89_ENTRA_CLIENT_ID,client_secret:e.B89_ENTRA_CLIENT_SECRET,grant_type:'client_credentials',scope:'https://graph.microsoft.com/.default'});\nconst tr=await fetch('https://login.microsoftonline.com/'+e.B89_ENTRA_TENANT_ID+'/oauth2/v2.0/token',{method:'POST',body,signal:AbortSignal.timeout(15000)});const t=await tr.json();console.log(JSON.stringify({token_status:tr.status,error:t.error,error_codes:t.error_codes}));if(t.access_token){const appResponse=await fetch(\"https://graph.microsoft.com/v1.0/applications(appId='\"+e.B89_ENTRA_CLIENT_ID+\"')?$select=id,optionalClaims\",{headers:{Authorization:'Bearer '+t.access_token},signal:AbortSignal.timeout(15000)});const app=await appResponse.json();console.log(JSON.stringify({app_config_status:appResponse.status,app_object_id:app.id,optional_claims:app.optionalClaims,error_code:app.error?.code}));for(const route of [\"/v1.0/groups/bbf1d58b-19e6-4261-b196-5ebcd8176d85?$select=id,displayName\",\"/v1.0/groups/bbf1d58b-19e6-4261-b196-5ebcd8176d85/owners/microsoft.graph.user?$select=id&$top=100\",\"/v1.0/groups?$filter=\"+encodeURIComponent(\"displayName eq 'B89-SecOps-Users'\")+\"&$select=id\"]){const rr=await fetch('https://graph.microsoft.com'+route,{headers:{Authorization:'Bearer '+t.access_token},signal:AbortSignal.timeout(15000)});const j=await rr.json();console.log(JSON.stringify({graph_status:rr.status,group_id:j.id,group_name:j.displayName,match_count:j.value?.length,error_code:j.error?.code}));}}\n})().catch(e=>{console.error(JSON.stringify({diagnostic_error:e.code||e.name}));process.exitCode=1;});"]}]}
           OVERRIDES
-          result="$(aws ecs run-task --cluster qapaq-secops-demo --task-definition "$definition" --launch-type FARGATE --network-configuration "$network" --overrides file:///tmp/auth-diagnostic-overrides.json --output json)"
+          result="$(aws ecs run-task --cluster b89-secops-demo --task-definition "$definition" --launch-type FARGATE --network-configuration "$network" --overrides file:///tmp/auth-diagnostic-overrides.json --output json)"
           task="$(jq -r '.tasks[0].taskArn // empty' <<< "$result")"
           [[ -n "$task" ]] || { jq '.failures' <<< "$result"; exit 1; }
-          aws ecs wait tasks-stopped --cluster qapaq-secops-demo --tasks "$task"
-          aws ecs describe-tasks --cluster qapaq-secops-demo --tasks "$task" --query 'tasks[].containers[].{Name:name,ExitCode:exitCode,Reason:reason}' --output json
-          aws logs get-log-events --log-group-name /qapaq-secops/demo/api --log-stream-name "ecs/api/${task##*/}" --query 'events[].message' --output json
+          aws ecs wait tasks-stopped --cluster b89-secops-demo --tasks "$task"
+          aws ecs describe-tasks --cluster b89-secops-demo --tasks "$task" --query 'tasks[].containers[].{Name:name,ExitCode:exitCode,Reason:reason}' --output json
+          aws logs get-log-events --log-group-name /b89-secops/demo/api --log-stream-name "ecs/api/${task##*/}" --query 'events[].message' --output json
 
       - name: Inspect analyst role mappings and read permissions
         if: always()
@@ -161,7 +161,7 @@ jobs:
         run: |
           set -euo pipefail
           cat > /tmp/analyst-diagnostic.json <<'PARAMS'
-          {"commands":["set -eu","python3 - <<'PY'\nimport json, subprocess, ssl, urllib.request, urllib.error, base64, tarfile, re\nfrom io import BytesIO\nctx=ssl.create_default_context(cafile='/etc/wazuh-indexer/certs/root-ca.pem')\nsecret=json.loads(subprocess.check_output(['aws','secretsmanager','get-secret-value','--region','us-east-1','--secret-id','qapaq-secops/demo/wazuh/dashboard-analyst-user','--query','SecretString','--output','text']))\nwith tarfile.open('/root/wazuh-install-files.tar') as t: lines=t.extractfile('wazuh-install-files/wazuh-passwords.txt').read().decode()\nadmin=re.search(r\"indexer_username:\\s*'admin'.*?indexer_password:\\s*'([^']+)'\",lines,re.S).group(1)\ndef get(path,user,password,body=None):\n req=urllib.request.Request('https://127.0.0.1:9200'+path,data=json.dumps(body).encode() if body is not None else None,headers={'Authorization':'Basic '+base64.b64encode((user+':'+password).encode()).decode(),'Content-Type':'application/json'})\n try: r=urllib.request.urlopen(req,context=ctx,timeout=10)\n except urllib.error.HTTPError as e:r=e\n return r.status,json.loads(r.read())\nfor role in ['qapaq_wazuh_readonly','qapaq_dashboard_user']:\n for kind in ['roles','rolesmapping']:\n  status,data=get('/_plugins/_security/api/'+kind+'/'+role,'admin',admin)\n  print(json.dumps({'resource':kind+'/'+role,'status':status,'config':data}))\nstatus,data=get('/_plugins/_security/authinfo',secret['username'],secret['password'])\nprint(json.dumps({'auth_status':status,'roles':data.get('roles'),'tenants':data.get('tenants')}))\nfor index in ['wazuh-*','.kibana*','.opensearch_dashboards*']:\n status,data=get('/'+index+'/_search',secret['username'],secret['password'],{'size':0})\n print(json.dumps({'index_pattern':index,'status':status,'error':data.get('error')}))\n\nPY"]}
+          {"commands":["set -eu","python3 - <<'PY'\nimport json, subprocess, ssl, urllib.request, urllib.error, base64, tarfile, re\nfrom io import BytesIO\nctx=ssl.create_default_context(cafile='/etc/wazuh-indexer/certs/root-ca.pem')\nsecret=json.loads(subprocess.check_output(['aws','secretsmanager','get-secret-value','--region','us-east-1','--secret-id','b89-secops/demo/wazuh/dashboard-analyst-user','--query','SecretString','--output','text']))\nwith tarfile.open('/root/wazuh-install-files.tar') as t: lines=t.extractfile('wazuh-install-files/wazuh-passwords.txt').read().decode()\nadmin=re.search(r\"indexer_username:\\s*'admin'.*?indexer_password:\\s*'([^']+)'\",lines,re.S).group(1)\ndef get(path,user,password,body=None):\n req=urllib.request.Request('https://127.0.0.1:9200'+path,data=json.dumps(body).encode() if body is not None else None,headers={'Authorization':'Basic '+base64.b64encode((user+':'+password).encode()).decode(),'Content-Type':'application/json'})\n try: r=urllib.request.urlopen(req,context=ctx,timeout=10)\n except urllib.error.HTTPError as e:r=e\n return r.status,json.loads(r.read())\nfor role in ['b89_wazuh_readonly','b89_dashboard_user']:\n for kind in ['roles','rolesmapping']:\n  status,data=get('/_plugins/_security/api/'+kind+'/'+role,'admin',admin)\n  print(json.dumps({'resource':kind+'/'+role,'status':status,'config':data}))\nstatus,data=get('/_plugins/_security/authinfo',secret['username'],secret['password'])\nprint(json.dumps({'auth_status':status,'roles':data.get('roles'),'tenants':data.get('tenants')}))\nfor index in ['wazuh-*','.kibana*','.opensearch_dashboards*']:\n status,data=get('/'+index+'/_search',secret['username'],secret['password'],{'size':0})\n print(json.dumps({'index_pattern':index,'status':status,'error':data.get('error')}))\n\nPY"]}
           PARAMS
           command_id="$(aws ssm send-command --instance-ids i-06e0c5fd6ad8b6906 --document-name AWS-RunShellScript --parameters file:///tmp/analyst-diagnostic.json --query Command.CommandId --output text)"
           aws ssm wait command-executed --command-id "$command_id" --instance-id i-06e0c5fd6ad8b6906 || true

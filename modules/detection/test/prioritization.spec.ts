@@ -22,7 +22,7 @@ describe('C-16 · priorización', () => {
     const outcome = prioritize(withSeverity('high'), EMPTY_CONTEXT);
 
     expect(outcome.reasons[0]).toMatchObject({ code: 'BASE_SEVERITY', delta: 60 });
-    // Sin contexto QAPAQ, una alerta alta de Wazuh entra como P3: la severidad del SIEM
+    // Sin contexto B89, una alerta alta de Wazuh entra como P3: la severidad del SIEM
     // por sí sola no reclama atención inmediata.
     expect(outcome.priority).toBe('P3');
   });
@@ -38,7 +38,7 @@ describe('C-16 · priorización', () => {
   it('eleva la prioridad cuando participa una identidad privilegiada', () => {
     const context: PrioritizationContext = {
       ...EMPTY_CONTEXT,
-      privilegedIdentities: new Set(['jperez@qapaq.pe']),
+      privilegedIdentities: new Set(['jperez@b89.example']),
     };
     const base = prioritize(securityEvent(), EMPTY_CONTEXT);
     const elevated = prioritize(securityEvent(), context);
@@ -51,7 +51,7 @@ describe('C-16 · priorización', () => {
     const context: PrioritizationContext = {
       ...EMPTY_CONTEXT,
       criticalAssets: new Set(['host-1']),
-      internetFacingAssets: new Set(['srv-app-01.qapaq.local']),
+      internetFacingAssets: new Set(['srv-app-01.b89.local']),
     };
 
     expect(reasonCodes(context)).toEqual(
@@ -116,7 +116,7 @@ describe('C-16 · priorización', () => {
     const outcome = prioritize(
       withSeverity('critical', { outcome: 'success', category: ['malware'] }),
       {
-        privilegedIdentities: new Set(['jperez@qapaq.pe']),
+        privilegedIdentities: new Set(['jperez@b89.example']),
         criticalAssets: new Set(['host-1']),
         internetFacingAssets: new Set(['host-1']),
         recentSimilarCount: 20,
@@ -130,7 +130,7 @@ describe('C-16 · priorización', () => {
   it('es determinista: la misma entrada produce el mismo resultado', () => {
     const context: PrioritizationContext = {
       ...EMPTY_CONTEXT,
-      privilegedIdentities: new Set(['jperez@qapaq.pe']),
+      privilegedIdentities: new Set(['jperez@b89.example']),
     };
 
     expect(prioritize(securityEvent(), context)).toEqual(prioritize(securityEvent(), context));
@@ -146,7 +146,7 @@ describe('C-16 · priorización', () => {
   it('no inventa detección propia: la regla citada es la del proveedor', () => {
     const outcome = prioritize(securityEvent(), EMPTY_CONTEXT);
 
-    expect(outcome.rulesetId).toBe('qapaq.detection.prioritization');
-    expect(JSON.stringify(outcome.reasons)).not.toContain('qapaq.rule');
+    expect(outcome.rulesetId).toBe('b89.detection.prioritization');
+    expect(JSON.stringify(outcome.reasons)).not.toContain('b89.rule');
   });
 });

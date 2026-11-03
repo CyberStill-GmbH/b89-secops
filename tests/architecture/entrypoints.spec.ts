@@ -16,7 +16,7 @@ it.each([
   ['web', 'api'],
   ['web', 'worker'],
 ])('rejects relative, dynamic, reexport, deep and alias imports: %s → %s', (from, to) => {
-  const root = mkdtempSync(join(tmpdir(), 'qapaq-c02-boundaries-'));
+  const root = mkdtempSync(join(tmpdir(), 'b89-c02-boundaries-'));
   const write = (path: string, source: string) => {
     const target = join(root, path);
     mkdirSync(join(target, '..'), { recursive: true });
@@ -26,7 +26,7 @@ it.each([
     for (const app of [from, to]) {
       write(
         `apps/${app}/package.json`,
-        JSON.stringify({ name: `@qapaq/${app}`, exports: './src/index.ts' }),
+        JSON.stringify({ name: `@b89/${app}`, exports: './src/index.ts' }),
       );
       write(`apps/${app}/src/index.ts`, 'export const value = 1;');
     }
@@ -44,10 +44,10 @@ it.each([
       `export { value } from '../../${to}/src/index.js';`,
       `void import('../../${to}/src/index.js');`,
       `import { value } from '@other/index';`,
-      `import { value } from '@qapaq/${to}/src/index';`,
-      `const other = require('@qapaq/${to}');`,
+      `import { value } from '@b89/${to}/src/index';`,
+      `const other = require('@b89/${to}');`,
       `type Other = typeof import('../../${to}/src/index.js');`,
-      `import other = require('@qapaq/${to}');`,
+      `import other = require('@b89/${to}');`,
     ]) {
       write(`apps/${from}/src/violation.ts`, source);
       expect(
@@ -63,21 +63,21 @@ it.each([
 });
 
 it('rejects raw environment, package internals, client construction and opaque imports', () => {
-  const root = mkdtempSync(join(tmpdir(), 'qapaq-c02-root-'));
+  const root = mkdtempSync(join(tmpdir(), 'b89-c02-root-'));
   const app = join(root, 'apps/api');
   const configuration = join(root, 'platform/configuration');
   mkdirSync(join(app, 'src'), { recursive: true });
   mkdirSync(join(configuration, 'src'), { recursive: true });
-  writeFileSync(join(app, 'package.json'), JSON.stringify({ name: '@qapaq/api' }));
+  writeFileSync(join(app, 'package.json'), JSON.stringify({ name: '@b89/api' }));
   writeFileSync(
     join(configuration, 'package.json'),
-    JSON.stringify({ name: '@qapaq/configuration', exports: './src/index.ts' }),
+    JSON.stringify({ name: '@b89/configuration', exports: './src/index.ts' }),
   );
   try {
     writeFileSync(
       join(app, 'src/bootstrap.ts'),
       `
-      import { value } from '@qapaq/configuration/src/index';
+      import { value } from '@b89/configuration/src/index';
       import { Redis } from 'ioredis';
       const { env } = process;
       void import(env.DYNAMIC);

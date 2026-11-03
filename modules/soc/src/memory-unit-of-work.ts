@@ -11,13 +11,13 @@
 
 import { randomUUID } from 'node:crypto';
 
-import { InMemoryAuditStore } from '@qapaq/audit';
-import type { AuditStore, SealedAuditEvent } from '@qapaq/audit';
+import { InMemoryAuditStore } from '@b89/audit';
+import type { AuditStore, SealedAuditEvent } from '@b89/audit';
 import type {
   CorrelatableAlert,
   DetectionCandidate,
   DetectionCandidateStore,
-} from '@qapaq/detection';
+} from '@b89/detection';
 
 import type { Alert } from './alert.js';
 import type { Incident } from './incident.js';

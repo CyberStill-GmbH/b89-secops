@@ -95,7 +95,7 @@ resource "aws_s3_bucket" "this" {
 }
 
 resource "aws_kms_key" "s3" {
-  description             = "Customer-managed key for QAPAQ SECOPS demo S3 buckets."
+  description             = "Customer-managed key for B89 SECOPS demo S3 buckets."
   deletion_window_in_days = 30
   enable_key_rotation     = true
 

@@ -1,14 +1,14 @@
 # Archivo crudo de Wazuh
 
 `apply-archives.sh` habilita `logall_json` en Wazuh Manager, activa `archives` en el módulo
-Filebeat y registra la política `qapaq-wazuh-archives-7d` antes del reinicio. El workflow
+Filebeat y registra la política `b89-wazuh-archives-7d` antes del reinicio. El workflow
 `.github/workflows/wazuh-archives.yml` ofrece `audit` (solo lectura) y `apply` por GitHub OIDC +
 SSM. No cambia Terraform, DNS, secretos M365 ni políticas de `wazuh-alerts-*`.
 
 La captura cruda abarca todos los eventos procesados por el Manager, incluidos eventos que no
 generan alertas; no es un filtro exclusivo de M365. La política de siete días solo aplica a
 `wazuh-archives-*`; los índices de alertas mantienen su
-política actual. Los archivos locales se guardan con backup bajo `/root/qapaq-archives-backup-*`;
+política actual. Los archivos locales se guardan con backup bajo `/root/b89-archives-backup-*`;
 si la validación o los reinicios fallan, el script restaura `ossec.conf` y `filebeat.yml`.
 
 ## Datos existentes y nuevos
@@ -23,7 +23,7 @@ por `Id` y prueba controlada antes de habilitarlo.
 
 Una vez que existan documentos archive, crear/seleccionar el patrón de Dashboard `wazuh-archives-*`
 con campo de tiempo `timestamp`. El patrón actual `wazuh-alerts-*` continúa mostrando las alertas,
-incluidas las reglas M365 QAPAQ.
+incluidas las reglas M365 B89.
 
 La captura cruda incrementa disco y volumen del Indexer. Vigilar espacio libre, ingesta Filebeat y
 la aplicación de ISM; no activar la misma integración en más de un Manager.

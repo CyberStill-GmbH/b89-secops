@@ -2,7 +2,7 @@
  * Casos de uso de la administración de roles (entra-soc-user-admin.md, ADR-017).
  *
  * Flujo: solicitar (`roles.request`) → aprobar etapa de Acceso (`roles.approve`) → para
- * `qapaq.platform.admin`, aprobar etapa de Seguridad (`roles.approve.privileged`). Solo la
+ * `b89.platform.admin`, aprobar etapa de Seguridad (`roles.approve.privileged`). Solo la
  * aprobación final cambia el grant. Reglas que aquí no se relajan:
  *
  * 1. Solicitante, objetivo y cada aprobador son personas distintas (por OID de Entra).
@@ -17,7 +17,7 @@
  * 5. La etapa de Seguridad exige autenticación fuerte y reciente (step-up). La sesión actual no
  *    guarda `auth_time` ni una reautenticación propia, así que no puede probarse sin cambiar la
  *    autenticación: esa etapa se rechaza con `STEP_UP_REQUIRED` (auditado) hasta que exista.
- *    Consecuencia operativa: hoy ningún grant de `qapaq.platform.admin` se puede aprobar desde la
+ *    Consecuencia operativa: hoy ningún grant de `b89.platform.admin` se puede aprobar desde la
  *    consola. Es un bloqueo declarado, no un defecto a esquivar.
  * 6. La revocación de sesiones del objetivo ocurre **después** del commit y en otro store: no es
  *    atómica con el grant. El llamador la ejecuta y audita si quedó incompleta.
@@ -40,9 +40,9 @@ import {
   type RoleAdministrationContext,
   type RoleRequest,
   type RoleRequestAction,
-} from '@qapaq/access';
-import { recordAudit, type AuditEventDraft } from '@qapaq/audit';
-import type { RoleGrantsConfig } from '@qapaq/configuration';
+} from '@b89/access';
+import { recordAudit, type AuditEventDraft } from '@b89/audit';
+import type { RoleGrantsConfig } from '@b89/configuration';
 import {
   isRoleRosterFresh,
   ROSTER_STALE_AFTER_INTERVALS as ROLE_ROSTER_STALE_AFTER_INTERVALS,

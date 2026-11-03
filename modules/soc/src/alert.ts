@@ -10,7 +10,7 @@
  * movimiento fuera de la tabla es un error de dominio, no un no-op silencioso.
  */
 
-import type { Priority, Reason, SignalClass } from '@qapaq/detection';
+import type { Priority, Reason, SignalClass } from '@b89/detection';
 
 export const ALERT_STATUSES = ['new', 'acknowledged', 'triaged', 'escalated', 'closed'] as const;
 export type AlertStatus = (typeof ALERT_STATUSES)[number];

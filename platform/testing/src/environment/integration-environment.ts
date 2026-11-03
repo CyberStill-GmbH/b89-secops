@@ -152,9 +152,9 @@ export class IntegrationEnvironment {
     let startingService = 'PostgreSQL';
     try {
       const labels = {
-        'qapaq.test': 'true',
-        'qapaq.test.run-id': this.runId,
-        'qapaq.test.owner': 'platform-testing',
+        'b89.test': 'true',
+        'b89.test.run-id': this.runId,
+        'b89.test.owner': 'platform-testing',
       };
       const profile = this.options.profile;
       if (
@@ -168,8 +168,8 @@ export class IntegrationEnvironment {
           throw new Error('Falta digest PostgreSQL para C-04');
         const postgres = await new GenericContainer(pinnedImage('postgres'))
           .withEnvironment({
-            POSTGRES_DB: 'qapaq_test',
-            POSTGRES_USER: 'qapaq',
+            POSTGRES_DB: 'b89_test',
+            POSTGRES_USER: 'b89',
             POSTGRES_PASSWORD: `test-${this.runId}`,
           })
           .withExposedPorts(5432)
@@ -180,7 +180,7 @@ export class IntegrationEnvironment {
           ...this.runtimeValue,
           postgres: {
             container: postgres,
-            connectionString: `postgresql://qapaq:test-${this.runId}@${postgres.getHost()}:${postgres.getMappedPort(5432)}/qapaq_test`,
+            connectionString: `postgresql://b89:test-${this.runId}@${postgres.getHost()}:${postgres.getMappedPort(5432)}/b89_test`,
           },
         };
       }
@@ -203,7 +203,7 @@ export class IntegrationEnvironment {
         startingService = 'MinIO';
         const minio = await new GenericContainer(pinnedImage('minio'))
           .withEnvironment({
-            MINIO_ROOT_USER: 'qapaq-test',
+            MINIO_ROOT_USER: 'b89-test',
             MINIO_ROOT_PASSWORD: `test-${this.runId}`,
           })
           .withCommand(['server', '/data'])
@@ -216,9 +216,9 @@ export class IntegrationEnvironment {
           objectStorage: {
             container: minio,
             endpoint: `http://${minio.getHost()}:${minio.getMappedPort(9000)}`,
-            accessKey: 'qapaq-test',
+            accessKey: 'b89-test',
             secretKey: `test-${this.runId}`,
-            bucket: `qapaq-${this.runId}`,
+            bucket: `b89-${this.runId}`,
           },
         };
       }
@@ -262,7 +262,7 @@ export class IntegrationEnvironment {
       try {
         await client.connect();
         const version = await client.query<{ server_version: string }>('SHOW server_version');
-        const schema = `qapaq_${this.runId.replaceAll('-', '_')}`;
+        const schema = `b89_${this.runId.replaceAll('-', '_')}`;
         await client.query(`CREATE SCHEMA "${schema}"`);
         try {
           await client.query(`CREATE TABLE "${schema}".probe (value integer NOT NULL)`);
@@ -295,7 +295,7 @@ export class IntegrationEnvironment {
     if (this.runtimeValue.redis) {
       const started = Date.now();
       const client = createClient({ url: this.runtimeValue.redis.url });
-      const namespace = `qapaq:c06:${this.runId}`;
+      const namespace = `b89:c06:${this.runId}`;
       try {
         await client.connect();
         const set = await client.set(`${namespace}:probe`, 'roundtrip', { EX: 30, NX: true });

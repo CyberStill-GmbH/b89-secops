@@ -1,5 +1,5 @@
 /**
- * C-25 — Smart Lockout y limitación de tasa en el borde QAPAQ.
+ * C-25 — Smart Lockout y limitación de tasa en el borde B89.
  *
  * Entra aplica su propio Smart Lockout sobre la contraseña; esto protege lo que Entra no
  * ve: los intentos contra el BFF (callback, refresco, enumeración de identificadores).

@@ -34,7 +34,7 @@ locals {
 locals {
   indexer_proxy_secret_role_id = uuidv5(
     "url",
-    "${data.azurerm_resource_group.this.id}:qapaq:indexer-proxy-secret-seed",
+    "${data.azurerm_resource_group.this.id}:b89:indexer-proxy-secret-seed",
   )
 }
 
@@ -48,7 +48,7 @@ module "network" {
   location                      = data.azurerm_resource_group.this.location
   name_base                     = local.name_base
   address_space                 = var.address_space
-  ankay_subnet_address_prefix   = var.ankay_host == null ? null : cidrsubnet(var.address_space, 11, 1)
+  b89_respond_subnet_address_prefix   = var.b89_respond_host == null ? null : cidrsubnet(var.address_space, 11, 1)
   krakend_subnet_address_prefix = local.krakend_subnet_cidr
   enable_siem_firewall          = var.siem_host != null
   firewall_sku_tier             = var.siem_firewall_sku_tier
@@ -137,9 +137,9 @@ resource "azurerm_role_definition" "indexer_proxy_secret_seed" {
   count = var.krakend_gateway == null ? 0 : 1
 
   role_definition_id = local.indexer_proxy_secret_role_id
-  name               = "QAPAQ ${var.environment} Indexer Proxy Secret Seed"
+  name               = "B89 ${var.environment} Indexer Proxy Secret Seed"
   scope              = data.azurerm_resource_group.this.id
-  description        = "QAPAQ SIEM bootstrap may get/set exactly two pre-created Key Vault secrets for the opt-in read-only Indexer proxy."
+  description        = "B89 SIEM bootstrap may get/set exactly two pre-created Key Vault secrets for the opt-in read-only Indexer proxy."
 
   permissions {
     actions = []
@@ -171,7 +171,7 @@ module "egress_firewall" {
   log_analytics_workspace_id = module.observability.log_analytics_workspace_id
   source_cidrs = toset(concat(
     [var.siem_host.address_prefix],
-    var.ankay_host == null ? [] : [cidrsubnet(var.address_space, 11, 1)],
+    var.b89_respond_host == null ? [] : [cidrsubnet(var.address_space, 11, 1)],
   ))
   container_apps_source_cidrs = local.krakend_subnet_cidr == null ? toset([]) : toset([local.krakend_subnet_cidr])
   container_apps_allowed_fqdns = var.krakend_gateway == null ? toset([]) : toset([
@@ -207,7 +207,7 @@ module "egress_firewall" {
     "security.ubuntu.com",
     format("%s.virustotal.com", "api"),
     "acme-v02.api.letsencrypt.org",
-    ]), local.provider_egress_fqdns, var.ankay_host == null ? toset([]) : toset([
+    ]), local.provider_egress_fqdns, var.b89_respond_host == null ? toset([]) : toset([
     "download.docker.com",
     module.identity_registry.container_registry_login_server,
     "azurecr.io",
@@ -239,7 +239,7 @@ module "runtime" {
   depends_on = [module.identity_registry, module.data]
 }
 
-# Wazuh QAPAQ is a dedicated VM, not one of the generic Container Apps above. Keep it
+# Wazuh B89 is a dedicated VM, not one of the generic Container Apps above. Keep it
 # disabled until the operator supplies an audited firewall, immutable release bundle,
 # approved ingress CIDRs, Key Vault secret references, and a private SSH recovery key.
 module "siem_host" {
@@ -283,9 +283,9 @@ module "siem_host" {
   core_environment = merge(
     try(var.siem_host.core_environment, {}),
     var.krakend_gateway == null ? {} : {
-      QAPAQ_INGESTION_SOURCE        = "wazuh"
-      QAPAQ_WAZUH_GATEWAY_BASE_URL  = module.krakend_gateway[0].gateway_base_url
-      QAPAQ_INGESTION_GATEWAY_SCOPE = var.krakend_gateway.client_scope
+      B89_INGESTION_SOURCE        = "wazuh"
+      B89_WAZUH_GATEWAY_BASE_URL  = module.krakend_gateway[0].gateway_base_url
+      B89_INGESTION_GATEWAY_SCOPE = var.krakend_gateway.client_scope
     },
   )
   office365                   = try(var.siem_host.office365, null)
@@ -332,38 +332,38 @@ module "krakend_gateway" {
   depends_on = [module.egress_firewall, module.identity_registry, module.data]
 }
 
-# Ankay es un host privado de Shuffle separado del SIEM. Su subnet solo existe cuando
+# B89 Respond es un host privado de Shuffle separado del SIEM. Su subnet solo existe cuando
 # el operador aporta configuración completa, y comparte la UDR de salida al firewall.
-module "ankay_host" {
-  count  = var.ankay_host == null ? 0 : 1
-  source = "./modules/ankay_host"
+module "b89_respond_host" {
+  count  = var.b89_respond_host == null ? 0 : 1
+  source = "./modules/b89_respond_host"
 
   resource_group_name             = data.azurerm_resource_group.this.name
   location                        = data.azurerm_resource_group.this.location
   name_base                       = local.name_base
-  subnet_id                       = module.network.ankay_subnet_id
+  subnet_id                       = module.network.b89_respond_subnet_id
   confirm_dedicated_subnet        = true
-  private_ip_address              = try(var.ankay_host.private_ip_address, "")
+  private_ip_address              = try(var.b89_respond_host.private_ip_address, "")
   edge_subnet_cidr                = "${try(module.siem_host[0].private_ip_address, "0.0.0.0")}/32"
-  qapaq_api_subnet_cidr           = "${try(module.siem_host[0].private_ip_address, "0.0.0.0")}/32"
-  qapaq_api_private_ip            = try(module.siem_host[0].private_ip_address, "0.0.0.0")
+  b89_api_subnet_cidr           = "${try(module.siem_host[0].private_ip_address, "0.0.0.0")}/32"
+  b89_api_private_ip            = try(module.siem_host[0].private_ip_address, "0.0.0.0")
   wazuh_manager_private_ip        = try(module.siem_host[0].private_ip_address, "")
   firewall_private_ip             = try(module.egress_firewall[0].private_ip_address, "")
   firewall_policy_reference       = try(module.egress_firewall[0].policy_id, "")
-  admin_ssh_public_key            = try(var.ankay_host.admin_ssh_public_key, "")
-  vm_size                         = try(var.ankay_host.vm_size, "")
-  ubuntu_image_version            = try(var.ankay_host.ubuntu_image_version, "")
-  data_disk_size_gb               = try(var.ankay_host.data_disk_size_gb, 128)
+  admin_ssh_public_key            = try(var.b89_respond_host.admin_ssh_public_key, "")
+  vm_size                         = try(var.b89_respond_host.vm_size, "")
+  ubuntu_image_version            = try(var.b89_respond_host.ubuntu_image_version, "")
+  data_disk_size_gb               = try(var.b89_respond_host.data_disk_size_gb, 128)
   container_registry_id           = module.identity_registry.container_registry_id
   container_registry_login_server = module.identity_registry.container_registry_login_server
-  container_images                = try(var.ankay_host.container_images, {})
-  compose_yaml                    = try(var.ankay_host.compose_yaml, "")
-  compose_sha256                  = try(var.ankay_host.compose_sha256, "")
+  container_images                = try(var.b89_respond_host.container_images, {})
+  compose_yaml                    = try(var.b89_respond_host.compose_yaml, "")
+  compose_sha256                  = try(var.b89_respond_host.compose_sha256, "")
   key_vault_id                    = module.data.key_vault_id
   key_vault_uri                   = module.data.key_vault_uri
   key_vault_private_ip            = module.data.key_vault_private_ip
-  secret_names                    = try(var.ankay_host.secret_names, {})
-  docker_package_versions         = try(var.ankay_host.docker_package_versions, {})
+  secret_names                    = try(var.b89_respond_host.secret_names, {})
+  docker_package_versions         = try(var.b89_respond_host.docker_package_versions, {})
   tags                            = var.tags
 
   depends_on = [module.network, module.identity_registry, module.egress_firewall, module.siem_host]

@@ -3,7 +3,7 @@ import {
   SecretProviderError,
   type SecretProvider,
   type SecretReference,
-} from '@qapaq/configuration';
+} from '@b89/configuration';
 
 const SECRET_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9-]{0,126}$/u;
 const CLIENT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;

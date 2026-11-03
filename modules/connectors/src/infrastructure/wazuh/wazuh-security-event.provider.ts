@@ -92,7 +92,7 @@ const RFC3339_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+
 
 /**
  * Wazuh puede serializar el offset ISO 8601 como `-0500`, sin los dos puntos de RFC 3339.
- * Normalizamos solo esa variante conocida para el contrato de QAPAQ; el crudo permanece intacto.
+ * Normalizamos solo esa variante conocida para el contrato de B89; el crudo permanece intacto.
  */
 function normalizeWazuhTimestamp(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;

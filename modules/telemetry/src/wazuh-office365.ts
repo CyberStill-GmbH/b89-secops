@@ -1,13 +1,13 @@
 import { isIP } from 'node:net';
 
-import type { Identity, JsonValue, Resource, SecurityEventCategory } from '@qapaq/contracts';
+import type { Identity, JsonValue, Resource, SecurityEventCategory } from '@b89/contracts';
 
 /**
  * C-12 — sub-mapping de los registros de Office 365 Management Activity API que Wazuh
  * deja bajo `data.office365` (módulo `office365` del manager).
  *
  * Sin estos campos el analista ve "Wazuh · regla 91532" y nada más: no sabe qué
- * operación ocurrió, desde qué IP ni sobre qué objeto, y QAPAQ no puede correlacionar
+ * operación ocurrió, desde qué IP ni sobre qué objeto, y B89 no puede correlacionar
  * por usuario o por IP. Por eso el sub-mapping extrae únicamente lo que el triaje y la
  * correlación necesitan, campo por campo y con límites del contrato:
  *

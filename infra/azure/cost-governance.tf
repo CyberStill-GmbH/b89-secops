@@ -1,5 +1,5 @@
 resource "azurerm_consumption_budget_subscription" "monthly" {
-  name            = "qapaq-secops-${var.environment}-monthly"
+  name            = "b89-secops-${var.environment}-monthly"
   subscription_id = "/subscriptions/${var.subscription_id}"
   amount          = var.cost_budget_amount
   time_grain      = "Monthly"

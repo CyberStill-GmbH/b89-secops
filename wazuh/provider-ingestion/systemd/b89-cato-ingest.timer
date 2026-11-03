@@ -1,0 +1,13 @@
+[Unit]
+Description=Poll Cato Networks eventsFeed for B89 Wazuh ingestion
+
+[Timer]
+OnBootSec=50s
+OnUnitActiveSec=60s
+RandomizedDelaySec=15s
+Persistent=true
+Unit=b89-cato-ingest.service
+
+[Install]
+WantedBy=timers.target
+

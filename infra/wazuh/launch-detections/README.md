@@ -1,8 +1,8 @@
-# Paquete de detección QAPAQ para lanzamiento
+# Paquete de detección B89 para lanzamiento
 
 Estado: **preconfigurado en Git; no instalado en un Manager real**. El catálogo
 mantiene 30 casos priorizados. Las reglas locales de este paquete consumen un
-contrato JSON plano `integration=qapaq-provider`; los adapters Sophos/Cato/Entra
+contrato JSON plano `integration=b89-provider`; los adapters Sophos/Cato/Entra
 que deben emitirlo aún necesitan implementación y pruebas con proveedor. Los
 detectores M365 existentes se referencian por su ID, no se copian ni se editan.
 
@@ -14,14 +14,14 @@ sintético:
 
 ```json
 {
-  "integration": "qapaq-provider",
-  "qapaq_vendor": "sophos",
-  "qapaq_event_type": "threat_detected",
-  "qapaq_severity": "critical",
-  "qapaq_status": "active",
-  "qapaq_endpoint_id": "endpoint-lab-01",
-  "qapaq_user_id": "usuario@qapaq-lab.example",
-  "qapaq_source_record_id": "event-synthetic-001"
+  "integration": "b89-provider",
+  "b89_vendor": "sophos",
+  "b89_event_type": "threat_detected",
+  "b89_severity": "critical",
+  "b89_status": "active",
+  "b89_endpoint_id": "endpoint-lab-01",
+  "b89_user_id": "usuario@b89-lab.example",
+  "b89_source_record_id": "event-synthetic-001"
 }
 ```
 
@@ -30,20 +30,20 @@ estable, redacción y referencia/hash del raw. No escribir tokens, cuerpo de cor
 URL sensible ni payload raw en `alerts.json`. Cursor y admisión durable pertenecen
 al adapter; Wazuh no avanza checkpoints de Sophos/Cato.
 
-Campos comunes: `integration`, `qapaq_vendor`, `qapaq_event_type`,
-`qapaq_source_record_id`, `qapaq_severity`, `qapaq_status`, `qapaq_action`,
-`qapaq_user_id`, `qapaq_actor`, `qapaq_endpoint_id`, `qapaq_host`,
-`qapaq_source_ip`, `qapaq_destination`, `qapaq_hash`, `qapaq_remedy_result`,
-`qapaq_change_status`, `qapaq_path_scope`. Omit campos ausentes; no rellenar
+Campos comunes: `integration`, `b89_vendor`, `b89_event_type`,
+`b89_source_record_id`, `b89_severity`, `b89_status`, `b89_action`,
+`b89_user_id`, `b89_actor`, `b89_endpoint_id`, `b89_host`,
+`b89_source_ip`, `b89_destination`, `b89_hash`, `b89_remedy_result`,
+`b89_change_status`, `b89_path_scope`. Omit campos ausentes; no rellenar
 valores desconocidos con defaults que eleven prioridad.
 
 ## Contenido
 
-- `rules/qapaq_launch_provider_rules.xml`: reglas locales 101200–101215 para
+- `rules/b89_launch_provider_rules.xml`: reglas locales 101200–101215 para
   detecciones puntuales y telemetría normalizada. No habilita Active Response.
 - `agent-groups/`: perfiles de referencia para Windows/Linux; Sysmon está
   separado para no solicitar un canal inexistente en equipos sin ese producto.
-- `ankay/playbooks.json`: seis contratos de triage read-only. Especificación, no un
+- `b89-respond/playbooks.json`: seis contratos de triage read-only. Especificación, no un
   export JSON importable de Shuffle.
 - `../../../docs/security/launch-detection-catalog-2026-10-20.json`: 30 detecciones
   con prioridad, motor, señales, dependencias y estado de activación.
@@ -54,7 +54,7 @@ valores desconocidos con defaults que eleven prioridad.
 
 ## Aplicación al iniciar Wazuh
 
-El siguiente bundle de release Azure incluye el catálogo y ambas reglas locales QAPAQ.
+El siguiente bundle de release Azure incluye el catálogo y ambas reglas locales B89.
 Su instalador las copia de forma atómica en `/var/ossec/etc/rules/`, garantiza que el
 directorio está registrado en el `<ruleset>` activo, valida con
 `/var/ossec/bin/wazuh-analysisd -t` y reinicia el Manager con rollback si falla. Esto
@@ -70,9 +70,9 @@ de configuración del backlog y no se debe presentar como cobertura operativa.
 
 ```bash
 python infra/wazuh/launch-detections/validate_catalog.py
-docker run --detach --rm --name qapaq-wazuh-launch-test wazuh/wazuh-manager:4.14.8
-bash infra/wazuh/launch-detections/tests/run-logtest.sh qapaq-wazuh-launch-test
-docker rm -f qapaq-wazuh-launch-test
+docker run --detach --rm --name b89-wazuh-launch-test wazuh/wazuh-manager:4.14.8
+bash infra/wazuh/launch-detections/tests/run-logtest.sh b89-wazuh-launch-test
+docker rm -f b89-wazuh-launch-test
 ```
 
 Los fixtures prueban evaluación sintética del motor; no son prueba de conectividad
@@ -94,6 +94,6 @@ en el catálogo y la aceptación real descrita en el perfil de demo multifuente.
 - Cato se integra mediante su [API oficial](https://api.catonetworks.com/documentation/)
   y el [SDK oficial Go](https://github.com/catonetworks/cato-go-sdk), sujeto a que el
   tenant tenga disponible `eventsFeed` y los permisos mínimos.
-- Los playbooks se convertirán a formato exportado solo desde la instancia Ankay/
+- Los playbooks se convertirán a formato exportado solo desde la instancia B89 Respond/
   Shuffle fijada, usando [documentación de workflows](https://github.com/Shuffle/shuffle-docs)
   y revisando artefactos upstream en [shuffle-workflows](https://github.com/Shuffle/shuffle-workflows).

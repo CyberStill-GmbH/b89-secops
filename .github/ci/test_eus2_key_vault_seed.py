@@ -23,16 +23,16 @@ class KeyVaultSeedHelperTests(unittest.TestCase):
     def test_exact_allowlist_maps_to_expected_key_vault_names(self):
         self.assertEqual(
             {
-                "QAPAQ_EUS2_ENTRA_CLIENT_SECRET": "qapaq-entra-client-secret",
-                "QAPAQ_EUS2_OFFICE365_CLIENT_SECRET": "office365-client-secret",
-                "QAPAQ_EUS2_SOPHOS_CLIENT_ID": "sophos-client-id",
-                "QAPAQ_EUS2_SOPHOS_CLIENT_SECRET": "sophos-client-secret",
-                "QAPAQ_EUS2_CATO_API_KEY": "cato-api-key",
-                "QAPAQ_EUS2_CATO_API_ENDPOINT": "cato-api-endpoint",
-                "QAPAQ_EUS2_TEAMS_WORKFLOW_URL": "qapaq-teams-workflow-url",
-                "QAPAQ_EUS2_WAZUH_INSTALL_FILES_TAR_B64": "wazuh-install-files.tar.b64",
-                "QAPAQ_EUS2_WAZUH_INDEXER_READER_BOOTSTRAP": "wazuh-reader-b64",
-                "QAPAQ_EUS2_WAZUH_INDEXER_PROXY_CA_BOOTSTRAP": "wazuh-proxy-ca",
+                "B89_EUS2_ENTRA_CLIENT_SECRET": "b89-entra-client-secret",
+                "B89_EUS2_OFFICE365_CLIENT_SECRET": "office365-client-secret",
+                "B89_EUS2_SOPHOS_CLIENT_ID": "sophos-client-id",
+                "B89_EUS2_SOPHOS_CLIENT_SECRET": "sophos-client-secret",
+                "B89_EUS2_CATO_API_KEY": "cato-api-key",
+                "B89_EUS2_CATO_API_ENDPOINT": "cato-api-endpoint",
+                "B89_EUS2_TEAMS_WORKFLOW_URL": "b89-teams-workflow-url",
+                "B89_EUS2_WAZUH_INSTALL_FILES_TAR_B64": "wazuh-install-files.tar.b64",
+                "B89_EUS2_WAZUH_INDEXER_READER_BOOTSTRAP": "wazuh-reader-b64",
+                "B89_EUS2_WAZUH_INDEXER_PROXY_CA_BOOTSTRAP": "wazuh-proxy-ca",
             },
             {**HELPER.SOURCE_TO_SECRET, **HELPER.BOOTSTRAP_SOURCE_TO_SECRET},
         )
@@ -52,11 +52,11 @@ class KeyVaultSeedHelperTests(unittest.TestCase):
                     self.assertEqual(destination.stat().st_mode & 0o777, 0o600)
         with self.assertRaises(HELPER.SeedInputError):
             HELPER.write_bootstrap_placeholder(
-                pathlib.Path("unused"), "QAPAQ_EUS2_ENTRA_CLIENT_SECRET"
+                pathlib.Path("unused"), "B89_EUS2_ENTRA_CLIENT_SECRET"
             )
         with self.assertRaises(HELPER.SeedInputError):
             HELPER._validate_secret(
-                "QAPAQ_EUS2_WAZUH_INDEXER_READER_BOOTSTRAP",
+                "B89_EUS2_WAZUH_INDEXER_READER_BOOTSTRAP",
                 "caller-controlled-value",
             )
 
@@ -67,26 +67,26 @@ class KeyVaultSeedHelperTests(unittest.TestCase):
     def test_parameters_are_create_only_and_file_is_private(self):
         with tempfile.TemporaryDirectory() as directory:
             destination = pathlib.Path(directory) / "parameters.json"
-            HELPER.write_parameters(destination, "QAPAQ_EUS2_ENTRA_CLIENT_SECRET", "synthetic-test-value")
+            HELPER.write_parameters(destination, "B89_EUS2_ENTRA_CLIENT_SECRET", "synthetic-test-value")
             payload = json.loads(destination.read_text(encoding="utf-8"))
-            self.assertEqual(payload["parameters"]["secretName"]["value"], "qapaq-entra-client-secret")
+            self.assertEqual(payload["parameters"]["secretName"]["value"], "b89-entra-client-secret")
             self.assertEqual(payload["parameters"]["secretValue"]["value"], "synthetic-test-value")
             if os.name != "nt":
                 self.assertEqual(destination.stat().st_mode & 0o777, 0o600)
             with self.assertRaises(FileExistsError):
-                HELPER.write_parameters(destination, "QAPAQ_EUS2_ENTRA_CLIENT_SECRET", "other-test-value")
+                HELPER.write_parameters(destination, "B89_EUS2_ENTRA_CLIENT_SECRET", "other-test-value")
 
     def test_multiline_and_empty_values_are_rejected(self):
         for value in ("", "line-one\nline-two", "line-one\rline-two", "with\x00null"):
             with self.subTest(value_kind=len(value)):
                 with self.assertRaises(HELPER.SeedInputError):
-                    HELPER._validate_secret("QAPAQ_EUS2_CATO_API_KEY", value)
+                    HELPER._validate_secret("B89_EUS2_CATO_API_KEY", value)
 
     def test_teams_workflow_input_requires_https(self):
         with self.assertRaises(HELPER.SeedInputError):
-            HELPER._validate_secret("QAPAQ_EUS2_TEAMS_WORKFLOW_URL", "http://example.invalid/webhook")
+            HELPER._validate_secret("B89_EUS2_TEAMS_WORKFLOW_URL", "http://example.invalid/webhook")
         with self.assertRaises(HELPER.SeedInputError):
-            HELPER._validate_secret("QAPAQ_EUS2_TEAMS_WORKFLOW_URL", "https://user:pass@example.invalid/hook")
+            HELPER._validate_secret("B89_EUS2_TEAMS_WORKFLOW_URL", "https://user:pass@example.invalid/hook")
 
     @staticmethod
     def valid_wazuh_archive_b64() -> str:
@@ -103,10 +103,10 @@ class KeyVaultSeedHelperTests(unittest.TestCase):
 
     def test_wazuh_archive_is_validated_without_extraction(self):
         HELPER._validate_secret(
-            "QAPAQ_EUS2_WAZUH_INSTALL_FILES_TAR_B64", self.valid_wazuh_archive_b64()
+            "B89_EUS2_WAZUH_INSTALL_FILES_TAR_B64", self.valid_wazuh_archive_b64()
         )
         with self.assertRaises(HELPER.SeedInputError):
-            HELPER._validate_secret("QAPAQ_EUS2_WAZUH_INSTALL_FILES_TAR_B64", "not-base64")
+            HELPER._validate_secret("B89_EUS2_WAZUH_INSTALL_FILES_TAR_B64", "not-base64")
 
     def test_wazuh_archive_rejects_path_traversal(self):
         buffer = io.BytesIO()
@@ -120,7 +120,7 @@ class KeyVaultSeedHelperTests(unittest.TestCase):
                 archive.addfile(info, io.BytesIO(content))
         encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
         with self.assertRaises(HELPER.SeedInputError):
-            HELPER._validate_secret("QAPAQ_EUS2_WAZUH_INSTALL_FILES_TAR_B64", encoded)
+            HELPER._validate_secret("B89_EUS2_WAZUH_INSTALL_FILES_TAR_B64", encoded)
 
 
 class WorkflowContractTests(unittest.TestCase):
@@ -132,8 +132,8 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("id-token: write", workflow)
         self.assertIn("refs/heads/main", workflow)
         self.assertIn("SEED-EUS2-SECRET", workflow)
-        self.assertIn("QAPAQ_EUS2_WAZUH_INDEXER_READER_BOOTSTRAP", workflow)
-        self.assertIn("QAPAQ_EUS2_WAZUH_INDEXER_PROXY_CA_BOOTSTRAP", workflow)
+        self.assertIn("B89_EUS2_WAZUH_INDEXER_READER_BOOTSTRAP", workflow)
+        self.assertIn("B89_EUS2_WAZUH_INDEXER_PROXY_CA_BOOTSTRAP", workflow)
         self.assertIn("--write-bootstrap-placeholder", workflow)
         self.assertIn("SELECTED_SECRET_VALUE:", workflow)
 
@@ -164,7 +164,7 @@ class WorkflowContractTests(unittest.TestCase):
     def test_workflow_checks_the_exact_private_endpoint_through_network_api(self):
         workflow = (ROOT / ".github/workflows/seed-eus2-key-vault-secret.yml").read_text()
         self.assertIn("az network private-endpoint-connection list", workflow)
-        self.assertIn("Microsoft.Network/privateEndpoints/pe-qapaqsecopsdemoeus-vault", workflow)
+        self.assertIn("Microsoft.Network/privateEndpoints/pe-b89secopsdemoeus-vault", workflow)
         self.assertIn("properties.privateLinkServiceConnectionState.status", workflow)
         self.assertNotIn("properties.privateEndpointConnections", workflow)
 

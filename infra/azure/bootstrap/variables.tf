@@ -1,5 +1,5 @@
 variable "subscription_id" {
-  description = "Azure subscription for the isolated QAPAQ demo."
+  description = "Azure subscription for the isolated B89 demo."
   type        = string
 }
 
@@ -17,7 +17,7 @@ variable "location" {
 variable "project" {
   description = "Must match infra/azure so the same target resource-group name is derived."
   type        = string
-  default     = "qapaq-secops"
+  default     = "b89-secops"
 }
 
 variable "environment" {
@@ -29,7 +29,7 @@ variable "environment" {
 variable "github_repository" {
   description = "GitHub repository allowed to request the Azure OIDC token."
   type        = string
-  default     = "CyberStill-GmbH/qapaq-secops"
+  default     = "CyberStill-GmbH/b89-secops"
 }
 
 variable "github_owner_id" {
@@ -99,14 +99,14 @@ variable "state_container_name" {
 variable "state_key" {
   description = "Blob path for the Azure demo root state."
   type        = string
-  default     = "qapaq-secops/demo/terraform.tfstate"
+  default     = "b89-secops/demo/terraform.tfstate"
 }
 
 variable "tags" {
   description = "Governance labels for bootstrap resources."
   type        = map(string)
   default = {
-    project     = "qapaq-secops"
+    project     = "b89-secops"
     environment = "demo"
     managed_by  = "terraform-bootstrap"
     cloud       = "azure"

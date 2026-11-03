@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { SECURITY_EVENT_LIMITS, validateSecurityEvent } from '@qapaq/contracts';
+import { SECURITY_EVENT_LIMITS, validateSecurityEvent } from '@b89/contracts';
 
 import {
   normalizeWazuhAlert,
@@ -13,16 +13,16 @@ import {
 } from '../src/wazuh-normalization.js';
 
 const context: WazuhNormalizationContext = {
-  tenantId: 'tenant-qapaq-001',
-  instanceId: 'siem-qapaq-lab',
-  connector: 'qapaq-wazuh-indexer',
+  tenantId: 'tenant-b89-001',
+  instanceId: 'siem-b89-lab',
+  connector: 'b89-wazuh-indexer',
   connectorVersion: '1.0.0',
   receivedAt: new Date('2026-09-30T12:00:00.000Z'),
 };
 
 function rawProof(sizeBytes = 2048, suffix = '01') {
   return {
-    ref: `raw:tenant-qapaq-001/2026/09/30/evt-${suffix}`,
+    ref: `raw:tenant-b89-001/2026/09/30/evt-${suffix}`,
     sha256: `${suffix.padStart(2, '0').repeat(32)}`.slice(0, 64),
     mediaType: 'application/json',
     sizeBytes,
@@ -43,8 +43,8 @@ function alert(overrides: Record<string, unknown> = {}, suffix = '01'): WazuhAle
           description: 'SSHD authentication failed',
           groups: ['sshd', 'authentication_failed'],
         },
-        agent: { id: '003', name: 'workstation.qapaq.local' },
-        data: { srcuser: 'jperez@qapaq.pe', srcip: '10.4.21.88' },
+        agent: { id: '003', name: 'workstation.b89.local' },
+        data: { srcuser: 'jperez@b89.example', srcip: '10.4.21.88' },
         ...overrides,
       },
     },
@@ -62,7 +62,7 @@ describe('C-12 normalización de alertas Wazuh', () => {
     expect(validateSecurityEvent(outcome.event).valid).toBe(true);
     expect(outcome.event.kind).toBe('alert');
     expect(outcome.event.source.product).toBe('Wazuh');
-    expect(outcome.event.eventUid).toBe('siem-qapaq-lab:alerts:evt-01');
+    expect(outcome.event.eventUid).toBe('siem-b89-lab:alerts:evt-01');
     expect(outcome.event.detection?.rule.id).toBe('5716');
   });
 
@@ -99,14 +99,14 @@ describe('C-12 normalización de alertas Wazuh', () => {
     expect(outcome.event.provenance.mappingVersion).toBe(WAZUH_MAPPING_VERSION);
     expect(outcome.event.provenance.parserVersion).toBe(WAZUH_PARSER_VERSION);
     expect(outcome.event.severity.mappingVersion).toBe(WAZUH_MAPPING_VERSION);
-    expect(outcome.event.provenance.ingestionPath.at(-1)?.product).toBe('QAPAQ SecOps');
+    expect(outcome.event.provenance.ingestionPath.at(-1)?.product).toBe('B89 SecOps');
   });
 
   it('no deja pasar al evento ningún campo no declarado por el mapping', () => {
     const outcome = normalizeWazuhAlert(
       alert({
         campo_no_declarado: 'VALOR-FILTRADO',
-        data: { srcuser: 'jperez@qapaq.pe', password: 'super-secreta' },
+        data: { srcuser: 'jperez@b89.example', password: 'super-secreta' },
       }),
       context,
     );

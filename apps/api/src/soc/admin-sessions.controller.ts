@@ -15,8 +15,8 @@
 import { randomUUID } from 'node:crypto';
 
 import { Body, Controller, Get, Inject, Param, Post, Query, Req } from '@nestjs/common';
-import { revokeSession, type Session } from '@qapaq/access';
-import { recordAudit } from '@qapaq/audit';
+import { revokeSession, type Session } from '@b89/access';
+import { recordAudit } from '@b89/audit';
 
 import { ApiError } from '../http/api-error.js';
 import type { IncomingRequest } from '../http/http-contracts.js';

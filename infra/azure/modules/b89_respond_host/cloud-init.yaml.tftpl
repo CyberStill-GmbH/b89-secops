@@ -1,0 +1,93 @@
+#cloud-config
+write_files:
+  - path: /etc/b89-respond/compose.yaml
+    owner: root:root
+    permissions: '0600'
+    encoding: b64
+    content: ${compose_b64}
+  - path: /etc/b89-respond/compose.sha256
+    owner: root:root
+    permissions: '0600'
+    content: ${compose_sha}
+  - path: /usr/local/sbin/b89-respond-prepare-data-disk
+    owner: root:root
+    permissions: '0750'
+    encoding: b64
+    content: ${disk_bootstrap_b64}
+  - path: /usr/local/sbin/b89-respond-install-runtime
+    owner: root:root
+    permissions: '0750'
+    encoding: b64
+    content: ${install_script_b64}
+  - path: /usr/local/sbin/b89-respond-fetch-runtime-secrets
+    owner: root:root
+    permissions: '0750'
+    encoding: b64
+    content: ${secret_fetch_b64}
+  - path: /usr/local/sbin/b89-respond-start-compose
+    owner: root:root
+    permissions: '0750'
+    encoding: b64
+    content: ${start_script_b64}
+  - path: /usr/local/sbin/b89-respond-registry-login
+    owner: root:root
+    permissions: '0750'
+    encoding: b64
+    content: ${registry_script_b64}
+  - path: /etc/systemd/system/b89-respond-compose.service
+    owner: root:root
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=B89 Respond Shuffle stack
+      Wants=network-online.target
+      After=network-online.target docker.service
+      Requires=docker.service
+      RequiresMountsFor=/mnt/b89-respond
+      StartLimitIntervalSec=0
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/usr/local/sbin/b89-respond-start-compose
+      ExecStop=/usr/bin/docker compose --project-name b89-respond --env-file /etc/b89-respond/runtime.env --file /etc/b89-respond/compose.yaml stop --timeout 60
+      TimeoutStartSec=infinity
+      Restart=on-failure
+      RestartSec=60s
+
+      [Install]
+      WantedBy=multi-user.target
+  - path: /etc/systemd/system/b89-respond-acr-login.service
+    owner: root:root
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=Refresh B89 Respond managed-identity ACR session
+      Wants=network-online.target
+      After=network-online.target docker.service
+      Requires=docker.service
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/sbin/b89-respond-registry-login
+      TimeoutStartSec=120
+  - path: /etc/systemd/system/b89-respond-acr-login.timer
+    owner: root:root
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=Refresh B89 Respond ACR session before its Entra token expires
+
+      [Timer]
+      OnBootSec=5min
+      OnUnitActiveSec=45min
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
+runcmd:
+  - [python3, /usr/local/sbin/b89-respond-prepare-data-disk, "${data_disk_gb}"]
+  - [bash, -lc, /usr/local/sbin/b89-respond-install-runtime]
+  - [systemctl, daemon-reload]
+  - [systemctl, enable, --now, b89-respond-acr-login.timer]
+  - [systemctl, enable, --now, b89-respond-compose.service]

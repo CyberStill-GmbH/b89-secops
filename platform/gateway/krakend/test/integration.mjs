@@ -54,8 +54,8 @@ function runCompose(args, rateOverrides = {}) {
         OIDC_JWKS_URL: `${issuer}jwks`,
         OIDC_DISABLE_JWK_SECURITY: 'true',
         OIDC_ISSUER: issuer,
-        OIDC_AUDIENCE: 'qapaq-provider-gateway',
-        QAPAQ_CORE_CLIENT_ID: '00000000-0000-0000-0000-000000000003',
+        OIDC_AUDIENCE: 'b89-provider-gateway',
+        B89_CORE_CLIENT_ID: '00000000-0000-0000-0000-000000000003',
         WAZUH_INDEXER_URL: 'http://mock-indexer:9200',
         WAZUH_INDEXER_CA_FILE: '',
         WAZUH_BASIC_AUTH_B64: 'dGVzdDp0ZXN0',
@@ -75,12 +75,12 @@ function runCompose(args, rateOverrides = {}) {
 }
 
 function makeToken({
-  audience = 'qapaq-provider-gateway',
+  audience = 'b89-provider-gateway',
   tokenIssuer = issuer,
-  subject = 'test-qapaq-worker',
+  subject = 'test-b89-worker',
   clientId = '00000000-0000-0000-0000-000000000003',
   clientClaim = 'appid',
-  roles = ['Qapaq.Wazuh.Read'],
+  roles = ['B89.Wazuh.Read'],
 } = {}) {
   const encode = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
   const head = encode({ alg: 'RS256', typ: 'JWT', kid });
@@ -199,8 +199,8 @@ try {
     'backend topology header must be filtered',
   );
 
-  const auditQueryMarker = 'qapaq-audit-query-must-not-be-logged';
-  const auditBodyMarker = 'qapaq-audit-body-must-not-be-logged';
+  const auditQueryMarker = 'b89-audit-query-must-not-be-logged';
+  const auditBodyMarker = 'b89-audit-body-must-not-be-logged';
   const auditToken = makeToken({ subject: 'audit-log-test-core' });
   const auditResponse = await request(`/wazuh/_search?marker=${auditQueryMarker}`, {
     token: auditToken,

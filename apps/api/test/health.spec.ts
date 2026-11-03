@@ -2,7 +2,7 @@ import { expect, it, vi } from 'vitest';
 import { buildApi } from '../src/bootstrap.js';
 
 it('serves safe live/ready responses through the real Nest routing layer', async () => {
-  const runtime = await buildApi({ QAPAQ_PROFILE: 'test', QAPAQ_API_PORT: '0' }, () => {});
+  const runtime = await buildApi({ B89_PROFILE: 'test', B89_API_PORT: '0' }, () => {});
   try {
     await runtime.application.init();
     const before = await runtime.application.inject({ method: 'GET', url: '/health/ready' });
@@ -15,7 +15,7 @@ it('serves safe live/ready responses through the real Nest routing layer', async
         headers: { origin: 'https://example.test' },
       });
       expect(response.statusCode).toBe(200);
-      expect(response.json()).toEqual({ status: 'ok', service: 'qapaq-secops-api' });
+      expect(response.json()).toEqual({ status: 'ok', service: 'b89-secops-api' });
       expect(response.headers['x-powered-by']).toBeUndefined();
       expect(response.headers['access-control-allow-origin']).toBeUndefined();
     }
@@ -30,7 +30,7 @@ it('serves safe live/ready responses through the real Nest routing layer', async
     );
     const during = await runtime.application.inject({ method: 'GET', url: '/health/ready' });
     expect(during.statusCode).toBe(503);
-    expect(during.json()).toEqual({ status: 'unavailable', service: 'qapaq-secops-api' });
+    expect(during.json()).toEqual({ status: 'unavailable', service: 'b89-secops-api' });
     expect((await runtime.application.inject('/health/live')).statusCode).toBe(200);
     drained();
     await shutdown;
@@ -45,7 +45,7 @@ it('does not construct a listener when configuration is invalid', async () => {
 
 it('cleans up after a failed listen without reaching readiness', async () => {
   const emit = vi.fn();
-  const runtime = await buildApi({ QAPAQ_PROFILE: 'test', QAPAQ_API_PORT: '0' }, emit);
+  const runtime = await buildApi({ B89_PROFILE: 'test', B89_API_PORT: '0' }, emit);
   vi.spyOn(runtime.application, 'listen').mockRejectedValueOnce(
     new Error('synthetic-listen-failure'),
   );
@@ -59,7 +59,7 @@ it('cleans up after a failed listen without reaching readiness', async () => {
 
 it('a signal during listen drains the eventual listener without announcing readiness', async () => {
   const emit = vi.fn();
-  const runtime = await buildApi({ QAPAQ_PROFILE: 'test', QAPAQ_API_PORT: '0' }, emit);
+  const runtime = await buildApi({ B89_PROFILE: 'test', B89_API_PORT: '0' }, emit);
   try {
     const started = runtime.start();
     const stopped = runtime.stop();

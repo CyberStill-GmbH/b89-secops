@@ -1,5 +1,5 @@
 aws_region  = "us-east-1"
-project     = "qapaq-secops"
+project     = "b89-secops"
 environment = "demo"
 vpc_cidr    = "10.0.0.0/16"
 az_count    = 2
@@ -15,7 +15,7 @@ public_route53_zone_name          = "api.jappi.net.pe"
 public_root_route53_zone_name     = "jappi.net.pe"
 wazuh_dashboard_hostname          = "app.jappi.net.pe"
 wazuh_dashboard_legacy_hostname   = "wazuh.jappi.net.pe"
-wazuh_dashboard_redirect_hostname = "qapaq-secops.jappi.net.pe"
+wazuh_dashboard_redirect_hostname = "b89-secops.jappi.net.pe"
 siem_app_cutover                  = true
 wazuh_version                     = "4.14.8"
 wazuh_instance_type               = "t3.xlarge"
@@ -46,20 +46,20 @@ soc_database_enabled = true
 
 # Public Vercel-origin requests pass through the private KrakenD/API tasks.
 runtime_api_environment = {
-  QAPAQ_ACCESS_ALLOWED_CIDRS        = "0.0.0.0/0,::/0"
-  QAPAQ_ACCESS_TRUSTED_PROXY_CIDRS  = "10.0.0.0/16"
-  QAPAQ_ENTRA_TENANT_ID             = "45f2f938-dbe3-4a3e-8a54-930893f94ef8"
-  QAPAQ_ENTRA_CLIENT_ID             = "336d44fe-b99d-4cfd-9c6e-0ed2d7e48998"
-  QAPAQ_ENTRA_REDIRECT_URI          = "https://app.jappi.net.pe/api/auth/callback"
-  QAPAQ_ENTRA_ALLOWED_REDIRECT_URIS = "https://app.jappi.net.pe/api/auth/callback"
-  QAPAQ_CONSOLE_BASE_URL            = "https://app.jappi.net.pe"
+  B89_ACCESS_ALLOWED_CIDRS        = "0.0.0.0/0,::/0"
+  B89_ACCESS_TRUSTED_PROXY_CIDRS  = "10.0.0.0/16"
+  B89_ENTRA_TENANT_ID             = "45f2f938-dbe3-4a3e-8a54-930893f94ef8"
+  B89_ENTRA_CLIENT_ID             = "336d44fe-b99d-4cfd-9c6e-0ed2d7e48998"
+  B89_ENTRA_REDIRECT_URI          = "https://app.jappi.net.pe/api/auth/callback"
+  B89_ENTRA_ALLOWED_REDIRECT_URIS = "https://app.jappi.net.pe/api/auth/callback"
+  B89_CONSOLE_BASE_URL            = "https://app.jappi.net.pe"
   # Sprint 5: asignación permanente (sin vencimiento) de la persona analista del demo. El dueño
   # del grupo de admisión recibe admin por `soc_group_owner_oids` (variable de GitHub); los
-  # miembros del grupo de admisión, por `QAPAQ_ADMIN_GROUP_IDS` (identity.tf).
-  QAPAQ_ROLE_BINDINGS = "707e3194-cdbe-4072-b17e-712c4e5fdadb=qapaq.soc.analyst"
+  # miembros del grupo de admisión, por `B89_ADMIN_GROUP_IDS` (identity.tf).
+  B89_ROLE_BINDINGS = "707e3194-cdbe-4072-b17e-712c4e5fdadb=b89.soc.analyst"
   # Excepción temporal solo para el demo; vence en 24 h (hora Lima: 2026-10-16 22:41).
   # Se retira al terminar la prueba; no cambia MFA ni Conditional Access en Entra.
-  QAPAQ_DEMO_MFA_EXCEPTION_UNTIL = "2026-10-17T03:41:30Z"
+  B89_DEMO_MFA_EXCEPTION_UNTIL = "2026-10-17T03:41:30Z"
 }
 
 # El token de workload de la ingesta es v1.0 (scope `<clientid>/.default`, la app no expone
@@ -73,10 +73,10 @@ runtime_krakend_environment = {
 
 # Sprint 5 — demo operativo sin pasos manuales (docs/09-plan-de-lanzamiento.md).
 # Wazuh se inicializa por SSM en el apply: lector del Indexer, proxy TLS privado, usuario admin
-# local (`qapaq-admin`, contraseña en Secrets Manager) y usuario analista de solo lectura, más la
+# local (`b89-admin`, contraseña en Secrets Manager) y usuario analista de solo lectura, más la
 # recolección de Office 365 con la misma app de Entra del API.
 wazuh_bootstrap_enabled = true
-wazuh_analyst_username  = "cguevara@qapaq.pe"
+wazuh_analyst_username  = "cguevara@b89.example"
 wazuh_office365_enabled = true
 # Ingesta Wazuh → SOC por KrakenD con token de workload de la app del API.
 wazuh_ingestion_enabled = true
@@ -85,5 +85,5 @@ soc_directory_group_id   = "bbf1d58b-19e6-4261-b196-5ebcd8176d85"
 soc_directory_group_name = "Accesos_SOC"
 # Avisos: si Teams no confirma la entrega, el aviso sale por correo desde este buzón (Mail.Send
 # de la app del API). Teams se activa con teams_notifications_enabled cuando exista el secreto.
-alert_mail_sender = "cguevara@qapaq.pe"
+alert_mail_sender = "cguevara@b89.example"
 

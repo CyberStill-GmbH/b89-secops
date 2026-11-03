@@ -1,7 +1,7 @@
 /**
  * Sprint 5 · fase 1 — `GET /api/events`: explorador de eventos sobre el Indexer (S5-D5).
  *
- * Lectura directa: QAPAQ no guarda copia; Wazuh sigue siendo el dueño de la telemetría.
+ * Lectura directa: B89 no guarda copia; Wazuh sigue siendo el dueño de la telemetría.
  *
  * - Exige `events.read`. El documento original (`raw`) solo viaja con `events.read_raw`.
  * - Rango: `from`/`to` ISO 8601 (por defecto, las últimas 24 h) y como máximo 31 días, que es
@@ -9,7 +9,7 @@
  *   primero, con cursor opaco del proveedor ligado a filtros y orden.
  * - Filtros del contrato: `severity` y `category` (multivalor, separados por coma) y
  *   `outcome` (`success | failure`). Nada de lenguaje de consulta del proveedor.
- * - Alternativa: `q` en la gramática `qapaq-events-v1` (`@qapaq/contracts`), que produce los
+ * - Alternativa: `q` en la gramática `b89-events-v1` (`@b89/contracts`), que produce los
  *   mismos filtros. `q` y los filtros tipados son excluyentes: mandar ambos es 422 (no hay
  *   precedencia silenciosa). Un error de `q` es 422 sobre `q` sin repetir la consulta; la
  *   consola usa el mismo parser para mostrar posición y alternativas. La respuesta devuelve la
@@ -21,15 +21,15 @@
  */
 
 import { Controller, Get, Inject, Query, Req } from '@nestjs/common';
-import { projectFields } from '@qapaq/access';
-import { SecurityEventProviderError } from '@qapaq/connectors';
+import { projectFields } from '@b89/access';
+import { SecurityEventProviderError } from '@b89/connectors';
 import {
   EVENTS_QUERY_GRAMMAR,
   formatEventsQuery,
   parseEventsQuery,
   type EventsQueryFilters,
   type SecurityEvent,
-} from '@qapaq/contracts';
+} from '@b89/contracts';
 
 import { ApiError } from '../http/api-error.js';
 import type { IncomingRequest } from '../http/http-contracts.js';

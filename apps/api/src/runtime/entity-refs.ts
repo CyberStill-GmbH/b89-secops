@@ -13,7 +13,7 @@
 
 import { createHmac } from 'node:crypto';
 
-import type { EntityRefFactory } from '@qapaq/soc';
+import type { EntityRefFactory } from '@b89/soc';
 
 export const ENTITY_REF_PATTERN = /^ent_[A-Za-z0-9_-]{22}$/u;
 

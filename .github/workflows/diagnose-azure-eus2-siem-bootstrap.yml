@@ -32,9 +32,9 @@ jobs:
           set -euo pipefail
           az account set --subscription "$AZURE_SUBSCRIPTION_ID"
           az vm extension show \
-            --resource-group rg-qapaqsecopsdemoeus-3a2405f3 \
-            --vm-name vm-qapaqsecopsdemoeus-siem \
-            --name qapaq-siem-bootstrap \
+            --resource-group rg-b89secopsdemoeus-3a2405f3 \
+            --vm-name vm-b89secopsdemoeus-siem \
+            --name b89-siem-bootstrap \
             --expand instanceView \
             --query '{id:id,provisioningState:provisioningState,statuses:instanceView.statuses}' \
             --output json
@@ -44,15 +44,15 @@ jobs:
         run: |
           set -euo pipefail
           az vm run-command invoke \
-            --resource-group rg-qapaqsecopsdemoeus-3a2405f3 \
-            --name vm-qapaqsecopsdemoeus-siem \
+            --resource-group rg-b89secopsdemoeus-3a2405f3 \
+            --name vm-b89secopsdemoeus-siem \
             --command-id RunShellScript \
             --scripts 'set -eu
-          if [ -r /var/log/qapaq-siem-bootstrap.log ]; then
-            tail -n 120 /var/log/qapaq-siem-bootstrap.log
+          if [ -r /var/log/b89-siem-bootstrap.log ]; then
+            tail -n 120 /var/log/b89-siem-bootstrap.log
           else
             echo "bootstrap log not found or not readable"
-            ls -l /var/log/qapaq-siem-bootstrap.log /usr/local/sbin/qapaq-siem-bootstrap.py 2>&1 || true
+            ls -l /var/log/b89-siem-bootstrap.log /usr/local/sbin/b89-siem-bootstrap.py 2>&1 || true
             cloud-init status --long 2>&1 || true
           fi' \
             --query 'value[0].message' \
@@ -63,27 +63,27 @@ jobs:
         run: |
           set -euo pipefail
           az vm run-command invoke \
-            --resource-group rg-qapaqsecopsdemoeus-3a2405f3 \
-            --name vm-qapaqsecopsdemoeus-siem \
+            --resource-group rg-b89secopsdemoeus-3a2405f3 \
+            --name vm-b89secopsdemoeus-siem \
             --command-id RunShellScript \
             --scripts 'set -eu
           echo "== durable disk mount =="
-          findmnt --noheadings --output SOURCE,FSTYPE,TARGET /srv/qapaq-siem || true
+          findmnt --noheadings --output SOURCE,FSTYPE,TARGET /srv/b89-siem || true
           echo "== Wazuh package status and versions =="
           for package in wazuh-manager wazuh-indexer wazuh-dashboard filebeat; do
             dpkg-query --show --showformat="\${db:Status-Status}|\${Version}" "$package" 2>/dev/null || echo "$package=missing"
             echo
           done
           echo "== bootstrap state =="
-          if [ -f /srv/qapaq-siem/bootstrap-install-state.json ]; then
-            cat /srv/qapaq-siem/bootstrap-install-state.json
+          if [ -f /srv/b89-siem/bootstrap-install-state.json ]; then
+            cat /srv/b89-siem/bootstrap-install-state.json
           else
             echo absent
           fi
           echo "== retained Wazuh release digests =="
-          find /opt/qapaq-siem/releases -mindepth 1 -maxdepth 1 -type d -printf "%f\n" 2>/dev/null | sort || true
+          find /opt/b89-siem/releases -mindepth 1 -maxdepth 1 -type d -printf "%f\n" 2>/dev/null | sort || true
           echo "== durable data counts =="
-          for path in /srv/qapaq-siem/manager /srv/qapaq-siem/indexer /srv/qapaq-siem/dashboard /opt/qapaq-core; do
+          for path in /srv/b89-siem/manager /srv/b89-siem/indexer /srv/b89-siem/dashboard /opt/b89-core; do
             if [ -e "$path" ]; then
               files=$(find "$path" -xdev -type f 2>/dev/null | wc -l)
               bytes=$(du -sb "$path" 2>/dev/null | cut -f1 || echo unknown)
@@ -93,13 +93,13 @@ jobs:
             fi
           done
           echo "== service states =="
-          for service in wazuh-indexer wazuh-manager filebeat wazuh-dashboard qapaq-core-api qapaq-core-worker; do
+          for service in wazuh-indexer wazuh-manager filebeat wazuh-dashboard b89-core-api b89-core-worker; do
             state=$(systemctl is-active "$service" 2>/dev/null || true)
             printf "%s=%s\n" "$service" "${state:-unknown}"
           done
           echo "== Core readiness =="
-          if [ -x /opt/qapaq-core/current/node/bin/node ]; then
-            /opt/qapaq-core/current/node/bin/node --version
+          if [ -x /opt/b89-core/current/node/bin/node ]; then
+            /opt/b89-core/current/node/bin/node --version
           else
             echo node-runtime-absent
           fi

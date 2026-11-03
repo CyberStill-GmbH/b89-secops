@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - "wazuh/archive/**"
-      - "wazuh/indexer/ism/qapaq-wazuh-archives-7d.json"
+      - "wazuh/indexer/ism/b89-wazuh-archives-7d.json"
       - ".github/workflows/wazuh-archives.yml"
   workflow_dispatch:
     inputs:
@@ -19,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: qapaq-wazuh-archives
+  group: b89-wazuh-archives
   cancel-in-progress: false
 
 jobs:
@@ -34,11 +34,11 @@ jobs:
           set -euo pipefail
           bash -n wazuh/archive/apply-archives.sh
           jq -e '.policy.ism_template[] | select(.index_patterns | index("wazuh-archives-*")) | .priority == 200' \
-            wazuh/indexer/ism/qapaq-wazuh-archives-7d.json >/dev/null
+            wazuh/indexer/ism/b89-wazuh-archives-7d.json >/dev/null
           jq -e '.policy.states[] | select(.name == "hot") | .transitions[] | select(.conditions.min_index_age == "7d")' \
-            wazuh/indexer/ism/qapaq-wazuh-archives-7d.json >/dev/null
+            wazuh/indexer/ism/b89-wazuh-archives-7d.json >/dev/null
           jq -e '.policy.states[] | select(.name == "expired") | .actions[] | has("delete")' \
-            wazuh/indexer/ism/qapaq-wazuh-archives-7d.json >/dev/null
+            wazuh/indexer/ism/b89-wazuh-archives-7d.json >/dev/null
 
   deploy:
     if: github.event_name == 'workflow_dispatch'
@@ -52,9 +52,9 @@ jobs:
       - name: Configure AWS credentials via GitHub OIDC
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
-          role-to-assume: arn:aws:iam::955200662475:role/qapaq-secops-github-terraform-demo
+          role-to-assume: arn:aws:iam::955200662475:role/b89-secops-github-terraform-demo
           aws-region: us-east-1
-          role-session-name: qapaq-wazuh-archives
+          role-session-name: b89-wazuh-archives
           allowed-account-ids: 955200662475
       - name: Apply through SSM to Wazuh
         shell: bash
@@ -63,37 +63,37 @@ jobs:
         run: |
           set -euo pipefail
           instance_id="$(aws ec2 describe-instances \
-            --filters 'Name=tag:Name,Values=qapaq-secops-demo-wazuh' 'Name=instance-state-name,Values=running' \
+            --filters 'Name=tag:Name,Values=b89-secops-demo-wazuh' 'Name=instance-state-name,Values=running' \
             --query 'Reservations[].Instances[].InstanceId | [0]' --output text)"
           [[ -n "$instance_id" && "$instance_id" != None ]] || { echo 'No hay un host Wazuh en ejecución.' >&2; exit 1; }
 
           bundle="$(tar -czf - \
             wazuh/archive/apply-archives.sh \
-            wazuh/indexer/ism/qapaq-wazuh-archives-7d.json \
+            wazuh/indexer/ism/b89-wazuh-archives-7d.json \
             wazuh/scripts/indexer-admin.sh | base64 -w0)"
           remote_script="$(cat <<REMOTE
           set -euo pipefail
           work="\$(mktemp -d)"; trap 'rm -rf "\$work"' EXIT
           printf '%s' '${bundle}' | base64 -d | tar -C "\$work" -xzf -
           helper="\$work/wazuh/scripts/indexer-admin.sh"
-          policy="\$work/wazuh/indexer/ism/qapaq-wazuh-archives-7d.json"
+          policy="\$work/wazuh/indexer/ism/b89-wazuh-archives-7d.json"
           if [[ '${MODE}' == apply ]]; then
-            install -d -m 0750 /opt/qapaq
-            install -m 0750 "\$helper" /opt/qapaq/indexer-admin.sh
-            install -m 0640 "\$policy" /opt/qapaq/qapaq-wazuh-archives-7d.json
-            helper=/opt/qapaq/indexer-admin.sh
-            policy=/opt/qapaq/qapaq-wazuh-archives-7d.json
+            install -d -m 0750 /opt/b89
+            install -m 0750 "\$helper" /opt/b89/indexer-admin.sh
+            install -m 0640 "\$policy" /opt/b89/b89-wazuh-archives-7d.json
+            helper=/opt/b89/indexer-admin.sh
+            policy=/opt/b89/b89-wazuh-archives-7d.json
           fi
-          QAPAQ_ARCHIVES_MODE='${MODE}' \\
-          QAPAQ_INDEXER_ADMIN_HELPER="\$helper" \\
-          QAPAQ_ARCHIVES_POLICY="\$policy" \\
+          B89_ARCHIVES_MODE='${MODE}' \\
+          B89_INDEXER_ADMIN_HELPER="\$helper" \\
+          B89_ARCHIVES_POLICY="\$policy" \\
             bash "\$work/wazuh/archive/apply-archives.sh"
           REMOTE
           )"
           payload="$(jq -cn --arg command "$remote_script" '{commands: ["bash -c " + ($command | @sh)]}')"
           (( $(LC_ALL=C printf '%s' "$payload" | wc -c) <= 24000 )) || { echo 'Payload SSM excede 24000 bytes.' >&2; exit 1; }
           command_id="$(aws ssm send-command --instance-ids "$instance_id" --document-name AWS-RunShellScript \
-            --comment "QAPAQ Wazuh raw archives: ${MODE}" --timeout-seconds 1200 --parameters "$payload" \
+            --comment "B89 Wazuh raw archives: ${MODE}" --timeout-seconds 1200 --parameters "$payload" \
             --query 'Command.CommandId' --output text)"
           for _ in $(seq 1 240); do
             status="$(aws ssm get-command-invocation --command-id "$command_id" --instance-id "$instance_id" \

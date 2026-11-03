@@ -24,7 +24,7 @@ import {
   type DirectoryReader,
   type MemberChange,
   type MemberDeltaPage,
-} from '@qapaq/access';
+} from '@b89/access';
 
 const GRAPH = 'https://graph.microsoft.com';
 const MAXIMUM_RESPONSE_BYTES = 2 * 1024 * 1024;

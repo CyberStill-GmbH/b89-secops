@@ -1,8 +1,8 @@
 -- Sprint 5: dispositivos de cada persona para avisos Web Push.
 --
 -- La fila guarda el endpoint del servicio de push del navegador y sus claves públicas (no son
--- credenciales de QAPAQ: solo permiten enviar avisos a ese navegador). El push no lleva
--- contenido: el dispositivo pide el detalle a QAPAQ con su sesión. El runtime no tiene DELETE:
+-- credenciales de B89: solo permiten enviar avisos a ese navegador). El push no lleva
+-- contenido: el dispositivo pide el detalle a B89 con su sesión. El runtime no tiene DELETE:
 -- quitar un dispositivo es marcar `revoked_at`.
 BEGIN;
 

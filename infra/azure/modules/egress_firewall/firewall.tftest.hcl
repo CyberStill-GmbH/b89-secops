@@ -4,16 +4,16 @@ run "standard_egress_policy_is_restrictive" {
   command = plan
 
   variables {
-    resource_group_name        = "rg-qapaq-test"
+    resource_group_name        = "rg-b89-test"
     location                   = "chilecentral"
-    name_base                  = "qapaqsecops"
-    firewall_subnet_id         = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-qapaq-test/providers/Microsoft.Network/virtualNetworks/vnet-qapaq/subnets/AzureFirewallSubnet"
-    log_analytics_workspace_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-qapaq-test/providers/Microsoft.OperationalInsights/workspaces/law-qapaq"
+    name_base                  = "b89secops"
+    firewall_subnet_id         = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-b89-test/providers/Microsoft.Network/virtualNetworks/vnet-b89/subnets/AzureFirewallSubnet"
+    log_analytics_workspace_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-b89-test/providers/Microsoft.OperationalInsights/workspaces/law-b89"
     source_cidrs               = ["10.80.16.0/27"]
     ingress_lb_private_ip      = "10.80.16.10"
     dashboard_ingress_cidrs    = ["0.0.0.0/0"]
     sku_tier                   = "Standard"
-    tags                       = { project = "qapaq-secops", environment = "test" }
+    tags                       = { project = "b89-secops", environment = "test" }
   }
 
   assert {
@@ -63,19 +63,19 @@ run "basic_egress_keeps_fqdn_allowlist_and_management_plane" {
   command = plan
 
   variables {
-    resource_group_name        = "rg-qapaq-test"
+    resource_group_name        = "rg-b89-test"
     location                   = "eastus2"
-    name_base                  = "qapaqsecops"
-    firewall_subnet_id         = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-qapaq-test/providers/Microsoft.Network/virtualNetworks/vnet-qapaq/subnets/AzureFirewallSubnet"
-    management_subnet_id       = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-qapaq-test/providers/Microsoft.Network/virtualNetworks/vnet-qapaq/subnets/AzureFirewallManagementSubnet"
-    log_analytics_workspace_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-qapaq-test/providers/Microsoft.OperationalInsights/workspaces/law-qapaq"
+    name_base                  = "b89secops"
+    firewall_subnet_id         = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-b89-test/providers/Microsoft.Network/virtualNetworks/vnet-b89/subnets/AzureFirewallSubnet"
+    management_subnet_id       = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-b89-test/providers/Microsoft.Network/virtualNetworks/vnet-b89/subnets/AzureFirewallManagementSubnet"
+    log_analytics_workspace_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-b89-test/providers/Microsoft.OperationalInsights/workspaces/law-b89"
     source_cidrs               = ["10.80.16.32/27"]
     ingress_lb_private_ip      = "10.80.16.42"
     dashboard_ingress_cidrs    = ["198.51.100.25/32"]
     agent_public_cidrs         = ["198.51.100.0/28"]
     agent_target_ip            = "10.80.16.36"
     sku_tier                   = "Basic"
-    tags                       = { project = "qapaq-secops", environment = "test" }
+    tags                       = { project = "b89-secops", environment = "test" }
   }
 
   assert {
@@ -111,18 +111,18 @@ run "rejects_worldwide_agent_ingress" {
   command = plan
 
   variables {
-    resource_group_name        = "rg-qapaq-test"
+    resource_group_name        = "rg-b89-test"
     location                   = "eastus2"
-    name_base                  = "qapaqsecops"
-    firewall_subnet_id         = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-qapaq-test/providers/Microsoft.Network/virtualNetworks/vnet-qapaq/subnets/AzureFirewallSubnet"
-    management_subnet_id       = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-qapaq-test/providers/Microsoft.Network/virtualNetworks/vnet-qapaq/subnets/AzureFirewallManagementSubnet"
-    log_analytics_workspace_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-qapaq-test/providers/Microsoft.OperationalInsights/workspaces/law-qapaq"
+    name_base                  = "b89secops"
+    firewall_subnet_id         = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-b89-test/providers/Microsoft.Network/virtualNetworks/vnet-b89/subnets/AzureFirewallSubnet"
+    management_subnet_id       = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-b89-test/providers/Microsoft.Network/virtualNetworks/vnet-b89/subnets/AzureFirewallManagementSubnet"
+    log_analytics_workspace_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-b89-test/providers/Microsoft.OperationalInsights/workspaces/law-b89"
     source_cidrs               = ["10.80.16.32/27"]
     ingress_lb_private_ip      = "10.80.16.42"
     agent_public_cidrs         = ["0.0.0.0/0"]
     agent_target_ip            = "10.80.16.36"
     sku_tier                   = "Basic"
-    tags                       = { project = "qapaq-secops", environment = "test" }
+    tags                       = { project = "b89-secops", environment = "test" }
   }
 
   expect_failures = [var.agent_public_cidrs]

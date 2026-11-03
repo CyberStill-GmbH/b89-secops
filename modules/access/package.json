@@ -1,5 +1,5 @@
 {
-  "name": "@qapaq/access",
+  "name": "@b89/access",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -21,9 +21,9 @@
     "test": "pnpm --dir ../.. exec vitest run --config vitest.config.ts modules/access/test"
   },
   "dependencies": {
-    "@qapaq/audit": "workspace:*",
-    "@qapaq/contracts": "workspace:*",
-    "@qapaq/database": "workspace:*"
+    "@b89/audit": "workspace:*",
+    "@b89/contracts": "workspace:*",
+    "@b89/database": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "24.13.6",

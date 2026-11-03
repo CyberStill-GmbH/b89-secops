@@ -1,9 +1,9 @@
 /* Este archivo se genera desde security-event.schema.json. No editar manualmente. */
 
 /**
- * Contrato canónico de eventos de seguridad de QAPAQ SecOps.
+ * Contrato canónico de eventos de seguridad de B89 SecOps.
  */
-export type QapaqSecurityEvent = {
+export type B89SecurityEvent = {
   schemaVersion: '1.0.0';
   recordId: UuidV7;
   eventUid: OpaqueIdentifier;

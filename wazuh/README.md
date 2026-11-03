@@ -1,6 +1,6 @@
-# wazuh/ — overlay QAPAQ sobre Wazuh
+# wazuh/ — overlay B89 sobre Wazuh
 
-Este es el "backend Wazuh" de QAPAQ. No es un fork del código: versiona todo lo que QAPAQ cambia
+Este es el "backend Wazuh" de B89. No es un fork del código: versiona todo lo que B89 cambia
 de Wazuh y lo aplica sobre la versión oficial fijada en [`VERSION`](VERSION). Decisión y motivos
 en [`docs/03-evaluacion-de-componentes.md`](../docs/03-evaluacion-de-componentes.md).
 
@@ -11,23 +11,23 @@ en [`docs/03-evaluacion-de-componentes.md`](../docs/03-evaluacion-de-componentes
 > [perfil SIEM y sus compuertas](../docs/cloud/azure/eus2-siem-profile-readiness.md).
 > La secuencia de abajo es específica de `infra/aws` y no se usa para desplegar Azure.
 
-| Carpeta                      | Qué cambia de Wazuh                                                                                                         | Se aplica con                                                             | Estado                                        |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | --------------------------------------------- |
-| `access/`                    | Usuario `qapaq_reader`, proxy TLS allowlist del Indexer, usuarios internos                                                  | `access/apply-access.sh` (workflow `initialize-wazuh.yml`)                | En uso en la demo                             |
-| `office365/`                 | Módulo Office 365, 22 reglas QAPAQ, listas y tests de logtest                                                               | `office365/apply-office365.sh` (workflow `configure-wazuh-office365.yml`) | En uso en la demo                             |
-| `archive/`                   | Archivo JSON crudo del Manager, Filebeat archives y retención ISM aislada de 7 días                                         | `archive/apply-archives.sh` (workflow `wazuh-archives.yml`)               | Listo para aplicar por CI/CD                  |
-| `edge/`                      | nginx: TLS, `auth_request` contra QAPAQ, `/` → dashboard, `/api` → QAPAQ, `/soc` estático                                   | Fase 1                                                                    | Propuesto                                     |
-| `indexer/security/`          | Security plugin: proxy auth y roles QAPAQ                                                                                   | `securityadmin.sh`                                                        | Propuesto                                     |
-| `indexer/ism/`               | Retención hot/warm/cold y repo de snapshots S3                                                                              | `indexer/ism/apply-ism.sh`                                                | Propuesto                                     |
-| `indexer/anomaly-detection/` | Detectores ML (RCF)                                                                                                         | `indexer/anomaly-detection/apply-detectors.sh`                            | Propuesto                                     |
-| `dashboard/`                 | Marca QAPAQ, proxy auth y plugin `qapaq-ops`                                                                                | Copia más reinicio de `wazuh-dashboard`                                   | Propuesto                                     |
-| `core/`                      | Núcleo QAPAQ dentro del SIEM: login Entra, casos (Ayni Qapaq), auditoría, avisos y colas, como servicios del host (docs/12) | `core/apply-core.sh` (workflow «QAPAQ SIEM», step=core)                   | Implementado; pendiente del primer despliegue |
-| `manager/integrations/`      | Push de alertas a QAPAQ (`custom-qapaq`) y snippets de Shuffle y AWS                                                        | `ossec.conf`                                                              | Propuesto (fase 2 y 3)                        |
+| Carpeta                      | Qué cambia de Wazuh                                                                                                      | Se aplica con                                                             | Estado                                        |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- | --------------------------------------------- |
+| `access/`                    | Usuario `b89_reader`, proxy TLS allowlist del Indexer, usuarios internos                                                 | `access/apply-access.sh` (workflow `initialize-wazuh.yml`)                | En uso en la demo                             |
+| `office365/`                 | Módulo Office 365, 22 reglas B89, listas y tests de logtest                                                              | `office365/apply-office365.sh` (workflow `configure-wazuh-office365.yml`) | En uso en la demo                             |
+| `archive/`                   | Archivo JSON crudo del Manager, Filebeat archives y retención ISM aislada de 7 días                                      | `archive/apply-archives.sh` (workflow `wazuh-archives.yml`)               | Listo para aplicar por CI/CD                  |
+| `edge/`                      | nginx: TLS, `auth_request` contra B89, `/` → dashboard, `/api` → B89, `/soc` estático                                    | Fase 1                                                                    | Propuesto                                     |
+| `indexer/security/`          | Security plugin: proxy auth y roles B89                                                                                  | `securityadmin.sh`                                                        | Propuesto                                     |
+| `indexer/ism/`               | Retención hot/warm/cold y repo de snapshots S3                                                                           | `indexer/ism/apply-ism.sh`                                                | Propuesto                                     |
+| `indexer/anomaly-detection/` | Detectores ML (RCF)                                                                                                      | `indexer/anomaly-detection/apply-detectors.sh`                            | Propuesto                                     |
+| `dashboard/`                 | Marca B89, proxy auth y plugin `b89-ops`                                                                                 | Copia más reinicio de `wazuh-dashboard`                                   | Propuesto                                     |
+| `core/`                      | Núcleo B89 dentro del SIEM: login Entra, casos (B89 Cases), auditoría, avisos y colas, como servicios del host (docs/12) | `core/apply-core.sh` (workflow «B89 SIEM», step=core)                     | Implementado; pendiente del primer despliegue |
+| `manager/integrations/`      | Push de alertas a B89 (`custom-b89`) y snippets de Shuffle y AWS                                                         | `ossec.conf`                                                              | Propuesto (fase 2 y 3)                        |
 
 ## Reglas
 
 - **Idempotente:** cada script se puede ejecutar N veces y deja el mismo estado. Cada uno toca solo
-  su bloque `QAPAQ:<nombre>:begin/end` dentro de los archivos de Wazuh.
+  su bloque `B89:<nombre>:begin/end` dentro de los archivos de Wazuh.
 - **Sin secretos:** las credenciales se leen de Secrets Manager en el host, nunca del repo.
 - **Raw archive:** `logall_json` archiva todos los eventos que procesa el Manager, no solo M365;
   `wazuh-archives-*` tiene política ISM separada de 7 días en el demo.
@@ -43,14 +43,14 @@ en [`docs/03-evaluacion-de-componentes.md`](../docs/03-evaluacion-de-componentes
 Cada paso se detiene sin cambiar nada si falla su compuerta, y restaura lo que tocó si el cambio falla.
 
 1. **Terraform** (`infra/aws`): reglas `public_proxy_to_api` y `api_from_public_proxy`. El edge llega
-   a la API por Cloud Map (salida `qapaq_edge_api_origin`), no por el ALB público, para que la API
+   a la API por Cloud Map (salida `b89_edge_api_origin`), no por el ALB público, para que la API
    vea la IP real del usuario dentro de la cadena de proxies confiables.
 2. **API** con `GET /api/auth/introspect` desplegada (imagen `git-<sha>` que incluya ese commit).
 3. **Security plugin:** `indexer/security/apply-security.sh`. Hace backup, fusiona el proxy auth,
    aplica roles, une los mapeos y se autoprueba.
-4. **Dashboard del fork** `qapaq_ops-dashboard`, compilado para la `OPENSEARCH_DASHBOARDS_VERSION`
+4. **Dashboard del fork** `b89_ops-dashboard`, compilado para la `OPENSEARCH_DASHBOARDS_VERSION`
    de [`VERSION`](VERSION) e instalado en el host (release del fork).
-5. **Edge y dashboard:** `SOC_HOSTNAME=… QAPAQ_API=… edge/apply-edge.sh`. Escribe el bloque del
+5. **Edge y dashboard:** `SOC_HOSTNAME=… B89_API=… edge/apply-edge.sh`. Escribe el bloque del
    dashboard, el nginx y un smoke sin sesión.
 6. Prueba con una persona real del grupo SOC: login Entra → dashboard con su rol. Revocar su sesión
-   en QAPAQ → pierde el dashboard en ≤ 5 s.
+   en B89 → pierde el dashboard en ≤ 5 s.

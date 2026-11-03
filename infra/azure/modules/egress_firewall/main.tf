@@ -107,14 +107,14 @@ resource "azurerm_firewall_policy_rule_collection_group" "egress" {
   dynamic "nat_rule_collection" {
     for_each = var.ingress_lb_private_ip == null || (!var.ingress_http_enabled && length(var.dashboard_ingress_cidrs) == 0 && length(var.agent_public_cidrs) == 0) ? [] : [true]
     content {
-      name     = "qapaq-siem-public-ingress"
+      name     = "b89-siem-public-ingress"
       priority = 120
       action   = "Dnat"
 
       dynamic "rule" {
         for_each = var.ingress_http_enabled ? [true] : []
         content {
-          name                = "qapaq-http-acme-and-redirect"
+          name                = "b89-http-acme-and-redirect"
           protocols           = ["TCP"]
           source_addresses    = ["*"]
           destination_address = azurerm_public_ip.firewall.ip_address
@@ -127,7 +127,7 @@ resource "azurerm_firewall_policy_rule_collection_group" "egress" {
       dynamic "rule" {
         for_each = length(var.dashboard_ingress_cidrs) == 0 ? [] : [true]
         content {
-          name                = "qapaq-dashboard-https-approved-sources"
+          name                = "b89-dashboard-https-approved-sources"
           protocols           = ["TCP"]
           source_addresses    = sort(tolist(var.dashboard_ingress_cidrs))
           destination_address = azurerm_public_ip.firewall.ip_address
@@ -143,7 +143,7 @@ resource "azurerm_firewall_policy_rule_collection_group" "egress" {
       dynamic "rule" {
         for_each = length(var.agent_public_cidrs) == 0 ? [] : ["1514", "1515"]
         content {
-          name                = "qapaq-wazuh-agents-${rule.value}"
+          name                = "b89-wazuh-agents-${rule.value}"
           protocols           = ["TCP"]
           source_addresses    = sort(tolist(var.agent_public_cidrs))
           destination_address = azurerm_public_ip.firewall.ip_address

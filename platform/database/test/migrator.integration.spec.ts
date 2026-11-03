@@ -19,8 +19,8 @@ import { runBootstrapProtocol } from '../migrator/bootstrap-protocol.mjs';
 
 const databaseUrl = process.env['DATABASE_URL'];
 const ROLES = [
-  { role: 'qapaq_migrator', secretId: 'postgres/migrator' },
-  { role: 'qapaq_soc_runtime', secretId: 'postgres/soc-runtime' },
+  { role: 'b89_migrator', secretId: 'postgres/migrator' },
+  { role: 'b89_soc_runtime', secretId: 'postgres/soc-runtime' },
 ] as const;
 
 interface Version {
@@ -105,7 +105,7 @@ async function canLogin(database: string, user: string, password: string): Promi
 }
 
 describe.skipIf(!databaseUrl)('D-11 · bootstrap recuperable contra PostgreSQL real', () => {
-  const database = `qapaq_boot_${process.pid}_${Date.now()}`.toLowerCase();
+  const database = `b89_boot_${process.pid}_${Date.now()}`.toLowerCase();
   let sql: string;
 
   const applyRoles = async (passwords: Record<string, string>) => {
@@ -114,8 +114,8 @@ describe.skipIf(!databaseUrl)('D-11 · bootstrap recuperable contra PostgreSQL r
     try {
       await client.query('BEGIN');
       await client.query(
-        "SELECT set_config('qapaq.migrator_password', $1, true), set_config('qapaq.runtime_password', $2, true)",
-        [passwords['qapaq_migrator'], passwords['qapaq_soc_runtime']],
+        "SELECT set_config('b89.migrator_password', $1, true), set_config('b89.runtime_password', $2, true)",
+        [passwords['b89_migrator'], passwords['b89_soc_runtime']],
       );
       await client.query(sql);
       await client.query('COMMIT');
@@ -204,7 +204,7 @@ describe.skipIf(!databaseUrl)('D-11 · bootstrap recuperable contra PostgreSQL r
 
     await run(secrets);
 
-    expect(await canLogin(database, 'qapaq_soc_runtime', previous)).toBe(false);
+    expect(await canLogin(database, 'b89_soc_runtime', previous)).toBe(false);
     expect(await currentCredentialsWork(secrets)).toBe(true);
   });
 });
@@ -217,11 +217,11 @@ describe('D-12 · la salida del migrator no expone credenciales', () => {
       const child = spawn(process.execPath, [entrypoint, 'migrate'], {
         env: {
           ...process.env,
-          QAPAQ_POSTGRES_HOST: '127.0.0.1',
-          QAPAQ_POSTGRES_PORT: '1',
-          QAPAQ_POSTGRES_DATABASE: 'qapaq_canary',
-          QAPAQ_POSTGRES_TLS: 'false',
-          QAPAQ_MIGRATOR_PASSWORD: canary,
+          B89_POSTGRES_HOST: '127.0.0.1',
+          B89_POSTGRES_PORT: '1',
+          B89_POSTGRES_DATABASE: 'b89_canary',
+          B89_POSTGRES_TLS: 'false',
+          B89_MIGRATOR_PASSWORD: canary,
         },
       });
       let text = '';

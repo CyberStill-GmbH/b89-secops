@@ -8,7 +8,7 @@ import {
   SecretMaterial,
   type ProviderSecretVersion,
   type SecretLifecycleProvider,
-} from '@qapaq/configuration';
+} from '@b89/configuration';
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { closeDatabaseClient, createDatabaseClient } from '../src/client.js';
@@ -56,7 +56,7 @@ class IntegrationLifecycleProvider implements SecretLifecycleProvider {
 async function provisionDatabase() {
   if (!databaseUrl) throw new Error('DATABASE_URL is required for C-24 PostgreSQL integration');
   const parsed = new URL(databaseUrl);
-  const name = `qapaq_c24_${process.pid}_${Date.now()}`.toLowerCase();
+  const name = `b89_c24_${process.pid}_${Date.now()}`.toLowerCase();
   const adminUrl = new URL(parsed);
   adminUrl.pathname = '/postgres';
   const admin = new Client(adminUrl.toString());

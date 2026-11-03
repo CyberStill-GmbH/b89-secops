@@ -1,0 +1,22 @@
+[Unit]
+Description=B89 Sophos Central SIEM API ingestion
+Wants=network-online.target
+After=network-online.target wazuh-manager.service
+
+[Service]
+Type=oneshot
+User=root
+Group=wazuh
+UMask=0027
+Environment=SOPHOS_SIEM_HOME=/var/ossec/etc/b89-providers/sophos
+ExecStart=/usr/bin/python3 /var/ossec/integrations/b89-sophos/siem.py --quiet --config /etc/b89-secrets/sophos-client.ini
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectControlGroups=true
+ReadOnlyPaths=/etc/b89-secrets
+ReadWritePaths=/var/ossec/etc/b89-providers/sophos /var/ossec/var/run/b89-providers/sophos /var/ossec/logs/b89-providers
+TimeoutStartSec=240
+

@@ -1,5 +1,5 @@
 {
-  "name": "@qapaq/soar",
+  "name": "@b89/soar",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -21,13 +21,13 @@
     "test": "pnpm --dir ../.. exec vitest run --config vitest.config.ts modules/soar/test"
   },
   "dependencies": {
-    "@qapaq/audit": "workspace:*",
-    "@qapaq/configuration": "workspace:*",
-    "@qapaq/database": "workspace:*",
-    "@qapaq/soc": "workspace:*"
+    "@b89/audit": "workspace:*",
+    "@b89/configuration": "workspace:*",
+    "@b89/database": "workspace:*",
+    "@b89/soc": "workspace:*"
   },
   "devDependencies": {
-    "@qapaq/detection": "workspace:*",
+    "@b89/detection": "workspace:*",
     "@types/node": "24.13.6",
     "@types/pg": "8.23.1",
     "pg": "8.23.0",

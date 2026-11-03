@@ -1,15 +1,15 @@
 /**
- * Sprint 5 — roles concedidos por QAPAQ además de los app roles del token de Entra.
+ * Sprint 5 — roles concedidos por B89 además de los app roles del token de Entra.
  *
- * - `QAPAQ_ROLE_BINDINGS`: asignaciones explícitas `oid=rol` separadas por coma (p. ej. la
+ * - `B89_ROLE_BINDINGS`: asignaciones explícitas `oid=rol` separadas por coma (p. ej. la
  *   persona que entra como analista en el demo). Permanentes hasta que el deploy las cambie.
- * - `QAPAQ_GROUP_OWNER_OIDS`: dueños del grupo de admisión, que reciben `qapaq.platform.admin`.
+ * - `B89_GROUP_OWNER_OIDS`: dueños del grupo de admisión, que reciben `b89.platform.admin`.
  *   Es el respaldo mientras la lectura del grupo por Microsoft Graph no tenga consentimiento;
  *   con Graph activo, los dueños leídos se suman a estos.
- * - `QAPAQ_ADMIN_GROUP_IDS`: grupos de Entra cuyos miembros reciben `qapaq.platform.admin`.
+ * - `B89_ADMIN_GROUP_IDS`: grupos de Entra cuyos miembros reciben `b89.platform.admin`.
  *   La pertenencia sale del claim `groups` del token o, si el grupo es el de admisión
  *   sincronizado, del padrón de Graph.
- * - `QAPAQ_ACCESS_APPROVER_OIDS` / `QAPAQ_SECURITY_APPROVER_OIDS`: aprobadores de las solicitudes
+ * - `B89_ACCESS_APPROVER_OIDS` / `B89_SECURITY_APPROVER_OIDS`: aprobadores de las solicitudes
  *   de rol (etapa de Acceso y etapa de Seguridad del rol privilegiado). No hay valor por defecto
  *   ni se derivan de otro rol: sin declaración explícita, las solicitudes quedan sin aprobador y la
  *   API las rechaza. Un mismo OID no puede estar en ambas listas.
@@ -25,15 +25,15 @@ import type { ConfigurationProfile } from '../profiles/index.js';
 import { optionalString } from './environment.schema.js';
 
 export const GRANTABLE_ROLES = [
-  'qapaq.soc.analyst',
-  'qapaq.soc.lead',
-  'qapaq.auditor',
-  'qapaq.platform.admin',
+  'b89.soc.analyst',
+  'b89.soc.lead',
+  'b89.auditor',
+  'b89.platform.admin',
 ] as const;
 export type GrantableRole = (typeof GRANTABLE_ROLES)[number];
 
 /** Rol que reciben los dueños del grupo de admisión. */
-export const GROUP_OWNER_ROLE: GrantableRole = 'qapaq.platform.admin';
+export const GROUP_OWNER_ROLE: GrantableRole = 'b89.platform.admin';
 
 export interface RoleGrantsConfig {
   /** `oid` en minúsculas → roles concedidos. */
@@ -80,21 +80,21 @@ export function parseRoleGrants(
   environment: EnvironmentInput,
   profile: ConfigurationProfile,
 ): RoleGrantsConfig {
-  const bindingEntries = entries(optionalString(environment, profile, 'QAPAQ_ROLE_BINDINGS'));
-  const ownerEntries = entries(optionalString(environment, profile, 'QAPAQ_GROUP_OWNER_OIDS'));
-  const adminGroupEntries = entries(optionalString(environment, profile, 'QAPAQ_ADMIN_GROUP_IDS'));
+  const bindingEntries = entries(optionalString(environment, profile, 'B89_ROLE_BINDINGS'));
+  const ownerEntries = entries(optionalString(environment, profile, 'B89_GROUP_OWNER_OIDS'));
+  const adminGroupEntries = entries(optionalString(environment, profile, 'B89_ADMIN_GROUP_IDS'));
   if (bindingEntries.length > MAXIMUM_ENTRIES) {
-    throw configurationError('CONFIG_LIMIT_INVALID', 'QAPAQ_ROLE_BINDINGS', profile.name, {
+    throw configurationError('CONFIG_LIMIT_INVALID', 'B89_ROLE_BINDINGS', profile.name, {
       maximum: MAXIMUM_ENTRIES,
     });
   }
   if (ownerEntries.length > MAXIMUM_ENTRIES) {
-    throw configurationError('CONFIG_LIMIT_INVALID', 'QAPAQ_GROUP_OWNER_OIDS', profile.name, {
+    throw configurationError('CONFIG_LIMIT_INVALID', 'B89_GROUP_OWNER_OIDS', profile.name, {
       maximum: MAXIMUM_ENTRIES,
     });
   }
   if (adminGroupEntries.length > MAXIMUM_ENTRIES) {
-    throw configurationError('CONFIG_LIMIT_INVALID', 'QAPAQ_ADMIN_GROUP_IDS', profile.name, {
+    throw configurationError('CONFIG_LIMIT_INVALID', 'B89_ADMIN_GROUP_IDS', profile.name, {
       maximum: MAXIMUM_ENTRIES,
     });
   }
@@ -107,26 +107,26 @@ export function parseRoleGrants(
       !OID_PATTERN.test(oid) ||
       !(GRANTABLE_ROLES as readonly string[]).includes(role ?? '')
     ) {
-      throw configurationError('CONFIG_VALUE_INVALID', 'QAPAQ_ROLE_BINDINGS', profile.name);
+      throw configurationError('CONFIG_VALUE_INVALID', 'B89_ROLE_BINDINGS', profile.name);
     }
     const key = oid.toLowerCase();
     bindings[key] = [...new Set([...(bindings[key] ?? []), role as GrantableRole])];
   }
   for (const oid of ownerEntries) {
     if (!OID_PATTERN.test(oid)) {
-      throw configurationError('CONFIG_VALUE_INVALID', 'QAPAQ_GROUP_OWNER_OIDS', profile.name);
+      throw configurationError('CONFIG_VALUE_INVALID', 'B89_GROUP_OWNER_OIDS', profile.name);
     }
   }
   for (const groupId of adminGroupEntries) {
     if (!GROUP_ID_PATTERN.test(groupId)) {
-      throw configurationError('CONFIG_VALUE_INVALID', 'QAPAQ_ADMIN_GROUP_IDS', profile.name);
+      throw configurationError('CONFIG_VALUE_INVALID', 'B89_ADMIN_GROUP_IDS', profile.name);
     }
   }
-  const accessApproverOids = oidList(environment, profile, 'QAPAQ_ACCESS_APPROVER_OIDS');
-  const securityApproverOids = oidList(environment, profile, 'QAPAQ_SECURITY_APPROVER_OIDS');
+  const accessApproverOids = oidList(environment, profile, 'B89_ACCESS_APPROVER_OIDS');
+  const securityApproverOids = oidList(environment, profile, 'B89_SECURITY_APPROVER_OIDS');
   // Separación de funciones: la misma persona no puede ser las dos etapas.
   if (securityApproverOids.some((oid) => accessApproverOids.includes(oid))) {
-    throw configurationError('CONFIG_VALUE_INVALID', 'QAPAQ_SECURITY_APPROVER_OIDS', profile.name);
+    throw configurationError('CONFIG_VALUE_INVALID', 'B89_SECURITY_APPROVER_OIDS', profile.name);
   }
   return {
     bindings,

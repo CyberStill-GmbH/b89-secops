@@ -15,8 +15,8 @@ EXPECTED_NAMES = {
     "indexer_proxy_ca_secret_name": "wazuh-proxy-ca",
 }
 SUBSCRIPTION_ID = "aaf787f8-5964-4470-9eb6-89d15eacda61"
-RESOURCE_GROUP = "rg-qapaqsecopsdemoeus-3a2405f3"
-VAULT_NAME = "kv-qapaqsecopsd-3a2405f3"
+RESOURCE_GROUP = "rg-b89secopsdemoeus-3a2405f3"
+VAULT_NAME = "kv-b89secopsd-3a2405f3"
 API_VERSION = "2025-05-01"
 
 

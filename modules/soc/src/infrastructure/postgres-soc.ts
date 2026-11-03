@@ -1,6 +1,6 @@
 /**
  * Adapter PostgreSQL de C-17: implementa `SocPersistence` sobre los stores Prisma de
- * `@qapaq/database`.
+ * `@b89/database`.
  *
  * Responsabilidades de este archivo, y solo estas:
  *
@@ -12,11 +12,11 @@
  *    comparten la misma transacción (`PrismaSocUnitOfWork`).
  * 3. Exponer lecturas, ventana de correlación y relay del outbox fuera de transacción.
  *
- * Se publica como subpath (`@qapaq/soc/postgres`) para que un runtime en memoria no cargue
+ * Se publica como subpath (`@b89/soc/postgres`) para que un runtime en memoria no cargue
  * Prisma ni el driver de PostgreSQL.
  */
 
-import type { AuditStore, SealedAuditEvent } from '@qapaq/audit';
+import type { AuditStore, SealedAuditEvent } from '@b89/audit';
 import {
   closeDatabaseClient,
   createDatabaseClient,
@@ -34,7 +34,7 @@ import {
   type IncidentTaskRow,
   type IncidentWithAlertsRow,
   type SealedAuditRow,
-} from '@qapaq/database';
+} from '@b89/database';
 import {
   PRIORITIES,
   SIGNAL_CLASSES,
@@ -44,7 +44,7 @@ import {
   type Priority,
   type Reason,
   type SignalClass,
-} from '@qapaq/detection';
+} from '@b89/detection';
 
 import { ALERT_STATUSES, TRIAGE_VERDICTS, type Alert } from '../alert.js';
 import { INCIDENT_SEVERITIES, INCIDENT_STATUSES, type Incident } from '../incident.js';

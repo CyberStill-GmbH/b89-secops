@@ -1,7 +1,7 @@
 /**
  * C-27 — catálogo de errores de la API.
  *
- * Un error de QAPAQ es una respuesta de producto, no un volcado técnico. Cada entrada
+ * Un error de B89 es una respuesta de producto, no un volcado técnico. Cada entrada
  * declara: qué estado HTTP corresponde, qué se le dice a la persona, qué puede hacer y
  * dónde está documentado (`helpRef`). El `correlationId` viaja siempre, porque es lo
  * único que permite que soporte encuentre el rastro sin pedir capturas de pantalla.
@@ -34,7 +34,7 @@ export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
 export const API_ERROR_ACTIONS = [
   'sign_in_again',
   'register_passkey',
-  'use_qapaq_network',
+  'use_b89_network',
   'retry_later',
   'reload_resource',
   'correct_input',
@@ -53,7 +53,7 @@ export interface ApiErrorDefinition {
   readonly retriable: boolean;
 }
 
-const HELP_BASE = 'https://docs.qapaq.pe/secops/errores';
+const HELP_BASE = 'https://docs.b89.example/secops/errores';
 
 export const API_ERROR_CATALOG: Readonly<Record<ApiErrorCode, ApiErrorDefinition>> = Object.freeze({
   AUTH_REQUIRED: {
@@ -83,7 +83,7 @@ export const API_ERROR_CATALOG: Readonly<Record<ApiErrorCode, ApiErrorDefinition
   PASSKEY_REQUIRED: {
     code: 'PASSKEY_REQUIRED',
     httpStatus: 401,
-    publicMessage: 'Fuera de la red QAPAQ se requiere una passkey registrada.',
+    publicMessage: 'Fuera de la red B89 se requiere una passkey registrada.',
     action: 'register_passkey',
     helpRef: `${HELP_BASE}#passkey-required`,
     retriable: false,
@@ -92,7 +92,7 @@ export const API_ERROR_CATALOG: Readonly<Record<ApiErrorCode, ApiErrorDefinition
     code: 'NETWORK_NOT_ALLOWED',
     httpStatus: 403,
     publicMessage: 'No fue posible verificar el origen de la conexión.',
-    action: 'use_qapaq_network',
+    action: 'use_b89_network',
     helpRef: `${HELP_BASE}#network-not-allowed`,
     retriable: false,
   },

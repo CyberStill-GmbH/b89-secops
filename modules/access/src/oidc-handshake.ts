@@ -15,7 +15,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 export const PKCE_METHOD = 'S256' as const;
 
 export const HANDSHAKE_LIMITS = Object.freeze({
-  /** Ventana entre el redirect y el retorno. Entra admite más; QAPAQ no lo necesita. */
+  /** Ventana entre el redirect y el retorno. Entra admite más; B89 no lo necesita. */
   stateTtlMs: 10 * 60 * 1000,
   stateBytes: 32,
   nonceBytes: 32,

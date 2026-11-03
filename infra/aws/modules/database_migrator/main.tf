@@ -18,8 +18,8 @@ locals {
 
 resource "aws_secretsmanager_secret" "role" {
   for_each = {
-    migrator    = "Credencial de qapaq_migrator (DDL, solo tarea de migración)."
-    soc_runtime = "Credencial de qapaq_soc_runtime (DML del API, sin DDL)."
+    migrator    = "Credencial de b89_migrator (DDL, solo tarea de migración)."
+    soc_runtime = "Credencial de b89_soc_runtime (DML del API, sin DDL)."
   }
 
   name                    = "${var.project}/${var.environment}/postgres/${replace(each.key, "_", "-")}"
@@ -190,19 +190,19 @@ resource "aws_ecs_task_definition" "bootstrap" {
     command   = ["bootstrap-roles"]
     environment = [
       { name = "AWS_REGION", value = var.region },
-      { name = "QAPAQ_POSTGRES_HOST", value = var.postgres.host },
-      { name = "QAPAQ_POSTGRES_PORT", value = tostring(var.postgres.port) },
-      { name = "QAPAQ_POSTGRES_DATABASE", value = var.postgres.database },
-      { name = "QAPAQ_POSTGRES_TLS", value = "true" },
-      { name = "QAPAQ_MIGRATOR_SECRET_ID", value = aws_secretsmanager_secret.role["migrator"].arn },
-      { name = "QAPAQ_RUNTIME_SECRET_ID", value = aws_secretsmanager_secret.role["soc_runtime"].arn },
-      { name = "QAPAQ_ENTITY_REF_SECRET_ID", value = aws_secretsmanager_secret.entity_ref_key.arn },
-      { name = "QAPAQ_VAPID_SECRET_ID", value = aws_secretsmanager_secret.vapid_private_key.arn },
+      { name = "B89_POSTGRES_HOST", value = var.postgres.host },
+      { name = "B89_POSTGRES_PORT", value = tostring(var.postgres.port) },
+      { name = "B89_POSTGRES_DATABASE", value = var.postgres.database },
+      { name = "B89_POSTGRES_TLS", value = "true" },
+      { name = "B89_MIGRATOR_SECRET_ID", value = aws_secretsmanager_secret.role["migrator"].arn },
+      { name = "B89_RUNTIME_SECRET_ID", value = aws_secretsmanager_secret.role["soc_runtime"].arn },
+      { name = "B89_ENTITY_REF_SECRET_ID", value = aws_secretsmanager_secret.entity_ref_key.arn },
+      { name = "B89_VAPID_SECRET_ID", value = aws_secretsmanager_secret.vapid_private_key.arn },
     ]
     # ECS lee las claves JSON del secret administrado por RDS al arrancar la tarea.
     secrets = [
-      { name = "QAPAQ_MASTER_USERNAME", valueFrom = "${var.master_secret_arn}:username::" },
-      { name = "QAPAQ_MASTER_PASSWORD", valueFrom = "${var.master_secret_arn}:password::" },
+      { name = "B89_MASTER_USERNAME", valueFrom = "${var.master_secret_arn}:username::" },
+      { name = "B89_MASTER_PASSWORD", valueFrom = "${var.master_secret_arn}:password::" },
     ]
     logConfiguration = {
       logDriver = "awslogs"
@@ -246,14 +246,14 @@ resource "aws_ecs_task_definition" "migrate" {
     essential = true
     command   = ["migrate"]
     environment = [
-      { name = "QAPAQ_POSTGRES_HOST", value = var.postgres.host },
-      { name = "QAPAQ_POSTGRES_PORT", value = tostring(var.postgres.port) },
-      { name = "QAPAQ_POSTGRES_DATABASE", value = var.postgres.database },
-      { name = "QAPAQ_POSTGRES_TLS", value = "true" },
+      { name = "B89_POSTGRES_HOST", value = var.postgres.host },
+      { name = "B89_POSTGRES_PORT", value = tostring(var.postgres.port) },
+      { name = "B89_POSTGRES_DATABASE", value = var.postgres.database },
+      { name = "B89_POSTGRES_TLS", value = "true" },
     ]
     secrets = [
       {
-        name      = "QAPAQ_MIGRATOR_PASSWORD"
+        name      = "B89_MIGRATOR_PASSWORD"
         valueFrom = "${aws_secretsmanager_secret.role["migrator"].arn}:password::"
       },
     ]

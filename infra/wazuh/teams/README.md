@@ -12,7 +12,7 @@ envía una Adaptive Card al webhook de Workflows y rechaza el formato heredado
   original, usuario, IP, agente, evento crudo, token ni evidencia.
 - La URL firmada no se guarda en `ossec.conf`, parámetros de proceso, logs o Git.
   El argumento `hook_url` es la ruta a un archivo protegido por el SO.
-- Crear `/var/ossec/etc/integrations/qapaq-teams-workflow-url` con el secreto
+- Crear `/var/ossec/etc/integrations/b89-teams-workflow-url` con el secreto
   obtenido de Key Vault por el mecanismo de identidad administrada del host.
   Permisos esperados: `root:wazuh`, modo `0640`. No copiarlo a una variable de CI.
 - La URL debe ser HTTPS de Azure Logic Apps o Power Platform y tener una ruta
@@ -20,11 +20,11 @@ envía una Adaptive Card al webhook de Workflows y rechaza el formato heredado
 
 ## Instalación Azure
 
-El bundle Azure fija `custom-qapaq-teams`, `apply_teams_workflow.py` y el bloque
+El bundle Azure fija `custom-b89-teams`, `apply_teams_workflow.py` y el bloque
 XML en su manifiesto de hashes. Si `siem_host.wazuh_secret_names` contiene la
-clave `qapaq-teams-workflow-url`, el bootstrap lee ese nombre de secreto desde
+clave `b89-teams-workflow-url`, el bootstrap lee ese nombre de secreto desde
 Key Vault con la identidad administrada. El nombre puede apuntar al mismo
-secreto ya referenciado por `core_secret_names.QAPAQ_TEAMS_WORKFLOW_URL`.
+secreto ya referenciado por `core_secret_names.B89_TEAMS_WORKFLOW_URL`.
 
 El instalador valida que la URL sea de Teams Workflows, copia el archivo con
 modo `0640` a `/var/ossec/etc/integrations/`, instala el adaptador como
@@ -36,7 +36,7 @@ no instala ni activa la integración.
 
 ## Instalación manual controlada
 
-1. Instalar `custom-qapaq-teams` en `/var/ossec/integrations/`, propietario
+1. Instalar `custom-b89-teams` en `/var/ossec/integrations/`, propietario
    `root:wazuh`, modo `0750`.
 2. Crear el archivo del secreto por un canal seguro, modo `0600`, propietario
    `root:root`; el instalador lo copia al destino de Wazuh con modo `0640`,

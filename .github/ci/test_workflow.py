@@ -65,8 +65,8 @@ class WorkflowPolicyTests(unittest.TestCase):
         self.assertIn("if: always()", workflow)
         self.assertIn("jobs[name]['result'] != 'success'", workflow)
 
-    def test_qapaq_dashboard_pr_build_is_read_only(self):
-        workflow = (WORKFLOWS / "qapaq-dashboard.yml").read_text(encoding="utf-8")
+    def test_b89_dashboard_pr_build_is_read_only(self):
+        workflow = (WORKFLOWS / "b89-dashboard.yml").read_text(encoding="utf-8")
         validate_job = workflow.split("  validate-dashboard:\n", 1)[1].split(
             "\n  build-dashboard:\n", 1
         )[0]
@@ -78,7 +78,7 @@ class WorkflowPolicyTests(unittest.TestCase):
         self.assertIn("bash wazuh/dashboard/build.sh", validate_job)
         self.assertIn("sha256sum -c SHA256SUMS", validate_job)
 
-    def test_qapaq_dashboard_uses_its_pinned_yarn_outside_corepack_context(self):
+    def test_b89_dashboard_uses_its_pinned_yarn_outside_corepack_context(self):
         build = (Path(__file__).resolve().parents[2] / "wazuh/dashboard/build.sh").read_text(
             encoding="utf-8"
         )
@@ -140,7 +140,7 @@ class WorkflowPolicyTests(unittest.TestCase):
         self.assertIn("printf '%s\\n'", summary_step)
         self.assertIn(r"\`$RELEASE_SHA\`", summary_step)
         self.assertNotIn(
-            'echo "- QAPAQ source commit: `${{ inputs.release_sha }}`', summary_step
+            'echo "- B89 source commit: `${{ inputs.release_sha }}`', summary_step
         )
 
 

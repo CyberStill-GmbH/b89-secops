@@ -13,7 +13,7 @@ root = Path(__file__).resolve().parents[3]
 catalog_path = root / "docs/security/launch-detection-catalog-2026-10-20.json"
 catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
 detections = catalog["detections"]
-playbook_path = Path(__file__).resolve().parent / "ankay/playbooks.json"
+playbook_path = Path(__file__).resolve().parent / "b89-respond/playbooks.json"
 playbook_catalog = json.loads(playbook_path.read_text(encoding="utf-8"))
 package = Path(__file__).resolve().parent
 
@@ -38,7 +38,7 @@ for rule_root in rule_roots:
             continue
         known_rules.update(re.findall(r'<rule\s+id="(\d+)"', path.read_text(encoding="utf-8")))
 
-local_rules = ET.parse(package / "rules/qapaq_launch_provider_rules.xml").getroot()
+local_rules = ET.parse(package / "rules/b89_launch_provider_rules.xml").getroot()
 local_ids = [rule.attrib.get("id") for rule in local_rules.findall(".//rule")]
 if len(local_ids) != len(set(local_ids)):
     errors.append("IDs duplicados en las reglas de lanzamiento")
@@ -78,7 +78,7 @@ for playbook in playbooks:
     if not playbook.get("input", {}).get("prohibited"):
         errors.append(f"{playbook.get('id')}: faltan campos prohibidos en el contrato de entrada")
 if playbook_catalog.get("status") != "spec-only-not-importable":
-    errors.append("playbooks Ankay deben permanecer marcados como no importables hasta validar con Shuffle")
+    errors.append("playbooks B89 Respond deben permanecer marcados como no importables hasta validar con Shuffle")
 
 if errors:
     print("\n".join(f"ERROR: {error}" for error in errors), file=sys.stderr)

@@ -48,9 +48,9 @@ import {
   type SessionStore,
   type SignInDenialReason,
   type TokenExchange,
-} from '@qapaq/access';
-import { recordAudit, type AuditEventDraft, type AuditStore } from '@qapaq/audit';
-import type { AccessConfig } from '@qapaq/configuration';
+} from '@b89/access';
+import { recordAudit, type AuditEventDraft, type AuditStore } from '@b89/audit';
+import type { AccessConfig } from '@b89/configuration';
 import {
   correlate,
   correlationHorizon,
@@ -63,14 +63,14 @@ import {
   type CorrelationPolicy,
   type PrioritizationContext,
   type SignalCatalog,
-} from '@qapaq/detection';
+} from '@b89/detection';
 import {
   InMemorySoc,
   ingestCandidate,
   type EntityRefFactory,
   type SocDependencies,
   type SocPersistence,
-} from '@qapaq/soc';
+} from '@b89/soc';
 import {
   ConsoleFallbackChannel,
   drainOutbox,
@@ -81,8 +81,8 @@ import {
   type DispatchDependencies,
   type NotificationTransport,
   type OutboxReader,
-} from '@qapaq/soar';
-import type { SecurityEvent } from '@qapaq/contracts';
+} from '@b89/soar';
+import type { SecurityEvent } from '@b89/contracts';
 
 import {
   EntraJwksProvider,
@@ -96,15 +96,15 @@ import { DEFAULT_RETURN_TO } from '../http/return-to.js';
 import type { ProcessInfo } from '../soc/operations-health.js';
 import type { EventsReader } from './events-reader.js';
 import type { SourceHealthMonitor } from './source-health.js';
-import type { RoleGrantsConfig } from '@qapaq/configuration';
-import type { DirectoryStore, RoleAdministration } from '@qapaq/access';
+import type { RoleGrantsConfig } from '@b89/configuration';
+import type { DirectoryStore, RoleAdministration } from '@b89/access';
 import {
   notifyDevices,
   type FallbackChannel,
   type PushSender,
   type PushSubscriptionStore,
   type RecipientDirectory,
-} from '@qapaq/soar';
+} from '@b89/soar';
 
 /** Padrón disponible para la administración. */
 export type RuntimeDirectory =
@@ -189,7 +189,7 @@ export interface RuntimeOptions {
   /** Métricas del proceso; las inyecta el entrypoint, único que puede leer `process`. */
   readonly processInfo?: () => ProcessInfo;
   /**
-   * Roles concedidos por QAPAQ (asignaciones del deploy y dueños del grupo). Se suman a los
+   * Roles concedidos por B89 (asignaciones del deploy y dueños del grupo). Se suman a los
    * app roles del token; sin resolvedor, solo cuentan el token y la asignación temporal.
    */
   readonly roleGrants?: (
@@ -281,7 +281,7 @@ export class SecOpsRuntime {
   /** Clave estable entre réplicas cuando el BFF usa persistencia compartida. */
   private readonly csrfKey: Buffer;
   /**
-   * Contexto de priorización de C-16. Viene de configuración (`QAPAQ_DETECTION_*`); sin
+   * Contexto de priorización de C-16. Viene de configuración (`B89_DETECTION_*`); sin
    * ella, listas vacías y la prioridad depende solo de severidad y correlación.
    */
   public detectionContext: PrioritizationContext;
@@ -832,7 +832,7 @@ export class SecOpsRuntime {
       roles,
       capabilities: capabilities as ReadonlySet<string>,
     });
-    // Excepción temporal, solo para el demo: una identidad que QAPAQ ya autorizó (tiene al
+    // Excepción temporal, solo para el demo: una identidad que B89 ya autorizó (tiene al
     // menos una capacidad: dueño o miembro del grupo de admisión, o asignación del deploy)
     // entra aunque el `amr` del token no pruebe MFA/passkey. Nunca inventa evidencia de AMR
     // ni salta las comprobaciones de token, red, bloqueo o rol: la pertenencia a Accesos_SOC

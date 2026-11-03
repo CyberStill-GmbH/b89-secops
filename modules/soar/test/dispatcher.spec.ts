@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { InMemoryAuditStore, verifyChain } from '@qapaq/audit';
-import type { OutboxMessageDraft } from '@qapaq/soc';
+import { InMemoryAuditStore, verifyChain } from '@b89/audit';
+import type { OutboxMessageDraft } from '@b89/soc';
 
 import { dispatchMessage, drainOutbox, type DispatchDependencies } from '../src/dispatcher.js';
 import {
@@ -64,7 +64,7 @@ function dependencies(transport: NotificationTransport, now = AT): DispatchDepen
         return `0199bf33-0000-7000-8000-${sequence.toString().padStart(12, '0')}`;
       },
     },
-    consoleBaseUrl: 'https://soc.qapaq.pe',
+    consoleBaseUrl: 'https://soc.b89.example',
   };
 }
 

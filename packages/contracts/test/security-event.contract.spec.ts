@@ -85,7 +85,7 @@ function baseEvent(): SecurityEvent {
       parserVersion: '1.0.0',
       mappingVersion: '1.0.0',
       timestampQuality: 'source',
-      ingestionPath: [{ kind: 'adapter', vendor: 'QAPAQ', product: 'QAPAQ SecOps' }],
+      ingestionPath: [{ kind: 'adapter', vendor: 'B89', product: 'B89 SecOps' }],
     },
   });
 }

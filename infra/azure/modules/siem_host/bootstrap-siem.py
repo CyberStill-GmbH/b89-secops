@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""First-boot installer for a privately networked QAPAQ Wazuh host.
+"""First-boot installer for a privately networked B89 Wazuh host.
 
 The only artifact input is a SHA-256-pinned private Blob. Runtime secret values
 are read through the VM's user-assigned identity and are never printed or passed
@@ -27,96 +27,96 @@ import urllib.request
 from indexer_read_proxy import IndexerProxyError, configure as configure_indexer_read_proxy
 
 
-CONFIG_PATH = pathlib.Path("/etc/qapaq-siem/bootstrap.json")
+CONFIG_PATH = pathlib.Path("/etc/b89-siem/bootstrap.json")
 DATA_DEVICE = pathlib.Path("/dev/disk/azure/scsi1/lun0")
-DATA_ROOT = pathlib.Path("/srv/qapaq-siem")
-CORE_ENV_PATH = pathlib.Path("/etc/qapaq-core/core.env")
-WAZUH_SECRET_DIR = pathlib.Path("/etc/qapaq-secrets")
-RELEASE_ROOT = pathlib.Path("/opt/qapaq-siem/releases")
+DATA_ROOT = pathlib.Path("/srv/b89-siem")
+CORE_ENV_PATH = pathlib.Path("/etc/b89-core/core.env")
+WAZUH_SECRET_DIR = pathlib.Path("/etc/b89-secrets")
+RELEASE_ROOT = pathlib.Path("/opt/b89-siem/releases")
 CORE_SECRET_REFERENCE_KEYS = {
-    "QAPAQ_ENTRA_CLIENT_SECRET": "QAPAQ_ENTRA_CLIENT_SECRET_REF",
-    "QAPAQ_POSTGRES_PASSWORD": "QAPAQ_POSTGRES_PASSWORD_REF",
-    "QAPAQ_ENTITY_REF_KEY": "QAPAQ_ENTITY_REF_KEY_REF",
-    "QAPAQ_TEAMS_WORKFLOW_URL": "QAPAQ_TEAMS_WORKFLOW_URL_REF",
-    "QAPAQ_VAPID_PRIVATE_KEY": "QAPAQ_VAPID_PRIVATE_KEY_REF",
+    "B89_ENTRA_CLIENT_SECRET": "B89_ENTRA_CLIENT_SECRET_REF",
+    "B89_POSTGRES_PASSWORD": "B89_POSTGRES_PASSWORD_REF",
+    "B89_ENTITY_REF_KEY": "B89_ENTITY_REF_KEY_REF",
+    "B89_TEAMS_WORKFLOW_URL": "B89_TEAMS_WORKFLOW_URL_REF",
+    "B89_VAPID_PRIVATE_KEY": "B89_VAPID_PRIVATE_KEY_REF",
 }
 CORE_SECRET_PROVIDER_KEYS = {
-    "QAPAQ_SECRET_PROVIDER_TYPE",
-    "QAPAQ_SECRET_PROVIDER_TIMEOUT",
-    "QAPAQ_SECRET_PROVIDER_ENDPOINT",
+    "B89_SECRET_PROVIDER_TYPE",
+    "B89_SECRET_PROVIDER_TIMEOUT",
+    "B89_SECRET_PROVIDER_ENDPOINT",
 }
 CORE_NON_SECRET_ENVIRONMENT_KEYS = {
-    "QAPAQ_PROFILE",
-    "QAPAQ_PROCESS_ROLE",
-    "QAPAQ_API_HOST",
-    "QAPAQ_API_PORT",
-    "QAPAQ_POSTGRES_HOST",
-    "QAPAQ_POSTGRES_PORT",
-    "QAPAQ_POSTGRES_DATABASE",
-    "QAPAQ_POSTGRES_USERNAME",
-    "QAPAQ_POSTGRES_TLS",
-    "QAPAQ_POSTGRES_CONNECTION_TIMEOUT",
-    "QAPAQ_POSTGRES_STATEMENT_TIMEOUT",
-    "QAPAQ_POSTGRES_POOL_MIN",
-    "QAPAQ_POSTGRES_POOL_MAX",
-    "QAPAQ_REDIS_HOST",
-    "QAPAQ_REDIS_PORT",
-    "QAPAQ_REDIS_USERNAME",
-    "QAPAQ_REDIS_DATABASE",
-    "QAPAQ_REDIS_TLS",
-    "QAPAQ_REDIS_CONNECTION_TIMEOUT",
-    "QAPAQ_REDIS_COMMAND_TIMEOUT",
-    "QAPAQ_REDIS_RETRY_LIMIT",
-    "QAPAQ_MINIO_ENDPOINT",
-    "QAPAQ_MINIO_PORT",
-    "QAPAQ_MINIO_REGION",
-    "QAPAQ_MINIO_RAW_BUCKET",
-    "QAPAQ_MINIO_TLS",
-    "QAPAQ_MINIO_CONNECTION_TIMEOUT",
-    "QAPAQ_MINIO_REQUEST_TIMEOUT",
-    "QAPAQ_MINIO_RETRY_LIMIT",
-    "QAPAQ_WAZUH_GATEWAY_BASE_URL",
-    "QAPAQ_WAZUH_REQUEST_TIMEOUT",
-    "QAPAQ_WAZUH_RETRY_LIMIT",
-    "QAPAQ_WAZUH_PAGE_SIZE",
-    "QAPAQ_WAZUH_MAX_PAGE_SIZE",
-    "QAPAQ_WAZUH_DATASET",
-    "QAPAQ_WAZUH_CURSOR_TTL",
-    "QAPAQ_WAZUH_MAX_RESPONSE_BYTES",
-    "QAPAQ_ACCESS_IDENTITY_MODE",
-    "QAPAQ_ACCESS_ALLOWED_CIDRS",
-    "QAPAQ_ACCESS_TRUSTED_PROXY_CIDRS",
-    "QAPAQ_ENTRA_TENANT_ID",
-    "QAPAQ_ENTRA_CLIENT_ID",
-    "QAPAQ_ENTRA_AUTHORITY",
-    "QAPAQ_ENTRA_REDIRECT_URI",
-    "QAPAQ_ENTRA_ALLOWED_REDIRECT_URIS",
-    "QAPAQ_ENTRA_SCOPES",
-    "QAPAQ_MVP_ROLE_BINDING_OID",
-    "QAPAQ_MVP_ROLE_BINDING_ROLE",
-    "QAPAQ_MVP_ROLE_BINDING_EXPIRES_AT",
-    "QAPAQ_CONSOLE_BASE_URL",
-    "QAPAQ_DETECTION_PRIVILEGED_IDENTITIES",
-    "QAPAQ_DETECTION_BREAK_GLASS_IDENTITIES",
-    "QAPAQ_DETECTION_CRITICAL_ASSETS",
-    "QAPAQ_DETECTION_INTERNET_FACING_ASSETS",
-    "QAPAQ_DETECTION_KNOWN_BENIGN_RULES",
-    "QAPAQ_SOC_PERSISTENCE",
-    "QAPAQ_INGESTION_SOURCE",
-    "QAPAQ_INGESTION_SOURCE_ID",
-    "QAPAQ_INGESTION_GATEWAY_SCOPE",
-    "QAPAQ_INGESTION_INTERVAL",
-    "QAPAQ_INGESTION_INITIAL_LOOKBACK_MINUTES",
-    "QAPAQ_ROLE_BINDINGS",
-    "QAPAQ_GROUP_OWNER_OIDS",
-    "QAPAQ_ADMIN_GROUP_IDS",
-    "QAPAQ_ACCESS_APPROVER_OIDS",
-    "QAPAQ_SECURITY_APPROVER_OIDS",
-    "QAPAQ_DIRECTORY_SYNC",
-    "QAPAQ_DIRECTORY_GROUP_ID",
-    "QAPAQ_DIRECTORY_GROUP_NAME",
-    "QAPAQ_DIRECTORY_SYNC_INTERVAL_MINUTES",
-    "QAPAQ_ALERT_MAIL_SENDER",
+    "B89_PROFILE",
+    "B89_PROCESS_ROLE",
+    "B89_API_HOST",
+    "B89_API_PORT",
+    "B89_POSTGRES_HOST",
+    "B89_POSTGRES_PORT",
+    "B89_POSTGRES_DATABASE",
+    "B89_POSTGRES_USERNAME",
+    "B89_POSTGRES_TLS",
+    "B89_POSTGRES_CONNECTION_TIMEOUT",
+    "B89_POSTGRES_STATEMENT_TIMEOUT",
+    "B89_POSTGRES_POOL_MIN",
+    "B89_POSTGRES_POOL_MAX",
+    "B89_REDIS_HOST",
+    "B89_REDIS_PORT",
+    "B89_REDIS_USERNAME",
+    "B89_REDIS_DATABASE",
+    "B89_REDIS_TLS",
+    "B89_REDIS_CONNECTION_TIMEOUT",
+    "B89_REDIS_COMMAND_TIMEOUT",
+    "B89_REDIS_RETRY_LIMIT",
+    "B89_MINIO_ENDPOINT",
+    "B89_MINIO_PORT",
+    "B89_MINIO_REGION",
+    "B89_MINIO_RAW_BUCKET",
+    "B89_MINIO_TLS",
+    "B89_MINIO_CONNECTION_TIMEOUT",
+    "B89_MINIO_REQUEST_TIMEOUT",
+    "B89_MINIO_RETRY_LIMIT",
+    "B89_WAZUH_GATEWAY_BASE_URL",
+    "B89_WAZUH_REQUEST_TIMEOUT",
+    "B89_WAZUH_RETRY_LIMIT",
+    "B89_WAZUH_PAGE_SIZE",
+    "B89_WAZUH_MAX_PAGE_SIZE",
+    "B89_WAZUH_DATASET",
+    "B89_WAZUH_CURSOR_TTL",
+    "B89_WAZUH_MAX_RESPONSE_BYTES",
+    "B89_ACCESS_IDENTITY_MODE",
+    "B89_ACCESS_ALLOWED_CIDRS",
+    "B89_ACCESS_TRUSTED_PROXY_CIDRS",
+    "B89_ENTRA_TENANT_ID",
+    "B89_ENTRA_CLIENT_ID",
+    "B89_ENTRA_AUTHORITY",
+    "B89_ENTRA_REDIRECT_URI",
+    "B89_ENTRA_ALLOWED_REDIRECT_URIS",
+    "B89_ENTRA_SCOPES",
+    "B89_MVP_ROLE_BINDING_OID",
+    "B89_MVP_ROLE_BINDING_ROLE",
+    "B89_MVP_ROLE_BINDING_EXPIRES_AT",
+    "B89_CONSOLE_BASE_URL",
+    "B89_DETECTION_PRIVILEGED_IDENTITIES",
+    "B89_DETECTION_BREAK_GLASS_IDENTITIES",
+    "B89_DETECTION_CRITICAL_ASSETS",
+    "B89_DETECTION_INTERNET_FACING_ASSETS",
+    "B89_DETECTION_KNOWN_BENIGN_RULES",
+    "B89_SOC_PERSISTENCE",
+    "B89_INGESTION_SOURCE",
+    "B89_INGESTION_SOURCE_ID",
+    "B89_INGESTION_GATEWAY_SCOPE",
+    "B89_INGESTION_INTERVAL",
+    "B89_INGESTION_INITIAL_LOOKBACK_MINUTES",
+    "B89_ROLE_BINDINGS",
+    "B89_GROUP_OWNER_OIDS",
+    "B89_ADMIN_GROUP_IDS",
+    "B89_ACCESS_APPROVER_OIDS",
+    "B89_SECURITY_APPROVER_OIDS",
+    "B89_DIRECTORY_SYNC",
+    "B89_DIRECTORY_GROUP_ID",
+    "B89_DIRECTORY_GROUP_NAME",
+    "B89_DIRECTORY_SYNC_INTERVAL_MINUTES",
+    "B89_ALERT_MAIL_SENDER",
 }
 EXPECTED = {
     "wazuh_version": "4.14.8",
@@ -127,12 +127,12 @@ EXPECTED_DEBIAN_PACKAGES = {
     "wazuh-manager": ("managerDeb", "wazuh-manager", "prefix", "4.14.8-"),
     "wazuh-indexer": ("indexerDeb", "wazuh-indexer", "prefix", "4.14.8-"),
     "filebeat": ("filebeatDeb", "filebeat", "exact", "7.10.2-2"),
-    "wazuh-dashboard": ("qapaqDashboardDeb", "wazuh-dashboard", "exact", "4.14.8-1qapaq1"),
+    "wazuh-dashboard": ("b89DashboardDeb", "wazuh-dashboard", "exact", "4.14.8-1b891"),
 }
 
 
 def log(message: str) -> None:
-    print(f"qapaq-siem-bootstrap: {message}", flush=True)
+    print(f"b89-siem-bootstrap: {message}", flush=True)
 
 
 def fail(message: str) -> None:
@@ -169,9 +169,9 @@ def validate_core_environment(
                 fail("la referencia Core no coincide con el nombre autorizado de Key Vault")
         elif key in CORE_SECRET_PROVIDER_KEYS:
             expected_value = {
-                "QAPAQ_SECRET_PROVIDER_TYPE": "azure-key-vault",
-                "QAPAQ_SECRET_PROVIDER_TIMEOUT": "5s",
-                "QAPAQ_SECRET_PROVIDER_ENDPOINT": key_vault_uri.rstrip("/"),
+                "B89_SECRET_PROVIDER_TYPE": "azure-key-vault",
+                "B89_SECRET_PROVIDER_TIMEOUT": "5s",
+                "B89_SECRET_PROVIDER_ENDPOINT": key_vault_uri.rstrip("/"),
             }[key]
             if value != expected_value:
                 fail("la configuración del proveedor Azure debe coincidir con la identidad y el vault del host")
@@ -198,7 +198,7 @@ def load_config() -> dict:
     except (OSError, json.JSONDecodeError):
         fail("no se pudo leer la configuración no secreta de bootstrap")
     if config.get("expected") != EXPECTED:
-        fail("las versiones esperadas no coinciden con Wazuh QAPAQ 4.14.8 / OSD 2.19.6 / Node 24.21.0")
+        fail("las versiones esperadas no coinciden con Wazuh B89 4.14.8 / OSD 2.19.6 / Node 24.21.0")
     if not re.fullmatch(r"[0-9a-f]{64}", config.get("artifact_sha256", "")):
         fail("el SHA-256 del bundle no es válido")
     url = config.get("artifact_url", "")
@@ -224,8 +224,8 @@ def load_config() -> dict:
     core_secret_names = config.get("core_secret_names", {})
     if not isinstance(core_secret_names, dict):
         fail("la configuración de secretos Core debe ser un mapa de nombres Key Vault")
-    if "QAPAQ_ENTRA_CLIENT_SECRET" not in core_secret_names:
-        fail("falta la referencia Key Vault del client secret Entra de QAPAQ")
+    if "B89_ENTRA_CLIENT_SECRET" not in core_secret_names:
+        fail("falta la referencia Key Vault del client secret Entra de B89")
     for key, name in core_secret_names.items():
         if (
             not isinstance(key, str)
@@ -239,8 +239,8 @@ def load_config() -> dict:
         core_secret_names,
         config.get("key_vault_uri", ""),
     )
-    if core_environment.get("QAPAQ_SOC_PERSISTENCE") == "postgres":
-        required_postgres_secrets = {"QAPAQ_POSTGRES_PASSWORD", "QAPAQ_ENTITY_REF_KEY"}
+    if core_environment.get("B89_SOC_PERSISTENCE") == "postgres":
+        required_postgres_secrets = {"B89_POSTGRES_PASSWORD", "B89_ENTITY_REF_KEY"}
         if not required_postgres_secrets.issubset(core_secret_names):
             fail("persistencia PostgreSQL requiere referencias Key Vault para la contraseña de aplicación y la clave de referencias de entidad")
     provider_config = config.get("provider_ingestion", {})
@@ -308,7 +308,7 @@ def ensure_ext4_or_format(device: str, expected_size_bytes: int) -> None:
     if zero_scan.returncode != 0:
         fail("no se pudo confirmar que LUN 0 esté completamente vacío")
     log("LUN 0 verificado como disco Azure esperado, sin firmas y completamente en cero; se crea ext4")
-    run("mkfs.ext4", "-m", "1", "-L", "qapaq-siem-data", device)
+    run("mkfs.ext4", "-m", "1", "-L", "b89-siem-data", device)
     fs_probe = subprocess.run(
         ["blkid", "-p", "-o", "export", device], check=False, text=True,
         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
@@ -594,9 +594,9 @@ def materialize_secrets(config: dict) -> None:
         merged_env[reference_key] = reference_value
     if core_secret_names:
         provider_defaults = {
-            "QAPAQ_SECRET_PROVIDER_TYPE": "azure-key-vault",
-            "QAPAQ_SECRET_PROVIDER_TIMEOUT": "5s",
-            "QAPAQ_SECRET_PROVIDER_ENDPOINT": config["key_vault_uri"].rstrip("/"),
+            "B89_SECRET_PROVIDER_TYPE": "azure-key-vault",
+            "B89_SECRET_PROVIDER_TIMEOUT": "5s",
+            "B89_SECRET_PROVIDER_ENDPOINT": config["key_vault_uri"].rstrip("/"),
         }
         for key, value in provider_defaults.items():
             if key in merged_env and merged_env[key] != value:
@@ -620,9 +620,9 @@ def materialize_secrets(config: dict) -> None:
                 fail("la referencia Core no coincide con el nombre autorizado de Key Vault")
         elif key in CORE_SECRET_PROVIDER_KEYS:
             expected_value = {
-                "QAPAQ_SECRET_PROVIDER_TYPE": "azure-key-vault",
-                "QAPAQ_SECRET_PROVIDER_TIMEOUT": "5s",
-                "QAPAQ_SECRET_PROVIDER_ENDPOINT": config["key_vault_uri"].rstrip("/"),
+                "B89_SECRET_PROVIDER_TYPE": "azure-key-vault",
+                "B89_SECRET_PROVIDER_TIMEOUT": "5s",
+                "B89_SECRET_PROVIDER_ENDPOINT": config["key_vault_uri"].rstrip("/"),
             }[key]
             if value != expected_value:
                 fail("la configuración del proveedor Azure debe coincidir con la identidad y el vault del host")
@@ -632,16 +632,16 @@ def materialize_secrets(config: dict) -> None:
     with CORE_ENV_PATH.open("w", encoding="utf-8") as stream:
         for key in sorted(merged_env):
             stream.write(f"{key}={systemd_quote(merged_env[key])}\n")
-    # systemd lee el EnvironmentFile como root antes de bajar a qapaq-core, y
+    # systemd lee el EnvironmentFile como root antes de bajar a b89-core, y
     # apply-core-azure.sh exige que no tenga permisos de grupo ni de otros.
     os.chmod(CORE_ENV_PATH, 0o600)
     try:
-        qapaq_gid = pwd.getpwnam("qapaq-core").pw_gid
+        b89_gid = pwd.getpwnam("b89-core").pw_gid
     except KeyError:
-        run("useradd", "--system", "--no-create-home", "--shell", "/usr/sbin/nologin", "qapaq-core")
-        qapaq_gid = pwd.getpwnam("qapaq-core").pw_gid
-    os.chown(CORE_ENV_PATH.parent, 0, qapaq_gid)
-    os.chown(CORE_ENV_PATH, 0, qapaq_gid)
+        run("useradd", "--system", "--no-create-home", "--shell", "/usr/sbin/nologin", "b89-core")
+        b89_gid = pwd.getpwnam("b89-core").pw_gid
+    os.chown(CORE_ENV_PATH.parent, 0, b89_gid)
+    os.chown(CORE_ENV_PATH, 0, b89_gid)
 
     WAZUH_SECRET_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(WAZUH_SECRET_DIR, 0o700)
@@ -700,7 +700,7 @@ def validate_debian_artifacts(content: pathlib.Path, manifest: dict) -> None:
             else actual_version == required_version
         )
         if not version_matches:
-            fail(f"la versión Debian de {manifest_name} no corresponde al contrato QAPAQ")
+            fail(f"la versión Debian de {manifest_name} no corresponde al contrato B89")
         if actual_architecture != "amd64":
             fail(f"el paquete {manifest_name} no es amd64")
 
@@ -712,8 +712,8 @@ def validate_runtime_health() -> None:
         "wazuh-manager",
         "wazuh-dashboard",
         "filebeat",
-        "qapaq-core-api",
-        "qapaq-core-worker",
+        "b89-core-api",
+        "b89-core-worker",
     ):
         run("systemctl", "is-active", "--quiet", service)
     for attempt in range(60):
@@ -723,16 +723,16 @@ def validate_runtime_health() -> None:
                     return
         except (OSError, urllib.error.URLError):
             if attempt == 59:
-                fail("qapaq-core no alcanzó /health/ready")
+                fail("b89-core no alcanzó /health/ready")
         time.sleep(2)
-    fail("qapaq-core no alcanzó /health/ready")
+    fail("b89-core no alcanzó /health/ready")
 
 
 def extract_and_verify(bundle: pathlib.Path, config: dict) -> pathlib.Path:
     RELEASE_ROOT.mkdir(mode=0o750, parents=True, exist_ok=True)
     release = RELEASE_ROOT / config["artifact_sha256"]
     already_extracted = release.exists()
-    staging = None if already_extracted else pathlib.Path(tempfile.mkdtemp(prefix=".qapaq-siem-release-", dir=RELEASE_ROOT))
+    staging = None if already_extracted else pathlib.Path(tempfile.mkdtemp(prefix=".b89-siem-release-", dir=RELEASE_ROOT))
     try:
         if already_extracted:
             content = release
@@ -759,14 +759,14 @@ def extract_and_verify(bundle: pathlib.Path, config: dict) -> pathlib.Path:
             "wazuhFilebeat": "4.14.8",
             "wazuhDashboard": "4.14.8",
             "openSearchDashboards": "2.19.6",
-            "qapaqCoreNode": "24.21.0",
+            "b89CoreNode": "24.21.0",
         }
         if manifest.get("schemaVersion") != 1 or any(components.get(key) != value for key, value in expected_components.items()):
             fail("el manifiesto no fija Wazuh 4.14.8, OSD 2.19.6 y Node 24.21.0")
-        if manifest.get("qapaqDashboardPackage") != "4.14.8-1qapaq1" or not re.fullmatch(
-            r"[0-9a-f]{12}", manifest.get("qapaqCoreSourceCommit", "")
+        if manifest.get("b89DashboardPackage") != "4.14.8-1b891" or not re.fullmatch(
+            r"[0-9a-f]{12}", manifest.get("b89CoreSourceCommit", "")
         ):
-            fail("el manifiesto no fija el paquete de marca QAPAQ y la revisión del core")
+            fail("el manifiesto no fija el paquete de marca B89 y la revisión del core")
         package_versions = manifest.get("debianPackages", {})
         if not isinstance(package_versions, dict) or any(
             not isinstance(package_versions.get(name), str) or not package_versions[name]
@@ -776,14 +776,14 @@ def extract_and_verify(bundle: pathlib.Path, config: dict) -> pathlib.Path:
         for name in ("wazuh-manager", "wazuh-indexer"):
             if not package_versions[name].startswith("4.14.8-"):
                 fail(f"la versión de paquete {name} no corresponde a Wazuh 4.14.8")
-        if package_versions["wazuh-dashboard"] != "4.14.8-1qapaq1":
-            fail("el paquete instalado del Dashboard no corresponde al build QAPAQ 4.14.8")
+        if package_versions["wazuh-dashboard"] != "4.14.8-1b891":
+            fail("el paquete instalado del Dashboard no corresponde al build B89 4.14.8")
         if package_versions["filebeat"] != "7.10.2-2":
             fail("la versión Debian de Filebeat no corresponde al pin 7.10.2-2")
         artifact_paths = manifest.get("artifacts", {})
-        required_artifacts = {"managerDeb", "indexerDeb", "filebeatDeb", "qapaqDashboardDeb", "qapaqCoreArchive"}
+        required_artifacts = {"managerDeb", "indexerDeb", "filebeatDeb", "b89DashboardDeb", "b89CoreArchive"}
         if not isinstance(artifact_paths, dict) or not required_artifacts.issubset(artifact_paths):
-            fail("el bundle no declara paquetes de manager/indexer/Filebeat y build QAPAQ/core")
+            fail("el bundle no declara paquetes de manager/indexer/Filebeat y build B89/core")
         file_hashes = manifest.get("files")
         if not isinstance(file_hashes, dict) or "install.sh" not in file_hashes:
             fail("el manifiesto debe fijar SHA-256 para install.sh y todos los artefactos")
@@ -867,7 +867,7 @@ def installer_required(release: pathlib.Path) -> bool:
     present = [name for name in package_names if package_registered(name)]
     state_dirs = (DATA_ROOT / "manager", DATA_ROOT / "indexer", DATA_ROOT / "dashboard")
     populated_dirs = [path for path in state_dirs if path.exists() and any(path.iterdir())]
-    core_root = pathlib.Path("/opt/qapaq-core")
+    core_root = pathlib.Path("/opt/b89-core")
     if present or populated_dirs or core_root.exists():
         fail("hay instalación o datos previos sin registro; se detuvo para proteger el estado existente")
     return True
@@ -904,23 +904,23 @@ def install_release(release: pathlib.Path, config: dict) -> None:
         environment = os.environ.copy()
         environment.update(
             {
-                "QAPAQ_DATA_ROOT": str(DATA_ROOT),
-                "QAPAQ_CORE_ENV_FILE": str(CORE_ENV_PATH),
-                "QAPAQ_SECRET_DIR": str(WAZUH_SECRET_DIR),
-                "QAPAQ_WAZUH_VERSION": EXPECTED["wazuh_version"],
-                "QAPAQ_OSD_VERSION": EXPECTED["osd_version"],
-                "QAPAQ_CORE_NODE_VERSION": EXPECTED["node_version"],
-                "QAPAQ_RELEASE_DIR": str(release),
+                "B89_DATA_ROOT": str(DATA_ROOT),
+                "B89_CORE_ENV_FILE": str(CORE_ENV_PATH),
+                "B89_SECRET_DIR": str(WAZUH_SECRET_DIR),
+                "B89_WAZUH_VERSION": EXPECTED["wazuh_version"],
+                "B89_OSD_VERSION": EXPECTED["osd_version"],
+                "B89_CORE_NODE_VERSION": EXPECTED["node_version"],
+                "B89_RELEASE_DIR": str(release),
             }
         )
         office365 = config["office365"]
         environment.update(
             {
-                "QAPAQ_O365_TENANT_ID": office365["tenant_id"],
-                "QAPAQ_O365_CLIENT_ID": office365["client_id"],
-                "QAPAQ_O365_API_TYPE": office365["api_type"],
-                "QAPAQ_O365_ENABLE_DLP": str(office365["enable_dlp"]).lower(),
-                "QAPAQ_PROVIDER_INGESTION_JSON": json.dumps(config.get("provider_ingestion", {}), separators=(",", ":")),
+                "B89_O365_TENANT_ID": office365["tenant_id"],
+                "B89_O365_CLIENT_ID": office365["client_id"],
+                "B89_O365_API_TYPE": office365["api_type"],
+                "B89_O365_ENABLE_DLP": str(office365["enable_dlp"]).lower(),
+                "B89_PROVIDER_INGESTION_JSON": json.dumps(config.get("provider_ingestion", {}), separators=(",", ":")),
             }
         )
         # Wazuh's installation assistant prints generated credentials in its summary.
@@ -943,16 +943,16 @@ def install_release(release: pathlib.Path, config: dict) -> None:
         if actual != manifest["debianPackages"][package_name]:
             fail(f"la versión instalada de {package_name} no coincide con el bundle fijado")
 
-    node = pathlib.Path("/opt/qapaq-core/current/node/bin/node")
+    node = pathlib.Path("/opt/b89-core/current/node/bin/node")
     if not node.exists():
-        fail("el instalador no dejó el runtime Node de qapaq-core")
+        fail("el instalador no dejó el runtime Node de b89-core")
     node_version = run(str(node), "--version", capture=True)
     if node_version != f"v{EXPECTED['node_version']}":
         fail("la versión Node del core instalado no coincide con 24.21.0")
     validate_runtime_health()
     if needs_install:
         record_install_state(release)
-    log("servicios de Wazuh QAPAQ y qapaq-core activos según systemd")
+    log("servicios de Wazuh B89 y b89-core activos según systemd")
 
 
 def main() -> None:
@@ -960,7 +960,7 @@ def main() -> None:
         fail("bootstrap requiere root")
     config = load_config()
     mount_data_disk(config["data_disk_size_gb"])
-    with tempfile.TemporaryDirectory(prefix="qapaq-siem-bootstrap-") as temp_dir:
+    with tempfile.TemporaryDirectory(prefix="b89-siem-bootstrap-") as temp_dir:
         bundle = pathlib.Path(temp_dir) / "siem-release.tar.gz"
         fetch_bundle(config, bundle)
         release = extract_and_verify(bundle, config)

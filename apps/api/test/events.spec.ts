@@ -8,8 +8,8 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { SecurityEventProviderError } from '@qapaq/connectors';
-import { parseEventsQuery } from '@qapaq/contracts';
+import { SecurityEventProviderError } from '@b89/connectors';
+import { parseEventsQuery } from '@b89/contracts';
 
 import { buildApi } from '../src/bootstrap.js';
 import type { EventsReader } from '../src/runtime/events-reader.js';
@@ -102,7 +102,7 @@ describe('GET /api/events', () => {
         integration: 'office365',
         office365: {
           Operation: 'New-InboxRule',
-          UserId: 'u@qapaq-lab.example',
+          UserId: 'u@b89-lab.example',
           ClientIP: '203.0.113.24',
         },
       },
@@ -110,7 +110,7 @@ describe('GET /api/events', () => {
   };
 
   beforeAll(async () => {
-    const built = await buildApi({ QAPAQ_PROFILE: 'test' }, () => {});
+    const built = await buildApi({ B89_PROFILE: 'test' }, () => {});
     runtime = built.runtime;
     stop = built.stop;
     application = built.application;

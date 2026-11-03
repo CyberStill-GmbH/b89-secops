@@ -23,10 +23,10 @@ import { promisify } from 'node:util';
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { InMemoryAuditStore } from '@qapaq/audit';
-import { candidateId, promotionKey } from '@qapaq/detection';
-import { ingestCandidate, executeAlertCommand, type SocDependencies } from '@qapaq/soc';
-import { PostgresSocPersistence } from '@qapaq/soc/postgres';
+import { InMemoryAuditStore } from '@b89/audit';
+import { candidateId, promotionKey } from '@b89/detection';
+import { ingestCandidate, executeAlertCommand, type SocDependencies } from '@b89/soc';
+import { PostgresSocPersistence } from '@b89/soc/postgres';
 
 import { drainOutbox, type DispatchDependencies } from '../src/dispatcher.js';
 import { ConsoleFallbackChannel } from '../src/memory-stores.js';
@@ -42,7 +42,7 @@ const AT = new Date('2026-10-12T10:00:00.000Z');
 async function provisionDatabase() {
   if (!databaseUrl) throw new Error('DATABASE_URL es obligatorio para esta spec.');
   const parsed = new URL(databaseUrl);
-  const name = `qapaq_c20d_${process.pid}_${Date.now()}`.toLowerCase();
+  const name = `b89_c20d_${process.pid}_${Date.now()}`.toLowerCase();
   const adminUrl = new URL(parsed);
   adminUrl.pathname = '/postgres';
   const admin = new Client(adminUrl.toString());
@@ -122,7 +122,7 @@ describe.skipIf(!databaseUrl)('C-20 · despacho durable sobre PostgreSQL', () =>
       audit: new InMemoryAuditStore(),
       clock: { now: () => now },
       ids: { next: () => randomUUID() },
-      consoleBaseUrl: 'https://soc.qapaq-lab.example',
+      consoleBaseUrl: 'https://soc.b89-lab.example',
     };
   }
 
@@ -148,12 +148,12 @@ describe.skipIf(!databaseUrl)('C-20 · despacho durable sobre PostgreSQL', () =>
       priority: 'P1',
       score: 100,
       reasons: [{ code: 'BREAK_GLASS_IDENTITY', delta: 100, detail: 'Cuenta de emergencia.' }],
-      rulesetId: 'qapaq.detection.prioritization',
+      rulesetId: 'b89.detection.prioritization',
       rulesetVersion: '1.1.0',
       occurredAt: AT,
       createdAt: AT,
       title: 'Login de cuenta de emergencia',
-      entityKeys: ['user:bg-01@qapaq-lab.example'],
+      entityKeys: ['user:bg-01@b89-lab.example'],
       signal: 'initial_access',
       ruleId: '100530',
       relatedAlertIds: [],
@@ -163,7 +163,7 @@ describe.skipIf(!databaseUrl)('C-20 · despacho durable sobre PostgreSQL', () =>
       tenantId: TENANT,
       sessionId: 'sess-1',
       capabilities: new Set(['alerts.read', 'alerts.triage', 'alerts.assign']),
-      roles: ['qapaq.soc.analyst'],
+      roles: ['b89.soc.analyst'],
     } as const;
     let revision = 1;
     for (const command of [

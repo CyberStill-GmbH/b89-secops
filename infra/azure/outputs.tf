@@ -44,12 +44,12 @@ output "edge_default_fqdn" {
 }
 
 output "siem_private_ip" {
-  description = "IP privada del SIEM QAPAQ cuando se habilita el host. null mientras falten las gates de release y red."
+  description = "IP privada del SIEM B89 cuando se habilita el host. null mientras falten las gates de release y red."
   value       = try(module.siem_host[0].private_ip_address, null)
 }
 
 output "krakend_gateway_base_url" {
-  description = "URL privada HTTPS de KrakenD para QAPAQ Core cuando el módulo opcional está habilitado; null por defecto."
+  description = "URL privada HTTPS de KrakenD para B89 Core cuando el módulo opcional está habilitado; null por defecto."
   value       = try(module.krakend_gateway[0].gateway_base_url, null)
 }
 
@@ -58,12 +58,12 @@ output "siem_firewall_public_ip" {
   value       = try(module.egress_firewall[0].public_ip_address, null)
 }
 
-output "ankay_private_ip" {
-  description = "IP privada del host Ankay preparado cuando se habilita `ankay_host`; null por defecto."
-  value       = try(module.ankay_host[0].private_ip_address, null)
+output "b89_respond_private_ip" {
+  description = "IP privada del host B89 Respond preparado cuando se habilita `b89_respond_host`; null por defecto."
+  value       = try(module.b89_respond_host[0].private_ip_address, null)
 }
 
-output "ankay_runtime_status" {
-  description = "Estado informativo del host Ankay; el módulo prepara VM/disco pero no instala ni inicia Shuffle."
-  value       = try(module.ankay_host[0].runtime_status, null)
+output "b89_respond_runtime_status" {
+  description = "Estado informativo del host B89 Respond; el módulo prepara VM/disco pero no instala ni inicia Shuffle."
+  value       = try(module.b89_respond_host[0].runtime_status, null)
 }

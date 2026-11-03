@@ -6,10 +6,10 @@
 # apply falla y KrakenD no se actualiza con una credencial que no existe.
 #
 # Qué deja hecho, de forma idempotente (reejecutar no rota contraseñas):
-#   1. wazuh/access/apply-access.sh: usuario `qapaq_reader` de solo lectura, proxy TLS
+#   1. wazuh/access/apply-access.sh: usuario `b89_reader` de solo lectura, proxy TLS
 #      del Indexer en la IP privada, usuario admin del Dashboard y usuario analista de solo
 #      lectura. Publica credenciales y certificado en Secrets Manager.
-#   2. wazuh/office365/apply-office365.sh: módulo office365 y reglas QAPAQ, con el client
+#   2. wazuh/office365/apply-office365.sh: módulo office365 y reglas B89, con el client
 #      secret de la misma app de Entra del API (decisión del dueño del producto: una sola app).
 #
 # Cualquier cambio en un script crea una versión nueva del documento y la asociación vuelve a
@@ -24,7 +24,7 @@ variable "wazuh_bootstrap_enabled" {
 variable "wazuh_admin_username" {
   description = "Usuario local del Dashboard de Wazuh con administración (dueño del grupo). Su contraseña queda en Secrets Manager."
   type        = string
-  default     = "qapaq-admin"
+  default     = "b89-admin"
 
   validation {
     condition     = can(regex("^[A-Za-z0-9._@-]{3,64}$", var.wazuh_admin_username))
@@ -60,8 +60,8 @@ locals {
       fileset(local.wazuh_scripts_root, "office365/rules/*.xml"),
     ) : file
   ])
-  entra_tenant_id = var.runtime_api_environment["QAPAQ_ENTRA_TENANT_ID"]
-  entra_client_id = var.runtime_api_environment["QAPAQ_ENTRA_CLIENT_ID"]
+  entra_tenant_id = var.runtime_api_environment["B89_ENTRA_TENANT_ID"]
+  entra_client_id = var.runtime_api_environment["B89_ENTRA_CLIENT_ID"]
   secret_prefix   = "${var.project}/${var.environment}"
 
   wazuh_bootstrap_commands = concat(
@@ -79,25 +79,25 @@ locals {
     ]),
     [
       join(" ", [
-        "QAPAQ_AWS_REGION=${var.aws_region}",
-        "QAPAQ_ADMIN_USERNAME='${var.wazuh_admin_username}'",
-        "QAPAQ_ANALYST_USERNAME='${var.wazuh_analyst_username}'",
-        "QAPAQ_READER_SECRET_ID=${aws_secretsmanager_secret.wazuh_indexer_reader.name}",
-        "QAPAQ_PROXY_CA_SECRET_ID=${aws_secretsmanager_secret.wazuh_indexer_proxy_ca.name}",
-        "QAPAQ_ADMIN_USER_SECRET_ID=${aws_secretsmanager_secret.wazuh_dashboard_admin.name}",
-        "QAPAQ_ANALYST_USER_SECRET_ID=${aws_secretsmanager_secret.wazuh_dashboard_analyst.name}",
+        "B89_AWS_REGION=${var.aws_region}",
+        "B89_ADMIN_USERNAME='${var.wazuh_admin_username}'",
+        "B89_ANALYST_USERNAME='${var.wazuh_analyst_username}'",
+        "B89_READER_SECRET_ID=${aws_secretsmanager_secret.wazuh_indexer_reader.name}",
+        "B89_PROXY_CA_SECRET_ID=${aws_secretsmanager_secret.wazuh_indexer_proxy_ca.name}",
+        "B89_ADMIN_USER_SECRET_ID=${aws_secretsmanager_secret.wazuh_dashboard_admin.name}",
+        "B89_ANALYST_USER_SECRET_ID=${aws_secretsmanager_secret.wazuh_dashboard_analyst.name}",
         "bash \"$work/access/apply-access.sh\"",
       ]),
     ],
     var.wazuh_office365_enabled ? [
       join(" ", [
-        "QAPAQ_APPLY_MODE=apply",
-        "QAPAQ_O365_TENANT_ID=${local.entra_tenant_id}",
-        "QAPAQ_O365_CLIENT_ID=${local.entra_client_id}",
-        "QAPAQ_O365_API_TYPE=commercial",
-        "QAPAQ_O365_ENABLE_DLP=false",
-        "QAPAQ_AWS_REGION=${var.aws_region}",
-        "QAPAQ_O365_SECRET_SOURCE=aws-secretsmanager:${local.secret_prefix}/entra/client-secret",
+        "B89_APPLY_MODE=apply",
+        "B89_O365_TENANT_ID=${local.entra_tenant_id}",
+        "B89_O365_CLIENT_ID=${local.entra_client_id}",
+        "B89_O365_API_TYPE=commercial",
+        "B89_O365_ENABLE_DLP=false",
+        "B89_AWS_REGION=${var.aws_region}",
+        "B89_O365_SECRET_SOURCE=aws-secretsmanager:${local.secret_prefix}/entra/client-secret",
         "bash \"$work/office365/apply-office365.sh\"",
       ]),
     ] : [],
@@ -119,7 +119,7 @@ resource "aws_ssm_document" "wazuh_bootstrap" {
 
   content = jsonencode({
     schemaVersion = "2.2"
-    description   = "QAPAQ: acceso a Wazuh (lector, proxy, usuarios) y recolección de Office 365."
+    description   = "B89: acceso a Wazuh (lector, proxy, usuarios) y recolección de Office 365."
     mainSteps = [{
       action = "aws:runShellScript"
       name   = "initialize"

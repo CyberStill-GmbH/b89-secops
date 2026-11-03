@@ -12,9 +12,9 @@ export class HealthController {
   @Get('live')
   public live() {
     if (this.lifecycle.state === 'stopped' || this.lifecycle.state === 'failed') {
-      throw new ServiceUnavailableException({ status: 'unavailable', service: 'qapaq-secops-api' });
+      throw new ServiceUnavailableException({ status: 'unavailable', service: 'b89-secops-api' });
     }
-    return { status: 'ok', service: 'qapaq-secops-api' };
+    return { status: 'ok', service: 'b89-secops-api' };
   }
   @Get('ready')
   public async ready() {
@@ -25,8 +25,8 @@ export class HealthController {
       ).every((result) => result.status === 'fulfilled' && result.value);
     // Volver a comprobar el estado tras la espera: el cierre puede haber comenzado entretanto.
     if (!available || !this.lifecycle.ready) {
-      throw new ServiceUnavailableException({ status: 'unavailable', service: 'qapaq-secops-api' });
+      throw new ServiceUnavailableException({ status: 'unavailable', service: 'b89-secops-api' });
     }
-    return { status: 'ok', service: 'qapaq-secops-api' };
+    return { status: 'ok', service: 'b89-secops-api' };
   }
 }

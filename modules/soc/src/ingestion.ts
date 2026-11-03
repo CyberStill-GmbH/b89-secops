@@ -5,7 +5,7 @@
  *   evento más reciente ya procesado) y un lease con fencing (`claimId`). Solo quien tiene el
  *   claim vigente avanza la marca; si el proceso muere, el lease vence y otra réplica sigue.
  * - **Observación de poll:** cada pasada deja intento, resultado, filas vistas y error
- *   normalizado. Es la señal verificable de que QAPAQ consultó la fuente, incluso cuando no
+ *   normalizado. Es la señal verificable de que B89 consultó la fuente, incluso cuando no
  *   había nada (source-health §«Decisión aceptada»). La consume la salud por fuente (fase 2).
  *
  * El dominio no nombra proveedores (C-23): la fuente es un `sourceId` y un `dataset`.

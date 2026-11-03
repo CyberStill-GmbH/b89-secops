@@ -15,7 +15,7 @@
  * escalamiento, evasión, recolección o exfiltración) sobre el mismo usuario.
  */
 
-import type { SignalCatalog } from '@qapaq/detection';
+import type { SignalCatalog } from '@b89/detection';
 
 export const OFFICE365_SIGNAL_CATALOG: SignalCatalog = Object.freeze({
   // Acceso

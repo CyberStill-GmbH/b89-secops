@@ -18,8 +18,8 @@ import { securityEvent } from './support/events.js';
  * C-16 · correlación por entidad. Las cuentas e IPs son sintéticas (RFC 5737).
  */
 
-const USER = 'Usuario.Sintetico@qapaq-lab.example';
-const USER_KEY = 'user:usuario.sintetico@qapaq-lab.example';
+const USER = 'Usuario.Sintetico@b89-lab.example';
+const USER_KEY = 'user:usuario.sintetico@b89-lab.example';
 const IP_KEY = 'ip:203.0.113.24';
 const AT = new Date('2026-10-07T15:30:00.000Z');
 
@@ -103,14 +103,14 @@ describe('C-16 · claves y señales', () => {
     expect(signalOf(m365Event(action), CATALOG)).toBe(expected);
   });
 
-  it('el grupo de una regla local QAPAQ prevalece sobre la acción', () => {
+  it('el grupo de una regla local B89 prevalece sobre la acción', () => {
     const event = m365Event('office365.userloggedin', {
       detection: {
         rule: {
           id: '100501',
           name: 'Spray',
           provider: 'wazuh',
-          groups: ['office365', 'qapaq_credential_access'],
+          groups: ['office365', 'b89_credential_access'],
         },
       },
     });
@@ -130,7 +130,7 @@ describe('C-16 · agrupación y repetición', () => {
     const result = correlateWith(m365Event('office365.new-inboxrule'), [
       alert('a-user', 30),
       alert('a-ip', 60, { entityKeys: [IP_KEY] }),
-      alert('a-ajena', 10, { entityKeys: ['user:otra@qapaq-lab.example'] }),
+      alert('a-ajena', 10, { entityKeys: ['user:otra@b89-lab.example'] }),
       alert('a-vieja', 25 * 60),
     ]);
 
@@ -247,7 +247,7 @@ describe('C-16 · efecto en la priorización 1.1.0', () => {
     });
     const outcome = prioritize(event, {
       ...BASE_CONTEXT,
-      breakGlassIdentities: new Set(['usuario.sintetico@qapaq-lab.example']),
+      breakGlassIdentities: new Set(['usuario.sintetico@b89-lab.example']),
       knownBenignRuleIds: new Set(['100510']),
     });
 
@@ -262,7 +262,7 @@ describe('C-16 · efecto en la priorización 1.1.0', () => {
   it('compara identidades sin distinguir mayúsculas', () => {
     const outcome = prioritize(m365Event('office365.new-inboxrule'), {
       ...BASE_CONTEXT,
-      privilegedIdentities: new Set(['USUARIO.SINTETICO@QAPAQ-LAB.EXAMPLE']),
+      privilegedIdentities: new Set(['USUARIO.SINTETICO@B89-LAB.EXAMPLE']),
     });
     expect(outcome.reasons.map((reason) => reason.code)).toContain('PRIVILEGED_IDENTITY');
   });

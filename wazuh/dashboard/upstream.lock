@@ -1,4 +1,4 @@
-# QAPAQ SecOps dashboard — versiones upstream fijadas (lo lee build.sh con `source`).
+# B89 SecOps dashboard — versiones upstream fijadas (lo lee build.sh con `source`).
 # Verificado el 2026-10-13 con `git ls-remote --tags` y el índice APT firmado de packages.wazuh.com.
 # Para subir de versión: README.md § «Subir a un tag nuevo de Wazuh».
 
@@ -18,15 +18,15 @@ WAZUH_PLUGINS_REPO=https://github.com/wazuh/wazuh-dashboard-plugins.git
 WAZUH_PLUGINS_TAG=v4.14.8
 WAZUH_PLUGINS_SHA=505c58f7d4e08f19d57f6c5496363eec96ee924f
 
-# Security plugin de Wazuh: se compila SIN parches (su login lo sustituye qapaq_ops).
+# Security plugin de Wazuh: se compila SIN parches (su login lo sustituye b89_ops).
 WAZUH_SECURITY_REPO=https://github.com/wazuh/wazuh-security-dashboards-plugin.git
 WAZUH_SECURITY_TAG=v4.14.8
 WAZUH_SECURITY_SHA=6e338eeeec1b7ba4f76741f1989f1de8f6b63c74
 
-# Paquete oficial (solo modo QAPAQ_BUILD_MODE=repack). SHA256 del índice APT
+# Paquete oficial (solo modo B89_BUILD_MODE=repack). SHA256 del índice APT
 # https://packages.wazuh.com/4.x/apt/dists/stable/main/binary-amd64/Packages (Release firmado).
 WAZUH_DEB_URL=https://packages.wazuh.com/4.x/apt/pool/main/w/wazuh-dashboard/wazuh-dashboard_4.14.8-1_amd64.deb
 WAZUH_DEB_SHA256=f2413085b21295e681cca0bd6e2a360174417d241bafbeab5fe7685e2d86f2d4
 
-# Revisión Debian del paquete QAPAQ: 4.14.8-1qapaq1 > 4.14.8-1, así `dpkg -i` actualiza.
-QAPAQ_REVISION=1qapaq1
+# Revisión Debian del paquete B89: 4.14.8-1b891 > 4.14.8-1, así `dpkg -i` actualiza.
+B89_REVISION=1b891

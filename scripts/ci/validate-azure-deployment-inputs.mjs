@@ -147,7 +147,7 @@ function validateProviderIngestion(value, wazuhSecretNames) {
   }
 }
 
-function isUsableAnkayHostAddress(address, env) {
+function isUsableB89RespondHostAddress(address, env) {
   const host = ipv4Number(address);
   const subnet = ipv4Range(subnetCidr(effectiveAddressSpace(env), 11, 1));
   if (host === null || !subnet) return false;
@@ -237,7 +237,7 @@ function validateSiemSubnet(siem, env) {
 
   const reserved = [
     ['Container Apps', subnetCidr(vnetCidr, 11, 0)],
-    ['Ankay', subnetCidr(vnetCidr, 11, 1)],
+    ['B89 Respond', subnetCidr(vnetCidr, 11, 1)],
     ['KrakenD', subnetCidr(vnetCidr, 11, 2)],
     ['PostgreSQL', subnetCidr(vnetCidr, 12, 256)],
     ['Private Endpoints', subnetCidr(vnetCidr, 12, 257)],
@@ -369,11 +369,11 @@ function validateSiem(siem, env = process.env) {
   )
     fail('siem_host.office365 api_type or enable_dlp is invalid.');
   validateProviderIngestion(siem.provider_ingestion, siem.wazuh_secret_names);
-  if (!Object.hasOwn(siem.core_secret_names, 'QAPAQ_ENTRA_CLIENT_SECRET'))
+  if (!Object.hasOwn(siem.core_secret_names, 'B89_ENTRA_CLIENT_SECRET'))
     fail('siem_host.core_secret_names must reference the Entra client secret by Key Vault name.');
-  if (!Object.hasOwn(siem.core_secret_names, 'QAPAQ_TEAMS_WORKFLOW_URL'))
+  if (!Object.hasOwn(siem.core_secret_names, 'B89_TEAMS_WORKFLOW_URL'))
     fail('siem_host.core_secret_names must reference the Teams Workflow URL by Key Vault name.');
-  if (Object.hasOwn(siem.core_secret_names, 'QAPAQ_ENTRA_CLIENT_SECRET_REF'))
+  if (Object.hasOwn(siem.core_secret_names, 'B89_ENTRA_CLIENT_SECRET_REF'))
     fail('siem_host.core_secret_names must contain names only, not secret reference pseudo-keys.');
   stringMap(
     siem.core_environment,
@@ -382,20 +382,20 @@ function validateSiem(siem, env = process.env) {
     /^[^\r\n]*$/u,
   );
   for (const key of Object.keys(siem.core_environment)) {
-    if (key === 'QAPAQ_TEAMS_WORKFLOW_URL')
+    if (key === 'B89_TEAMS_WORKFLOW_URL')
       fail(
         'siem_host.core_environment may not contain the signed Teams Workflow URL; map its Key Vault secret name in core_secret_names.',
       );
-    if (key !== 'QAPAQ_ENTRA_CLIENT_SECRET_REF' && SENSITIVE_ENV_NAME.test(key))
+    if (key !== 'B89_ENTRA_CLIENT_SECRET_REF' && SENSITIVE_ENV_NAME.test(key))
       fail(
         'siem_host.core_environment may not contain values under sensitive environment-variable names.',
       );
   }
-  const entraRef = siem.core_environment.QAPAQ_ENTRA_CLIENT_SECRET_REF;
+  const entraRef = siem.core_environment.B89_ENTRA_CLIENT_SECRET_REF;
   if (
     typeof entraRef !== 'string' ||
     !/^secret:\/\/keyvault\/[A-Za-z0-9][A-Za-z0-9-]{0,126}$/u.test(entraRef) ||
-    entraRef.slice('secret://keyvault/'.length) !== siem.core_secret_names.QAPAQ_ENTRA_CLIENT_SECRET
+    entraRef.slice('secret://keyvault/'.length) !== siem.core_secret_names.B89_ENTRA_CLIENT_SECRET
   ) {
     fail(
       'siem_host.core_environment must reference the same Key Vault Entra secret name as core_secret_names.',
@@ -417,11 +417,11 @@ function validateSiem(siem, env = process.env) {
     fail('siem_host.bootstrap_bundle_sha256 must be lowercase SHA-256.');
 }
 
-function validateAnkay(ankay, siem, registry, env = process.env) {
-  if (ankay === null) return;
-  object(ankay, 'ankay_host');
+function validateB89Respond(b89Respond, siem, registry, env = process.env) {
+  if (b89Respond === null) return;
+  object(b89Respond, 'b89_respond_host');
   if (siem === null)
-    fail('ankay_host requires a configured siem_host; Ankay cannot replace the SIEM.');
+    fail('b89_respond_host requires a configured siem_host; B89 Respond cannot replace the SIEM.');
   const required = [
     'private_ip_address',
     'admin_ssh_public_key',
@@ -433,53 +433,53 @@ function validateAnkay(ankay, siem, registry, env = process.env) {
     'secret_names',
     'docker_package_versions',
   ];
-  exactKeys(ankay, required, ['data_disk_size_gb'], 'ankay_host');
-  if (!isPrivateRfc1918(ankay.private_ip_address))
-    fail('ankay_host.private_ip_address must be an RFC1918 private IPv4 address.');
-  if (!isUsableAnkayHostAddress(ankay.private_ip_address, env))
+  exactKeys(b89Respond, required, ['data_disk_size_gb'], 'b89_respond_host');
+  if (!isPrivateRfc1918(b89Respond.private_ip_address))
+    fail('b89_respond_host.private_ip_address must be an RFC1918 private IPv4 address.');
+  if (!isUsableB89RespondHostAddress(b89Respond.private_ip_address, env))
     fail(
-      'ankay_host.private_ip_address must be a usable Azure host address in the reserved Ankay subnet.',
+      'b89_respond_host.private_ip_address must be a usable Azure host address in the reserved B89 Respond subnet.',
     );
   if (
-    typeof ankay.admin_ssh_public_key !== 'string' ||
+    typeof b89Respond.admin_ssh_public_key !== 'string' ||
     !/^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(256|384|521)) [A-Za-z0-9+/=]+(?: .*)?$/u.test(
-      ankay.admin_ssh_public_key,
+      b89Respond.admin_ssh_public_key,
     )
   )
-    fail('ankay_host.admin_ssh_public_key must be a public SSH key.');
-  nonEmptyString(ankay.vm_size, 'ankay_host.vm_size');
+    fail('b89_respond_host.admin_ssh_public_key must be a public SSH key.');
+  nonEmptyString(b89Respond.vm_size, 'b89_respond_host.vm_size');
   if (
-    typeof ankay.ubuntu_image_version !== 'string' ||
-    !/^\d{8}(?:\.\d+)?$/u.test(ankay.ubuntu_image_version)
+    typeof b89Respond.ubuntu_image_version !== 'string' ||
+    !/^\d{8}(?:\.\d+)?$/u.test(b89Respond.ubuntu_image_version)
   )
-    fail('ankay_host.ubuntu_image_version must pin a numeric Ubuntu image version.');
+    fail('b89_respond_host.ubuntu_image_version must pin a numeric Ubuntu image version.');
   if (
-    Object.hasOwn(ankay, 'data_disk_size_gb') &&
-    (!Number.isInteger(ankay.data_disk_size_gb) || ankay.data_disk_size_gb < 32)
+    Object.hasOwn(b89Respond, 'data_disk_size_gb') &&
+    (!Number.isInteger(b89Respond.data_disk_size_gb) || b89Respond.data_disk_size_gb < 32)
   )
-    fail('ankay_host.data_disk_size_gb must be an integer of at least 32.');
+    fail('b89_respond_host.data_disk_size_gb must be an integer of at least 32.');
   validateImages(
-    ankay.container_images,
+    b89Respond.container_images,
     registry,
     ['shuffle-security', 'frontend', 'backend', 'orborus', 'opensearch', 'worker'],
-    'ankay_host.container_images',
+    'b89_respond_host.container_images',
   );
-  nonEmptyString(ankay.compose_yaml, 'ankay_host.compose_yaml');
-  if (typeof ankay.compose_sha256 !== 'string' || !SHA256.test(ankay.compose_sha256))
-    fail('ankay_host.compose_sha256 must be lowercase SHA-256.');
+  nonEmptyString(b89Respond.compose_yaml, 'b89_respond_host.compose_yaml');
+  if (typeof b89Respond.compose_sha256 !== 'string' || !SHA256.test(b89Respond.compose_sha256))
+    fail('b89_respond_host.compose_sha256 must be lowercase SHA-256.');
   stringMap(
-    ankay.secret_names,
-    'ankay_host.secret_names',
+    b89Respond.secret_names,
+    'b89_respond_host.secret_names',
     /^[A-Z][A-Z0-9_]{0,127}$/u,
     /^[A-Za-z0-9-]{1,127}$/u,
   );
-  if (Object.keys(ankay.secret_names).length === 0)
+  if (Object.keys(b89Respond.secret_names).length === 0)
     fail(
-      'ankay_host.secret_names must map runtime environment variables to pre-created Key Vault secret names.',
+      'b89_respond_host.secret_names must map runtime environment variables to pre-created Key Vault secret names.',
     );
-  object(ankay.docker_package_versions, 'ankay_host.docker_package_versions');
+  object(b89Respond.docker_package_versions, 'b89_respond_host.docker_package_versions');
   exactKeys(
-    ankay.docker_package_versions,
+    b89Respond.docker_package_versions,
     [
       'docker-ce',
       'docker-ce-cli',
@@ -489,24 +489,24 @@ function validateAnkay(ankay, siem, registry, env = process.env) {
       'azure-cli',
     ],
     [],
-    'ankay_host.docker_package_versions',
+    'b89_respond_host.docker_package_versions',
   );
-  for (const [packageName, version] of Object.entries(ankay.docker_package_versions)) {
+  for (const [packageName, version] of Object.entries(b89Respond.docker_package_versions)) {
     if (typeof version !== 'string' || !/^[A-Za-z0-9:.+~_-]{1,80}$/u.test(version))
       fail(
-        `ankay_host.docker_package_versions.${packageName} must be a fixed apt package version.`,
+        `b89_respond_host.docker_package_versions.${packageName} must be a fixed apt package version.`,
       );
   }
-  const actual = nodeCreateHash('sha256').update(ankay.compose_yaml).digest('hex');
-  if (actual !== ankay.compose_sha256)
-    fail('ankay_host.compose_sha256 does not match compose_yaml.');
+  const actual = nodeCreateHash('sha256').update(b89Respond.compose_yaml).digest('hex');
+  if (actual !== b89Respond.compose_sha256)
+    fail('b89_respond_host.compose_sha256 does not match compose_yaml.');
   if (
     /^\s*(?:-\s*)?[A-Z0-9_]*(?:PASSWORD|SECRET|TOKEN|API_KEY|ACCESS_KEY(?:_ID)?|PRIVATE_KEY|CREDENTIAL|DATABASE_URL|CONNECTION_STRING|AUTHORIZATION)(?:_[A-Z0-9_]+)?\s*[:=]\s*(?!\$\{|\$[A-Z_])[^\s#][^\r\n]*$/imu.test(
-      ankay.compose_yaml,
+      b89Respond.compose_yaml,
     )
   )
     fail(
-      'ankay_host.compose_yaml appears to contain a literal credential; use secret references and keep values in Key Vault.',
+      'b89_respond_host.compose_yaml appears to contain a literal credential; use secret references and keep values in Key Vault.',
     );
 }
 
@@ -530,8 +530,8 @@ function validateKrakendGateway(gateway, siem, registry) {
   );
   digestImage(gateway.image, registry, 'krakend_gateway.image');
   const imageName = gateway.image.split('@sha256:')[0].split('/').at(-1);
-  if (imageName !== 'qapaq-secops-krakend')
-    fail('krakend_gateway.image must use the qapaq-secops-krakend ACR repository.');
+  if (imageName !== 'b89-secops-krakend')
+    fail('krakend_gateway.image must use the b89-secops-krakend ACR repository.');
   const guidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
   if (
     typeof gateway.tenant_id !== 'string' ||
@@ -577,18 +577,18 @@ function validateKrakendGateway(gateway, siem, registry) {
     fail(
       'krakend_gateway must use dedicated Key Vault names for its reader and proxy certificate.',
     );
-  if (!Object.hasOwn(siem.core_secret_names, 'QAPAQ_ENTRA_CLIENT_SECRET'))
-    fail('krakend_gateway requires QAPAQ_ENTRA_CLIENT_SECRET by Key Vault name in siem_host.');
+  if (!Object.hasOwn(siem.core_secret_names, 'B89_ENTRA_CLIENT_SECRET'))
+    fail('krakend_gateway requires B89_ENTRA_CLIENT_SECRET by Key Vault name in siem_host.');
   if (
-    siem.core_environment.QAPAQ_ENTRA_TENANT_ID !== gateway.tenant_id ||
-    siem.core_environment.QAPAQ_ENTRA_CLIENT_ID !== gateway.core_client_id
+    siem.core_environment.B89_ENTRA_TENANT_ID !== gateway.tenant_id ||
+    siem.core_environment.B89_ENTRA_CLIENT_ID !== gateway.core_client_id
   )
-    fail('krakend_gateway Entra tenant/client IDs must match the QAPAQ Core configuration.');
+    fail('krakend_gateway Entra tenant/client IDs must match the B89 Core configuration.');
   if (
-    siem.core_environment.QAPAQ_INGESTION_SOURCE !== undefined &&
-    siem.core_environment.QAPAQ_INGESTION_SOURCE !== 'wazuh'
+    siem.core_environment.B89_INGESTION_SOURCE !== undefined &&
+    siem.core_environment.B89_INGESTION_SOURCE !== 'wazuh'
   )
-    fail('krakend_gateway requires QAPAQ_INGESTION_SOURCE=wazuh.');
+    fail('krakend_gateway requires B89_INGESTION_SOURCE=wazuh.');
 }
 
 function validateKeyVaultIds(ids) {
@@ -618,7 +618,7 @@ export function validateDeploymentInputs(env = process.env) {
   const registry = env.AZURE_ACR_LOGIN_SERVER ?? '';
   const images = jsonEnv(env, 'TF_VAR_container_images', '{}');
   const siem = jsonEnv(env, 'TF_VAR_siem_host', 'null');
-  const ankay = jsonEnv(env, 'TF_VAR_ankay_host', 'null');
+  const b89Respond = jsonEnv(env, 'TF_VAR_b89_respond_host', 'null');
   const krakendGateway = jsonEnv(env, 'TF_VAR_krakend_gateway', 'null');
   const keyVaultIds = jsonEnv(env, 'TF_VAR_key_vault_secret_ids', '{}');
   if (Object.keys(object(images, 'container_images')).length)
@@ -641,13 +641,13 @@ export function validateDeploymentInputs(env = process.env) {
     );
   }
   validateSiem(siem, env);
-  validateAnkay(ankay, siem, registry, env);
+  validateB89Respond(b89Respond, siem, registry, env);
   validateKrakendGateway(krakendGateway, siem, registry);
   validateKeyVaultIds(keyVaultIds);
   return {
     enableRuntime: enableRuntime === 'true',
     hasSiem: siem !== null,
-    hasAnkay: ankay !== null,
+    hasB89Respond: b89Respond !== null,
     hasKrakendGateway: krakendGateway !== null,
   };
 }
@@ -656,7 +656,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1
   try {
     const result = validateDeploymentInputs();
     console.log(
-      `Azure deployment inputs valid: runtime=${result.enableRuntime}, siem_host=${result.hasSiem}, ankay_host=${result.hasAnkay}, krakend_gateway=${result.hasKrakendGateway}.`,
+      `Azure deployment inputs valid: runtime=${result.enableRuntime}, siem_host=${result.hasSiem}, b89_respond_host=${result.hasB89Respond}, krakend_gateway=${result.hasKrakendGateway}.`,
     );
   } catch (error) {
     console.error(`Azure deployment inputs rejected: ${error.message}`);

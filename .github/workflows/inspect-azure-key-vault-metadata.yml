@@ -49,9 +49,9 @@ jobs:
         run: |
           set -euo pipefail
 
-          suffix="$(printf '%s' "${AZURE_SUBSCRIPTION_ID}:qapaq-secops:demo" | sha256sum | cut -c1-8)"
-          resource_group="rg-qapaqsecopsdemo-${suffix}"
-          vault="kv-qapaqsecopsd-${suffix}"
+          suffix="$(printf '%s' "${AZURE_SUBSCRIPTION_ID}:b89-secops:demo" | sha256sum | cut -c1-8)"
+          resource_group="rg-b89secopsdemo-${suffix}"
+          vault="kv-b89secopsd-${suffix}"
           vault_id="/subscriptions/${AZURE_SUBSCRIPTION_ID}/resourceGroups/${resource_group}/providers/Microsoft.KeyVault/vaults/${vault}"
           next_url="https://management.azure.com${vault_id}/secrets?api-version=2025-05-01"
           page_file="$RUNNER_TEMP/key-vault-metadata-page.json"

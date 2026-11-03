@@ -8,7 +8,7 @@ import {
   type SecurityEvent,
   type SecurityEventCategory,
   type SecurityEventValidationError,
-} from '@qapaq/contracts';
+} from '@b89/contracts';
 
 import { deterministicUuid7 } from './deterministic-id.js';
 import type { TelemetryProviderRecord } from './admission.js';
@@ -502,7 +502,7 @@ export function normalizeWazuhAlert(
           product: 'Wazuh',
           instanceId: context.instanceId,
         },
-        { kind: 'adapter', vendor: 'QAPAQ', product: 'QAPAQ SecOps' },
+        { kind: 'adapter', vendor: 'B89', product: 'B89 SecOps' },
       ],
     },
     ...(office365 && Object.keys(office365.extension).length > 0

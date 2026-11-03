@@ -3,10 +3,10 @@ set -Eeuo pipefail
 
 readonly EXPECTED_ACCOUNT='955200662475'
 readonly EXPECTED_REGION='us-east-1'
-readonly EXPECTED_CLUSTER='qapaq-secops-demo'
-readonly RDS_ID='qapaq-secops-demo-postgres'
-readonly EC2_NAME='qapaq-secops-demo-wazuh'
-readonly STATE_BUCKET='qapaq-secops-terraform-state-955200662475'
+readonly EXPECTED_CLUSTER='b89-secops-demo'
+readonly RDS_ID='b89-secops-demo-postgres'
+readonly EC2_NAME='b89-secops-demo-wazuh'
+readonly STATE_BUCKET='b89-secops-terraform-state-955200662475'
 readonly ECS_SERVICES=(worker api krakend)
 readonly ECS_ADDRESSES=(
   'module.runtime.aws_ecs_service.worker'
@@ -21,9 +21,9 @@ log() { echo "::notice::$*"; }
 [[ "${AWS_REGION:-}" == "$EXPECTED_REGION" ]] || fail "Unexpected AWS region: ${AWS_REGION:-unset}."
 [[ "${OPERATION:-}" == stop || "${OPERATION:-}" == resume ]] || fail 'Operation must be stop or resume.'
 if [[ "$OPERATION" == stop ]]; then
-  [[ "${CONFIRMATION:-}" == 'STOP-QAPAQ-DEMO' ]] || fail 'Confirmation must be STOP-QAPAQ-DEMO.'
+  [[ "${CONFIRMATION:-}" == 'STOP-B89-DEMO' ]] || fail 'Confirmation must be STOP-B89-DEMO.'
 else
-  [[ "${CONFIRMATION:-}" == 'RESUME-QAPAQ-DEMO' ]] || fail 'Confirmation must be RESUME-QAPAQ-DEMO.'
+  [[ "${CONFIRMATION:-}" == 'RESUME-B89-DEMO' ]] || fail 'Confirmation must be RESUME-B89-DEMO.'
 fi
 
 actual_account="$(aws sts get-caller-identity --query Account --output text)"
@@ -41,21 +41,21 @@ for address in "${ECS_ADDRESSES[@]}"; do
 done
 
 aws s3api head-bucket --bucket "$STATE_BUCKET" >/dev/null || fail 'Terraform state bucket is not accessible.'
-terraform output -json s3_bucket_names > /tmp/qapaq-s3-buckets.json
+terraform output -json s3_bucket_names > /tmp/b89-s3-buckets.json
 while IFS= read -r bucket; do
   [[ -n "$bucket" ]] || fail 'Terraform returned an empty data bucket name.'
   aws s3api head-bucket --bucket "$bucket" >/dev/null || fail "Data bucket is missing or inaccessible: $bucket."
-done < <(jq -r 'to_entries[] | .value' /tmp/qapaq-s3-buckets.json)
+done < <(jq -r 'to_entries[] | .value' /tmp/b89-s3-buckets.json)
 
 secret_names() {
   aws secretsmanager list-secrets \
-    --filters Key=name,Values=qapaq-secops/demo \
+    --filters Key=name,Values=b89-secops/demo \
     --query 'SecretList[].Name' --output json | jq -c 'sort'
 }
 secret_snapshot="$(secret_names)"
 secret_count="$(jq 'length' <<< "$secret_snapshot")"
-(( secret_count > 0 )) || fail 'No QAPAQ demo secrets were found; refusing to proceed.'
-aws secretsmanager describe-secret --secret-id qapaq-secops/demo/entra/client-secret \
+(( secret_count > 0 )) || fail 'No B89 demo secrets were found; refusing to proceed.'
+aws secretsmanager describe-secret --secret-id b89-secops/demo/entra/client-secret \
   --query Name --output text >/dev/null || fail 'The existing Entra secret is missing.'
 
 rds_before="$(aws rds describe-db-instances --db-instance-identifier "$RDS_ID" \
@@ -67,11 +67,11 @@ rds_encrypted="$(aws rds describe-db-instances --db-instance-identifier "$RDS_ID
 rds_arn="$(aws rds describe-db-instances --db-instance-identifier "$RDS_ID" \
   --query 'DBInstances[0].DBInstanceArn' --output text)"
 rds_tags="$(aws rds list-tags-for-resource --resource-name "$rds_arn" --output json)"
-jq -e 'any(.TagList[]; .Key == "Project" and .Value == "qapaq-secops") and any(.TagList[]; .Key == "Environment" and .Value == "demo")' \
-  <<< "$rds_tags" >/dev/null || fail 'RDS tags do not match the expected QAPAQ demo resource.'
+jq -e 'any(.TagList[]; .Key == "Project" and .Value == "b89-secops") and any(.TagList[]; .Key == "Environment" and .Value == "demo")' \
+  <<< "$rds_tags" >/dev/null || fail 'RDS tags do not match the expected B89 demo resource.'
 
 mapfile -t ec2_ids < <(aws ec2 describe-instances \
-  --filters "Name=tag:Name,Values=$EC2_NAME" 'Name=tag:Project,Values=qapaq-secops' \
+  --filters "Name=tag:Name,Values=$EC2_NAME" 'Name=tag:Project,Values=b89-secops' \
     'Name=tag:Environment,Values=demo' 'Name=instance-state-name,Values=pending,running,stopping,stopped' \
   --query 'Reservations[].Instances[].InstanceId' --output text | tr '\t' '\n' | sed '/^$/d')
 (( ${#ec2_ids[@]} == 1 )) || fail "Expected one tagged Wazuh instance, found ${#ec2_ids[@]}."
@@ -89,7 +89,7 @@ while IFS= read -r volume_id; do
 done < <(jq -r '.[]' <<< "$volume_ids_json")
 
 valkey_status="$(aws elasticache describe-replication-groups \
-  --replication-group-id qapaq-secops-demo-valkey \
+  --replication-group-id b89-secops-demo-valkey \
   --query 'ReplicationGroups[0].Status' --output text)"
 [[ "$valkey_status" != None ]] || fail 'Expected Valkey replication group was not found.'
 
@@ -98,7 +98,7 @@ verify_persistent_data() {
   while IFS= read -r bucket; do
     [[ -n "$bucket" ]] || continue
     aws s3api head-bucket --bucket "$bucket" >/dev/null || fail "Data bucket is no longer accessible: $bucket."
-  done < <(jq -r 'to_entries[] | .value' /tmp/qapaq-s3-buckets.json)
+  done < <(jq -r 'to_entries[] | .value' /tmp/b89-s3-buckets.json)
   [[ "$(secret_names)" == "$secret_snapshot" ]] || fail 'Secret names changed during the operation; inspect before continuing.'
   [[ "$(aws rds describe-db-instances --db-instance-identifier "$RDS_ID" --query 'DBInstances[0].DBInstanceIdentifier' --output text)" == "$RDS_ID" ]] || fail 'RDS metadata is missing.'
   current_volumes="$(aws ec2 describe-instances --instance-ids "$EC2_ID" --query 'Reservations[0].Instances[0].BlockDeviceMappings[].Ebs.VolumeId' --output json)"
@@ -114,23 +114,23 @@ verify_persistent_data() {
 set_ecs_count() {
   local service="$1" count="$2" current desired
   [[ "$count" == 0 || "$count" == 1 ]] || fail "Unsupported count for $service: $count."
-  current="$(aws ecs describe-services --cluster "$EXPECTED_CLUSTER" --services "qapaq-secops-demo-$service" \
+  current="$(aws ecs describe-services --cluster "$EXPECTED_CLUSTER" --services "b89-secops-demo-$service" \
     --query 'services[0].desiredCount' --output text)"
-  [[ "$current" != None ]] || fail "ECS service qapaq-secops-demo-$service was not found."
+  [[ "$current" != None ]] || fail "ECS service b89-secops-demo-$service was not found."
   if [[ "$current" != "$count" ]]; then
-    aws ecs update-service --cluster "$EXPECTED_CLUSTER" --service "qapaq-secops-demo-$service" \
+    aws ecs update-service --cluster "$EXPECTED_CLUSTER" --service "b89-secops-demo-$service" \
       --desired-count "$count" --query 'service.{name:serviceName,desired:desiredCount}' --output json \
       | tee -a "$GITHUB_STEP_SUMMARY"
   else
     log "ECS $service already has desired count $count; no update needed."
   fi
 
-  aws ecs wait services-stable --cluster "$EXPECTED_CLUSTER" --services "qapaq-secops-demo-$service"
-  desired="$(aws ecs describe-services --cluster "$EXPECTED_CLUSTER" --services "qapaq-secops-demo-$service" \
+  aws ecs wait services-stable --cluster "$EXPECTED_CLUSTER" --services "b89-secops-demo-$service"
+  desired="$(aws ecs describe-services --cluster "$EXPECTED_CLUSTER" --services "b89-secops-demo-$service" \
     --query 'services[0].desiredCount' --output text)"
   [[ "$desired" == "$count" ]] || fail "ECS $service desired count is $desired; expected $count."
   if [[ "$count" == 0 ]]; then
-    aws ecs describe-services --cluster "$EXPECTED_CLUSTER" --services "qapaq-secops-demo-$service" \
+    aws ecs describe-services --cluster "$EXPECTED_CLUSTER" --services "b89-secops-demo-$service" \
       --query 'services[0].{running:runningCount,pending:pendingCount}' --output json \
       | jq -e '.running == 0 and .pending == 0' >/dev/null || fail "ECS $service still has running or pending tasks."
   fi
@@ -185,7 +185,7 @@ if [[ "$OPERATION" == stop ]]; then
   [[ "$(aws rds describe-db-instances --db-instance-identifier "$RDS_ID" --query 'DBInstances[0].DBInstanceStatus' --output text)" == stopped ]] || fail 'RDS is not stopped.'
   [[ "$(get_ec2_state)" == stopped ]] || fail 'Wazuh EC2 is not stopped.'
   for service in "${ECS_SERVICES[@]}"; do
-    aws ecs describe-services --cluster "$EXPECTED_CLUSTER" --services "qapaq-secops-demo-$service" \
+    aws ecs describe-services --cluster "$EXPECTED_CLUSTER" --services "b89-secops-demo-$service" \
       --query 'services[0].{name:serviceName,desired:desiredCount,running:runningCount,pending:pendingCount}' --output json \
       | jq -e '.desired == 0 and .running == 0 and .pending == 0' >/dev/null || fail "ECS service $service is not fully stopped."
   done

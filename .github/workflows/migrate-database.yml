@@ -2,13 +2,13 @@ name: Migrate SOC database
 
 # C-1 — ejecuta la tarea one-off de base de datos en la subred privada del demo.
 #
-#   bootstrap-roles  crea o rota qapaq_migrator y qapaq_soc_runtime (credencial master de RDS).
+#   bootstrap-roles  crea o rota b89_migrator y b89_soc_runtime (credencial master de RDS).
 #                    Después hay que forzar un nuevo despliegue del API para que tome la
 #                    contraseña rotada.
-#   migrate          aplica `prisma migrate deploy` como qapaq_migrator y reaplica permisos.
+#   migrate          aplica `prisma migrate deploy` como b89_migrator y reaplica permisos.
 #
 # El job falla si la tarea no termina con código 0: el release no debe activar
-# QAPAQ_SOC_PERSISTENCE=postgres en el API sin una migración exitosa. Los datos de red y las
+# B89_SOC_PERSISTENCE=postgres en el API sin una migración exitosa. Los datos de red y las
 # task definitions salen del output `database_migrator` de Terraform y se pasan como inputs.
 
 on:
@@ -47,9 +47,9 @@ jobs:
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
-          role-to-assume: arn:aws:iam::955200662475:role/qapaq-secops-github-terraform-demo
+          role-to-assume: arn:aws:iam::955200662475:role/b89-secops-github-terraform-demo
           aws-region: us-east-1
-          role-session-name: qapaq-secops-migrate-database
+          role-session-name: b89-secops-migrate-database
           allowed-account-ids: 955200662475
 
       - name: Resolve task and network from Terraform-managed resources
@@ -59,14 +59,14 @@ jobs:
           MODE: ${{ inputs.mode }}
         run: |
           set -euo pipefail
-          family="qapaq-secops-demo-migrator-${MODE/bootstrap-roles/bootstrap}"
+          family="b89-secops-demo-migrator-${MODE/bootstrap-roles/bootstrap}"
           task_definition="$(aws ecs describe-task-definition --task-definition "$family" \
             --query 'taskDefinition.taskDefinitionArn' --output text)"
           subnets="$(aws ec2 describe-subnets \
-            --filters 'Name=tag:Tier,Values=private-application' 'Name=tag:Name,Values=qapaq-secops-demo-app-*' \
+            --filters 'Name=tag:Tier,Values=private-application' 'Name=tag:Name,Values=b89-secops-demo-app-*' \
             --query 'Subnets[].SubnetId' --output text | tr '\t' ',')"
           security_group="$(aws ec2 describe-security-groups \
-            --filters 'Name=group-name,Values=qapaq-secops-demo-worker' \
+            --filters 'Name=group-name,Values=b89-secops-demo-worker' \
             --query 'SecurityGroups[0].GroupId' --output text)"
           if [[ -z "$subnets" || "$security_group" == None ]]; then
             echo 'No se pudieron resolver subredes privadas o el security group del worker.' >&2
@@ -88,24 +88,24 @@ jobs:
           set -euo pipefail
           network="awsvpcConfiguration={subnets=[${SUBNETS}],securityGroups=[${SECURITY_GROUP}],assignPublicIp=DISABLED}"
           task_arn="$(aws ecs run-task \
-            --cluster qapaq-secops-demo \
+            --cluster b89-secops-demo \
             --launch-type FARGATE \
             --task-definition "$TASK_DEFINITION" \
             --network-configuration "$network" \
             --started-by "github-${GITHUB_RUN_ID}" \
             --query 'tasks[0].taskArn' --output text)"
           echo "Tarea: $task_arn"
-          aws ecs wait tasks-stopped --cluster qapaq-secops-demo --tasks "$task_arn"
-          exit_code="$(aws ecs describe-tasks --cluster qapaq-secops-demo --tasks "$task_arn" \
+          aws ecs wait tasks-stopped --cluster b89-secops-demo --tasks "$task_arn"
+          exit_code="$(aws ecs describe-tasks --cluster b89-secops-demo --tasks "$task_arn" \
             --query 'tasks[0].containers[0].exitCode' --output text)"
-          reason="$(aws ecs describe-tasks --cluster qapaq-secops-demo --tasks "$task_arn" \
+          reason="$(aws ecs describe-tasks --cluster b89-secops-demo --tasks "$task_arn" \
             --query 'tasks[0].stoppedReason' --output text)"
           task_id="${task_arn##*/}"
           # Los logs del migrator son líneas JSON sin secretos ni parámetros de conexión.
           aws logs filter-log-events \
-            --log-group-name /qapaq-secops/demo/migrator \
+            --log-group-name /b89-secops/demo/migrator \
             --log-stream-name-prefix "" \
-            --filter-pattern "\"qapaq-secops-migrator\"" \
+            --filter-pattern "\"b89-secops-migrator\"" \
             --query "events[?contains(logStreamName, '${task_id}')].message" \
             --output text || true
           echo "Código de salida: ${exit_code} · motivo: ${reason}"
@@ -118,13 +118,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          service="$(aws ecs list-services --cluster qapaq-secops-demo \
-            --query "serviceArns[?contains(@, 'qapaq-secops-demo-api')] | [0]" --output text)"
+          service="$(aws ecs list-services --cluster b89-secops-demo \
+            --query "serviceArns[?contains(@, 'b89-secops-demo-api')] | [0]" --output text)"
           if [[ -z "$service" || "$service" == None ]]; then
             echo 'Servicio API no encontrado: nada que redesplegar (estado SOC aún en memoria).'
             exit 0
           fi
-          aws ecs update-service --cluster qapaq-secops-demo --service "$service" \
+          aws ecs update-service --cluster b89-secops-demo --service "$service" \
             --force-new-deployment --query 'service.serviceName' --output text
-          aws ecs wait services-stable --cluster qapaq-secops-demo --services "$service"
+          aws ecs wait services-stable --cluster b89-secops-demo --services "$service"
           echo 'API redesplegado con las credenciales vigentes.'

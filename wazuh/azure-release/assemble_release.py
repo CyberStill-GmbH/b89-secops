@@ -2,7 +2,7 @@
 """Assemble the pinned CI outputs into the siem_host offline release contract.
 
 This tool never creates credentials or certificate material. The installer assistant,
-QAPAQ dashboard/core, Wazuh packages, Filebeat module/template and signing key are
+B89 dashboard/core, Wazuh packages, Filebeat module/template and signing key are
 inputs from separately verified build steps.
 """
 
@@ -115,16 +115,16 @@ def assemble(args: argparse.Namespace) -> pathlib.Path:
         raise ValueError("official Wazuh installation assistant license is missing")
     sophos_source_metadata = validate_sophos_source(pathlib.Path(args.repo_root).resolve())
 
-    qapaq_commit = args.qapaq_commit
-    if len(qapaq_commit) != 40 or any(c not in "0123456789abcdef" for c in qapaq_commit):
-        raise ValueError("QAPAQ commit must be a full lowercase Git SHA")
+    b89_commit = args.b89_commit
+    if len(b89_commit) != 40 or any(c not in "0123456789abcdef" for c in b89_commit):
+        raise ValueError("B89 commit must be a full lowercase Git SHA")
     manager_version = validate_package(pathlib.Path(args.manager_deb), "wazuh-manager", f"{WAZUH}-1")
     indexer_version = validate_package(pathlib.Path(args.indexer_deb), "wazuh-indexer", f"{WAZUH}-1")
     filebeat_version = validate_package(pathlib.Path(args.filebeat_deb), "filebeat", FILEBEAT)
-    dashboard_version = validate_package(pathlib.Path(args.dashboard_deb), "wazuh-dashboard", f"{WAZUH}-1qapaq1")
+    dashboard_version = validate_package(pathlib.Path(args.dashboard_deb), "wazuh-dashboard", f"{WAZUH}-1b891")
 
     output.mkdir(parents=True, exist_ok=True)
-    root = output / f"qapaq-siem-{qapaq_commit[:12]}"
+    root = output / f"b89-siem-{b89_commit[:12]}"
     root.mkdir()
     try:
         installer_source = assistant / "wazuh-install.sh"
@@ -149,7 +149,7 @@ def assemble(args: argparse.Namespace) -> pathlib.Path:
             "managerDeb": (pathlib.Path(args.manager_deb), "wazuh-manager"),
             "indexerDeb": (pathlib.Path(args.indexer_deb), "wazuh-indexer"),
             "filebeatDeb": (pathlib.Path(args.filebeat_deb), "filebeat"),
-            "qapaqDashboardDeb": (pathlib.Path(args.dashboard_deb), "wazuh-dashboard"),
+            "b89DashboardDeb": (pathlib.Path(args.dashboard_deb), "wazuh-dashboard"),
         }
         debian_packages = {
             "wazuh-manager": manager_version,
@@ -176,9 +176,9 @@ def assemble(args: argparse.Namespace) -> pathlib.Path:
 
         core = pathlib.Path(args.core_archive)
         if not core.is_file() or core.is_symlink() or not core.name.endswith(".tar.gz"):
-            raise ValueError("QAPAQ core archive is missing or malformed")
+            raise ValueError("B89 core archive is missing or malformed")
         copy_regular(core, root / "files" / "core" / core.name)
-        artifact_paths["qapaqCoreArchive"] = (root / "files" / "core" / core.name).relative_to(root).as_posix()
+        artifact_paths["b89CoreArchive"] = (root / "files" / "core" / core.name).relative_to(root).as_posix()
 
         core_installer = pathlib.Path(args.repo_root) / "wazuh" / "core"
         for name in ("apply-core-azure.sh", "verify_core_archive.py"):
@@ -188,33 +188,33 @@ def assemble(args: argparse.Namespace) -> pathlib.Path:
         for relative in (
             pathlib.Path("apply-office365.sh"),
             pathlib.Path("ossec-office365.xml.tmpl"),
-            pathlib.Path("rules") / "qapaq_office365_rules.xml",
-            pathlib.Path("lists") / "qapaq-break-glass.example",
+            pathlib.Path("rules") / "b89_office365_rules.xml",
+            pathlib.Path("lists") / "b89-break-glass.example",
         ):
             copy_regular(office365 / relative, root / "wazuh" / "office365" / relative)
 
         provider_ingestion = pathlib.Path(args.repo_root) / "wazuh" / "provider-ingestion"
         copy_regular(provider_ingestion / "sophos" / "UPSTREAM-SOURCE.json",
                      root / "wazuh" / "provider-ingestion" / "sophos" / "UPSTREAM-SOURCE.json")
-        for name in ("configure.py", "cato/events_feed.py", "systemd/qapaq-sophos-ingest.service",
-                     "systemd/qapaq-sophos-ingest.timer", "systemd/qapaq-cato-ingest.service",
-                     "systemd/qapaq-cato-ingest.timer", "README.md"):
+        for name in ("configure.py", "cato/events_feed.py", "systemd/b89-sophos-ingest.service",
+                     "systemd/b89-sophos-ingest.timer", "systemd/b89-cato-ingest.service",
+                     "systemd/b89-cato-ingest.timer", "README.md"):
             copy_regular(provider_ingestion / name, root / "wazuh" / "provider-ingestion" / name)
         for name in ("siem.py", "state.py", "name_mapping.py", "config.py", "api_client.py", "vercheck.py", "LICENSE-2.0.txt"):
             copy_regular(provider_ingestion / "sophos" / "upstream" / name,
                          root / "wazuh" / "provider-ingestion" / "sophos" / "upstream" / name)
 
         teams = pathlib.Path(args.repo_root) / "infra" / "wazuh" / "teams"
-        for name in ("custom-qapaq-teams", "apply_teams_workflow.py", "ossec-teams-workflow.xml"):
+        for name in ("custom-b89-teams", "apply_teams_workflow.py", "ossec-teams-workflow.xml"):
             copy_regular(teams / name, root / "wazuh" / "teams" / name)
 
         detection_sources = {
-            "wazuh/launch-detections/rules/qapaq_launch_provider_rules.xml":
-                pathlib.Path(args.repo_root) / "infra/wazuh/launch-detections/rules/qapaq_launch_provider_rules.xml",
-            "wazuh/endpoint/rules/qapaq_endpoint_rules.xml":
-                pathlib.Path(args.repo_root) / "infra/wazuh/endpoint/rules/qapaq_endpoint_rules.xml",
-            "wazuh/active-directory/rules/qapaq_active_directory_rules.xml":
-                pathlib.Path(args.repo_root) / "infra/wazuh/active-directory/rules/qapaq_active_directory_rules.xml",
+            "wazuh/launch-detections/rules/b89_launch_provider_rules.xml":
+                pathlib.Path(args.repo_root) / "infra/wazuh/launch-detections/rules/b89_launch_provider_rules.xml",
+            "wazuh/endpoint/rules/b89_endpoint_rules.xml":
+                pathlib.Path(args.repo_root) / "infra/wazuh/endpoint/rules/b89_endpoint_rules.xml",
+            "wazuh/active-directory/rules/b89_active_directory_rules.xml":
+                pathlib.Path(args.repo_root) / "infra/wazuh/active-directory/rules/b89_active_directory_rules.xml",
             "wazuh/launch-detections/catalog.json":
                 pathlib.Path(args.repo_root) / "docs/security/launch-detection-catalog-2026-10-20.json",
             "wazuh/launch-detections/install_detection_rules.py":
@@ -280,28 +280,28 @@ def assemble(args: argparse.Namespace) -> pathlib.Path:
         manifest = {
             "schemaVersion": 1,
             "status": "installable-candidate",
-            "qapaqCommit": qapaq_commit,
+            "b89Commit": b89_commit,
             "components": {
                 "wazuhManager": WAZUH,
                 "wazuhIndexer": WAZUH,
                 "wazuhFilebeat": WAZUH,
                 "wazuhDashboard": WAZUH,
                 "openSearchDashboards": OSD,
-                "qapaqCoreNode": NODE,
+                "b89CoreNode": NODE,
             },
             "optionalIntegrations": ["sophos-central-siem-api", "cato-events-feed", "microsoft-teams-workflows"],
             "detectionPack": {
                 "catalog": "wazuh/launch-detections/catalog.json",
                 "rules": [
-                    "wazuh/launch-detections/rules/qapaq_launch_provider_rules.xml",
-                    "wazuh/endpoint/rules/qapaq_endpoint_rules.xml",
-                    "wazuh/active-directory/rules/qapaq_active_directory_rules.xml",
+                    "wazuh/launch-detections/rules/b89_launch_provider_rules.xml",
+                    "wazuh/endpoint/rules/b89_endpoint_rules.xml",
+                    "wazuh/active-directory/rules/b89_active_directory_rules.xml",
                 ],
                 "activation": "rules-installed-provider-connectors-remain-opt-in",
             },
             "agentProfilePack": agent_profile_pack,
-            "qapaqDashboardPackage": dashboard_version,
-            "qapaqCoreSourceCommit": qapaq_commit[:12],
+            "b89DashboardPackage": dashboard_version,
+            "b89CoreSourceCommit": b89_commit[:12],
             "debianPackages": debian_packages,
             "artifacts": artifact_paths,
             "files": files,
@@ -335,7 +335,7 @@ def assemble(args: argparse.Namespace) -> pathlib.Path:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    for name in ("manager-deb", "indexer-deb", "filebeat-deb", "dashboard-deb", "core-archive", "assistant-dir", "filebeat-config", "wazuh-signing-key", "filebeat-module", "filebeat-template", "install-script", "verify-credentials-script", "repo-root", "output-dir", "qapaq-commit", "manager-commit", "indexer-commit"):
+    for name in ("manager-deb", "indexer-deb", "filebeat-deb", "dashboard-deb", "core-archive", "assistant-dir", "filebeat-config", "wazuh-signing-key", "filebeat-module", "filebeat-template", "install-script", "verify-credentials-script", "repo-root", "output-dir", "b89-commit", "manager-commit", "indexer-commit"):
         parser.add_argument(f"--{name}", required=True)
     args = parser.parse_args()
     try:

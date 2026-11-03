@@ -1,5 +1,5 @@
 import { pathToFileURL } from 'node:url';
-import { ConfigurationError, SecretProviderError } from '@qapaq/configuration';
+import { ConfigurationError, SecretProviderError } from '@b89/configuration';
 import { buildApi } from './bootstrap.js';
 
 function log(
@@ -9,7 +9,7 @@ function log(
 ): void {
   process.stdout.write(
     `${JSON.stringify({
-      service: 'qapaq-secops-api',
+      service: 'b89-secops-api',
       event,
       timestamp: new Date().toISOString(),
       ...(errorCode ? { errorCode } : {}),
@@ -70,7 +70,7 @@ export async function main(): Promise<void> {
     void shutdown();
   };
   try {
-    const demoMfaExceptionUntilRaw = process.env.QAPAQ_DEMO_MFA_EXCEPTION_UNTIL;
+    const demoMfaExceptionUntilRaw = process.env.B89_DEMO_MFA_EXCEPTION_UNTIL;
     const demoMfaExceptionUntil = demoMfaExceptionUntilRaw
       ? new Date(demoMfaExceptionUntilRaw)
       : undefined;

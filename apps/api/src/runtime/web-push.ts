@@ -4,13 +4,13 @@
  * Cada aviso es un `POST` vacío al endpoint del servicio de push del navegador, firmado con un
  * JWT ES256 de la clave VAPID del API (`aud` = origen del endpoint, `exp` ≤ 12 h, `sub` = URL de
  * la consola). Sin cuerpo no hace falta cifrado (RFC 8291): el service worker, al despertar,
- * pide el detalle a QAPAQ con la sesión de la persona.
+ * pide el detalle a B89 con la sesión de la persona.
  *
  * - `TTL: 300`: un aviso de hace más de 5 minutos ya no sirve; el servicio lo descarta.
  * - `Urgency: high`: los móviles lo entregan aunque estén en ahorro de energía.
  * - 404/410 → `gone` (la suscripción terminó); 2xx → `delivered`; cualquier otra cosa → `failed`.
  *
- * La clave privada llega desde Secrets Manager (`QAPAQ_VAPID_PRIVATE_KEY`, PKCS#8 en base64) y
+ * La clave privada llega desde Secrets Manager (`B89_VAPID_PRIVATE_KEY`, PKCS#8 en base64) y
  * nunca se registra. Sin clave configurada (desarrollo) se genera una efímera por proceso.
  */
 
@@ -22,7 +22,7 @@ import {
   type KeyObject,
 } from 'node:crypto';
 
-import type { PushDeliveryResult, PushSender, PushSubscriptionRecord } from '@qapaq/soar';
+import type { PushDeliveryResult, PushSender, PushSubscriptionRecord } from '@b89/soar';
 
 const TOKEN_LIFETIME_S = 12 * 3_600;
 const REQUEST_TIMEOUT_MS = 10_000;

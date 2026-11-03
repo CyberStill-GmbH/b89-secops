@@ -63,7 +63,7 @@ function alertRow(overrides: Partial<AlertRow> = {}): AlertRow {
     createdAt: new Date('2026-10-08T09:00:01.000Z'),
     updatedAt: new Date('2026-10-08T09:00:01.000Z'),
     revision: 1,
-    entityKeys: ['user:analista@qapaq-lab.example'],
+    entityKeys: ['user:analista@b89-lab.example'],
     entityRefs: ['ent_AAAAAAAAAAAAAAAAAAAAAA'],
     signal: 'credential_access',
     ruleId: '100502',
@@ -75,7 +75,7 @@ function alertRow(overrides: Partial<AlertRow> = {}): AlertRow {
 async function provisionDatabase() {
   if (!databaseUrl) throw new Error('DATABASE_URL is required for C-19 PostgreSQL integration');
   const parsed = new URL(databaseUrl);
-  const name = `qapaq_c19_${process.pid}_${Date.now()}`.toLowerCase();
+  const name = `b89_c19_${process.pid}_${Date.now()}`.toLowerCase();
   const adminUrl = new URL(parsed);
   adminUrl.pathname = '/postgres';
   const admin = new Client(adminUrl.toString());
@@ -118,7 +118,7 @@ describe.skipIf(!databaseUrl)('C-19 · auditoría append-only sobre PostgreSQL',
         priority: 'P1',
         score: 95,
         reasons: [{ code: 'BASE_SEVERITY', delta: 80, detail: 'crítico' }],
-        rulesetId: 'qapaq.detection.prioritization',
+        rulesetId: 'b89.detection.prioritization',
         rulesetVersion: '1.0.0',
         title: 'Acceso sospechoso',
         occurredAt: new Date('2026-10-08T09:00:00.000Z'),

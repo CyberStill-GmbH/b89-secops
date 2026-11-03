@@ -21,7 +21,7 @@ El puerto expone cuatro capacidades y ninguna más:
 
 El `ProviderRecord` que devuelve `readPage` es neutral: identificador de origen, dataset,
 instante de recolección y el documento crudo. La traducción a
-`qapaq.security-event/1.0.0` ocurre después, en el mapping de C-12.
+`b89.security-event/1.0.0` ocurre después, en el mapping de C-12.
 
 ## Procedimiento
 
@@ -51,7 +51,7 @@ instante de recolección y el documento crudo. La traducción a
 - Ningún módulo de dominio (`detection`, `soc`, `soar`, `access`, `audit`) nombra al
   proveedor, ni por tipo, ni por constante, ni en un comentario.
 - El contrato canónico `security-event.schema.json` no menciona a ningún proveedor.
-- El SOC consume `@qapaq/detection`, nunca `@qapaq/connectors`.
+- El SOC consume `@b89/detection`, nunca `@b89/connectors`.
 - La suite de conformidad es portable: no construye proveedores ni conoce ninguno.
 - El adapter real pasa esa misma suite.
 - La superficie pública del módulo expone el puerto y la fábrica, no el cliente.

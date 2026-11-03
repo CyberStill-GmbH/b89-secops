@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { capabilitiesForRoles } from '@qapaq/access';
+import { capabilitiesForRoles } from '@b89/access';
 
 import {
   addIncidentNote,
@@ -191,8 +191,8 @@ describe('casos de uso de trabajo del incidente', () => {
     sessionId: 'session-1',
     capabilities: capabilitiesForRoles(roles),
   });
-  const lead = actor(['qapaq.soc.lead']);
-  const auditor = actor(['qapaq.auditor'], 'sub-auditor');
+  const lead = actor(['b89.soc.lead']);
+  const auditor = actor(['b89.auditor'], 'sub-auditor');
 
   soc.incidentRows.set(`tenant-a|${INCIDENT_ID}`, {
     ...openIncident({

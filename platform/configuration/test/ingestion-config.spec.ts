@@ -14,12 +14,12 @@ function rejectedPath(load: () => unknown): string {
   throw new Error('Se esperaba un ConfigurationError.');
 }
 
-const BASE = { QAPAQ_PROFILE: 'test' } as const;
+const BASE = { B89_PROFILE: 'test' } as const;
 const WAZUH = {
   ...BASE,
-  QAPAQ_INGESTION_SOURCE: 'wazuh',
-  QAPAQ_WAZUH_GATEWAY_BASE_URL: 'http://krakend.demo.qapaq.internal:8080',
-  QAPAQ_INGESTION_GATEWAY_SCOPE: 'api://00000000-0000-0000-0000-000000000000/.default',
+  B89_INGESTION_SOURCE: 'wazuh',
+  B89_WAZUH_GATEWAY_BASE_URL: 'http://krakend.demo.b89.internal:8080',
+  B89_INGESTION_GATEWAY_SCOPE: 'api://00000000-0000-0000-0000-000000000000/.default',
 } as const;
 
 describe('Sprint 5 · configuración de ingesta', () => {
@@ -31,7 +31,7 @@ describe('Sprint 5 · configuración de ingesta', () => {
     expect(loadIngestionConfig(WAZUH)).toEqual({
       source: 'wazuh',
       sourceId: 'wazuh-indexer',
-      gatewayBaseUrl: 'http://krakend.demo.qapaq.internal:8080',
+      gatewayBaseUrl: 'http://krakend.demo.b89.internal:8080',
       gatewayScope: 'api://00000000-0000-0000-0000-000000000000/.default',
       intervalMs: 60_000,
       initialLookbackMs: 3_600_000,
@@ -42,38 +42,36 @@ describe('Sprint 5 · configuración de ingesta', () => {
     expect(
       loadIngestionConfig({
         ...WAZUH,
-        QAPAQ_INGESTION_INTERVAL: '30s',
-        QAPAQ_INGESTION_INITIAL_LOOKBACK_MINUTES: '1440',
+        B89_INGESTION_INTERVAL: '30s',
+        B89_INGESTION_INITIAL_LOOKBACK_MINUTES: '1440',
       }),
     ).toMatchObject({ intervalMs: 30_000, initialLookbackMs: 86_400_000 });
   });
 
   it('wazuh sin gateway o sin scope no arranca', () => {
     // `production` no trae URL de gateway por defecto (dev y test apuntan al local).
-    const { QAPAQ_WAZUH_GATEWAY_BASE_URL: _url, ...rest } = WAZUH;
-    const withoutUrl = { ...rest, QAPAQ_PROFILE: 'production' };
-    const { QAPAQ_INGESTION_GATEWAY_SCOPE: _scope, ...withoutScope } = WAZUH;
-    expect(rejectedPath(() => loadIngestionConfig(withoutUrl))).toBe(
-      'QAPAQ_WAZUH_GATEWAY_BASE_URL',
-    );
+    const { B89_WAZUH_GATEWAY_BASE_URL: _url, ...rest } = WAZUH;
+    const withoutUrl = { ...rest, B89_PROFILE: 'production' };
+    const { B89_INGESTION_GATEWAY_SCOPE: _scope, ...withoutScope } = WAZUH;
+    expect(rejectedPath(() => loadIngestionConfig(withoutUrl))).toBe('B89_WAZUH_GATEWAY_BASE_URL');
     expect(rejectedPath(() => loadIngestionConfig(withoutScope))).toBe(
-      'QAPAQ_INGESTION_GATEWAY_SCOPE',
+      'B89_INGESTION_GATEWAY_SCOPE',
     );
   });
 
   it('rechaza fuente desconocida, scope sin /.default y ventana fuera de rango', () => {
     expect(
-      rejectedPath(() => loadIngestionConfig({ ...BASE, QAPAQ_INGESTION_SOURCE: 'splunk' })),
-    ).toBe('QAPAQ_INGESTION_SOURCE');
+      rejectedPath(() => loadIngestionConfig({ ...BASE, B89_INGESTION_SOURCE: 'splunk' })),
+    ).toBe('B89_INGESTION_SOURCE');
     expect(
       rejectedPath(() =>
-        loadIngestionConfig({ ...WAZUH, QAPAQ_INGESTION_GATEWAY_SCOPE: 'api://algo' }),
+        loadIngestionConfig({ ...WAZUH, B89_INGESTION_GATEWAY_SCOPE: 'api://algo' }),
       ),
-    ).toBe('QAPAQ_INGESTION_GATEWAY_SCOPE');
+    ).toBe('B89_INGESTION_GATEWAY_SCOPE');
     expect(
       rejectedPath(() =>
-        loadIngestionConfig({ ...WAZUH, QAPAQ_INGESTION_INITIAL_LOOKBACK_MINUTES: '5000' }),
+        loadIngestionConfig({ ...WAZUH, B89_INGESTION_INITIAL_LOOKBACK_MINUTES: '5000' }),
       ),
-    ).toBe('QAPAQ_INGESTION_INITIAL_LOOKBACK_MINUTES');
+    ).toBe('B89_INGESTION_INITIAL_LOOKBACK_MINUTES');
   });
 });

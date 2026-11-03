@@ -1,7 +1,7 @@
 /**
  * C-18 — capabilities, roles y scopes.
  *
- * El rol de Entra es un dato de entrada, no la autorización. QAPAQ traduce roles a
+ * El rol de Entra es un dato de entrada, no la autorización. B89 traduce roles a
  * capabilities propias para que un cambio en el directorio no redefina en silencio lo
  * que alguien puede hacer, y para que la autorización sea revisable aquí.
  *
@@ -43,7 +43,7 @@ export const CAPABILITIES = [
   'roles.request',
   /** Aprobar o rechazar, en la etapa de Acceso, una solicitud de rol ajena. */
   'roles.approve',
-  /** Segunda etapa, de Seguridad, para los roles privilegiados (`qapaq.platform.admin`). */
+  /** Segunda etapa, de Seguridad, para los roles privilegiados (`b89.platform.admin`). */
   'roles.approve.privileged',
   /** Ver sesiones del tenant (quién está dentro, desde dónde y con qué factor). */
   'sessions.read',
@@ -58,25 +58,25 @@ export type Capability = (typeof CAPABILITIES)[number];
 
 /**
  * Roles que se pueden solicitar desde la administración: los cuatro roles runtime, ni uno más.
- * `qapaq.platform.admin` es privilegiado y necesita además la etapa de Seguridad.
+ * `b89.platform.admin` es privilegiado y necesita además la etapa de Seguridad.
  */
 export const REQUESTABLE_ROLES = [
-  'qapaq.auditor',
-  'qapaq.platform.admin',
-  'qapaq.soc.analyst',
-  'qapaq.soc.lead',
+  'b89.auditor',
+  'b89.platform.admin',
+  'b89.soc.analyst',
+  'b89.soc.lead',
 ] as const;
 export type RequestableRole = (typeof REQUESTABLE_ROLES)[number];
-export const PRIVILEGED_ROLES: readonly RequestableRole[] = ['qapaq.platform.admin'];
+export const PRIVILEGED_ROLES: readonly RequestableRole[] = ['b89.platform.admin'];
 
 /** Aprobador de la etapa de Acceso (bundle `ACCESS_ADMIN`). */
-export const ACCESS_APPROVER_ROLE = 'qapaq.access.approver';
+export const ACCESS_APPROVER_ROLE = 'b89.access.approver';
 /** Revisor de Seguridad privilegiado: segunda etapa de los roles privilegiados. */
-export const SECURITY_APPROVER_ROLE = 'qapaq.security.approver';
+export const SECURITY_APPROVER_ROLE = 'b89.security.approver';
 
 /** Roles de aplicación publicados en el app registration de Entra. */
 export const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> = Object.freeze({
-  'qapaq.soc.analyst': [
+  'b89.soc.analyst': [
     'events.read',
     'alerts.read',
     'alerts.triage',
@@ -87,7 +87,7 @@ export const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> 
     'incidents.notes.write',
     'notifications.read',
   ],
-  'qapaq.soc.lead': [
+  'b89.soc.lead': [
     'events.read',
     'events.read_raw',
     'alerts.read',
@@ -104,7 +104,7 @@ export const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> 
     'sources.health.read',
     'audit.read',
   ],
-  'qapaq.auditor': [
+  'b89.auditor': [
     'audit.read',
     'audit.read_sensitive',
     'audit.verify',
@@ -114,7 +114,7 @@ export const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> 
   // La solicitud del producto define al administrador de plataforma como el rol
   // operativo con acceso a todos los módulos actuales. El enforcement sigue siendo
   // capability-by-capability y queda limitado por los scopes que el BFF solicita.
-  'qapaq.platform.admin': [
+  'b89.platform.admin': [
     'events.read',
     'events.read_raw',
     'alerts.read',
@@ -140,9 +140,9 @@ export const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> 
     'audit.verify',
     'secrets.write',
   ],
-  // Aprobadores de cambios de rol. No son asignables desde la consola ni por `QAPAQ_ROLE_BINDINGS`:
-  // solo los reciben los OID declarados en `QAPAQ_ACCESS_APPROVER_OIDS` y
-  // `QAPAQ_SECURITY_APPROVER_OIDS`, y el BFF vuelve a exigir esa declaración al aprobar.
+  // Aprobadores de cambios de rol. No son asignables desde la consola ni por `B89_ROLE_BINDINGS`:
+  // solo los reciben los OID declarados en `B89_ACCESS_APPROVER_OIDS` y
+  // `B89_SECURITY_APPROVER_OIDS`, y el BFF vuelve a exigir esa declaración al aprobar.
   [ACCESS_APPROVER_ROLE]: ['users.read', 'roles.approve'],
   [SECURITY_APPROVER_ROLE]: ['users.read', 'roles.approve.privileged'],
 });

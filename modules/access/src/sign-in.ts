@@ -4,7 +4,7 @@
  * Reúne en un solo punto las cuatro condiciones que deciden si una persona entra:
  * origen de red, bloqueo por abuso, validez del `id_token` y método de autenticación.
  *
- * La regla de método es la aprobada para QAPAQ: dentro de la red basta MFA; fuera se
+ * La regla de método es la aprobada para B89: dentro de la red basta MFA; fuera se
  * exige passkey (FIDO2) porque la contraseña más OTP es justamente lo que el phishing
  * resistente a passkey no supera. Una cadena de proxies no confiable no es "fuera": es
  * una petición cuyo origen no se puede afirmar, y se rechaza.
@@ -94,7 +94,7 @@ export function decideSignIn(context: SignInContext): SignInDecision {
       reason: policy.denialReason,
       publicMessage:
         policy.denialReason === 'PASSKEY_REQUIRED'
-          ? 'Fuera de la red QAPAQ se requiere una passkey registrada.'
+          ? 'Fuera de la red B89 se requiere una passkey registrada.'
           : 'Se requiere autenticación multifactor.',
     };
   }

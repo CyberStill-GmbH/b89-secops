@@ -18,7 +18,7 @@ from unittest.mock import MagicMock, patch
 
 
 BOOTSTRAP_PATH = pathlib.Path(__file__).with_name("bootstrap-siem.py")
-SPEC = importlib.util.spec_from_file_location("qapaq_siem_bootstrap", BOOTSTRAP_PATH)
+SPEC = importlib.util.spec_from_file_location("b89_siem_bootstrap", BOOTSTRAP_PATH)
 assert SPEC is not None and SPEC.loader is not None
 BOOTSTRAP = importlib.util.module_from_spec(SPEC)
 with patch.dict(sys.modules, {"pwd": types.ModuleType("pwd")}):
@@ -60,9 +60,9 @@ class InstallerOutputTests(unittest.TestCase):
             self.assertIn("código 17", captured_output.getvalue())
             self.assertIs(run_installer.call_args.kwargs["stdout"], BOOTSTRAP.subprocess.DEVNULL)
             self.assertIs(run_installer.call_args.kwargs["stderr"], BOOTSTRAP.subprocess.DEVNULL)
-            self.assertEqual(run_installer.call_args.kwargs["env"]["QAPAQ_O365_TENANT_ID"], "45f2f938-dbe3-4a3e-8a54-930893f94ef8")
-            self.assertEqual(run_installer.call_args.kwargs["env"]["QAPAQ_O365_CLIENT_ID"], "336d44fe-b99d-4cfd-9c6e-0ed2d7e48998")
-            self.assertNotIn("QAPAQ_O365_CLIENT_SECRET", run_installer.call_args.kwargs["env"])
+            self.assertEqual(run_installer.call_args.kwargs["env"]["B89_O365_TENANT_ID"], "45f2f938-dbe3-4a3e-8a54-930893f94ef8")
+            self.assertEqual(run_installer.call_args.kwargs["env"]["B89_O365_CLIENT_ID"], "336d44fe-b99d-4cfd-9c6e-0ed2d7e48998")
+            self.assertNotIn("B89_O365_CLIENT_SECRET", run_installer.call_args.kwargs["env"])
 
 
 class ProviderIngestionValidationTests(unittest.TestCase):
@@ -72,7 +72,7 @@ class ProviderIngestionValidationTests(unittest.TestCase):
             "artifact_sha256": "a" * 64,
             "artifact_url": "https://releases.blob.core.windows.net/private/bundle.tar.gz",
             "identity_client_id": "managed-identity-client-id",
-            "key_vault_uri": "https://kv-qapaq-test.vault.azure.net/",
+            "key_vault_uri": "https://kv-b89-test.vault.azure.net/",
             "office365": {
                 "tenant_id": "45f2f938-dbe3-4a3e-8a54-930893f94ef8",
                 "client_id": "336d44fe-b99d-4cfd-9c6e-0ed2d7e48998",
@@ -84,7 +84,7 @@ class ProviderIngestionValidationTests(unittest.TestCase):
                 "wazuh-install-files.tar.b64": "wazuh-install-files-tar-b64",
             },
             "core_secret_names": {
-                "QAPAQ_ENTRA_CLIENT_SECRET": "entra-client-secret",
+                "B89_ENTRA_CLIENT_SECRET": "entra-client-secret",
             },
             "data_disk_size_gb": 128,
         }
@@ -110,50 +110,50 @@ class ProviderIngestionValidationTests(unittest.TestCase):
     def test_accepts_postgres_with_matching_secret_names_and_references(self) -> None:
         config = self._base_config()
         config["core_environment"] = {
-            "QAPAQ_SOC_PERSISTENCE": "postgres",
-            "QAPAQ_POSTGRES_PASSWORD_REF": "secret://keyvault/qapaq-postgres-password",
-            "QAPAQ_ENTITY_REF_KEY_REF": "secret://keyvault/qapaq-entity-ref-key",
+            "B89_SOC_PERSISTENCE": "postgres",
+            "B89_POSTGRES_PASSWORD_REF": "secret://keyvault/b89-postgres-password",
+            "B89_ENTITY_REF_KEY_REF": "secret://keyvault/b89-entity-ref-key",
         }
         config["core_secret_names"].update({
-            "QAPAQ_POSTGRES_PASSWORD": "qapaq-postgres-password",
-            "QAPAQ_ENTITY_REF_KEY": "qapaq-entity-ref-key",
+            "B89_POSTGRES_PASSWORD": "b89-postgres-password",
+            "B89_ENTITY_REF_KEY": "b89-entity-ref-key",
         })
 
         loaded = self._load_config(config)
 
-        self.assertEqual(loaded["core_environment"]["QAPAQ_SOC_PERSISTENCE"], "postgres")
+        self.assertEqual(loaded["core_environment"]["B89_SOC_PERSISTENCE"], "postgres")
 
     def test_rejects_postgres_without_password_secret_mapping(self) -> None:
         config = self._base_config()
-        config["core_environment"] = {"QAPAQ_SOC_PERSISTENCE": "postgres"}
-        config["core_secret_names"]["QAPAQ_ENTITY_REF_KEY"] = "qapaq-entity-ref-key"
+        config["core_environment"] = {"B89_SOC_PERSISTENCE": "postgres"}
+        config["core_secret_names"]["B89_ENTITY_REF_KEY"] = "b89-entity-ref-key"
 
         self._assert_config_rejected(config, "persistencia PostgreSQL requiere referencias Key Vault")
 
     def test_rejects_postgres_without_entity_reference_key_mapping(self) -> None:
         config = self._base_config()
-        config["core_environment"] = {"QAPAQ_SOC_PERSISTENCE": "postgres"}
-        config["core_secret_names"]["QAPAQ_POSTGRES_PASSWORD"] = "qapaq-postgres-password"
+        config["core_environment"] = {"B89_SOC_PERSISTENCE": "postgres"}
+        config["core_secret_names"]["B89_POSTGRES_PASSWORD"] = "b89-postgres-password"
 
         self._assert_config_rejected(config, "persistencia PostgreSQL requiere referencias Key Vault")
 
     def test_rejects_core_reference_that_does_not_match_secret_mapping(self) -> None:
         config = self._base_config()
         config["core_environment"] = {
-            "QAPAQ_POSTGRES_PASSWORD_REF": "secret://keyvault/unmapped-password",
+            "B89_POSTGRES_PASSWORD_REF": "secret://keyvault/unmapped-password",
         }
-        config["core_secret_names"]["QAPAQ_POSTGRES_PASSWORD"] = "qapaq-postgres-password"
-        config["core_secret_names"]["QAPAQ_ENTITY_REF_KEY"] = "qapaq-entity-ref-key"
+        config["core_secret_names"]["B89_POSTGRES_PASSWORD"] = "b89-postgres-password"
+        config["core_secret_names"]["B89_ENTITY_REF_KEY"] = "b89-entity-ref-key"
 
         self._assert_config_rejected(config, "la referencia Core no coincide")
 
     def test_rejects_plaintext_entity_key_and_teams_url_in_bootstrap_config(self) -> None:
         secret_values = (
-            ("QAPAQ_ENTITY_REF_KEY", "synthetic-entity-key-must-not-enter-bootstrap", "qapaq-entity-ref-key"),
+            ("B89_ENTITY_REF_KEY", "synthetic-entity-key-must-not-enter-bootstrap", "b89-entity-ref-key"),
             (
-                "QAPAQ_TEAMS_WORKFLOW_URL",
+                "B89_TEAMS_WORKFLOW_URL",
                 "https://example.invalid/workflows/demo?sig=synthetic",
-                "qapaq-teams-workflow-url",
+                "b89-teams-workflow-url",
             ),
         )
         for key, value, secret_name in secret_values:
@@ -168,11 +168,11 @@ class ProviderIngestionValidationTests(unittest.TestCase):
 
     def test_rejects_plaintext_secret_before_bootstrap_key_vault_access(self) -> None:
         secret_values = (
-            ("QAPAQ_ENTITY_REF_KEY", "synthetic-entity-key-must-not-enter-bootstrap", "qapaq-entity-ref-key"),
+            ("B89_ENTITY_REF_KEY", "synthetic-entity-key-must-not-enter-bootstrap", "b89-entity-ref-key"),
             (
-                "QAPAQ_TEAMS_WORKFLOW_URL",
+                "B89_TEAMS_WORKFLOW_URL",
                 "https://example.invalid/workflows/demo?sig=synthetic",
-                "qapaq-teams-workflow-url",
+                "b89-teams-workflow-url",
             ),
         )
         for key, value, secret_name in secret_values:
@@ -234,8 +234,8 @@ class ProviderIngestionValidationTests(unittest.TestCase):
 
     def test_materializes_optional_teams_reference_only_as_root_only_file(self) -> None:
         config = self._base_config()
-        config["wazuh_secret_names"]["qapaq-teams-workflow-url"] = "teams-workflow"
-        config["core_secret_names"]["QAPAQ_TEAMS_WORKFLOW_URL"] = "core-teams-workflow"
+        config["wazuh_secret_names"]["b89-teams-workflow-url"] = "teams-workflow"
+        config["core_secret_names"]["B89_TEAMS_WORKFLOW_URL"] = "core-teams-workflow"
         expected_url = "https://prod-01.westus.logic.azure.com/workflows/synthetic?sig=not-real"
         with tempfile.TemporaryDirectory() as temporary:
             root = pathlib.Path(temporary)
@@ -248,15 +248,15 @@ class ProviderIngestionValidationTests(unittest.TestCase):
                                     with patch.object(BOOTSTRAP.os, "O_NOFOLLOW", 0, create=True):
                                         BOOTSTRAP.materialize_secrets(config)
 
-            secret_file = root / "secrets" / "qapaq-teams-workflow-url"
+            secret_file = root / "secrets" / "b89-teams-workflow-url"
             self.assertEqual(secret_file.read_text(encoding="utf-8"), expected_url)
             core_environment = (root / "core" / "core.env").read_text(encoding="utf-8")
-            self.assertIn('QAPAQ_ENTRA_CLIENT_SECRET_REF="secret://keyvault/entra-client-secret"', core_environment)
-            self.assertIn('QAPAQ_TEAMS_WORKFLOW_URL_REF="secret://keyvault/core-teams-workflow"', core_environment)
-            self.assertIn('QAPAQ_SECRET_PROVIDER_TYPE="azure-key-vault"', core_environment)
-            self.assertIn('QAPAQ_SECRET_PROVIDER_ENDPOINT="https://kv-qapaq-test.vault.azure.net"', core_environment)
+            self.assertIn('B89_ENTRA_CLIENT_SECRET_REF="secret://keyvault/entra-client-secret"', core_environment)
+            self.assertIn('B89_TEAMS_WORKFLOW_URL_REF="secret://keyvault/core-teams-workflow"', core_environment)
+            self.assertIn('B89_SECRET_PROVIDER_TYPE="azure-key-vault"', core_environment)
+            self.assertIn('B89_SECRET_PROVIDER_ENDPOINT="https://kv-b89-test.vault.azure.net"', core_environment)
             self.assertIn('AZURE_CLIENT_ID="managed-identity-client-id"', core_environment)
-            self.assertNotIn("QAPAQ_ENTRA_CLIENT_SECRET=", core_environment)
+            self.assertNotIn("B89_ENTRA_CLIENT_SECRET=", core_environment)
             self.assertNotIn(expected_url, core_environment)
             fetched_names = {call.args[2] for call in get_secret.call_args_list}
             self.assertNotIn("entra-client-secret", fetched_names)
@@ -409,7 +409,7 @@ class DataDiskFormattingTests(unittest.TestCase):
             with patch.object(BOOTSTRAP, "run") as command:
                 BOOTSTRAP.ensure_ext4_or_format("/dev/sdc", 128 * 1024**3)
 
-        command.assert_called_once_with("mkfs.ext4", "-m", "1", "-L", "qapaq-siem-data", "/dev/sdc")
+        command.assert_called_once_with("mkfs.ext4", "-m", "1", "-L", "b89-siem-data", "/dev/sdc")
 
 
 class DebianArtifactMetadataTests(unittest.TestCase):
@@ -421,13 +421,13 @@ class DebianArtifactMetadataTests(unittest.TestCase):
                 "managerDeb": "manager.deb",
                 "indexerDeb": "indexer.deb",
                 "filebeatDeb": "filebeat.deb",
-                "qapaqDashboardDeb": "dashboard.deb",
+                "b89DashboardDeb": "dashboard.deb",
             },
             "debianPackages": {
                 "wazuh-manager": "4.14.8-1",
                 "wazuh-indexer": "4.14.8-1",
                 "filebeat": "7.10.2-2",
-                "wazuh-dashboard": "4.14.8-1qapaq1",
+                "wazuh-dashboard": "4.14.8-1b891",
             },
         }
         for artifact in self.manifest["artifacts"].values():
@@ -445,7 +445,7 @@ class DebianArtifactMetadataTests(unittest.TestCase):
             ("filebeat.deb", "Package"): "filebeat",
             ("filebeat.deb", "Version"): "7.10.2-2",
             ("dashboard.deb", "Package"): "wazuh-dashboard",
-            ("dashboard.deb", "Version"): "4.14.8-1qapaq1",
+            ("dashboard.deb", "Version"): "4.14.8-1b891",
         }
         expected.update(
             {
@@ -486,7 +486,7 @@ class DebianArtifactMetadataTests(unittest.TestCase):
     def test_invalid_package_metadata_blocks_main_before_install(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = pathlib.Path(temporary_directory)
-            bundle_root = root / "qapaq-siem-release"
+            bundle_root = root / "b89-siem-release"
             (bundle_root / "packages").mkdir(parents=True)
             (bundle_root / "install.sh").write_text(
                 "#!/usr/bin/env bash\n# Test payload; must never execute.\nexit 0\n",
@@ -496,8 +496,8 @@ class DebianArtifactMetadataTests(unittest.TestCase):
                 "managerDeb": "packages/manager.deb",
                 "indexerDeb": "packages/indexer.deb",
                 "filebeatDeb": "packages/filebeat.deb",
-                "qapaqDashboardDeb": "packages/dashboard.deb",
-                "qapaqCoreArchive": "packages/qapaq-core.tar.gz",
+                "b89DashboardDeb": "packages/dashboard.deb",
+                "b89CoreArchive": "packages/b89-core.tar.gz",
             }
             for relative_path in artifact_paths.values():
                 (bundle_root / relative_path).write_bytes(b"test artifact")
@@ -505,7 +505,7 @@ class DebianArtifactMetadataTests(unittest.TestCase):
                 "wazuh-manager": "4.14.8-1",
                 "wazuh-indexer": "4.14.8-1",
                 "filebeat": "7.10.2-2",
-                "wazuh-dashboard": "4.14.8-1qapaq1",
+                "wazuh-dashboard": "4.14.8-1b891",
             }
             file_paths = ["install.sh", *artifact_paths.values()]
             manifest = {
@@ -516,10 +516,10 @@ class DebianArtifactMetadataTests(unittest.TestCase):
                     "wazuhFilebeat": "4.14.8",
                     "wazuhDashboard": "4.14.8",
                     "openSearchDashboards": "2.19.6",
-                    "qapaqCoreNode": "24.21.0",
+                    "b89CoreNode": "24.21.0",
                 },
-                "qapaqDashboardPackage": "4.14.8-1qapaq1",
-                "qapaqCoreSourceCommit": "a" * 12,
+                "b89DashboardPackage": "4.14.8-1b891",
+                "b89CoreSourceCommit": "a" * 12,
                 "debianPackages": package_versions,
                 "artifacts": artifact_paths,
                 "files": {
@@ -578,8 +578,8 @@ class RuntimeHealthTests(unittest.TestCase):
             if call.args[:3] == ("systemctl", "is-active", "--quiet")
         }
         self.assertIn("filebeat", checked_services)
-        self.assertIn("qapaq-core-worker", checked_services)
-        self.assertIn("qapaq-core-api", checked_services)
+        self.assertIn("b89-core-worker", checked_services)
+        self.assertIn("b89-core-api", checked_services)
 
     def test_missing_systemd_service_fails_before_readiness_check(self) -> None:
         def service_missing(*args: str, **_kwargs: object) -> None:

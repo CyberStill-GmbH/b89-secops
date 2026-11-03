@@ -7,10 +7,10 @@
 
 import { randomUUID } from 'node:crypto';
 import type { IncomingRequest, OutgoingReply } from './http-contracts.js';
-import type { RequestOrigin } from '@qapaq/access';
+import type { RequestOrigin } from '@b89/access';
 
-export const SESSION_COOKIE = 'qapaq_session';
-const OIDC_FLOW_COOKIE_PREFIX = 'qapaq_oidc_flow_';
+export const SESSION_COOKIE = 'b89_session';
+const OIDC_FLOW_COOKIE_PREFIX = 'b89_oidc_flow_';
 const OIDC_STATE_FORMAT = /^[A-Za-z0-9_-]{43}$/u;
 const OIDC_FLOW_TTL_SECONDS = 10 * 60;
 export const CORRELATION_HEADER = 'x-correlation-id';

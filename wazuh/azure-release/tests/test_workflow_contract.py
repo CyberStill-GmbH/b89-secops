@@ -31,17 +31,17 @@ class AzureReleaseWorkflowContractTests(unittest.TestCase):
             "wazuh/provider-ingestion ':!wazuh/provider-ingestion/tests/**'",
             "jq -e --arg sha \"$RELEASE_SHA\" --arg workflow \"$workflow\"",
             ".head_sha == $sha and .head_branch == \"main\" and .status == \"completed\" and .conclusion == \"success\"",
-            'name: qapaq-dashboard-${{ inputs.release_sha }}',
-            'name: qapaq-core-azure-${{ inputs.release_sha }}',
-            'QAPAQ_SHA: ${{ inputs.release_sha }}',
-            'assert manifest["qapaqCommit"] == sys.argv[3]',
+            'name: b89-dashboard-${{ inputs.release_sha }}',
+            'name: b89-core-azure-${{ inputs.release_sha }}',
+            'B89_SHA: ${{ inputs.release_sha }}',
+            'assert manifest["b89Commit"] == sys.argv[3]',
             'assert manifest["agentProfilePack"]["status"] == "candidate-disabled"',
             'assert manifest["agentProfilePack"]["installerAppliesAgentProfiles"] is False',
             'assert "agent-profiles" not in installer',
         ):
             with self.subTest(contract=contract):
                 self.assertIn(contract, workflow)
-        self.assertIn('"qapaqCommit": qapaq_commit', assembler)
+        self.assertIn('"b89Commit": b89_commit', assembler)
 
     def test_publisher_checks_ancestor_and_bundle_manifest_commit(self) -> None:
         workflow = PUBLISH_WORKFLOW.read_text(encoding="utf-8")
@@ -50,7 +50,7 @@ class AzureReleaseWorkflowContractTests(unittest.TestCase):
             "compare/$SOURCE_SHA...$bundle_run_sha",
             '(.status == "ahead" or .status == "identical") and .merge_base_commit.sha == $sha',
             'tar -xOf "$bundle" "$manifest_name"',
-            "'.status == \"installable-candidate\" and .qapaqCommit == $sha'",
+            "'.status == \"installable-candidate\" and .b89Commit == $sha'",
         ):
             with self.subTest(contract=contract):
                 self.assertIn(contract, workflow)

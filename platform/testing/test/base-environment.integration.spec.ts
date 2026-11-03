@@ -35,9 +35,9 @@ async function assertOwnedLabels(environment: IntegrationEnvironment): Promise<v
       container.getId(),
     ]);
     const labels = JSON.parse(stdout) as Record<string, string>;
-    expect(labels['qapaq.test']).toBe('true');
-    expect(labels['qapaq.test.run-id']).toBe(environment.runId);
-    expect(labels['qapaq.test.owner']).toBe('platform-testing');
+    expect(labels['b89.test']).toBe('true');
+    expect(labels['b89.test.run-id']).toBe(environment.runId);
+    expect(labels['b89.test.owner']).toBe('platform-testing');
   }
 }
 
@@ -48,7 +48,7 @@ async function remainingContainers(runId: string): Promise<string[]> {
     '--all',
     '--quiet',
     '--filter',
-    `label=qapaq.test.run-id=${runId}`,
+    `label=b89.test.run-id=${runId}`,
   ]);
   return stdout.split(/\r?\n/u).filter(Boolean);
 }

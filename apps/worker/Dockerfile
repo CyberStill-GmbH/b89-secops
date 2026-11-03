@@ -22,17 +22,17 @@ COPY platform/configuration/package.json platform/configuration/package.json
 COPY platform/database/package.json platform/database/package.json
 COPY platform/testing/package.json platform/testing/package.json
 
-RUN pnpm install --filter @qapaq/worker... --frozen-lockfile
+RUN pnpm install --filter @b89/worker... --frozen-lockfile
 
 COPY . .
-RUN pnpm --filter '@qapaq/worker...' run build \
-    && pnpm --filter @qapaq/worker deploy --prod --legacy /runtime \
+RUN pnpm --filter '@b89/worker...' run build \
+    && pnpm --filter @b89/worker deploy --prod --legacy /runtime \
     && node scripts/docker/prune-deploy.mjs /runtime
 
 FROM --platform=linux/amd64 gcr.io/distroless/nodejs24-debian13:nonroot@sha256:9eeb7f5887d0e239e78264b06f7f11d2e14be534050481803a9e4728fcdd278e AS runtime
 
 ENV NODE_ENV=production \
-    QAPAQ_PROFILE=production
+    B89_PROFILE=production
 WORKDIR /app
 
 COPY --from=build --chown=1000:1000 /runtime/ ./

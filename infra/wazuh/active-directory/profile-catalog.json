@@ -18,7 +18,7 @@
       "path": "infra/wazuh/active-directory/agent-groups/windows-domain-controller.agent.conf",
       "artifactPath": "wazuh/agent-profiles/windows-domain-controller.agent.conf",
       "status": "candidate-disabled",
-      "scope": "Adds only the qapaq_profile=active-directory-pilot label; AD audit signals are inherited from the Windows base Security channel."
+      "scope": "Adds only the b89_profile=active-directory-pilot label; AD audit signals are inherited from the Windows base Security channel."
     },
     {
       "id": "windows-sysmon-pilot",
@@ -66,7 +66,7 @@
       "ruleRefs": [],
       "collection": "excluded-no-current-rule-consumer",
       "dataset": "not-collected",
-      "note": "Events 5136, 5137, and 5141 used by QAPAQ rule 101303 are Windows Security audit events, not this channel."
+      "note": "Events 5136, 5137, and 5141 used by B89 rule 101303 are Windows Security audit events, not this channel."
     },
     {
       "source": "PowerShell Operational",
@@ -76,7 +76,7 @@
       "collection": "excluded-until-privacy-approved-use-case",
       "dataset": "not-collected",
       "excludedEventIds": ["400", "403", "4103", "4104"],
-      "note": "Script/module and script-block logging can carry command or script content. PowerShell event 400 can include HostApplication arguments; the current QAPAQ AD rules do not consume this channel."
+      "note": "Script/module and script-block logging can carry command or script content. PowerShell event 400 can include HostApplication arguments; the current B89 AD rules do not consume this channel."
     },
     {
       "source": "Sysmon Process Create",
@@ -108,67 +108,67 @@
     {
       "channel": "Security",
       "eventIds": ["4728", "4732", "4756"],
-      "qapaqRuleRefs": ["101300"],
+      "b89RuleRefs": ["101300"],
       "upstreamParentRuleRefs": ["60113"]
     },
     {
       "channel": "Security",
       "eventIds": ["4719"],
-      "qapaqRuleRefs": ["101301"],
+      "b89RuleRefs": ["101301"],
       "upstreamParentRuleRefs": ["60112"]
     },
     {
       "channel": "Security",
       "eventIds": ["1102"],
-      "qapaqRuleRefs": ["101302"],
+      "b89RuleRefs": ["101302"],
       "upstreamParentRuleRefs": ["60103"]
     },
     {
       "channel": "Security",
       "eventIds": ["5136", "5137", "5141"],
-      "qapaqRuleRefs": ["101303"],
+      "b89RuleRefs": ["101303"],
       "upstreamParentRuleRefs": ["60103"]
     },
     {
       "channel": "Security",
       "eventIds": ["4769"],
-      "qapaqRuleRefs": ["101304"],
+      "b89RuleRefs": ["101304"],
       "upstreamParentRuleRefs": ["60106"]
     },
     {
       "channel": "Security",
       "eventIds": ["4768"],
-      "qapaqRuleRefs": ["101305"],
+      "b89RuleRefs": ["101305"],
       "upstreamParentRuleRefs": ["60103"]
     },
     {
       "channel": "Security",
       "eventIds": ["4662"],
-      "qapaqRuleRefs": ["101306"],
+      "b89RuleRefs": ["101306"],
       "upstreamParentRuleRefs": ["60103"]
     },
     {
       "channel": "Security",
       "eventIds": ["4771"],
-      "qapaqRuleRefs": ["101307"],
+      "b89RuleRefs": ["101307"],
       "upstreamParentRuleRefs": ["60104"]
     },
     {
       "channel": "System",
       "eventIds": ["7045"],
-      "qapaqRuleRefs": [],
+      "b89RuleRefs": [],
       "upstreamRuleRefs": ["61138"]
     },
     {
       "channel": "Microsoft-Windows-Sysmon/Operational",
       "eventIds": ["1"],
-      "qapaqRuleRefs": ["101100"],
+      "b89RuleRefs": ["101100"],
       "upstreamRuleRefs": []
     }
   ],
   "ruleSources": {
-    "qapaq": "infra/wazuh/active-directory/rules/qapaq_active_directory_rules.xml",
-    "qapaqEndpoint": "infra/wazuh/endpoint/rules/qapaq_endpoint_rules.xml",
+    "b89": "infra/wazuh/active-directory/rules/b89_active_directory_rules.xml",
+    "b89Endpoint": "infra/wazuh/endpoint/rules/b89_endpoint_rules.xml",
     "wazuhUpstream": "https://github.com/wazuh/wazuh/blob/v4.14.8/ruleset/rules/0590-win-system_rules.xml"
   },
   "safety": {

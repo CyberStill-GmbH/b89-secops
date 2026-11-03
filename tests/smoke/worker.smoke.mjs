@@ -40,7 +40,7 @@ for (const termination of ['SIGTERM', 'SIGINT']) {
 }
 
 test('invalid worker configuration never reaches readiness', async () => {
-  const runtime = startApp('worker', { QAPAQ_PROFILE: fixtureToken });
+  const runtime = startApp('worker', { B89_PROFILE: fixtureToken });
   try {
     assert.equal((await exitedWithin(runtime)).code, 1);
     assert.deepEqual(

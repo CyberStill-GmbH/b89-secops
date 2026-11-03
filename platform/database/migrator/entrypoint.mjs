@@ -1,24 +1,24 @@
 #!/usr/bin/env node
 /**
- * QAPAQ SecOps — tarea one-off de base de datos (C-1, decisiones D-6/D-7).
+ * B89 SecOps — tarea one-off de base de datos (C-1, decisiones D-6/D-7).
  *
  * Modos (primer argumento):
  *
- *   bootstrap-roles  Con la credencial master de RDS crea o rota `qapaq_migrator` y
- *                    `qapaq_soc_runtime`. Las contraseñas se generan aquí, se publican en
+ *   bootstrap-roles  Con la credencial master de RDS crea o rota `b89_migrator` y
+ *                    `b89_soc_runtime`. Las contraseñas se generan aquí, se publican en
  *                    Secrets Manager como AWSPENDING, se aplican y solo entonces pasan a
  *                    AWSCURRENT. Si algo falla, las credenciales vigentes no cambian. Nunca
  *                    pasan por Terraform, logs ni argumentos de proceso.
- *   migrate          Con `qapaq_migrator` ejecuta `prisma migrate deploy` y reaplica el
+ *   migrate          Con `b89_migrator` ejecuta `prisma migrate deploy` y reaplica el
  *                    endurecimiento de permisos (`bootstrap/post-migrate.sql`).
  *
  * Entorno:
- *   QAPAQ_POSTGRES_HOST, QAPAQ_POSTGRES_PORT, QAPAQ_POSTGRES_DATABASE, QAPAQ_POSTGRES_TLS
- *   bootstrap-roles: QAPAQ_MASTER_USERNAME, QAPAQ_MASTER_PASSWORD (inyectadas por ECS desde
- *                    el secret administrado por RDS), QAPAQ_MIGRATOR_SECRET_ID,
- *                    QAPAQ_RUNTIME_SECRET_ID, QAPAQ_ENTITY_REF_SECRET_ID,
- *                    QAPAQ_VAPID_SECRET_ID, AWS_REGION
- *   migrate:         QAPAQ_MIGRATOR_PASSWORD (inyectada por ECS)
+ *   B89_POSTGRES_HOST, B89_POSTGRES_PORT, B89_POSTGRES_DATABASE, B89_POSTGRES_TLS
+ *   bootstrap-roles: B89_MASTER_USERNAME, B89_MASTER_PASSWORD (inyectadas por ECS desde
+ *                    el secret administrado por RDS), B89_MIGRATOR_SECRET_ID,
+ *                    B89_RUNTIME_SECRET_ID, B89_ENTITY_REF_SECRET_ID,
+ *                    B89_VAPID_SECRET_ID, AWS_REGION
+ *   migrate:         B89_MIGRATOR_PASSWORD (inyectada por ECS)
  *
  * Salida: una línea JSON por fase, sin secretos. Código distinto de cero si algo falla: el
  * pipeline de release no despliega el API sin una migración exitosa.
@@ -34,12 +34,12 @@ import pg from 'pg';
 import { awsSecretsPort, runBootstrapProtocol } from './bootstrap-protocol.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
-const MIGRATOR_ROLE = 'qapaq_migrator';
-const RUNTIME_ROLE = 'qapaq_soc_runtime';
+const MIGRATOR_ROLE = 'b89_migrator';
+const RUNTIME_ROLE = 'b89_soc_runtime';
 
 function log(event, extra = {}) {
   process.stdout.write(
-    `${JSON.stringify({ service: 'qapaq-secops-migrator', event, timestamp: new Date().toISOString(), ...extra })}\n`,
+    `${JSON.stringify({ service: 'b89-secops-migrator', event, timestamp: new Date().toISOString(), ...extra })}\n`,
   );
 }
 
@@ -51,13 +51,13 @@ function required(name) {
 
 function connectionUrl(username, password) {
   const url = new URL('postgresql://placeholder');
-  url.hostname = required('QAPAQ_POSTGRES_HOST');
-  url.port = process.env.QAPAQ_POSTGRES_PORT ?? '5432';
-  url.pathname = `/${encodeURIComponent(required('QAPAQ_POSTGRES_DATABASE'))}`;
+  url.hostname = required('B89_POSTGRES_HOST');
+  url.port = process.env.B89_POSTGRES_PORT ?? '5432';
+  url.pathname = `/${encodeURIComponent(required('B89_POSTGRES_DATABASE'))}`;
   url.username = encodeURIComponent(username);
   url.password = encodeURIComponent(password);
   // Mismo criterio que el API: cifrado con verificación de CA y nombre (bundle RDS en la imagen).
-  if ((process.env.QAPAQ_POSTGRES_TLS ?? 'true') === 'true') {
+  if ((process.env.B89_POSTGRES_TLS ?? 'true') === 'true') {
     url.searchParams.set('sslmode', 'verify-full');
   }
   return url.toString();
@@ -88,7 +88,7 @@ async function secretsClient() {
  * vigente. Si ya existe no se toca: rotarla invalidaría las referencias guardadas.
  */
 async function ensureEntityRefKey({ sdk, client }) {
-  const secretId = process.env.QAPAQ_ENTITY_REF_SECRET_ID;
+  const secretId = process.env.B89_ENTITY_REF_SECRET_ID;
   if (!secretId) return;
   const described = await client.send(new sdk.DescribeSecretCommand({ SecretId: secretId }));
   const hasCurrent = Object.values(described.VersionIdsToStages ?? {}).some((stages) =>
@@ -113,7 +113,7 @@ async function ensureEntityRefKey({ sdk, client }) {
  * los dispositivos registrados.
  */
 async function ensureVapidKey({ sdk, client }) {
-  const secretId = process.env.QAPAQ_VAPID_SECRET_ID;
+  const secretId = process.env.B89_VAPID_SECRET_ID;
   if (!secretId) return;
   const described = await client.send(new sdk.DescribeSecretCommand({ SecretId: secretId }));
   const hasCurrent = Object.values(described.VersionIdsToStages ?? {}).some((stages) =>
@@ -139,20 +139,20 @@ async function bootstrapRoles() {
   await runBootstrapProtocol({
     secrets: awsSecretsPort(sdk, client),
     roles: [
-      { role: MIGRATOR_ROLE, secretId: required('QAPAQ_MIGRATOR_SECRET_ID') },
-      { role: RUNTIME_ROLE, secretId: required('QAPAQ_RUNTIME_SECRET_ID') },
+      { role: MIGRATOR_ROLE, secretId: required('B89_MIGRATOR_SECRET_ID') },
+      { role: RUNTIME_ROLE, secretId: required('B89_RUNTIME_SECRET_ID') },
     ],
     generatePassword,
     log,
     applyRoles: (passwords) =>
       withClient(
-        connectionUrl(required('QAPAQ_MASTER_USERNAME'), required('QAPAQ_MASTER_PASSWORD')),
+        connectionUrl(required('B89_MASTER_USERNAME'), required('B89_MASTER_PASSWORD')),
         async (db) => {
           await db.query('BEGIN');
           try {
             // `set_config(..., true)` vive solo dentro de esta transacción.
             await db.query(
-              "SELECT set_config('qapaq.migrator_password', $1, true), set_config('qapaq.runtime_password', $2, true)",
+              "SELECT set_config('b89.migrator_password', $1, true), set_config('b89.runtime_password', $2, true)",
               [passwords[MIGRATOR_ROLE], passwords[RUNTIME_ROLE]],
             );
             await db.query(sql);
@@ -201,7 +201,7 @@ function runPrisma(databaseUrl) {
         stdio: ['ignore', 'pipe', 'pipe'],
       },
     );
-    const sensitive = [databaseUrl, process.env.QAPAQ_MIGRATOR_PASSWORD ?? ''];
+    const sensitive = [databaseUrl, process.env.B89_MIGRATOR_PASSWORD ?? ''];
     child.stdout.on('data', (chunk) => process.stdout.write(redact(String(chunk), sensitive)));
     child.stderr.on('data', (chunk) => process.stderr.write(redact(String(chunk), sensitive)));
     child.on('error', reject);
@@ -212,7 +212,7 @@ function runPrisma(databaseUrl) {
 }
 
 async function migrate() {
-  const url = connectionUrl(MIGRATOR_ROLE, required('QAPAQ_MIGRATOR_PASSWORD'));
+  const url = connectionUrl(MIGRATOR_ROLE, required('B89_MIGRATOR_PASSWORD'));
   await runPrisma(url);
   log('migrate.applied');
   const sql = await readFile(new URL('../bootstrap/post-migrate.sql', import.meta.url), 'utf8');

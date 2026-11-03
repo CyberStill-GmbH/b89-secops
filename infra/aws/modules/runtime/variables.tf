@@ -86,7 +86,7 @@ variable "krakend_environment" {
 }
 
 variable "entra_client_secret_arn" {
-  description = "Secrets Manager ARN injected into the API container as QAPAQ_ENTRA_CLIENT_SECRET."
+  description = "Secrets Manager ARN injected into the API container as B89_ENTRA_CLIENT_SECRET."
   type        = string
 }
 
@@ -126,7 +126,7 @@ variable "api_extra_secrets" {
 variable "wazuh_ingestion" {
   description = <<-EOT
     Sprint 5 · fase 0 — ingesta Wazuh → SOC. Null = sin ingesta (el API arranca con
-    QAPAQ_INGESTION_SOURCE=disabled y KrakenD no publica /wazuh/*). Activarlo agrega a KrakenD
+    B89_INGESTION_SOURCE=disabled y KrakenD no publica /wazuh/*). Activarlo agrega a KrakenD
     service discovery privado, lo que reemplaza su servicio ECS una vez (ventana breve sin
     gateway); ver docs/03-evaluacion-de-componentes.md.
   EOT

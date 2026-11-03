@@ -1,4 +1,4 @@
-# KrakenD privado para QAPAQ Core en Azure
+# KrakenD privado para B89 Core en Azure
 
 **Estado:** IaC opcional preparado; no desplegado ni validado en Azure. La ruta queda apagada mientras `krakend_gateway=null`. El módulo cubre el contrato de lectura de ingesta Wazuh y mantiene la decisión [A8](../../10-decisiones.md): KrakenD existe mientras Core lo consume. El acceso directo al Core se mantiene solo en el edge privado del SIEM; este gateway no publica el Core.
 
@@ -6,7 +6,7 @@
 
 ```mermaid
 flowchart LR
-  Core[QAPAQ Core<br/>VM SIEM] -->|HTTPS + Entra client credentials| ACA[Private ACA ILB<br/>2–4 réplicas KrakenD]
+  Core[B89 Core<br/>VM SIEM] -->|HTTPS + Entra client credentials| ACA[Private ACA ILB<br/>2–4 réplicas KrakenD]
   ACA -->|TLS + Basic read-only :9443| Nginx[Proxy Indexer :9443<br/>allow KrakenD · deny VNet restante]
   Nginx -->|TLS verificado| Indexer[(Wazuh Indexer<br/>loopback)]
   KV[Key Vault<br/>reader Base64 + CA PEM] -. identidad ACA .-> ACA
@@ -24,9 +24,9 @@ El ambiente ACA usa internal load balancer y `public_network_access=Disabled`. L
 | GET | `/wazuh/_cluster/health` | `/_cluster/health` |
 | POST | `/wazuh/_search` | `/wazuh-alerts-*/_search` |
 
-Ambas rutas requieren JWT RS256 con issuer, JWKS y audience Entra, el app role exclusivo de aplicación `Qapaq.Wazuh.Read` y un `appid` (token v1) o `azp` (token v2) que coincida con `core_client_id`. `client_scope` señala la app recurso; `core_client_id` señala al service principal QAPAQ Core permitido. Terraform verifica que este ID sea el `QAPAQ_ENTRA_CLIENT_ID` de Core. El rol debe definirse en el registro de la app recurso con `allowedMemberTypes: ["Application"]` y asignarse solo al service principal Core. Límite de tasa por `sub`, timeout de 4 s, TLS verificado a la CA del proxy y Basic auth de un usuario Wazuh read-only. No hay `/api/*`, wildcard de endpoints, escritura, operaciones administrativas de Indexer ni loopback en el upstream. Core usa su implementación actual (`QAPAQ_INGESTION_SOURCE=wazuh`, `QAPAQ_WAZUH_GATEWAY_BASE_URL`, `QAPAQ_INGESTION_GATEWAY_SCOPE`, `EntraClientCredentialsTokenSource`).
+Ambas rutas requieren JWT RS256 con issuer, JWKS y audience Entra, el app role exclusivo de aplicación `B89.Wazuh.Read` y un `appid` (token v1) o `azp` (token v2) que coincida con `core_client_id`. `client_scope` señala la app recurso; `core_client_id` señala al service principal B89 Core permitido. Terraform verifica que este ID sea el `B89_ENTRA_CLIENT_ID` de Core. El rol debe definirse en el registro de la app recurso con `allowedMemberTypes: ["Application"]` y asignarse solo al service principal Core. Límite de tasa por `sub`, timeout de 4 s, TLS verificado a la CA del proxy y Basic auth de un usuario Wazuh read-only. No hay `/api/*`, wildcard de endpoints, escritura, operaciones administrativas de Indexer ni loopback en el upstream. Core usa su implementación actual (`B89_INGESTION_SOURCE=wazuh`, `B89_WAZUH_GATEWAY_BASE_URL`, `B89_INGESTION_GATEWAY_SCOPE`, `EntraClientCredentialsTokenSource`).
 
-El issuer parte del valor v1 ya fijado por el entorno QAPAQ (`https://sts.windows.net/<tenant>/`); la búsqueda de claves usa el JWKS v2 de Microsoft. Antes de activar, comparar ambos con un token sintético de la aplicación porque `accessTokenAcceptedVersion` determina el claim `iss`.
+El issuer parte del valor v1 ya fijado por el entorno B89 (`https://sts.windows.net/<tenant>/`); la búsqueda de claves usa el JWKS v2 de Microsoft. Antes de activar, comparar ambos con un token sintético de la aplicación porque `accessTokenAcceptedVersion` determina el claim `iss`.
 
 El access log queda desactivado: KrakenD CE no permite cambiar el formato y su logger predeterminado incluye la query en la ruta. Los logs de aplicación INFO y las métricas siguen activos; no registran tokens, headers, cuerpos ni query. No activar el logger hasta que exista un sanitizador allowlist probado.
 
@@ -40,7 +40,7 @@ Durante el bootstrap de VM, la Managed Identity obtiene esos valores por Key Vau
 
 ## Recuperación ante pérdida o reemplazo del disco de sistema
 
-La clave privada TLS vive solo en `/etc/qapaq/indexer-proxy/key.pem` en el disco de sistema; Key Vault guarda la credencial del lector y el certificado público, nunca la clave privada. Si se pierde o reemplaza ese disco, conserva el disco de datos y deja KrakenD deshabilitado mientras recuperas el host. El bootstrap falla cerrado si Key Vault contiene un certificado pero el host no tiene su clave correspondiente. No reemplaces los secretos por `bootstrap-pending`, no copies la clave a logs/artifacts y no abras el acceso del Indexer para restaurar el servicio.
+La clave privada TLS vive solo en `/etc/b89/indexer-proxy/key.pem` en el disco de sistema; Key Vault guarda la credencial del lector y el certificado público, nunca la clave privada. Si se pierde o reemplaza ese disco, conserva el disco de datos y deja KrakenD deshabilitado mientras recuperas el host. El bootstrap falla cerrado si Key Vault contiene un certificado pero el host no tiene su clave correspondiente. No reemplaces los secretos por `bootstrap-pending`, no copies la clave a logs/artifacts y no abras el acceso del Indexer para restaurar el servicio.
 
 La recuperación automatizada del par TLS no está implementada ni probada. Antes de habilitar KrakenD, debe quedar aprobado y probado al menos uno de estos controles: restaurar desde un respaldo cifrado de host que contenga el par de clave/certificado, o ejecutar un procedimiento separado de rotación coordinada. En una rotación, genera la clave privada en el host, publica solo el certificado público y la credencial nueva mediante un canal de escritura protegido, actualiza la referencia de KrakenD y verifica búsqueda/salud `200`, escritura y Security API `403`; luego revoca el usuario/mapeo anterior. Mantén el gateway apagado si no puedes completar esa secuencia y demostrarla sin exponer valores. Hasta cerrar este gate, `krakend_gateway` debe permanecer `null`.
 
@@ -60,10 +60,10 @@ CI ejecuta el contrato Node, `krakend check` sobre la plantilla Azure y `terrafo
 
 1. FQDN no resuelve a una IP pública y no hay ingreso desde Internet.
 2. FQDN resuelve a la IP estática privada del internal load balancer; certificado HTTPS válido.
-3. Core obtiene token client-credentials con el scope configurado; issuer/audience/JWKS pasan validación y el token incluye `roles: ["Qapaq.Wazuh.Read"]` junto a `appid`/`azp` igual al ID autorizado.
+3. Core obtiene token client-credentials con el scope configurado; issuer/audience/JWKS pasan validación y el token incluye `roles: ["B89.Wazuh.Read"]` junto a `appid`/`azp` igual al ID autorizado.
 4. Las dos rutas exactas devuelven 200 al workload autorizado. Token ausente/malformado o emitido para un cliente no permitido (`appid`/`azp`) recibe 401 del validador JWT; token válido del cliente permitido pero sin el app role dedicado recibe 403.
 5. Rutas adicionales, escritura y acceso a Security API se rechazan; KrakenD no puede leer/escribir fuera de `wazuh-alerts-*`.
-6. QAPAQ informa lecturas correctas y eventos sintéticos indexados; métricas/logs no incluyen token, Basic auth o secreto PEM.
+6. B89 informa lecturas correctas y eventos sintéticos indexados; métricas/logs no incluyen token, Basic auth o secreto PEM.
 
 ## Referencias
 

@@ -5,7 +5,7 @@ duplicar el ruleset base del proveedor.
 
 Implementado en C-16:
 
-- puntaje a partir de la severidad normalizada y del contexto QAPAQ —identidades
+- puntaje a partir de la severidad normalizada y del contexto B89 —identidades
   privilegiadas, activos críticos, exposición, repetición— con un reason code por ajuste;
 - supresión por regla declarada benigna y por ventana de mantenimiento;
 - promoción con clave determinista `(tenant, evento, versión de ruleset)`: repetirla

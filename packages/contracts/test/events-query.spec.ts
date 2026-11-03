@@ -1,5 +1,5 @@
 /**
- * Gramática `qapaq-events-v1` del explorador de eventos.
+ * Gramática `b89-events-v1` del explorador de eventos.
  *
  * El parser es la frontera entre texto del usuario y la consulta al proveedor: todo lo que no
  * sea un predicado del catálogo se rechaza con posición, sin ignorar fragmentos y sin repetir

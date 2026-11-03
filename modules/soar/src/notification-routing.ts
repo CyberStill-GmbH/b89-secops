@@ -2,7 +2,7 @@
  * Sprint 5 — a quién avisar en Teams según el evento y el rol en el SOC.
  *
  * La política es una tabla (dato, no código repartido): cada evento notificable declara qué
- * roles QAPAQ lo reciben. Los destinatarios concretos (correos) los resuelve
+ * roles B89 lo reciben. Los destinatarios concretos (correos) los resuelve
  * `RecipientDirectory`, que implementa el composition root con el padrón del grupo de admisión
  * y el rol efectivo de cada persona. Quien queda «sin acceso asignado» nunca recibe nada.
  *
@@ -16,13 +16,9 @@
  * SOC): los destinatarios llegan como menciones y Teams avisa a cada uno.
  */
 
-import type { OutboxMessageDraft } from '@qapaq/soc';
+import type { OutboxMessageDraft } from '@b89/soc';
 
-export const NOTIFIED_ROLES = [
-  'qapaq.soc.analyst',
-  'qapaq.soc.lead',
-  'qapaq.platform.admin',
-] as const;
+export const NOTIFIED_ROLES = ['b89.soc.analyst', 'b89.soc.lead', 'b89.platform.admin'] as const;
 export type NotifiedRole = (typeof NOTIFIED_ROLES)[number];
 
 interface Route {
@@ -35,17 +31,17 @@ export const NOTIFICATION_ROUTES: readonly Route[] = Object.freeze([
   {
     messageType: 'soc.alert.created',
     matches: (payload) => payload['priority'] === 'P1',
-    roles: ['qapaq.soc.analyst', 'qapaq.soc.lead'],
+    roles: ['b89.soc.analyst', 'b89.soc.lead'],
   },
   {
     messageType: 'soc.alert.escalated',
     matches: (payload) => payload['priority'] === 'P1',
-    roles: ['qapaq.soc.lead', 'qapaq.platform.admin'],
+    roles: ['b89.soc.lead', 'b89.platform.admin'],
   },
   {
     messageType: 'soc.incident.opened',
     matches: (payload) => payload['severity'] === 'critical',
-    roles: ['qapaq.soc.lead', 'qapaq.platform.admin'],
+    roles: ['b89.soc.lead', 'b89.platform.admin'],
   },
 ]);
 

@@ -13,10 +13,10 @@ Estados: **Vigente**, **Gate** (decidida, pero falta evidencia antes de producci
 | --- | --- | --- | --- |
 | N1 | Operación autogestionada: sin SaaS de logs ni de observabilidad (SBS 504-2021, arts. 22–25) | Gate: dictamen de Legal | compliance SBS |
 | N2 | Minimización de datos personales (Ley 29733) | Vigente | ADR-018/022 |
-| N3 | Wazuh detecta y QAPAQ coordina. No hay un segundo SIEM | Vigente | ADR-015/024 |
-| N4 | Primera vertical M365 → Wazuh → QAPAQ → Teams | Vigente | ADR-024 |
+| N3 | Wazuh detecta y B89 coordina. No hay un segundo SIEM | Vigente | ADR-015/024 |
+| N4 | Primera vertical M365 → Wazuh → B89 → Teams | Vigente | ADR-024 |
 | N5 | SoD: nadie aprueba lo que pidió, sin `ADMIN` universal | Vigente | ADR-017 |
-| N6 | Teams solo avisa. El acuse vive en QAPAQ | Vigente | ADR-022 |
+| N6 | Teams solo avisa. El acuse vive en B89 | Vigente | ADR-022 |
 | N7 | Sin purga automática hasta que Legal ratifique la retención | Gate | ADR-018 |
 | N8 | No publicar SLO, EPS ni KPIs sin medición | Vigente | ADR-016 |
 | N9 | Una sola sesión activa por persona. Un login nuevo reemplaza la sesión anterior en la consola y en el dashboard | Vigente (falta hacerla atómica) | ADR-017 |
@@ -31,23 +31,23 @@ Estados: **Vigente**, **Gate** (decidida, pero falta evidencia antes de producci
 | A2 | Contrato canónico `SecurityEvent` 1.0.0 | Vigente | ADR-011 |
 | A3 | Mutación, auditoría y outbox en una transacción. Auditoría append-only con cadena hash | Vigente | ADR-012/021 |
 | A4 | Secretos solo por `secretRef` y control plane write-only | Vigente | ADR-013/027 |
-| A5 | **Sin fork del manager ni del Indexer de Wazuh.** El overlay QAPAQ se versiona en `wazuh/` sobre la versión oficial fijada | Vigente | 2026-10-13 |
-| A6 | **QAPAQ SecOps ES Wazuh con identidad QAPAQ.** La UI de Wazuh 4.14.8 (OSD 2.19.6) se rebrandea de principio a fin como overlay versionado en `wazuh/dashboard/` (parches mínimos, assets QAPAQ, plugins separados `qapaq_ops` y `qapaq_i18n`). **`apps/web` se descarta** | Vigente | 2026-10-13 (dueño) |
-| A7 | **El login TS de QAPAQ es la identidad del dashboard** (nginx `auth_request` más proxy auth). OIDC nativo de OSD queda solo como fallback | Vigente | 2026-10-13 |
+| A5 | **Sin fork del manager ni del Indexer de Wazuh.** El overlay B89 se versiona en `wazuh/` sobre la versión oficial fijada | Vigente | 2026-10-13 |
+| A6 | **B89 SecOps ES Wazuh con identidad B89.** La UI de Wazuh 4.14.8 (OSD 2.19.6) se rebrandea de principio a fin como overlay versionado en `wazuh/dashboard/` (parches mínimos, assets B89, plugins separados `b89_ops` y `b89_i18n`). **`apps/web` se descarta** | Vigente | 2026-10-13 (dueño) |
+| A7 | **El login TS de B89 es la identidad del dashboard** (nginx `auth_request` más proxy auth). OIDC nativo de OSD queda solo como fallback | Vigente | 2026-10-13 |
 | A8 | KrakenD **se mantiene mientras lo use la ingesta** (API → Indexer) y el ALB. Se retira solo cuando la API lea el Indexer por el proxy nginx. No se agregan capas nuevas | Vigente (revisada) | 2026-10-13 |
 | A9 | **Valkey vuelve como pieza de resiliencia** (2026-10-14, decisión del dueño): caché con lazy loading e invalidación explícita, estado efímero compartido entre réplicas y colas BullMQ consumidas por el worker. Postgres sigue siendo la verdad; sin Valkey, el sistema degrada a su comportamiento actual. Diseño en [11](11-cache-y-colas.md). Valkey creado en AWS con `noeviction` | Vigente | 2026-10-14 |
 | A10 | **Retirar Grafana, Loki y Prometheus.** CloudWatch para métricas de infraestructura. Logs de API y ALB a Wazuh (cumple N1) | Vigente | 2026-10-13 (sustituye ADR-025 en lo de observabilidad) |
 | A11 | Retención hot/warm/cold con ISM y snapshots a S3 (no Azure) | Vigente (gate N7 para el borrado) | 2026-10-13 (sustituye ADR-008/018 en el mecanismo) |
 | A12 | ML con OpenSearch Anomaly Detection. Python solo si un caso medido supera a RCF | Vigente | 2026-10-13 (sustituye ADR-007) |
-| A13 | **El SOAR propio de QAPAQ no se construye.** **Ankay Qapaq es Shuffle rebrandeado**: ejecuta workflows y workers en una red privada; **QAPAQ Core gobierna** catálogo/versiones, capacidades, SoD, aprobaciones, idempotencia, auditoría y estado. La UI solo se publica detrás de la ruta `/ankay/*` que valida la sesión QAPAQ. Ningún analista invoca el webhook directamente. Ankay va después del lanzamiento del SIEM QAPAQ; Teams con acuse humano sigue en QAPAQ Core. | Próximo scope; IaC Azure aislado preparado, sin root wiring ni despliegue | 2026-10-13 (dueño), precisión Azure 2026-10-20 |
-| A14 | Ingesta push (`custom-qapaq`) más pull de reconciliación | Vigente (fase 2) | 2026-10-13 |
+| A13 | **El SOAR propio de B89 no se construye.** **B89 Respond es Shuffle rebrandeado**: ejecuta workflows y workers en una red privada; **B89 Core gobierna** catálogo/versiones, capacidades, SoD, aprobaciones, idempotencia, auditoría y estado. La UI solo se publica detrás de la ruta `/b89-respond/*` que valida la sesión B89. Ningún analista invoca el webhook directamente. B89 Respond va después del lanzamiento del SIEM B89; Teams con acuse humano sigue en B89 Core. | Próximo scope; IaC Azure aislado preparado, sin root wiring ni despliegue | 2026-10-13 (dueño), precisión Azure 2026-10-20 |
+| A14 | Ingesta push (`custom-b89`) más pull de reconciliación | Vigente (fase 2) | 2026-10-13 |
 | A15 | Fuentes nuevas por módulos de Wazuh, no por adaptadores TS | Vigente | 2026-10-13 |
-| A16 | Lanzamiento sobre **Wazuh 4.14.8** (lo que corre en AWS). La imagen anterior queda como histórico: AMI `ami-096d5a424506d1999` (`qapaq-secops-wazuh-historico-4.14.8-20261013`). Wazuh 5 llega como cluster nuevo cuando haya GA | Vigente | 2026-10-13 (dueño) |
-| A22 | **El backend QAPAQ vive dentro del SIEM** (opción B): el núcleo corre como servicio del host del SIEM junto al dashboard, con RDS, S3 y Valkey. Se retiran los servicios ECS de la API y el worker tras la paridad ([12](12-backend-en-el-siem.md)) | Vigente, en implementación | 2026-10-14 (dueño) |
+| A16 | Lanzamiento sobre **Wazuh 4.14.8** (lo que corre en AWS). La imagen anterior queda como histórico: AMI `ami-096d5a424506d1999` (`b89-secops-wazuh-historico-4.14.8-20261013`). Wazuh 5 llega como cluster nuevo cuando haya GA | Vigente | 2026-10-13 (dueño) |
+| A22 | **El backend B89 vive dentro del SIEM** (opción B): el núcleo corre como servicio del host del SIEM junto al dashboard, con RDS, S3 y Valkey. Se retiran los servicios ECS de la API y el worker tras la paridad ([12](12-backend-en-el-siem.md)) | Vigente, en implementación | 2026-10-14 (dueño) |
 | A17 | CI, candidato, publicación y despliegue separados. Imágenes inmutables `git-<sha>` | Vigente | ADR-023 |
 | A18 | **Sin capas de complejidad nuevas.** Se reutiliza lo que hay: host Wazuh como edge, API y Postgres actuales y long-poll; nada de SSE, colas nuevas ni servicios extra para el lanzamiento | Vigente | 2026-10-13 (dueño) |
-| A19 | **UI en español** con el plugin `qapaq_i18n`: glosario curado más la API Translator on-device de Chrome. **Nunca** se usa un servicio de traducción externo (N1/N2) | Vigente | 2026-10-13 |
-| A20 | **No se rotan secretos** al desplegar: los scripts reutilizan las credenciales publicadas (`QAPAQ_ROTATE` sigue en false) | Vigente | 2026-10-13 (dueño) |
+| A19 | **UI en español** con el plugin `b89_i18n`: glosario curado más la API Translator on-device de Chrome. **Nunca** se usa un servicio de traducción externo (N1/N2) | Vigente | 2026-10-13 |
+| A20 | **No se rotan secretos** al desplegar: los scripts reutilizan las credenciales publicadas (`B89_ROTATE` sigue en false) | Vigente | 2026-10-13 (dueño) |
 | A21 | Apply en AWS: el pipeline oficial es el workflow `terraform-demo`. Desde Windows solo se permite `-target` revisado, porque los CRLF y `dirname()` con `\` generan diffs falsos (reemplazo de la EC2 de Wazuh y rutas rotas en SSM) | Vigente | 2026-10-13 |
 
 ## Abiertas
@@ -68,6 +68,6 @@ posteriores al PR:
 
 | ID | Decisión | Estado frente a la dirección vigente |
 | --- | --- | --- |
-| ADR-028 | Shuffle como SOAR no-code por webhook, con QAPAQ como dueño del catálogo, las aprobaciones, la idempotencia y la auditoría | **Vigente.** El producto se llama **Ankay Qapaq** (A13) y es el siguiente scope |
-| ADR-029 | QAPAQ SecOps como plataforma SIEM/XDR; **Ayni Qapaq** como espacio colaborativo de investigación (inspirado en TheHive) | **Vigente**, salvo la consola: el dueño decidió que la UI es la de Wazuh rebrandeada (A6), no una consola propia. Ayni Qapaq vive en las vistas de incidentes del plugin `qapaq_ops` |
-| ADR-030 | Arquitectura resiliente objetivo: LB de entrada, réplicas sin estado, KrakenD interno, scheduler y pollers con leases, Redis/BullMQ para jobs pequeños, admisión durable y tiers HOT/WARM/COLD (`reference/qapaq-secops-resilient-architecture.md`) | **Objetivo vigente por etapas.** Valkey y el worker vuelven en esta actualización con el rol definido en [11](11-cache-y-colas.md) (A9) |
+| ADR-028 | Shuffle como SOAR no-code por webhook, con B89 como dueño del catálogo, las aprobaciones, la idempotencia y la auditoría | **Vigente.** El producto se llama **B89 Respond** (A13) y es el siguiente scope |
+| ADR-029 | B89 SecOps como plataforma SIEM/XDR; **B89 Cases** como espacio colaborativo de investigación (inspirado en TheHive) | **Vigente**, salvo la consola: el dueño decidió que la UI es la de Wazuh rebrandeada (A6), no una consola propia. B89 Cases vive en las vistas de incidentes del plugin `b89_ops` |
+| ADR-030 | Arquitectura resiliente objetivo: LB de entrada, réplicas sin estado, KrakenD interno, scheduler y pollers con leases, Redis/BullMQ para jobs pequeños, admisión durable y tiers HOT/WARM/COLD (`reference/b89-secops-resilient-architecture.md`) | **Objetivo vigente por etapas.** Valkey y el worker vuelven en esta actualización con el rol definido en [11](11-cache-y-colas.md) (A9) |

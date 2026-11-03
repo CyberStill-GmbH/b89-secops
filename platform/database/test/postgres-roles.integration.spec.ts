@@ -2,7 +2,7 @@
  * C-1 / D-6 — roles de mínimo privilegio contra PostgreSQL real.
  *
  * Aplica `bootstrap/roles.sql` como lo haría la tarea `bootstrap-roles` (con un usuario
- * administrador), migra como `qapaq_migrator`, reaplica `post-migrate.sql` y comprueba con
+ * administrador), migra como `b89_migrator`, reaplica `post-migrate.sql` y comprueba con
  * conexiones reales lo que cada rol puede y no puede hacer. Un `GRANT` mal escrito solo se
  * detecta así: el SQL puede ser válido y aun así conceder de más.
  *
@@ -50,7 +50,7 @@ async function bootstrap(url: string) {
   try {
     await client.query('BEGIN');
     await client.query(
-      "SELECT set_config('qapaq.migrator_password', $1, true), set_config('qapaq.runtime_password', $2, true)",
+      "SELECT set_config('b89.migrator_password', $1, true), set_config('b89.runtime_password', $2, true)",
       [migratorPassword, runtimePassword],
     );
     await client.query(sql);
@@ -61,7 +61,7 @@ async function bootstrap(url: string) {
 }
 
 describe.skipIf(!databaseUrl)('C-1 · roles de mínimo privilegio', () => {
-  const name = `qapaq_roles_${process.pid}_${Date.now()}`.toLowerCase();
+  const name = `b89_roles_${process.pid}_${Date.now()}`.toLowerCase();
   let adminUrl: string;
   let migratorUrl: string;
   let runtimeUrl: string;
@@ -70,8 +70,8 @@ describe.skipIf(!databaseUrl)('C-1 · roles de mínimo privilegio', () => {
     const admin = urlFor(databaseUrl!, 'postgres');
     await run(admin, `CREATE DATABASE "${name}"`);
     adminUrl = urlFor(databaseUrl!, name);
-    migratorUrl = urlFor(databaseUrl!, name, 'qapaq_migrator', migratorPassword);
-    runtimeUrl = urlFor(databaseUrl!, name, 'qapaq_soc_runtime', runtimePassword);
+    migratorUrl = urlFor(databaseUrl!, name, 'b89_migrator', migratorPassword);
+    runtimeUrl = urlFor(databaseUrl!, name, 'b89_soc_runtime', runtimePassword);
 
     // Orden real del rollout: roles → migración como migrator → endurecimiento.
     await bootstrap(adminUrl);
@@ -152,7 +152,7 @@ describe.skipIf(!databaseUrl)('C-1 · roles de mínimo privilegio', () => {
     const attributes = await run(
       adminUrl,
       `SELECT rolname, rolcreaterole, rolcreatedb, rolsuper, rolbypassrls
-         FROM pg_roles WHERE rolname IN ('qapaq_migrator', 'qapaq_soc_runtime') ORDER BY rolname`,
+         FROM pg_roles WHERE rolname IN ('b89_migrator', 'b89_soc_runtime') ORDER BY rolname`,
     );
     for (const row of attributes.rows) {
       expect(row).toMatchObject({
@@ -171,6 +171,6 @@ describe.skipIf(!databaseUrl)('C-1 · roles de mínimo privilegio', () => {
          FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = 'public' AND c.relkind = 'r'`,
     );
-    expect(owners.rows.map((row) => row.owner)).toEqual(['qapaq_migrator']);
+    expect(owners.rows.map((row) => row.owner)).toEqual(['b89_migrator']);
   });
 });

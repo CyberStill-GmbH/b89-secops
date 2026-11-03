@@ -4,8 +4,8 @@ import {
   closeDatabaseClient,
   createDatabaseClient,
   type DatabaseConnectionOptions,
-} from '@qapaq/database';
-import { PrismaPushSubscriptionStore } from '@qapaq/database/push-stores';
+} from '@b89/database';
+import { PrismaPushSubscriptionStore } from '@b89/database/push-stores';
 
 import type { PushSubscriptionRecord, PushSubscriptionStore } from '../push.js';
 

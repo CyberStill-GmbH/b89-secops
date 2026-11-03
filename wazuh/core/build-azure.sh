@@ -3,5 +3,5 @@
 # PostgreSQL. The AWS build remains the default in build.sh and continues to pin the RDS CA bundle.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export QAPAQ_CORE_CA_MODE=system
+export B89_CORE_CA_MODE=system
 exec bash "$HERE/build.sh" "$@"

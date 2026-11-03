@@ -172,10 +172,10 @@ def main():
     page = f"""<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>QAPAQ SecOps — Demostración C-12</title><style>{CSS}</style></head>
+<title>B89 SecOps — Demostración C-12</title><style>{CSS}</style></head>
 <body><div class="wrap">
 <header>
-<p class="eyebrow">QAPAQ SecOps · Demostración</p>
+<p class="eyebrow">B89 SecOps · Demostración</p>
 <h1>Qué le pasa a un evento de seguridad cuando entra</h1>
 <p class="sub">Resultado de una ejecución real del normalizador, el
 {esc(when_local(report['generatedAt']))}. Procesó {counts['received']} eventos en

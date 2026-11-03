@@ -11,7 +11,7 @@ import {
   type WorkerConfig,
 } from './configuration.types.js';
 import { selectProfile } from './profiles/index.js';
-import { rejectUnknownQapaqVariables } from './schema/environment.schema.js';
+import { rejectUnknownB89Variables } from './schema/environment.schema.js';
 import { parseAccess, type AccessConfig } from './schema/access.schema.js';
 import { parseDetectionContext, type DetectionContextConfig } from './schema/detection.schema.js';
 import { parseIngestionConfig, type IngestionConfig } from './schema/ingestion.schema.js';
@@ -42,8 +42,8 @@ function deepFreeze<T>(value: T, seen = new WeakSet<object>()): T {
 }
 
 function profileFrom(environment: EnvironmentInput) {
-  rejectUnknownQapaqVariables(environment);
-  return selectProfile(environment['QAPAQ_PROFILE']);
+  rejectUnknownB89Variables(environment);
+  return selectProfile(environment['B89_PROFILE']);
 }
 
 function createResolver(provider: SecretProvider, profile: ReturnType<typeof selectProfile>) {
@@ -104,11 +104,11 @@ export function loadSocPersistenceConfig(environment: EnvironmentInput): SocPers
   const profile = profileFrom(environment);
   const parsed = parseSocPersistence(environment, profile);
   if (parsed.mode === 'memory' || !parsed.postgres) return deepFreeze({ mode: 'memory' });
-  const password = environment['QAPAQ_POSTGRES_PASSWORD'];
+  const password = environment['B89_POSTGRES_PASSWORD'];
   if (password === undefined || password === '') {
     throw configurationError(
       'CONFIG_REQUIRED_VALUE_MISSING',
-      'QAPAQ_POSTGRES_PASSWORD',
+      'B89_POSTGRES_PASSWORD',
       profile.name,
     );
   }
@@ -126,28 +126,23 @@ const ENTITY_REF_KEY_MINIMUM_LENGTH = 32;
  * como secreto; desarrollo y test usan un valor conocido del perfil. Rotarla invalida las
  * referencias guardadas, por eso no hay rotación automática.
  *
- * Con `QAPAQ_SOC_PERSISTENCE=postgres` es obligatoria (D-13): las alertas durables guardan
+ * Con `B89_SOC_PERSISTENCE=postgres` es obligatoria (D-13): las alertas durables guardan
  * sus referencias y emitirlas sin clave, o con otra, rompería el pivote de forma
  * irreversible. En `memory` (primer despliegue, antes de `bootstrap-roles`) puede faltar y
  * el API arranca sin pivote por entidad. Presente pero corta, siempre falla.
  */
 export function loadEntityRefKey(environment: EnvironmentInput): SecretValue | undefined {
   const profile = profileFrom(environment);
-  const value = environment['QAPAQ_ENTITY_REF_KEY'] ?? profile.defaults['QAPAQ_ENTITY_REF_KEY'];
-  const persistence =
-    environment['QAPAQ_SOC_PERSISTENCE'] ?? profile.defaults['QAPAQ_SOC_PERSISTENCE'];
+  const value = environment['B89_ENTITY_REF_KEY'] ?? profile.defaults['B89_ENTITY_REF_KEY'];
+  const persistence = environment['B89_SOC_PERSISTENCE'] ?? profile.defaults['B89_SOC_PERSISTENCE'];
   if (value === undefined || value === '') {
     if (persistence === 'postgres') {
-      throw configurationError(
-        'CONFIG_REQUIRED_VALUE_MISSING',
-        'QAPAQ_ENTITY_REF_KEY',
-        profile.name,
-      );
+      throw configurationError('CONFIG_REQUIRED_VALUE_MISSING', 'B89_ENTITY_REF_KEY', profile.name);
     }
     return undefined;
   }
   if (value.length < ENTITY_REF_KEY_MINIMUM_LENGTH) {
-    throw configurationError('CONFIG_VALUE_INVALID', 'QAPAQ_ENTITY_REF_KEY', profile.name);
+    throw configurationError('CONFIG_VALUE_INVALID', 'B89_ENTITY_REF_KEY', profile.name);
   }
   return new SecretValue(value);
 }
@@ -187,15 +182,15 @@ export function loadAlertMailSender(environment: EnvironmentInput): string | und
 }
 
 /**
- * Sprint 5 — clave privada VAPID para Web Push (`QAPAQ_VAPID_PRIVATE_KEY`, PKCS#8 en base64,
+ * Sprint 5 — clave privada VAPID para Web Push (`B89_VAPID_PRIVATE_KEY`, PKCS#8 en base64,
  * desde Secrets Manager). `undefined` si el ambiente no la declara: el push queda deshabilitado.
  */
 export function loadVapidPrivateKey(environment: EnvironmentInput): SecretValue | undefined {
   const profile = profileFrom(environment);
-  const value = environment['QAPAQ_VAPID_PRIVATE_KEY'];
+  const value = environment['B89_VAPID_PRIVATE_KEY'];
   if (value === undefined || value === '') return undefined;
   if (!/^[A-Za-z0-9+/=]{100,400}$/u.test(value)) {
-    throw configurationError('CONFIG_VALUE_INVALID', 'QAPAQ_VAPID_PRIVATE_KEY', profile.name);
+    throw configurationError('CONFIG_VALUE_INVALID', 'B89_VAPID_PRIVATE_KEY', profile.name);
   }
   return new SecretValue(value);
 }

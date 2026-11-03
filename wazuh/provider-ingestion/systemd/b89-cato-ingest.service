@@ -1,0 +1,21 @@
+[Unit]
+Description=B89 Cato Networks eventsFeed ingestion
+Wants=network-online.target
+After=network-online.target wazuh-manager.service
+
+[Service]
+Type=oneshot
+User=root
+Group=wazuh
+UMask=0027
+ExecStart=/usr/bin/python3 /var/ossec/integrations/b89-cato/events_feed.py --config /var/ossec/etc/b89-providers/cato/config.json
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectControlGroups=true
+ReadOnlyPaths=/etc/b89-secrets
+ReadWritePaths=/var/ossec/var/run/b89-providers/cato /var/ossec/logs/b89-providers
+TimeoutStartSec=30
+

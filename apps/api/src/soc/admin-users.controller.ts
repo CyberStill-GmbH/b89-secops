@@ -2,9 +2,9 @@
  * Sprint 5 · fase 3 — padrón del grupo de admisión para la administración (`users.read`).
  *
  * - `GET /api/admin/users`: miembros y dueños del grupo con rol efectivo y su origen
- *   (`group_owner`, `admin_group`, `qapaq_assignment`, `deploy_binding`, `entra_app_role` o `none` = «sin acceso
+ *   (`group_owner`, `admin_group`, `b89_assignment`, `deploy_binding`, `entra_app_role` o `none` = «sin acceso
  *   asignado»), estado
- *   de cuenta y actividad QAPAQ (última solicitud autenticada y sesiones activas). Incluye el
+ *   de cuenta y actividad B89 (última solicitud autenticada y sesiones activas). Incluye el
  *   estado de la sincronización y si el padrón está viejo.
  * - `GET /api/admin/users/:oid`: la misma fila más sus sesiones recientes (las referencias
  *   sirven para revocar en `POST /api/admin/sessions/:ref/revoke`).
@@ -17,7 +17,7 @@
  */
 
 import { Controller, Get, Inject, Param, Req } from '@nestjs/common';
-import type { Session } from '@qapaq/access';
+import type { Session } from '@b89/access';
 
 import { ApiError } from '../http/api-error.js';
 import type { IncomingRequest } from '../http/http-contracts.js';

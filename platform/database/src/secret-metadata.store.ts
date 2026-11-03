@@ -8,7 +8,7 @@ import {
   type SecretReconciliationRecord,
   type SecretReference,
   type SecretVersionMetadata,
-} from '@qapaq/configuration';
+} from '@b89/configuration';
 import { Prisma, type PrismaClient } from '../generated/client/client.js';
 import { runDatabaseTransaction } from './transaction.js';
 

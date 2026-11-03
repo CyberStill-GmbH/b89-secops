@@ -8,14 +8,14 @@ describe('entityRefFactory', () => {
   const ref = entityRefFactory(key);
 
   it('es determinista y cumple el formato publicado', () => {
-    const value = ref('tenant-1', 'user:usuario@qapaq-lab.example');
+    const value = ref('tenant-1', 'user:usuario@b89-lab.example');
 
-    expect(value).toBe(ref('tenant-1', 'user:usuario@qapaq-lab.example'));
+    expect(value).toBe(ref('tenant-1', 'user:usuario@b89-lab.example'));
     expect(value).toMatch(ENTITY_REF_PATTERN);
   });
 
   it('no revela la entidad', () => {
-    expect(ref('tenant-1', 'user:usuario@qapaq-lab.example')).not.toMatch(/usuario|qapaq/iu);
+    expect(ref('tenant-1', 'user:usuario@b89-lab.example')).not.toMatch(/usuario|b89/iu);
   });
 
   it('separa tenants: la misma entidad produce referencias distintas', () => {

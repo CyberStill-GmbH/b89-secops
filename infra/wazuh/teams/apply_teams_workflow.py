@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install the QAPAQ Teams Workflows integration on Wazuh Manager 4.x.
+"""Install the B89 Teams Workflows integration on Wazuh Manager 4.x.
 
 The signed endpoint is read from a root-only Key Vault materialization and is
 copied to Wazuh's protected integration directory. It is never written to the
@@ -21,15 +21,15 @@ import urllib.parse
 from datetime import datetime, timezone
 
 
-BEGIN = "<!-- QAPAQ:teams-workflows:begin -->"
-END = "<!-- QAPAQ:teams-workflows:end -->"
-INTEGRATION_NAME = "custom-qapaq-teams"
-SECRET_BASENAME = "qapaq-teams-workflow-url"
+BEGIN = "<!-- B89:teams-workflows:begin -->"
+END = "<!-- B89:teams-workflows:end -->"
+INTEGRATION_NAME = "custom-b89-teams"
+SECRET_BASENAME = "b89-teams-workflow-url"
 URL_MARKERS = ("/workflows/", "/powerautomate/automations/direct/workflows/")
 
 
 def fail(message: str) -> None:
-    print(f"QAPAQ Teams: {message}", file=sys.stderr)
+    print(f"B89 Teams: {message}", file=sys.stderr)
     raise SystemExit(1)
 
 
@@ -85,7 +85,7 @@ def merge_config(config: str, block: str) -> str:
     for integration in integrations:
         name = re.search(r"<name>\s*([^<]+)\s*</name>", integration)
         if name and name.group(1).strip() == INTEGRATION_NAME:
-            raise ValueError("ossec.conf ya contiene Teams sin los marcadores de propiedad QAPAQ")
+            raise ValueError("ossec.conf ya contiene Teams sin los marcadores de propiedad B89")
 
     closing = list(re.finditer(r"</ossec_config\s*>", config))
     if not closing:
@@ -137,7 +137,7 @@ def install(wazuh_root: pathlib.Path, secret_source: pathlib.Path, adapter: path
     except (OSError, UnicodeError, ValueError):
         fail("ossec.conf no permite integrar Teams de forma segura")
 
-    backup_dir = wazuh_root / "backup" / f"qapaq-teams-{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}-{os.getpid()}"
+    backup_dir = wazuh_root / "backup" / f"b89-teams-{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}-{os.getpid()}"
     backup_dir.mkdir(mode=0o700, parents=True, exist_ok=False)
     shutil.copy2(conf, backup_dir / "ossec.conf")
     target_script = integration_dir / INTEGRATION_NAME
@@ -145,8 +145,8 @@ def install(wazuh_root: pathlib.Path, secret_source: pathlib.Path, adapter: path
     for target in (target_script, target_secret):
         if target.is_symlink() or (target.exists() and not target.is_file()):
             fail("un destino de la integración Teams no es un archivo normal")
-    prior_script = backup_dir / "custom-qapaq-teams.previous"
-    prior_secret = backup_dir / "qapaq-teams-workflow-url.previous"
+    prior_script = backup_dir / "custom-b89-teams.previous"
+    prior_secret = backup_dir / "b89-teams-workflow-url.previous"
     script_existed = target_script.exists()
     secret_existed = target_secret.exists()
     if script_existed:
@@ -205,7 +205,7 @@ def install(wazuh_root: pathlib.Path, secret_source: pathlib.Path, adapter: path
             check=False,
         )
         fail("Teams no pasó validación; se restauró ossec.conf y se reinició Wazuh")
-    print("QAPAQ Teams: adaptador Workflows instalado, configuración validada y Manager activo.")
+    print("B89 Teams: adaptador Workflows instalado, configuración validada y Manager activo.")
 
 
 def main() -> None:

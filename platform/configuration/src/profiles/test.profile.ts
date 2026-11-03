@@ -7,8 +7,8 @@ export const TEST_PROFILE: ConfigurationProfile = Object.freeze({
   name: 'test',
   defaults: Object.freeze({
     ...DEVELOPMENT_PROFILE.defaults,
-    QAPAQ_API_PORT: '3100',
-    QAPAQ_SECRET_PROVIDER_TYPE: 'test-only',
-    QAPAQ_SECRET_PROVIDER_TIMEOUT: '5s',
+    B89_API_PORT: '3100',
+    B89_SECRET_PROVIDER_TYPE: 'test-only',
+    B89_SECRET_PROVIDER_TIMEOUT: '5s',
   }),
 });

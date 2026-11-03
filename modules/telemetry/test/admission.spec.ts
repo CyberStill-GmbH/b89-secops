@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { AdmissionCommand, AdmissionReceipt } from '@qapaq/database/admission-contract';
+import type { AdmissionCommand, AdmissionReceipt } from '@b89/database/admission-contract';
 import {
   admitPage,
   TELEMETRY_ADMISSION_LIMITS,

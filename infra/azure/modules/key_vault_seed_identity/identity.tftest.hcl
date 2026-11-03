@@ -3,22 +3,22 @@ mock_provider "azurerm" {
     defaults = {
       client_id    = "00000000-0000-4000-8000-000000000001"
       principal_id = "00000000-0000-4000-8000-000000000002"
-      id           = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-qapaqsecopsdemoeus-3a2405f3/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-qapaqsecopsdemoeus-kv-seeder"
+      id           = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-b89secopsdemoeus-3a2405f3/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-b89secopsdemoeus-kv-seeder"
     }
   }
 }
 
 variables {
-  resource_group_id    = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-qapaqsecopsdemoeus-3a2405f3"
-  resource_group_name  = "rg-qapaqsecopsdemoeus-3a2405f3"
+  resource_group_id    = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-b89secopsdemoeus-3a2405f3"
+  resource_group_name  = "rg-b89secopsdemoeus-3a2405f3"
   location             = "eastus2"
-  name_base            = "qapaqsecopsdemoeus"
-  github_repository    = "CyberStill-GmbH/qapaq-secops"
+  name_base            = "b89secopsdemoeus"
+  github_repository    = "CyberStill-GmbH/b89-secops"
   github_owner_id      = "220633794"
   github_repository_id = "1374673243"
   github_environment   = "azure-demo-eus2"
-  key_vault_id         = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-qapaqsecopsdemoeus-3a2405f3/providers/Microsoft.KeyVault/vaults/kv-qapaqsecopsd-3a2405f3"
-  tags                 = { project = "qapaq-secops", environment = "demo-eus2" }
+  key_vault_id         = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-b89secopsdemoeus-3a2405f3/providers/Microsoft.KeyVault/vaults/kv-b89secopsd-3a2405f3"
+  tags                 = { project = "b89-secops", environment = "demo-eus2" }
 }
 
 run "seeder_identity_is_environment_bound_and_minimum_scope" {
@@ -27,7 +27,7 @@ run "seeder_identity_is_environment_bound_and_minimum_scope" {
   assert {
     condition = (
       azurerm_federated_identity_credential.github.issuer == "https://token.actions.githubusercontent.com" &&
-      azurerm_federated_identity_credential.github.subject == "repo:CyberStill-GmbH@220633794/qapaq-secops@1374673243:environment:azure-demo-eus2" &&
+      azurerm_federated_identity_credential.github.subject == "repo:CyberStill-GmbH@220633794/b89-secops@1374673243:environment:azure-demo-eus2" &&
       toset(azurerm_federated_identity_credential.github.audience) == toset(["api://AzureADTokenExchange"])
     )
     error_message = "The seeder must trust only the exact protected EUS2 GitHub Environment OIDC subject."
@@ -82,7 +82,7 @@ run "rejects_a_different_vault" {
   command = plan
 
   variables {
-    key_vault_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-qapaqsecopsdemoeus-3a2405f3/providers/Microsoft.KeyVault/vaults/other-vault"
+    key_vault_id = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-b89secopsdemoeus-3a2405f3/providers/Microsoft.KeyVault/vaults/other-vault"
   }
 
   expect_failures = [var.key_vault_id]

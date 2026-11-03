@@ -9,25 +9,25 @@ Estado de entrega: **configuración y validación local implementadas; producci�
 ## Límites y flujo
 
 ```text
-QAPAQ connector worker
+B89 connector worker
   → LB interno (pendiente) → KrakenD CE 3.0.0 (réplicas stateless)
   → Wazuh Indexer read-only (URL/TLS/identidad pendientes)
   → adapter valida y admite durablemente → PostgreSQL/outbox → Redis/BullMQ
 ```
 
-El inventario C-28 `routes.json` conserva exactamente sus dos rutas de lectura: `GET /wazuh/_cluster/health` y `POST /wazuh/_search`. La ruta de búsqueda fija el patrón del índice mediante configuración confiable; el cliente no puede elegir upstream ni índice. Para Fase 4 se añade por separado `application-routes.json`, un allowlist explícito de rutas del BFF QAPAQ hacia el API privado, incluida la pasada manual protegida del dispatcher. El test comprueba las dos superficies por separado para evitar cambiar el contrato C-28 sin detectarlo. No se publican APIs entrantes de proveedores, Graph/M365, Cato ni Sophos. Microsoft 365 continúa llegando a QAPAQ a través de Wazuh conforme a ADR-024.
+El inventario C-28 `routes.json` conserva exactamente sus dos rutas de lectura: `GET /wazuh/_cluster/health` y `POST /wazuh/_search`. La ruta de búsqueda fija el patrón del índice mediante configuración confiable; el cliente no puede elegir upstream ni índice. Para Fase 4 se añade por separado `application-routes.json`, un allowlist explícito de rutas del BFF B89 hacia el API privado, incluida la pasada manual protegida del dispatcher. El test comprueba las dos superficies por separado para evitar cambiar el contrato C-28 sin detectarlo. No se publican APIs entrantes de proveedores, Graph/M365, Cato ni Sophos. Microsoft 365 continúa llegando a B89 a través de Wazuh conforme a ADR-024.
 
 ## Versiones, rutas y controles
 
 - Imagen de ejecución: KrakenD CE 3.0.0 recompilado desde la etiqueta oficial con Go 1.26.9 y `golang.org/x/net` 0.60.0 (la imagen oficial trae CVEs HIGH de DoS en Go 1.26.8; ver `Dockerfile`). Trivy 0.74.0: cero HIGH/CRITICAL (2026-10-13). Los compose locales siguen usando la imagen oficial. El template usa formato de configuración 4, requerido por KrakenD 3.x.
 - `routes.json` es la allowlist contractual. `krakend.tmpl` es configuración Flexible Config renderizada por KrakenD; no se genera configuración efectiva con un parser local casero.
-- JWT RS256, issuer, audience y JWKS son configuración obligatoria, hoy `TO_BE_PROVIDED`. La ausencia o invalidez de credencial se modela como 401. La autorización de dominio queda en QAPAQ/Indexer y sus permisos read-only; una denegación autenticada upstream conserva 403, sin remapear todos los errores a 401.
+- JWT RS256, issuer, audience y JWKS son configuración obligatoria, hoy `TO_BE_PROVIDED`. La ausencia o invalidez de credencial se modela como 401. La autorización de dominio queda en B89/Indexer y sus permisos read-only; una denegación autenticada upstream conserva 403, sin remapear todos los errores a 401.
 - El access log de KrakenD está apagado en el router para que los callbacks OIDC no dejen el código de autorización y `state` en stdout. La telemetría de métricas permanece activa; Nginx ya tenía `access_log off`.
 - El límite de Community Edition configurado es por identidad de workload y por réplica; no es cuota global sincronizada. Control exacto de cuota y `Retry-After` semántico quedan en el adapter. Dimensionar cada límite respecto del número máximo de réplicas es gate de release.
 - Timeout integral por endpoint: 4 s en el perfil local y configurable; no se ofrece un falso timeout backend independiente porque KrakenD CE aplica aquí el límite de tiempo de la tubería/endpoint. El timeout de conexión y los valores del SDK se alinean en el perfil productivo antes de habilitar tráfico.
 - Circuit breaker acota fallos consecutivos de backend. No hay retries automáticos en KrakenD: la política de retries segura y el presupuesto pertenecen al adapter.
 - CORS no habilita origins. El gateway no acepta URL upstream del cliente; solo permite `Content-Type`, `X-Request-Id` y contexto W3C seleccionado. Respuestas del Indexer pasan por `header.Blacklist` de Martian para eliminar `X-Internal-Topology`, `Server` y `X-Powered-By`. No se admite query string como label de telemetría.
-- Las rutas de aplicación usan `no-op`, un único upstream API Cloud Map fijado por `QAPAQ_API_UPSTREAM`, y allowlists explícitas de headers/query strings. Reenvían `Cookie`, `Origin` y `X-Csrf-Token` para que el BFF conserve sesión, CSRF, redirects y cookies. No se configura CORS: producción debe usar el rewrite same-origin del proyecto Vercel. El inventario no contiene `/api/ingest/security-events`, rutas locales de login ni comodines.
+- Las rutas de aplicación usan `no-op`, un único upstream API Cloud Map fijado por `B89_API_UPSTREAM`, y allowlists explícitas de headers/query strings. Reenvían `Cookie`, `Origin` y `X-Csrf-Token` para que el BFF conserve sesión, CSRF, redirects y cookies. No se configura CORS: producción debe usar el rewrite same-origin del proyecto Vercel. El inventario no contiene `/api/ingest/security-events`, rutas locales de login ni comodines.
 - Filesystem de solo lectura, capabilities retiradas excepto `SETUID`/`SETGID` que requiere el entrypoint oficial para bajar privilegios, `no-new-privileges`, puertos ligados a loopback para ejecución local.
 
 La autenticación Basic hacia Wazuh se añade al backend desde `WAZUH_BASIC_AUTH_B64`, suministrado por un origen secreto de runtime; el nombre es un contrato, no un valor para Git. La verificación TLS de backend conserva el pool de CA del sistema; el proveedor puede montar un bundle PEM aprobado y pasar su ruta por `WAZUH_INDEXER_CA_FILE`. `WAZUH_INDEXER_URL` debe ser HTTPS en producción; el backend HTTP solo existe en el perfil efímero de pruebas. La referencia real de CA sigue `TO_BE_PROVIDED`. El token OAuth del worker y su renovación no están cableados en esta rama: no hay tráfico productivo hasta materializar y probar esa identidad.
@@ -46,7 +46,7 @@ node platform/gateway/krakend/test/integration.mjs
 
 `validate.ps1` comprueba allowlist/contrato, `docker compose config` y usa el checker del contenedor oficial fijado con `krakend check -t -n -c <config>` (schema local y pruebas de rutas embebidas). No se define `FC_OUT` en runtime: no se escriben configuraciones renderizadas que contengan valores secretos a disco. La startup usa Flexible Config desde el template montado como solo lectura.
 
-La prueba de integración usa el template Azure de ingesta con un mock Indexer efímero y un JWKS RSA generado en memoria; valida roles app-only, `appid`/`azp` de QAPAQ Core, 401/403, 429, 5xx, timeout, reset, 404/método, filtro de header, scrape Prometheus, recuperación y ausencia de query/body/token en stdout. En esta prueba aislada, el harness activa `OIDC_DISABLE_JWK_SECURITY=true` porque el JWKS sintético usa HTTP dentro de la red local de test; `.env.example` y el perfil de validación conservan `false`, y producción exige HTTPS. Detiene solo los servicios de su proyecto Compose al finalizar. Requiere Docker Engine sano; no usa cuentas ni endpoints productivos.
+La prueba de integración usa el template Azure de ingesta con un mock Indexer efímero y un JWKS RSA generado en memoria; valida roles app-only, `appid`/`azp` de B89 Core, 401/403, 429, 5xx, timeout, reset, 404/método, filtro de header, scrape Prometheus, recuperación y ausencia de query/body/token en stdout. En esta prueba aislada, el harness activa `OIDC_DISABLE_JWK_SECURITY=true` porque el JWKS sintético usa HTTP dentro de la red local de test; `.env.example` y el perfil de validación conservan `false`, y producción exige HTTPS. Detiene solo los servicios de su proyecto Compose al finalizar. Requiere Docker Engine sano; no usa cuentas ni endpoints productivos.
 
 No apuntar la ejecución local a producción. El ejemplo usa `.invalid`; para pruebas de runtime deben usarse fixtures efímeros y credenciales desechables.
 
@@ -76,7 +76,7 @@ Rollout: versionar config + digest; ejecutar validación/checks; promover una in
 
 ## Observabilidad
 
-Se exportan métricas Prometheus de KrakenD con `service_name=qapaq-provider-gateway` y scrape dedicado al puerto 9091. El endpoint de métricas se debe restringir a red de monitoreo; no se publica al LB cliente. Los dashboards Grafana se retiraron (A10); las series deben verificarse contra el exporter efectivo antes de asociar alertas productivas. No etiquetar IPs arbitrarias, tokens, usernames, IDs, query strings ni URLs completas.
+Se exportan métricas Prometheus de KrakenD con `service_name=b89-provider-gateway` y scrape dedicado al puerto 9091. El endpoint de métricas se debe restringir a red de monitoreo; no se publica al LB cliente. Los dashboards Grafana se retiraron (A10); las series deben verificarse contra el exporter efectivo antes de asociar alertas productivas. No etiquetar IPs arbitrarias, tokens, usernames, IDs, query strings ni URLs completas.
 
 El log de gateway se dirige a stdout para el colector de plataforma. No habilitar registro de bodies, headers de autorización, query string o configuración renderizada; el collector y destino Loki requieren política de retención/ACL y no están provisionados en este repo.
 

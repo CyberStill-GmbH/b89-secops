@@ -32,7 +32,7 @@ describe('C-25 · origen de red', () => {
     expect(matchesCidr('::ffff:10.20.5.9', '10.20.0.0/16')).toBe(true);
   });
 
-  it('clasifica dentro y fuera de la red QAPAQ por conexión directa', () => {
+  it('clasifica dentro y fuera de la red B89 por conexión directa', () => {
     expect(evaluateNetwork({ remoteAddress: '10.20.5.9' }, policy).decision).toBe('inside');
     expect(evaluateNetwork({ remoteAddress: '203.0.113.7' }, policy).decision).toBe('outside');
   });
@@ -189,7 +189,7 @@ describe('C-25 · política de admisión', () => {
       locked: false,
       rateLimited: false,
       claims: baseClaims(NOW),
-      roles: ['qapaq.soc.analyst'],
+      roles: ['b89.soc.analyst'],
       capabilities: new Set(['alerts.read']),
     });
 
@@ -201,7 +201,7 @@ describe('C-25 · política de admisión', () => {
       network: 'outside' as const,
       locked: false,
       rateLimited: false,
-      roles: ['qapaq.soc.analyst'],
+      roles: ['b89.soc.analyst'],
       capabilities: new Set(['alerts.read']),
     };
 

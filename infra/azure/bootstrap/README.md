@@ -17,7 +17,7 @@ workflow principal hasta revisar este código, el plan y los roles.
   `azure-demo` con aprobación, branch `main` y revisión del plan.
 - Contenedor privado de state y grupo destino `rg-*`, ambos con `prevent_destroy`.
 - User-assigned managed identity federada únicamente con el subject inmutable
-  `repo:CyberStill-GmbH@220633794/qapaq-secops@1374673243:environment:azure-demo`
+  `repo:CyberStill-GmbH@220633794/b89-secops@1374673243:environment:azure-demo`
   y audiencia `api://AzureADTokenExchange`.
 - De forma opcional, se puede añadir una segunda credencial federada a esa misma
   identidad para otro GitHub Environment. La credencial original conserva su
@@ -25,7 +25,7 @@ workflow principal hasta revisar este código, el plan y los roles.
   usa `azure-demo-eus` como entorno adicional y conserva `azure-demo` como el
   entorno principal.
 - `Contributor` y `Role Based Access Control Administrator` sobre el grupo
-  destino QAPAQ. Esto permite a la identidad administrar recursos de ese grupo;
+  destino B89. Esto permite a la identidad administrar recursos de ese grupo;
   una condición ABAC limita la delegación a `AcrPull`, `AcrPush`, `Key Vault
 Secrets User` y `Storage Blob Data Contributor` para service principals, y
   bloquea la autoasignación de roles a Terraform.
@@ -50,7 +50,7 @@ Ejecuta este plan desde el mismo root y con el mismo state de bootstrap que ya
 gestiona la identidad y la credencial `azure-demo`. No cambies `environment`,
 el backend ni `github_environment`: el único cambio esperado es añadir una FIC
 para `azure-demo-eus` a esa identidad. La credencial principal seguirá usando
-el subject `repo:CyberStill-GmbH@220633794/qapaq-secops@1374673243:environment:azure-demo`.
+el subject `repo:CyberStill-GmbH@220633794/b89-secops@1374673243:environment:azure-demo`.
 
 ```bash
 export TF_VAR_github_environment="azure-demo"
@@ -107,11 +107,11 @@ asignar RBAC, esperar a que se propague el rol y reintentar el apply del bootstr
 Configurar en GitHub los outputs no secretos sin imprimir credenciales:
 
 ```bash
-gh secret set AZURE_TERRAFORM_CLIENT_ID --body "$(terraform output -raw github_terraform_client_id)" --repo CyberStill-GmbH/qapaq-secops
-gh variable set AZURE_TF_STATE_RESOURCE_GROUP --body "$(terraform output -raw state_resource_group_name)" --repo CyberStill-GmbH/qapaq-secops
-gh variable set AZURE_TF_STATE_STORAGE_ACCOUNT --body "$(terraform output -raw state_storage_account_name)" --repo CyberStill-GmbH/qapaq-secops
-gh variable set AZURE_TF_STATE_CONTAINER --body "$(terraform output -raw state_container_name)" --repo CyberStill-GmbH/qapaq-secops
-gh variable set AZURE_TF_STATE_KEY --body "$(terraform output -raw state_key)" --repo CyberStill-GmbH/qapaq-secops
+gh secret set AZURE_TERRAFORM_CLIENT_ID --body "$(terraform output -raw github_terraform_client_id)" --repo CyberStill-GmbH/b89-secops
+gh variable set AZURE_TF_STATE_RESOURCE_GROUP --body "$(terraform output -raw state_resource_group_name)" --repo CyberStill-GmbH/b89-secops
+gh variable set AZURE_TF_STATE_STORAGE_ACCOUNT --body "$(terraform output -raw state_storage_account_name)" --repo CyberStill-GmbH/b89-secops
+gh variable set AZURE_TF_STATE_CONTAINER --body "$(terraform output -raw state_container_name)" --repo CyberStill-GmbH/b89-secops
+gh variable set AZURE_TF_STATE_KEY --body "$(terraform output -raw state_key)" --repo CyberStill-GmbH/b89-secops
 ```
 
 El workflow Terraform usa `ubuntu-24.04` GitHub-hosted para plan y apply. No se

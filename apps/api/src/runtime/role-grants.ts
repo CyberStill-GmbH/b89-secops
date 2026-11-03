@@ -1,5 +1,5 @@
 /**
- * Roles concedidos por fuentes QAPAQ y Entra al iniciar sesión.
+ * Roles concedidos por fuentes B89 y Entra al iniciar sesión.
  *
  * Los grants dinámicos de la consola se leen aparte y solo cuentan para miembros vigentes del
  * padrón. Una caída de Graph o del store dinámico nunca concede privilegios adicionales.
@@ -10,8 +10,8 @@ import {
   SECURITY_APPROVER_ROLE,
   type DirectorySyncState,
   type RoleGrantStore,
-} from '@qapaq/access';
-import { GROUP_OWNER_ROLE, type RoleGrantsConfig } from '@qapaq/configuration';
+} from '@b89/access';
+import { GROUP_OWNER_ROLE, type RoleGrantsConfig } from '@b89/configuration';
 
 /** Dueños del grupo vistos en el directorio; OID en minúsculas. */
 export interface GroupOwnerSource {
@@ -110,7 +110,7 @@ export function withDynamicGrants(
 }
 
 export type RoleOrigin =
-  'group_owner' | 'admin_group' | 'qapaq_assignment' | 'deploy_binding' | 'entra_app_role' | 'none';
+  'group_owner' | 'admin_group' | 'b89_assignment' | 'deploy_binding' | 'entra_app_role' | 'none';
 
 /** Origen principal del rol mostrado en el padrón administrativo. */
 export function explainRole(
@@ -127,7 +127,7 @@ export function explainRole(
   }
   if (adminGroupMember) return { roles: [GROUP_OWNER_ROLE], origin: 'admin_group' };
   if (dynamicGrantRoles.length > 0) {
-    return { roles: dynamicGrantRoles, origin: 'qapaq_assignment' };
+    return { roles: dynamicGrantRoles, origin: 'b89_assignment' };
   }
   const bound = config.bindings[key];
   if (bound && bound.length > 0) return { roles: bound, origin: 'deploy_binding' };

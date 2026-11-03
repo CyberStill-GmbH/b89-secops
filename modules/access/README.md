@@ -14,6 +14,6 @@ Implementado en C-18 y C-25:
 - capabilities por rol intersecadas con los scopes del cliente, y autorización
   contextual por recurso y por campo;
 - origen de red confiable con cadena de proxies, passkey obligatoria fuera de la red
-  QAPAQ, Smart Lockout por `(sujeto, origen)` y limitación de tasa.
+  B89, Smart Lockout por `(sujeto, origen)` y limitación de tasa.
 
 Specs: `modules/access/test`. Recorrido sobre HTTP: `apps/api/test/bff.spec.ts`.

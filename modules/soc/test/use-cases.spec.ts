@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { capabilitiesForRoles, type Actor } from '@qapaq/access';
-import { verifyChain } from '@qapaq/audit';
-import type { DetectionCandidate } from '@qapaq/detection';
+import { capabilitiesForRoles, type Actor } from '@b89/access';
+import { verifyChain } from '@b89/audit';
+import type { DetectionCandidate } from '@b89/detection';
 
 import { InMemorySoc } from '../src/memory-unit-of-work.js';
 import {
@@ -20,12 +20,12 @@ const CANDIDATE: DetectionCandidate = {
   id: '0199bf11-0000-7000-8000-0000000000a1',
   tenantId: 'tenant-1',
   eventRecordId: '01890f47-7abc-7def-8abc-0123456789ab',
-  eventUid: 'siem-qapaq-lab:alerts:evt-0001',
+  eventUid: 'siem-b89-lab:alerts:evt-0001',
   idempotencyKey: 'key-1',
   priority: 'P1',
   score: 95,
   reasons: [{ code: 'BASE_SEVERITY', delta: 80, detail: 'crítico' }],
-  rulesetId: 'qapaq.detection.prioritization',
+  rulesetId: 'b89.detection.prioritization',
   rulesetVersion: '1.0.0',
   occurredAt: AT,
   createdAt: AT,
@@ -65,7 +65,7 @@ beforeEach(() => {
 async function seedAcknowledgedAlert() {
   await ingestCandidate(dependencies, CANDIDATE);
   const acknowledged = await executeAlertCommand(dependencies, {
-    actor: actor(['qapaq.soc.analyst']),
+    actor: actor(['b89.soc.analyst']),
     alertId: CANDIDATE.id,
     correlationId: 'corr-1',
     command: { name: 'acknowledge', expectedRevision: 1 },
@@ -108,7 +108,7 @@ describe('C-17 · autorización de los comandos', () => {
   it('permite triar al analista asignado', async () => {
     await seedAcknowledgedAlert();
     const triaged = await executeAlertCommand(dependencies, {
-      actor: actor(['qapaq.soc.analyst']),
+      actor: actor(['b89.soc.analyst']),
       alertId: CANDIDATE.id,
       correlationId: 'corr-2',
       command: {
@@ -126,7 +126,7 @@ describe('C-17 · autorización de los comandos', () => {
   it('deniega a quien no tiene la capability y audita la denegación', async () => {
     await seedAcknowledgedAlert();
     const denied = await executeAlertCommand(dependencies, {
-      actor: actor(['qapaq.auditor'], { subjectId: 'auditor-1' }),
+      actor: actor(['b89.auditor'], { subjectId: 'auditor-1' }),
       alertId: CANDIDATE.id,
       correlationId: 'corr-3',
       command: { name: 'triage', expectedRevision: 2, verdict: 'benign', note: 'sin sustento.' },
@@ -141,13 +141,13 @@ describe('C-17 · autorización de los comandos', () => {
   it('deniega a otro tenant sin revelar si la alerta existe', async () => {
     await seedAcknowledgedAlert();
     const foreign = await executeAlertCommand(dependencies, {
-      actor: actor(['qapaq.soc.analyst'], { tenantId: 'tenant-2' }),
+      actor: actor(['b89.soc.analyst'], { tenantId: 'tenant-2' }),
       alertId: CANDIDATE.id,
       correlationId: 'corr-4',
       command: { name: 'acknowledge', expectedRevision: 1 },
     });
     const missing = await executeAlertCommand(dependencies, {
-      actor: actor(['qapaq.soc.analyst'], { tenantId: 'tenant-2' }),
+      actor: actor(['b89.soc.analyst'], { tenantId: 'tenant-2' }),
       alertId: 'alert-inexistente',
       correlationId: 'corr-5',
       command: { name: 'acknowledge', expectedRevision: 1 },
@@ -161,7 +161,7 @@ describe('C-17 · autorización de los comandos', () => {
   it('deniega triar una alerta asignada a otra persona', async () => {
     await seedAcknowledgedAlert();
     const denied = await executeAlertCommand(dependencies, {
-      actor: actor(['qapaq.soc.analyst'], { subjectId: 'analyst-2' }),
+      actor: actor(['b89.soc.analyst'], { subjectId: 'analyst-2' }),
       alertId: CANDIDATE.id,
       correlationId: 'corr-6',
       command: {
@@ -180,7 +180,7 @@ describe('C-17 · concurrencia', () => {
   it('solo una de dos escrituras simultáneas prospera', async () => {
     await ingestCandidate(dependencies, CANDIDATE);
     const request = {
-      actor: actor(['qapaq.soc.analyst']),
+      actor: actor(['b89.soc.analyst']),
       alertId: CANDIDATE.id,
       correlationId: 'corr-7',
       command: { name: 'acknowledge' as const, expectedRevision: 1 },
@@ -198,7 +198,7 @@ describe('C-17 · concurrencia', () => {
   it('informa conflicto, no error genérico, ante revisión obsoleta', async () => {
     await seedAcknowledgedAlert();
     const stale = await executeAlertCommand(dependencies, {
-      actor: actor(['qapaq.soc.analyst']),
+      actor: actor(['b89.soc.analyst']),
       alertId: CANDIDATE.id,
       correlationId: 'corr-9',
       command: { name: 'acknowledge', expectedRevision: 1 },
@@ -212,7 +212,7 @@ describe('C-17 · incidente y notificación', () => {
   async function escalateAndOpen() {
     await seedAcknowledgedAlert();
     await executeAlertCommand(dependencies, {
-      actor: actor(['qapaq.soc.analyst']),
+      actor: actor(['b89.soc.analyst']),
       alertId: CANDIDATE.id,
       correlationId: 'corr-10',
       command: {
@@ -223,13 +223,13 @@ describe('C-17 · incidente y notificación', () => {
       },
     });
     await executeAlertCommand(dependencies, {
-      actor: actor(['qapaq.soc.analyst']),
+      actor: actor(['b89.soc.analyst']),
       alertId: CANDIDATE.id,
       correlationId: 'corr-11',
       command: { name: 'escalate', expectedRevision: 3 },
     });
     return openIncidentFromAlert(dependencies, {
-      actor: actor(['qapaq.soc.lead'], { subjectId: 'lead-1' }),
+      actor: actor(['b89.soc.lead'], { subjectId: 'lead-1' }),
       alertId: CANDIDATE.id,
       title: 'Acceso no autorizado a srv-app-01',
       severity: 'critical',
@@ -270,7 +270,7 @@ describe('C-17 · incidente y notificación', () => {
   it('no deja cerrar el caso con alertas sin triar', async () => {
     await ingestCandidate(dependencies, CANDIDATE);
     const opened = await openIncidentFromAlert(dependencies, {
-      actor: actor(['qapaq.soc.lead'], { subjectId: 'lead-1' }),
+      actor: actor(['b89.soc.lead'], { subjectId: 'lead-1' }),
       alertId: CANDIDATE.id,
       title: 'Caso sin triaje',
       severity: 'high',
@@ -280,21 +280,21 @@ describe('C-17 · incidente y notificación', () => {
     });
     if (!opened.ok) throw new Error('No se pudo abrir el caso.');
     const resolved = await executeIncidentCommand(dependencies, {
-      actor: actor(['qapaq.soc.lead'], { subjectId: 'lead-1' }),
+      actor: actor(['b89.soc.lead'], { subjectId: 'lead-1' }),
       incidentId: opened.value.id,
       correlationId: 'corr-14',
       command: { name: 'contain', expectedRevision: 1 },
     });
     if (!resolved.ok) throw new Error('No se pudo contener el caso.');
     const settled = await executeIncidentCommand(dependencies, {
-      actor: actor(['qapaq.soc.lead'], { subjectId: 'lead-1' }),
+      actor: actor(['b89.soc.lead'], { subjectId: 'lead-1' }),
       incidentId: opened.value.id,
       correlationId: 'corr-15',
       command: { name: 'resolve', expectedRevision: 2 },
     });
     if (!settled.ok) throw new Error('No se pudo resolver el caso.');
     const closed = await executeIncidentCommand(dependencies, {
-      actor: actor(['qapaq.soc.lead'], { subjectId: 'lead-1' }),
+      actor: actor(['b89.soc.lead'], { subjectId: 'lead-1' }),
       incidentId: opened.value.id,
       correlationId: 'corr-16',
       command: {
@@ -315,7 +315,7 @@ describe('C-17 · incidente y notificación', () => {
     const opened = await escalateAndOpen();
     if (!opened.ok) throw new Error('No se pudo abrir el caso.');
     const denied = await executeIncidentCommand(dependencies, {
-      actor: actor(['qapaq.soc.analyst']),
+      actor: actor(['b89.soc.analyst']),
       incidentId: opened.value.id,
       correlationId: 'corr-16',
       command: { name: 'close', expectedRevision: 1, closureReason: 'Cierre no autorizado.' },
@@ -329,7 +329,7 @@ describe('C-17 · evidencia de auditoría del recorrido', () => {
   it('deja una cadena verificable con cada paso del flujo', async () => {
     await seedAcknowledgedAlert();
     await executeAlertCommand(dependencies, {
-      actor: actor(['qapaq.soc.analyst']),
+      actor: actor(['b89.soc.analyst']),
       alertId: CANDIDATE.id,
       correlationId: 'corr-17',
       command: {

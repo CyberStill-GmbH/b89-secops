@@ -42,11 +42,11 @@ class IndexerSecretMetadataTests(unittest.TestCase):
             ids,
             [
                 "/subscriptions/aaf787f8-5964-4470-9eb6-89d15eacda61/resourceGroups/"
-                "rg-qapaqsecopsdemoeus-3a2405f3/providers/Microsoft.KeyVault/vaults/"
-                "kv-qapaqsecopsd-3a2405f3/secrets/wazuh-reader-b64",
+                "rg-b89secopsdemoeus-3a2405f3/providers/Microsoft.KeyVault/vaults/"
+                "kv-b89secopsd-3a2405f3/secrets/wazuh-reader-b64",
                 "/subscriptions/aaf787f8-5964-4470-9eb6-89d15eacda61/resourceGroups/"
-                "rg-qapaqsecopsdemoeus-3a2405f3/providers/Microsoft.KeyVault/vaults/"
-                "kv-qapaqsecopsd-3a2405f3/secrets/wazuh-proxy-ca",
+                "rg-b89secopsdemoeus-3a2405f3/providers/Microsoft.KeyVault/vaults/"
+                "kv-b89secopsd-3a2405f3/secrets/wazuh-proxy-ca",
             ],
         )
 

@@ -10,20 +10,20 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $sourceToSecret = [ordered]@{
-    'QAPAQ_MICROSOFT_ENTRA_CLIENT_SECRET' = 'qapaq-entra-client-secret'
+    'B89_MICROSOFT_ENTRA_CLIENT_SECRET' = 'b89-entra-client-secret'
     'OFFICE365_CLIENT_SECRET'            = 'office365-client-secret'
     'SOPHOS_CLIENT_ID'                   = 'sophos-client-id'
     'SOPHOS_SECRET'                      = 'sophos-client-secret'
     'CATO_SECRET'                        = 'cato-api-key'
-    'TEAMS_WORKFLOW_URL'                 = 'qapaq-teams-workflow-url'
+    'TEAMS_WORKFLOW_URL'                 = 'b89-teams-workflow-url'
 }
 
 # Pin the importer to the isolated EUS2 target so an accidental parameter override
 # cannot send demo credentials to another subscription or vault.
 $targetSubscriptionId = 'aaf787f8-5964-4470-9eb6-89d15eacda61'
 $targetTenantId = '45f2f938-dbe3-4a3e-8a54-930893f94ef8'
-$targetResourceGroupName = 'rg-qapaqsecopsdemoeus-3a2405f3'
-$targetVaultName = 'kv-qapaqsecopsd-3a2405f3'
+$targetResourceGroupName = 'rg-b89secopsdemoeus-3a2405f3'
+$targetVaultName = 'kv-b89secopsd-3a2405f3'
 
 function Invoke-AzJson {
     param([Parameter(Mandatory)][string[]] $Arguments)

@@ -32,7 +32,7 @@ const person = (oid: string) => ({
 });
 
 describe.skipIf(!databaseUrl)('S5 · fase 3 · padrón en PostgreSQL', () => {
-  const name = `qapaq_dir_${process.pid}_${Date.now()}`.toLowerCase();
+  const name = `b89_dir_${process.pid}_${Date.now()}`.toLowerCase();
   let url: string;
   let store: PostgresDirectoryStore;
 

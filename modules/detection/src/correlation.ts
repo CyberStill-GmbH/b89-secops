@@ -1,5 +1,5 @@
 /**
- * C-16 — correlación por entidad sobre alertas QAPAQ.
+ * C-16 — correlación por entidad sobre alertas B89.
  *
  * El motor de origen evalúa cada documento por separado: veinte alertas sobre la misma
  * cuenta son veinte filas en su consola. La correlación responde las preguntas que una alerta
@@ -23,7 +23,7 @@
  *   pero no basta para afirmar que fue el mismo actor (NAT, proxies, VPN corporativa).
  */
 
-import type { SecurityEvent } from '@qapaq/contracts';
+import type { SecurityEvent } from '@b89/contracts';
 
 export const CORRELATION_VERSION = '1.0.0' as const;
 
@@ -99,17 +99,17 @@ export type SignalCatalog = Readonly<Record<string, SignalClass>>;
 export const EMPTY_SIGNAL_CATALOG: SignalCatalog = Object.freeze({});
 
 /**
- * Convención QAPAQ de grupos de regla: `qapaq_<táctica>`. Cualquier regla local de
+ * Convención B89 de grupos de regla: `b89_<táctica>`. Cualquier regla local de
  * cualquier fuente que declare uno de estos grupos se clasifica sin catálogo adicional.
  */
 const SIGNAL_BY_GROUP: Readonly<Record<string, SignalClass>> = Object.freeze({
-  qapaq_credential_access: 'credential_access',
-  qapaq_initial_access: 'initial_access',
-  qapaq_persistence: 'persistence',
-  qapaq_privilege_escalation: 'privilege_escalation',
-  qapaq_defense_evasion: 'defense_evasion',
-  qapaq_collection: 'collection',
-  qapaq_exfiltration: 'exfiltration',
+  b89_credential_access: 'credential_access',
+  b89_initial_access: 'initial_access',
+  b89_persistence: 'persistence',
+  b89_privilege_escalation: 'privilege_escalation',
+  b89_defense_evasion: 'defense_evasion',
+  b89_collection: 'collection',
+  b89_exfiltration: 'exfiltration',
   authentication_failures: 'credential_access',
   brute_force: 'credential_access',
 });
@@ -142,7 +142,7 @@ export function entityKeysOf(event: SecurityEvent): readonly string[] {
   return Object.freeze([...keys].sort());
 }
 
-/** Clasifica el evento: primero por grupo de regla QAPAQ, luego por acción, luego por categoría. */
+/** Clasifica el evento: primero por grupo de regla B89, luego por acción, luego por categoría. */
 export function signalOf(
   event: SecurityEvent,
   catalog: SignalCatalog = EMPTY_SIGNAL_CATALOG,

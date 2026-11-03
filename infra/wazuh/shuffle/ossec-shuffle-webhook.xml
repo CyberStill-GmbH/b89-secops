@@ -1,7 +1,7 @@
-<!-- Integración de alertas Wazuh 4.x con Ankay/Shuffle. La URL no va en ossec.conf. -->
+<!-- Integración de alertas Wazuh 4.x con B89 Respond/Shuffle. La URL no va en ossec.conf. -->
 <integration>
-  <name>custom-qapaq-shuffle</name>
-  <hook_url>/var/ossec/etc/integrations/qapaq-shuffle-webhook.json</hook_url>
+  <name>custom-b89-shuffle</name>
+  <hook_url>/var/ossec/etc/integrations/b89-shuffle-webhook.json</hook_url>
   <level>12</level>
   <alert_format>json</alert_format>
   <timeout>8</timeout>

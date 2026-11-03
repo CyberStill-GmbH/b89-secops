@@ -24,7 +24,7 @@ class AzureEus2KrakenDPublishWorkflowTests(unittest.TestCase):
     def test_ci_build_is_exact_existing_script_and_has_no_cloud_credentials(self):
         build_job = self.workflow.split("  build:\n", 1)[1].split("\n  publish:\n", 1)[0]
         self.assertIn("bash .github/ci/verify-container-images.sh", build_job)
-        self.assertIn("docker save qapaq-ci:krakend", build_job)
+        self.assertIn("docker save b89-ci:krakend", build_job)
         self.assertNotIn("id-token: write", build_job)
         self.assertNotIn("azure/login@", build_job)
         self.assertIn("retention-days: 1", build_job)
@@ -37,8 +37,8 @@ class AzureEus2KrakenDPublishWorkflowTests(unittest.TestCase):
         self.assertIn("actions/workflows/ci.yml/runs?branch=main", publish_job)
         self.assertIn("azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906", publish_job)
         self.assertIn('EXPECTED_SUBSCRIPTION_ID: "aaf787f8-5964-4470-9eb6-89d15eacda61"', publish_job)
-        self.assertIn("EXPECTED_ACR_NAME: qapaqsecopsdemoeus3a2405f3", publish_job)
-        self.assertIn("registries/qapaqsecopsdemoeus3a2405f3", publish_job)
+        self.assertIn("EXPECTED_ACR_NAME: b89secopsdemoeus3a2405f3", publish_job)
+        self.assertIn("registries/b89secopsdemoeus3a2405f3", publish_job)
         self.assertIn("== eastus2", publish_job)
         self.assertIn(".adminUserEnabled", publish_job)
         self.assertIn("${{ vars.AZURE_EUS2_GITHUB_PUBLISHER_CLIENT_ID }}", publish_job)
@@ -47,7 +47,7 @@ class AzureEus2KrakenDPublishWorkflowTests(unittest.TestCase):
         publish_job = self.workflow.split("  publish:\n", 1)[1]
         self.assertIn("sha256sum --check --strict SHA256SUMS", publish_job)
         self.assertIn('grep -Fxq "commit=$COMMIT_SHA" metadata.txt', publish_job)
-        self.assertIn('source_image=qapaq-ci:krakend', publish_job)
+        self.assertIn('source_image=b89-ci:krakend', publish_job)
         self.assertIn('sha256sum krakend-image.tar.gz | awk', publish_job)
         self.assertIn("git-${COMMIT_SHA}-sha256-${image_sha256}", publish_job)
         self.assertIn("Refusing to overwrite an existing content-addressed image tag", publish_job)

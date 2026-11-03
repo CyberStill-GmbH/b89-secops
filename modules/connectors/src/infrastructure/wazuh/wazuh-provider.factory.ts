@@ -24,7 +24,7 @@ export interface WazuhProviderConfiguration {
     readonly maximumResponseBytes: number;
     /** Permitted only for loopback integration tests and local development. */
     readonly allowInsecureLocalhost?: boolean;
-    /** HTTP hacia `*.qapaq.internal` dentro de la VPC (ver `WazuhGatewayClientOptions`). */
+    /** HTTP hacia `*.b89.internal` dentro de la VPC (ver `WazuhGatewayClientOptions`). */
     readonly allowPrivateServiceHttp?: boolean;
   };
   readonly telemetry?: WazuhConnectorTelemetry;

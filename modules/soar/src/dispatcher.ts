@@ -8,11 +8,11 @@
  * 2. **El reenvío conserva el `clientRequestId`**: tras un fallo ambiguo se reintenta
  *    con el mismo identificador para que el destino deduplique.
  * 3. **Agotar no es callar**: cuando se agotan los intentos se pasa a `fallback`, que
- *    sigue exigiendo acuse humano en QAPAQ.
+ *    sigue exigiendo acuse humano en B89.
  */
 
-import { recordAudit, type AuditStore } from '@qapaq/audit';
-import type { OutboxMessageDraft } from '@qapaq/soc';
+import { recordAudit, type AuditStore } from '@b89/audit';
+import type { OutboxMessageDraft } from '@b89/soc';
 
 import { nextDelayMs, shouldRetry, type DeliveryFailure } from './delivery-policy.js';
 import {

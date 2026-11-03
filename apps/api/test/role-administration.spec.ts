@@ -13,9 +13,9 @@ import {
   InMemoryRoleAdministration,
   type DirectoryStore,
   type RequestableRole,
-} from '@qapaq/access';
-import type { RoleGrantsConfig } from '@qapaq/configuration';
-import { InMemorySoc } from '@qapaq/soc';
+} from '@b89/access';
+import type { RoleGrantsConfig } from '@b89/configuration';
+import { InMemorySoc } from '@b89/soc';
 
 import {
   clearRemovedMembers,
@@ -112,7 +112,7 @@ async function cycle(store: DirectoryStore, changes: MemberChanges) {
   ).toBe(true);
 }
 
-async function request(role: RequestableRole = 'qapaq.soc.lead') {
+async function request(role: RequestableRole = 'b89.soc.lead') {
   const input = { ...wanted(role), ticket: 'CHG-1042' };
   const result = await submitRoleRequest(deps(), requester(), input, 'corr-submit');
   if (!result.ok) throw new Error(result.failure);
@@ -154,7 +154,7 @@ describe('administración de roles · casos de uso', () => {
       ok: true,
       value: {
         request: { status: 'approved' },
-        grant: { roles: ['qapaq.soc.lead'], revision: 1 },
+        grant: { roles: ['b89.soc.lead'], revision: 1 },
       },
     });
     expect(await actions()).toEqual([
@@ -176,7 +176,7 @@ describe('administración de roles · casos de uso', () => {
 
   it('SoD: el solicitante, el objetivo y un aprobador no declarado no resuelven', async () => {
     const self = actor(TARGET, ['roles.request']);
-    expect(await submitRoleRequest(deps(), self, wanted('qapaq.soc.lead'), 'corr')).toEqual({
+    expect(await submitRoleRequest(deps(), self, wanted('b89.soc.lead'), 'corr')).toEqual({
       ok: false,
       failure: 'CONFLICT',
     });
@@ -197,7 +197,7 @@ describe('administración de roles · casos de uso', () => {
   });
 
   it('platform.admin: Acceso pasa a Seguridad; Seguridad sin step-up falla cerrada y audita', async () => {
-    const pending = await request('qapaq.platform.admin');
+    const pending = await request('b89.platform.admin');
     const access = await decideRoleRequest(
       deps(),
       accessApprover(),
@@ -232,12 +232,12 @@ describe('administración de roles · casos de uso', () => {
     const approved = await decideRoleRequest(verified, securityApprover(['fido']), second, 'corr');
     expect(approved).toMatchObject({
       ok: true,
-      value: { request: { status: 'approved' }, grant: { roles: ['qapaq.platform.admin'] } },
+      value: { request: { status: 'approved' }, grant: { roles: ['b89.platform.admin'] } },
     });
   });
 
   it('SoD: quien aprobó Acceso tampoco puede cerrar la etapa Seguridad', async () => {
-    const pending = await request('qapaq.platform.admin');
+    const pending = await request('b89.platform.admin');
     const access = await decideRoleRequest(
       deps(),
       accessApprover(),
@@ -295,7 +295,7 @@ describe('administración de roles · casos de uso', () => {
     // El solicitante sale del grupo: antes del siguiente ciclo, la decisión ya lo ve.
     await cycle(directory, [{ kind: 'removed', oid: REQUESTER }]);
     expect(await approve()).toEqual({ ok: false, failure: 'CONFLICT' });
-    expect(await submitRoleRequest(deps(), requester(), wanted('qapaq.auditor'), 'corr')).toEqual({
+    expect(await submitRoleRequest(deps(), requester(), wanted('b89.auditor'), 'corr')).toEqual({
       ok: false,
       failure: 'UNAVAILABLE',
     });
@@ -310,7 +310,7 @@ describe('administración de roles · casos de uso', () => {
       'corr',
     );
     expect(approved.ok).toBe(true);
-    const open = await submitRoleRequest(deps(), requester(), wanted('qapaq.auditor', 1), 'corr');
+    const open = await submitRoleRequest(deps(), requester(), wanted('b89.auditor', 1), 'corr');
     expect(open.ok).toBe(true);
 
     await cycle(directory, [{ kind: 'removed', oid: TARGET }]);

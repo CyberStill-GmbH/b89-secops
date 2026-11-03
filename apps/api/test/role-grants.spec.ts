@@ -1,12 +1,12 @@
 /**
- * Sprint 5 — roles concedidos por QAPAQ: asignaciones del deploy, dueños del grupo (deploy y
+ * Sprint 5 — roles concedidos por B89: asignaciones del deploy, dueños del grupo (deploy y
  * Graph) y nada para quien no figura. OID sintéticos.
  */
 
 import { describe, expect, it, vi } from 'vitest';
 
-import { InMemoryRoleGrantStore } from '@qapaq/access';
-import { loadRoleGrantsConfig } from '@qapaq/configuration';
+import { InMemoryRoleGrantStore } from '@b89/access';
+import { loadRoleGrantsConfig } from '@b89/configuration';
 
 import {
   createRoleGrantResolver,
@@ -18,19 +18,19 @@ const OWNER = '11111111-1111-4111-8111-111111111111';
 const ANALYST = '22222222-2222-4222-8222-222222222222';
 const GRAPH_OWNER = '33333333-3333-4333-8333-333333333333';
 const STRANGER = '44444444-4444-4444-8444-444444444444';
-const TENANT = 'qapaq-test-tenant';
+const TENANT = 'b89-test-tenant';
 
 const config = loadRoleGrantsConfig({
-  QAPAQ_PROFILE: 'test',
-  QAPAQ_ROLE_BINDINGS: `${ANALYST.toUpperCase()}=qapaq.soc.analyst`,
-  QAPAQ_GROUP_OWNER_OIDS: OWNER,
+  B89_PROFILE: 'test',
+  B89_ROLE_BINDINGS: `${ANALYST.toUpperCase()}=b89.soc.analyst`,
+  B89_GROUP_OWNER_OIDS: OWNER,
 });
 
-describe('roles concedidos por QAPAQ', () => {
+describe('roles concedidos por B89', () => {
   it('el dueño declarado es admin y la asignación explícita da analista (sin distinguir mayúsculas)', async () => {
     const resolve = createRoleGrantResolver(config);
-    expect(await resolve(OWNER)).toEqual(['qapaq.platform.admin']);
-    expect(await resolve(ANALYST)).toEqual(['qapaq.soc.analyst']);
+    expect(await resolve(OWNER)).toEqual(['b89.platform.admin']);
+    expect(await resolve(ANALYST)).toEqual(['b89.soc.analyst']);
   });
 
   it('quien no figura no recibe nada, y sin oid tampoco', async () => {
@@ -43,25 +43,25 @@ describe('roles concedidos por QAPAQ', () => {
     const resolve = createRoleGrantResolver(config, {
       owners: async () => new Set([GRAPH_OWNER]),
     });
-    expect(await resolve(GRAPH_OWNER)).toEqual(['qapaq.platform.admin']);
+    expect(await resolve(GRAPH_OWNER)).toEqual(['b89.platform.admin']);
 
     const failing = createRoleGrantResolver(config, {
       owners: async () => {
         throw new Error('graph caído');
       },
     });
-    expect(await failing(OWNER)).toEqual(['qapaq.platform.admin']);
+    expect(await failing(OWNER)).toEqual(['b89.platform.admin']);
     expect(await failing(GRAPH_OWNER)).toEqual([]);
   });
 
   it('los miembros de un grupo admin son admin, por claim `groups` o por el padrón', async () => {
     const ADMIN_GROUP = 'aaaaaaaa-0000-0000-0000-00000000000a';
     const withGroup = loadRoleGrantsConfig({
-      QAPAQ_PROFILE: 'test',
-      QAPAQ_ADMIN_GROUP_IDS: ADMIN_GROUP.toUpperCase(),
+      B89_PROFILE: 'test',
+      B89_ADMIN_GROUP_IDS: ADMIN_GROUP.toUpperCase(),
     });
     const byClaim = createRoleGrantResolver(withGroup);
-    expect(await byClaim(STRANGER, [ADMIN_GROUP])).toEqual(['qapaq.platform.admin']);
+    expect(await byClaim(STRANGER, [ADMIN_GROUP])).toEqual(['b89.platform.admin']);
     expect(await byClaim(STRANGER, ['bbbbbbbb-0000-0000-0000-00000000000b'])).toEqual([]);
 
     const byDirectory = createRoleGrantResolver(withGroup, {
@@ -69,7 +69,7 @@ describe('roles concedidos por QAPAQ', () => {
       owners: async () => new Set(),
       isMember: async (oid) => oid === STRANGER,
     });
-    expect(await byDirectory(STRANGER)).toEqual(['qapaq.platform.admin']);
+    expect(await byDirectory(STRANGER)).toEqual(['b89.platform.admin']);
     expect(await byDirectory(ANALYST)).toEqual([]);
 
     // El padrón de otro grupo no concede admin aunque la persona sea miembro.
@@ -84,8 +84,8 @@ describe('roles concedidos por QAPAQ', () => {
   it('la pertenencia al padrón de admisión no eleva el rol explícito de analista', async () => {
     const admissionGroup = 'aaaaaaaa-0000-0000-0000-00000000000a';
     const withoutImplicitAdminGroup = loadRoleGrantsConfig({
-      QAPAQ_PROFILE: 'test',
-      QAPAQ_ROLE_BINDINGS: `${ANALYST}=qapaq.soc.analyst`,
+      B89_PROFILE: 'test',
+      B89_ROLE_BINDINGS: `${ANALYST}=b89.soc.analyst`,
     });
     const resolve = createRoleGrantResolver(withoutImplicitAdminGroup, {
       groupId: admissionGroup,
@@ -93,19 +93,19 @@ describe('roles concedidos por QAPAQ', () => {
       isMember: async (oid) => oid === ANALYST,
     });
 
-    expect(await resolve(ANALYST)).toEqual(['qapaq.soc.analyst']);
+    expect(await resolve(ANALYST)).toEqual(['b89.soc.analyst']);
   });
 
   it('rechaza grupos admin que no son GUID', () => {
     expect(() =>
-      loadRoleGrantsConfig({ QAPAQ_PROFILE: 'test', QAPAQ_ADMIN_GROUP_IDS: 'admins' }),
+      loadRoleGrantsConfig({ B89_PROFILE: 'test', B89_ADMIN_GROUP_IDS: 'admins' }),
     ).toThrow();
   });
 
   it('rechaza asignaciones mal formadas o con roles inexistentes', () => {
-    for (const value of [`${ANALYST}=qapaq.root`, 'no-es-oid=qapaq.soc.analyst', `${ANALYST}`]) {
+    for (const value of [`${ANALYST}=b89.root`, 'no-es-oid=b89.soc.analyst', `${ANALYST}`]) {
       expect(() =>
-        loadRoleGrantsConfig({ QAPAQ_PROFILE: 'test', QAPAQ_ROLE_BINDINGS: value }),
+        loadRoleGrantsConfig({ B89_PROFILE: 'test', B89_ROLE_BINDINGS: value }),
       ).toThrow();
     }
   });
@@ -114,7 +114,7 @@ describe('roles concedidos por QAPAQ', () => {
     const now = new Date('2026-10-22T12:00:00.000Z');
     const store = new InMemoryRoleGrantStore();
     await store.replace(TENANT, ANALYST, {
-      roles: ['qapaq.platform.admin'],
+      roles: ['b89.platform.admin'],
       expectedRevision: 0,
       actorId: 'test-approver',
       at: now,
@@ -151,7 +151,7 @@ describe('roles concedidos por QAPAQ', () => {
     const now = new Date('2026-10-22T12:00:00.000Z');
     const store = new InMemoryRoleGrantStore();
     await store.replace(TENANT, ANALYST, {
-      roles: ['qapaq.soc.lead'],
+      roles: ['b89.soc.lead'],
       expectedRevision: 0,
       actorId: 'test-approver',
       at: now,
@@ -172,6 +172,6 @@ describe('roles concedidos por QAPAQ', () => {
       isActiveMember: async () => true,
     });
 
-    expect(await resolve(ANALYST)).toEqual(['qapaq.soc.lead']);
+    expect(await resolve(ANALYST)).toEqual(['b89.soc.lead']);
   });
 });

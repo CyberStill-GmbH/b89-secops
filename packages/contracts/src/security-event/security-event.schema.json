@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.qapaq.internal/security-event/1.0.0",
-  "title": "qapaq.security-event",
-  "description": "Contrato canónico de eventos de seguridad de QAPAQ SecOps.",
+  "$id": "https://schemas.b89.internal/security-event/1.0.0",
+  "title": "b89.security-event",
+  "description": "Contrato canónico de eventos de seguridad de B89 SecOps.",
   "type": "object",
   "additionalProperties": false,
   "required": [

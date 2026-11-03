@@ -19,7 +19,7 @@ import {
   InMemoryRoleAdministration,
   openSession,
   SECURITY_APPROVER_ROLE,
-} from '@qapaq/access';
+} from '@b89/access';
 
 import { buildApi } from '../src/bootstrap.js';
 import type { RuntimeDirectory, SecOpsRuntime } from '../src/runtime/secops-runtime.js';
@@ -63,7 +63,7 @@ async function sessionFor(roles: readonly string[], oid: string, amr: readonly s
     runtime.now(),
   );
   await runtime.sessions.create(session);
-  const cookie = `qapaq_session=${encodeURIComponent(session.id)}`;
+  const cookie = `b89_session=${encodeURIComponent(session.id)}`;
   return {
     session,
     cookie,
@@ -109,7 +109,7 @@ async function auditLength(): Promise<number> {
 }
 
 beforeAll(async () => {
-  const built = await buildApi({ QAPAQ_PROFILE: 'test' }, () => {});
+  const built = await buildApi({ B89_PROFILE: 'test' }, () => {});
   application = built.application;
   runtime = built.runtime;
   stop = built.stop;
@@ -178,12 +178,12 @@ beforeEach(() => {
 
 describe('administración de roles · solicitudes y aprobación', () => {
   it('no existe reemplazo directo del grant', async () => {
-    const admin = await sessionFor(['qapaq.platform.admin'], ADMIN_OID);
+    const admin = await sessionFor(['b89.platform.admin'], ADMIN_OID);
     const put = await server().inject({
       method: 'PUT',
       url: `/api/admin/users/${ANA}/role-grant`,
       headers: admin.mutation,
-      payload: { roles: ['qapaq.soc.lead'], expectedRevision: 0, reason: REASON },
+      payload: { roles: ['b89.soc.lead'], expectedRevision: 0, reason: REASON },
       remoteAddress: officeIp,
     });
     expect(put.statusCode).toBe(404);
@@ -191,11 +191,11 @@ describe('administración de roles · solicitudes y aprobación', () => {
   });
 
   it('solicitar exige roles.request y CSRF; valida forma y catálogo', async () => {
-    const lead = await sessionFor(['qapaq.soc.lead'], BETO);
-    const body = { action: 'grant', role: 'qapaq.soc.lead', reason: REASON, expectedRevision: 0 };
+    const lead = await sessionFor(['b89.soc.lead'], BETO);
+    const body = { action: 'grant', role: 'b89.soc.lead', reason: REASON, expectedRevision: 0 };
     expect((await submit(lead, ANA, body)).statusCode).toBe(404);
 
-    const admin = await sessionFor(['qapaq.platform.admin'], ADMIN_OID);
+    const admin = await sessionFor(['b89.platform.admin'], ADMIN_OID);
     const unverified = await post(
       admin,
       `/api/admin/users/${ANA}/role-requests`,
@@ -226,8 +226,8 @@ describe('administración de roles · solicitudes y aprobación', () => {
   });
 
   it('SoD y padrón: ni a sí mismo, ni a deshabilitados, bajas u OID fuera del padrón', async () => {
-    const admin = await sessionFor(['qapaq.platform.admin'], ADMIN_OID);
-    const body = { action: 'grant', role: 'qapaq.soc.lead', reason: REASON, expectedRevision: 0 };
+    const admin = await sessionFor(['b89.platform.admin'], ADMIN_OID);
+    const body = { action: 'grant', role: 'b89.soc.lead', reason: REASON, expectedRevision: 0 };
     expect((await submit(admin, ADMIN_OID.toUpperCase(), body)).statusCode).toBe(409);
     for (const oid of [CARLA, DANI, '88888888-8888-4888-8888-888888888888', 'no-es-un-guid']) {
       expect((await submit(admin, oid, body)).statusCode).toBe(404);
@@ -235,15 +235,15 @@ describe('administración de roles · solicitudes y aprobación', () => {
   });
 
   it('Acceso aprueba un rol ordinario: grant, auditoría y revocación de sesiones del objetivo', async () => {
-    const admin = await sessionFor(['qapaq.platform.admin'], ADMIN_OID);
+    const admin = await sessionFor(['b89.platform.admin'], ADMIN_OID);
     // AMR sin MFA: la etapa de Acceso de un rol ordinario no la exige.
     const approver = await sessionFor([ACCESS_APPROVER_ROLE], ACCESS_OID, ['pwd']);
-    const target = await sessionFor(['qapaq.soc.analyst'], ANA);
+    const target = await sessionFor(['b89.soc.analyst'], ANA);
     const start = await auditLength();
 
     const created = await submit(admin, ANA, {
       action: 'grant',
-      role: 'qapaq.soc.lead',
+      role: 'b89.soc.lead',
       reason: REASON,
       ticket: 'CHG-1042',
       expectedRevision: 0,
@@ -277,11 +277,11 @@ describe('administración de roles · solicitudes y aprobación', () => {
     expect(approved.statusCode).toBe(201);
     expect(JSON.parse(approved.body)).toMatchObject({
       request: { status: 'approved', priorApproverOid: ACCESS_OID },
-      grant: { roles: ['qapaq.soc.lead'], revision: 1 },
+      grant: { roles: ['b89.soc.lead'], revision: 1 },
       sessionRevocation: { revoked: 1, remaining: 0 },
     });
     expect((await runtime.sessions.byId(target.session.id))?.state).toBe('revoked');
-    expect((await grantOf(ANA)).roles).toEqual(['qapaq.soc.lead']);
+    expect((await grantOf(ANA)).roles).toEqual(['b89.soc.lead']);
 
     const actions = await auditActions(start);
     expect(actions).toEqual(
@@ -296,22 +296,22 @@ describe('administración de roles · solicitudes y aprobación', () => {
     const view = JSON.parse((await get(admin, `/api/admin/users/${ANA}/role-grant`)).body);
     expect(view).toMatchObject({
       eligible: true,
-      grant: { roles: ['qapaq.soc.lead'], revision: 1 },
+      grant: { roles: ['b89.soc.lead'], revision: 1 },
     });
     expect(view.assignableRoles).toEqual([
-      'qapaq.auditor',
-      'qapaq.platform.admin',
-      'qapaq.soc.analyst',
-      'qapaq.soc.lead',
+      'b89.auditor',
+      'b89.platform.admin',
+      'b89.soc.analyst',
+      'b89.soc.lead',
     ]);
   });
 
   it('rechazar cierra la solicitud sin cambiar el grant', async () => {
-    const admin = await sessionFor(['qapaq.platform.admin'], ADMIN_OID);
+    const admin = await sessionFor(['b89.platform.admin'], ADMIN_OID);
     const approver = await sessionFor([ACCESS_APPROVER_ROLE], ACCESS_OID);
     const submitted = await submit(admin, BETO, {
       action: 'grant',
-      role: 'qapaq.auditor',
+      role: 'b89.auditor',
       reason: REASON,
       expectedRevision: 0,
     });
@@ -324,12 +324,12 @@ describe('administración de roles · solicitudes y aprobación', () => {
   });
 
   it('platform.admin necesita Acceso y Seguridad; Seguridad falla cerrada sin step-up real', async () => {
-    const admin = await sessionFor(['qapaq.platform.admin'], ADMIN_OID);
+    const admin = await sessionFor(['b89.platform.admin'], ADMIN_OID);
     const access = await sessionFor([ACCESS_APPROVER_ROLE], ACCESS_OID);
     const security = await sessionFor([SECURITY_APPROVER_ROLE], SECURITY_OID, ['fido']);
     const submitted = await submit(admin, BETO, {
       action: 'grant',
-      role: 'qapaq.platform.admin',
+      role: 'b89.platform.admin',
       reason: REASON,
       expectedRevision: 0,
     });
@@ -350,7 +350,7 @@ describe('administración de roles · solicitudes y aprobación', () => {
     const blocked = await decide(security, created.id, 'approve', reviewed(first.request.revision));
     expect(blocked.statusCode).toBe(403);
     expect(JSON.parse(blocked.body).code).toBe('STEP_UP_REQUIRED');
-    expect((await grantOf(BETO)).roles).not.toContain('qapaq.platform.admin');
+    expect((await grantOf(BETO)).roles).not.toContain('b89.platform.admin');
     expect(await auditActions(start)).toEqual(['access.role_request.step_up_required']);
 
     // Rechazar no amplía privilegios: no exige step-up.
@@ -359,7 +359,7 @@ describe('administración de roles · solicitudes y aprobación', () => {
   });
 
   it('la bandeja exige una capability de roles y valida filtros', async () => {
-    const lead = await sessionFor(['qapaq.soc.lead'], BETO);
+    const lead = await sessionFor(['b89.soc.lead'], BETO);
     expect((await get(lead, '/api/admin/role-requests')).statusCode).toBe(404);
     const approver = await sessionFor([ACCESS_APPROVER_ROLE], ACCESS_OID);
     expect((await get(approver, '/api/admin/role-requests?status=open')).statusCode).toBe(422);

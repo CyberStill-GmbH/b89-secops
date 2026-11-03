@@ -20,8 +20,8 @@ import {
   createWazuhSecurityEventProvider,
   type ProviderRecord,
   type SecurityEventProvider,
-} from '@qapaq/connectors';
-import { normalizeWazuhAlert } from '@qapaq/telemetry/wazuh';
+} from '@b89/connectors';
+import { normalizeWazuhAlert } from '@b89/telemetry/wazuh';
 
 import { createEventsReader, type EventsReader } from './events-reader.js';
 import { createIngestionPass, type RecordConversion } from './ingestion-poller.js';

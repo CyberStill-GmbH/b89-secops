@@ -6,7 +6,7 @@
  * el pipeline nunca produce.
  */
 
-import { parseSecurityEvent, type SecurityEvent } from '@qapaq/contracts';
+import { parseSecurityEvent, type SecurityEvent } from '@b89/contracts';
 
 type Mutable = {
   -readonly [K in keyof SecurityEvent]: SecurityEvent[K];
@@ -15,7 +15,7 @@ type Mutable = {
 const BASE: SecurityEvent = parseSecurityEvent({
   schemaVersion: '1.0.0',
   recordId: '01890f47-7abc-7def-8abc-0123456789ab',
-  eventUid: 'siem-qapaq-lab:alerts:evt-0001',
+  eventUid: 'siem-b89-lab:alerts:evt-0001',
   eventUidType: 'native',
   kind: 'alert',
   occurredAt: '2026-10-07T15:30:00.000Z',
@@ -26,7 +26,7 @@ const BASE: SecurityEvent = parseSecurityEvent({
     vendor: 'Wazuh, Inc.',
     product: 'Wazuh',
     dataset: 'alerts',
-    instanceId: 'siem-qapaq-lab',
+    instanceId: 'siem-b89-lab',
     nativeEventId: 'evt-0001',
   },
   tenant: { id: 'tenant-1' },
@@ -36,15 +36,15 @@ const BASE: SecurityEvent = parseSecurityEvent({
     originalValue: 8,
     originalLabel: 'medium',
     originalScale: 'wazuh-level-0-15',
-    mappingId: 'qapaq.wazuh.severity',
+    mappingId: 'b89.wazuh.severity',
     mappingVersion: '1.0.0',
   },
   category: ['intrusion_detection'],
   outcome: 'unknown',
   action: 'alert.created',
   entities: {
-    identities: [{ kind: 'user', id: 'identity-1', principal: 'jperez@qapaq.pe' }],
-    resources: [{ kind: 'host', id: 'host-1', name: 'srv-app-01.qapaq.local', type: 'endpoint' }],
+    identities: [{ kind: 'user', id: 'identity-1', principal: 'jperez@b89.example' }],
+    resources: [{ kind: 'host', id: 'host-1', name: 'srv-app-01.b89.local', type: 'endpoint' }],
   },
   detection: {
     rule: {
@@ -62,14 +62,14 @@ const BASE: SecurityEvent = parseSecurityEvent({
     sizeBytes: 2048,
   },
   provenance: {
-    connector: 'qapaq-wazuh-indexer',
+    connector: 'b89-wazuh-indexer',
     connectorVersion: '1.0.0',
     parserVersion: '1.0.0',
     mappingVersion: '1.0.0',
     timestampQuality: 'source',
     ingestionPath: [
-      { kind: 'collector', vendor: 'Wazuh, Inc.', product: 'Wazuh', instanceId: 'siem-qapaq-lab' },
-      { kind: 'adapter', vendor: 'QAPAQ', product: 'QAPAQ SecOps' },
+      { kind: 'collector', vendor: 'Wazuh, Inc.', product: 'Wazuh', instanceId: 'siem-b89-lab' },
+      { kind: 'adapter', vendor: 'B89', product: 'B89 SecOps' },
     ],
   },
 });

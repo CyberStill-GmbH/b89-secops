@@ -6,12 +6,12 @@
  * advisory lock por tenant de `PrismaAuditStore`). Si algo falla, no queda ni grant sin auditoría
  * ni auditoría de un cambio que no ocurrió.
  *
- * Traduce filas planas (`@qapaq/database`) al dominio y valida lo leído contra los catálogos de
+ * Traduce filas planas (`@b89/database`) al dominio y valida lo leído contra los catálogos de
  * este módulo: un valor desconocido en la base es un error de integridad, no algo que se descarta
  * en silencio ni que se concede.
  */
 
-import type { AuditStore, SealedAuditEvent } from '@qapaq/audit';
+import type { AuditStore, SealedAuditEvent } from '@b89/audit';
 import {
   closeDatabaseClient,
   createDatabaseClient,
@@ -23,7 +23,7 @@ import {
   type RoleGrantRow,
   type RoleRequestRow,
   type SealedAuditRow,
-} from '@qapaq/database';
+} from '@b89/database';
 
 import { REQUESTABLE_ROLES } from '../capabilities.js';
 import {

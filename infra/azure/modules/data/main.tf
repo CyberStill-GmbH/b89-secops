@@ -28,7 +28,7 @@ resource "azurerm_postgresql_flexible_server" "this" {
 
 
 resource "azurerm_postgresql_flexible_server_database" "app" {
-  name      = "qapaq_secops"
+  name      = "b89_secops"
   server_id = azurerm_postgresql_flexible_server.this.id
   collation = "en_US.utf8"
   charset   = "UTF8"
@@ -40,7 +40,7 @@ resource "azurerm_postgresql_flexible_server_database" "app" {
 
 
 resource "azurerm_postgresql_flexible_server_database" "queue" {
-  name      = "qapaq_jobs"
+  name      = "b89_jobs"
   server_id = azurerm_postgresql_flexible_server.this.id
   collation = "en_US.utf8"
   charset   = "UTF8"

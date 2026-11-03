@@ -13,13 +13,13 @@ describe('política de ruteo por rol', () => {
   it('P1 nueva → analista y lead; escalada → lead y admin; incidente crítico → lead y admin', () => {
     expect(
       rolesToNotify({ messageType: 'soc.alert.created', payload: { priority: 'P1' } }),
-    ).toEqual(['qapaq.soc.analyst', 'qapaq.soc.lead']);
+    ).toEqual(['b89.soc.analyst', 'b89.soc.lead']);
     expect(
       rolesToNotify({ messageType: 'soc.alert.escalated', payload: { priority: 'P1' } }),
-    ).toEqual(['qapaq.soc.lead', 'qapaq.platform.admin']);
+    ).toEqual(['b89.soc.lead', 'b89.platform.admin']);
     expect(
       rolesToNotify({ messageType: 'soc.incident.opened', payload: { severity: 'critical' } }),
-    ).toEqual(['qapaq.soc.lead', 'qapaq.platform.admin']);
+    ).toEqual(['b89.soc.lead', 'b89.platform.admin']);
   });
 
   it('lo que no es crítico no se notifica', () => {
@@ -52,8 +52,8 @@ describe('tarjeta con menciones', () => {
     const message = buildTeamsMessage({
       ...base,
       mentions: [
-        { upn: 'ana@qapaq-lab.example', displayName: 'Ana <script>' },
-        { upn: 'beto@qapaq-lab.example', displayName: 'Beto' },
+        { upn: 'ana@b89-lab.example', displayName: 'Ana <script>' },
+        { upn: 'beto@b89-lab.example', displayName: 'Beto' },
       ],
     });
     const card = message.attachments[0].content as {
@@ -61,8 +61,8 @@ describe('tarjeta con menciones', () => {
       msteams: { entities: { text: string; mentioned: { id: string } }[] };
     };
     expect(card.msteams.entities.map((entity) => entity.mentioned.id)).toEqual([
-      'ana@qapaq-lab.example',
-      'beto@qapaq-lab.example',
+      'ana@b89-lab.example',
+      'beto@b89-lab.example',
     ]);
     expect(card.msteams.entities[0]!.text).toBe('<at>Ana script</at>');
     expect(

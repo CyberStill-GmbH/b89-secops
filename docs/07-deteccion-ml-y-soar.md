@@ -4,10 +4,10 @@
 
 | Capa | Dónde | Qué hace | Ejemplo |
 | --- | --- | --- | --- |
-| 1. Regla | **Wazuh** (`wazuh/office365/rules`, `wazuh/manager/rules`) | Evento → alerta con nivel y MITRE | 22 reglas Office 365 QAPAQ que ya existen. Login sin MFA, regla de reenvío en buzón |
+| 1. Regla | **Wazuh** (`wazuh/office365/rules`, `wazuh/manager/rules`) | Evento → alerta con nivel y MITRE | 22 reglas Office 365 B89 que ya existen. Login sin MFA, regla de reenvío en buzón |
 | 1b. Secuencia simple | **Wazuh** (`if_matched_sid`, `same_field`, `timeframe`) | N eventos relacionados → alerta compuesta | Fallos de login seguidos de un login exitoso del mismo `UserId` en 10 min |
 | 2. Anomalía (ML) | **OpenSearch Anomaly Detection** (RCF, en el Indexer) | Desvío del comportamiento por entidad | Volumen de descargas de SharePoint por usuario |
-| 3. Contexto e incidente | **QAPAQ** `modules/detection` (TS) | Agrupa alertas y anomalías por entidad, aplica la cadena de compromiso M365 y asigna prioridad P1–P4 con razones | Credenciales, luego persistencia, luego exfiltración del mismo usuario en 24 h → incidente P1 |
+| 3. Contexto e incidente | **B89** `modules/detection` (TS) | Agrupa alertas y anomalías por entidad, aplica la cadena de compromiso M365 y asigna prioridad P1–P4 con razones | Credenciales, luego persistencia, luego exfiltración del mismo usuario en 24 h → incidente P1 |
 
 Regla práctica: si se puede expresar sobre un solo flujo de eventos, va en Wazuh (capas 1 y
 1b). Si necesita estado de casos, varias fuentes o explicación para el analista, va en TS (capa 3).
@@ -19,11 +19,11 @@ Detectores versionados en `wazuh/indexer/anomaly-detection/`, aplicados por
 
 | Detector | Entidad (`category_field`) | Feature | Intervalo |
 | --- | --- | --- | --- |
-| `qapaq-m365-login-failures` | `data.office365.UserId` | Conteo de `UserLoginFailed` | 10 min |
-| `qapaq-m365-file-downloads` | `data.office365.UserId` | Conteo de `FileDownloaded` y `FileSyncDownloadedFull` | 15 min |
-| `qapaq-agent-alert-volume` | `agent.name` | Conteo de alertas con `rule.level ≥ 7` | 10 min |
+| `b89-m365-login-failures` | `data.office365.UserId` | Conteo de `UserLoginFailed` | 10 min |
+| `b89-m365-file-downloads` | `data.office365.UserId` | Conteo de `FileDownloaded` y `FileSyncDownloadedFull` | 15 min |
+| `b89-agent-alert-volume` | `agent.name` | Conteo de alertas con `rule.level ≥ 7` | 10 min |
 
-**Integración con QAPAQ:**
+**Integración con B89:**
 1. `modules/connectors` añade la lectura de `.opendistro-anomaly-results*` con
    `anomaly_grade ≥ 0.7`. Usa la misma credencial de solo lectura, con acceso ampliado a ese
    índice.
@@ -36,13 +36,13 @@ Python queda descartado. Volverá solo si un caso medido supera a RCF (el criter
 sigue vigente).
 
 **Fase 4 (Wazuh 5):** Security Analytics con reglas Sigma y su motor de correlación entre tipos de
-log, que vienen nativos en el Indexer 5.x. QAPAQ consume sus *findings* igual que consume AD.
+log, que vienen nativos en el Indexer 5.x. B89 consume sus *findings* igual que consume AD.
 
 ## Ingesta: push más reconciliación
 
 | Vía | Mecanismo | Rol |
 | --- | --- | --- |
-| **Push** (nueva) | Integración `custom-qapaq` del Manager (`wazuh/manager/integrations/custom-qapaq.py`). Llama a `POST /api/ingest/wazuh` con HMAC-SHA256 por alerta de nivel ≥ 7 | Latencia baja. Es best-effort: integratord no reintenta |
+| **Push** (nueva) | Integración `custom-b89` del Manager (`wazuh/manager/integrations/custom-b89.py`). Llama a `POST /api/ingest/wazuh` con HMAC-SHA256 por alerta de nivel ≥ 7 | Latencia baja. Es best-effort: integratord no reintenta |
 | **Pull** (existente) | El poller con cursor y lease con fencing lee `wazuh-alerts-*` | **Reconciliación**: garantiza que no se pierda nada. Deduplica por `_id` |
 
 El endpoint `POST /api/ingest/wazuh` es código nuevo de la fase 2. Valida la firma y un timestamp
@@ -54,28 +54,28 @@ que el pull.
 | Pieza OSS | Compatibilidad con Wazuh | Qué hay que hacer | Esfuerzo |
 | --- | --- | --- | --- |
 | **OpenSearch Anomaly Detection** | El backend ya está en el Indexer de Wazuh. En 4.x la UI se copia desde el tarball de OSD 2.19.6 | 3 JSON de detectores (en esta rama) más un lector en `modules/connectors` | **Bajo**: 1–2 días |
-| **Shuffle** | Integración **nativa** en el Integrator de Wazuh desde 4.4. Alianza oficial Wazuh–Shuffle (sept. 2025) | Contenedor Docker en una EC2 privada, workflows y un webhook firmado desde `modules/soar` | **Medio**: 2–3 días el servicio y 2 días la gobernanza en QAPAQ |
+| **Shuffle** | Integración **nativa** en el Integrator de Wazuh desde 4.4. Alianza oficial Wazuh–Shuffle (sept. 2025) | Contenedor Docker en una EC2 privada, workflows y un webhook firmado desde `modules/soar` | **Medio**: 2–3 días el servicio y 2 días la gobernanza en B89 |
 | **Wazuh Active Response** | Nativo | Usuario de Wazuh API con permiso mínimo y un adaptador en `modules/soar` | **Bajo**: 1 día |
 | **Security Analytics (Sigma más correlación)** | Nativo en Wazuh 5. En 4.x hay reportes de que rompe el arranque del Indexer | Esperar a Wazuh 5 GA | **Bajo** en 5.x, **no recomendado** en 4.x |
 | **Reglas Sigma (SigmaHQ)** | El motor de Wazuh 5 las usa directamente | Elegir el subconjunto M365/Entra | Fase 4 |
 
-## SOAR: Ankay Qapaq (siguiente scope)
+## SOAR: B89 Respond (siguiente scope)
 
-> **Decisión del dueño (2026-10-13):** el SOAR propio de QAPAQ no se construye. El SOAR será
-> **Ankay Qapaq**: Shuffle en la red interna, con frontend rebrandeado al estilo QAPAQ y acceso
-> directo desde el SIEM QAPAQ para escalar alertas y automatizar respuestas. Se monta **después**
-> de lanzar el SIEM. Lo que sigue describe la gobernanza que Ankay Qapaq debe respetar
+> **Decisión del dueño (2026-10-13):** el SOAR propio de B89 no se construye. El SOAR será
+> **B89 Respond**: Shuffle en la red interna, con frontend rebrandeado al estilo B89 y acceso
+> directo desde el SIEM B89 para escalar alertas y automatizar respuestas. Se monta **después**
+> de lanzar el SIEM. Lo que sigue describe la gobernanza que B89 Respond debe respetar
 > (aprobación por segunda persona, auditoría y sin credenciales de escritura en la API).
 
-## SOAR gobernado (requisitos para Ankay Qapaq)
+## SOAR gobernado (requisitos para B89 Respond)
 
-Principio: **QAPAQ decide y deja evidencia; otros ejecutan.** QAPAQ nunca tiene credenciales de
+Principio: **B89 decide y deja evidencia; otros ejecutan.** B89 nunca tiene credenciales de
 escritura de Graph ni de firewalls. Esas credenciales viven en el executor.
 
 ```mermaid
 sequenceDiagram
   participant A as Analista
-  participant Q as QAPAQ soar
+  participant Q as B89 soar
   participant L as Líder SOC
   participant W as Wazuh API (Active Response)
   participant S as Shuffle

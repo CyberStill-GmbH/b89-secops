@@ -10,9 +10,9 @@
  * vacío y la tarjeta sale al canal sin menciones.
  */
 
-import type { DirectoryPerson, SessionStore } from '@qapaq/access';
-import type { RoleGrantsConfig } from '@qapaq/configuration';
-import type { NotificationRecipient, NotifiedRole, RecipientDirectory } from '@qapaq/soar';
+import type { DirectoryPerson, SessionStore } from '@b89/access';
+import type { RoleGrantsConfig } from '@b89/configuration';
+import type { NotificationRecipient, NotifiedRole, RecipientDirectory } from '@b89/soar';
 
 import { explainRole } from './role-grants.js';
 import type { RuntimeDirectory } from './secops-runtime.js';

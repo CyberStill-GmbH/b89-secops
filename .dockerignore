@@ -22,4 +22,4 @@
 /docs
 /infra
 # `platform/database` entra a la imagen del API desde C-17 (estado SOC en PostgreSQL): no se
-# excluyen fuentes del paquete, o el build de `@qapaq/database` falla.
+# excluyen fuentes del paquete, o el build de `@b89/database` falla.

@@ -3,7 +3,7 @@
  *
  * `SENT` significa "el destino aceptó el mensaje", no "una persona lo leyó". El acuse
  * humano es un estado aparte (`acknowledged`) que solo avanza cuando alguien lo registra
- * en QAPAQ; confundir ambos haría creer que un crítico fue atendido porque Teams
+ * en B89; confundir ambos haría creer que un crítico fue atendido porque Teams
  * respondió 200.
  */
 
@@ -88,7 +88,7 @@ export type AcknowledgementResult =
   | { readonly ok: false; readonly code: AcknowledgementErrorCode };
 
 /**
- * Acuse humano registrado en QAPAQ. Se admite sobre `sent`, `indeterminate` y `fallback`:
+ * Acuse humano registrado en B89. Se admite sobre `sent`, `indeterminate` y `fallback`:
  * si una persona confirma haberlo visto, la entrega dudosa queda resuelta por la vía que
  * importa, que es la atención del caso.
  */

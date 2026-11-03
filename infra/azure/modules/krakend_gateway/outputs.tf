@@ -4,7 +4,7 @@ output "gateway_fqdn" {
 }
 
 output "gateway_base_url" {
-  description = "URL HTTPS que consume qapaq-core desde la VM SIEM; no apunta a loopback."
+  description = "URL HTTPS que consume b89-core desde la VM SIEM; no apunta a loopback."
   value       = "https://${local.name}.${azurerm_container_app_environment.this.default_domain}"
 }
 

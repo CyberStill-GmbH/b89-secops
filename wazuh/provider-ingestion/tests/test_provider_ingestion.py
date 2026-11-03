@@ -22,8 +22,8 @@ def load_module(name: str, path: pathlib.Path):
     return module
 
 
-CATO = load_module("qapaq_cato_events_feed", ROOT / "cato/events_feed.py")
-CONFIGURE = load_module("qapaq_provider_configure", ROOT / "configure.py")
+CATO = load_module("b89_cato_events_feed", ROOT / "cato/events_feed.py")
+CONFIGURE = load_module("b89_provider_configure", ROOT / "configure.py")
 
 
 def cato_payload(marker: str = "opaque-1", records: list | None = None) -> dict:
@@ -215,11 +215,11 @@ class ProviderConfigurationTests(unittest.TestCase):
             parser = CONFIGURE.configparser.ConfigParser()
             parser.read(secrets / "sophos-client.ini")
             self.assertEqual(parser["login"]["client_secret"], "client-secret%canary")
-            cato_config = json.loads((root / "etc/qapaq-providers/cato/config.json").read_text())
+            cato_config = json.loads((root / "etc/b89-providers/cato/config.json").read_text())
             self.assertEqual(cato_config["account_id"], "12345")
             self.assertNotIn("endpoint", cato_config)
-            self.assertTrue((units / "qapaq-sophos-ingest.timer").is_file())
-            self.assertTrue((units / "qapaq-cato-ingest.timer").is_file())
+            self.assertTrue((units / "b89-sophos-ingest.timer").is_file())
+            self.assertTrue((units / "b89-cato-ingest.timer").is_file())
             self.assertGreaterEqual(systemctl.call_count, 6)
 
     def test_cato_regional_endpoint_comes_from_secret_and_rejects_foreign_hosts(self) -> None:
@@ -238,7 +238,7 @@ class ProviderConfigurationTests(unittest.TestCase):
             with ownership, group:
                 (secrets / "cato-api-endpoint").write_text("https://api.us1.catonetworks.com/api/v1/graphql2\n", encoding="utf-8")
                 self.assertTrue(CONFIGURE.install_cato(config, root, secrets))
-                written = json.loads((root / "etc/qapaq-providers/cato/config.json").read_text())
+                written = json.loads((root / "etc/b89-providers/cato/config.json").read_text())
                 self.assertEqual(written["endpoint"], "https://api.us1.catonetworks.com/api/v1/graphql2")
                 (secrets / "cato-api-endpoint").write_text("https://api.catonetworks.com.attacker.example/api/v1/graphql2", encoding="utf-8")
                 with self.assertRaises(ValueError):

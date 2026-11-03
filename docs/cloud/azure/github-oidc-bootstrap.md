@@ -1,7 +1,7 @@
 # Bootstrap de GitHub OIDC para Azure
 
 **Estado:** los IDs base de Azure están cargados en GitHub; bootstrap OIDC, backend remoto y despliegue Azure siguen pendientes.
-**Repositorio:** `CyberStill-GmbH/qapaq-secops`.
+**Repositorio:** `CyberStill-GmbH/b89-secops`.
 **Environment GitHub:** `azure-demo` (solo `main`, aprobador requerido y bypass administrativo desactivado).
 
 ## Por qué hacen falta dos identidades
@@ -28,11 +28,11 @@ dar permisos de suscripción Owner/Contributor para resolver el ciclo inicial.
 2. El bootstrap crea una User Assigned Managed Identity con issuer
    `https://token.actions.githubusercontent.com`, audience
    `api://AzureADTokenExchange` y subject inmutable
-   `repo:CyberStill-GmbH@220633794/qapaq-secops@1374673243:environment:azure-demo`.
+   `repo:CyberStill-GmbH@220633794/b89-secops@1374673243:environment:azure-demo`.
    GitHub informa `use_immutable_subject=true` para este repo; el formato sigue
    la [referencia OIDC oficial](https://docs.github.com/en/actions/reference/security/oidc).
 3. Los permisos de la identidad se limitan a `Contributor` y `Role Based Access
-   Control Administrator` dentro del resource group QAPAQ, `Storage Blob Data
+   Control Administrator` dentro del resource group B89, `Storage Blob Data
    Contributor` en el Storage Account de state y `Cost Management Contributor`
    en la suscripción para el presupuesto del root. Una condición ABAC restringe
    la delegación a `AcrPull`, `AcrPush`, `Key Vault Secrets User` y `Storage
@@ -41,12 +41,12 @@ dar permisos de suscripción Owner/Contributor para resolver el ciclo inicial.
    No se concede Owner/Contributor a nivel de suscripción a GitHub.
 4. El root `infra/azure` consulta el resource group creado por bootstrap; no lo
    administra y no puede destruirlo. El environment `azure-demo` existe; solo admite `main`, exige aprobación de
-   `CesarGuevaraQapaq`, impide autoaprobación y desactiva el bypass administrativo.
+   `CesarGuevaraB89`, impide autoaprobación y desactiva el bypass administrativo.
 5. Configurar GitHub repository secrets sin imprimir valores secretos:
 
    ```powershell
-   gh secret set AZURE_TERRAFORM_CLIENT_ID --repo CyberStill-GmbH/qapaq-secops
-   gh secret set AZURE_POSTGRES_ADMIN_PASSWORD --repo CyberStill-GmbH/qapaq-secops
+   gh secret set AZURE_TERRAFORM_CLIENT_ID --repo CyberStill-GmbH/b89-secops
+   gh secret set AZURE_POSTGRES_ADMIN_PASSWORD --repo CyberStill-GmbH/b89-secops
    # AZURE_TENANT_ID y AZURE_SUBSCRIPTION_ID ya existen como repository secrets.
    ```
 
@@ -62,10 +62,10 @@ dar permisos de suscripción Owner/Contributor para resolver el ciclo inicial.
    creado y protegido:
 
    ```powershell
-   gh variable set AZURE_TF_STATE_RESOURCE_GROUP --body "<resource-group>" --repo CyberStill-GmbH/qapaq-secops
-   gh variable set AZURE_TF_STATE_STORAGE_ACCOUNT --body "<storage-account>" --repo CyberStill-GmbH/qapaq-secops
-   gh variable set AZURE_TF_STATE_CONTAINER --body "<container>" --repo CyberStill-GmbH/qapaq-secops
-   gh variable set AZURE_TF_STATE_KEY --body "qapaq-secops/demo/terraform.tfstate" --repo CyberStill-GmbH/qapaq-secops
+   gh variable set AZURE_TF_STATE_RESOURCE_GROUP --body "<resource-group>" --repo CyberStill-GmbH/b89-secops
+   gh variable set AZURE_TF_STATE_STORAGE_ACCOUNT --body "<storage-account>" --repo CyberStill-GmbH/b89-secops
+   gh variable set AZURE_TF_STATE_CONTAINER --body "<container>" --repo CyberStill-GmbH/b89-secops
+   gh variable set AZURE_TF_STATE_KEY --body "b89-secops/demo/terraform.tfstate" --repo CyberStill-GmbH/b89-secops
    ```
 
    No llenar valores de ejemplo antes de crear el state backend.
@@ -81,8 +81,8 @@ dar permisos de suscripción Owner/Contributor para resolver el ciclo inicial.
 8. Después del primer apply y de que ACR exista, definir como GitHub variables:
 
    ```powershell
-   gh variable set AZURE_ACR_NAME --body "<acr-name>" --repo CyberStill-GmbH/qapaq-secops
-   gh variable set AZURE_ACR_LOGIN_SERVER --body "<acr-name>.azurecr.io" --repo CyberStill-GmbH/qapaq-secops
+   gh variable set AZURE_ACR_NAME --body "<acr-name>" --repo CyberStill-GmbH/b89-secops
+   gh variable set AZURE_ACR_LOGIN_SERVER --body "<acr-name>.azurecr.io" --repo CyberStill-GmbH/b89-secops
    ```
 
    Establecer el secreto `AZURE_ACR_PUBLISHER_CLIENT_ID` con el output
@@ -110,13 +110,13 @@ dar permisos de suscripción Owner/Contributor para resolver el ciclo inicial.
   remoto; tampoco acredita por sí sola que el Client ID tenga federación y roles
   correctos.
 - El environment `azure-demo` está limitado a `main`, exige aprobación de
-  `CesarGuevaraQapaq`, impide autoaprobación y desactiva el bypass administrativo.
+  `CesarGuevaraB89`, impide autoaprobación y desactiva el bypass administrativo.
 - `infra/azure` cuenta ahora con un workflow manual plan/apply protegido. El
   workflow usa runners GitHub-hosted; no requiere `AZURE_TF_RUNNER_LABELS`. No se
   ha ejecutado: faltan las variables para seleccionar el backend remoto. No se ha verificado el
   estado real de los recursos bootstrap en Azure. La validación Terraform de PR
   ejecuta `init -backend=false` y no autentica con Azure.
-- Los workflows de build/publicación de Ankay y Dashboard aceptan
+- Los workflows de build/publicación de B89 Respond y Dashboard aceptan
   `AZURE_ACR_PUBLISHER_CLIENT_ID` como secret o variable y tenant/subscription
   como secrets o variables. Publicar requiere ACR ya creado, OIDC funcional y
   los valores de destino. Esta compatibilidad no configura la federación por sí

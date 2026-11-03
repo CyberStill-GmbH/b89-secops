@@ -6,7 +6,7 @@
  * sus claves—. El adapter local sirve el mismo contrato sin salir del proceso.
  */
 
-import type { JsonWebKey, JwksProvider, TokenExchange, TokenExchangeResult } from '@qapaq/access';
+import type { JsonWebKey, JwksProvider, TokenExchange, TokenExchangeResult } from '@b89/access';
 
 import type { LocalDevelopmentIssuer } from './local-issuer.js';
 

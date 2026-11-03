@@ -1,13 +1,13 @@
-# Sophos Central y Cato → Wazuh QAPAQ
+# Sophos Central y Cato → Wazuh B89
 
 Este módulo opcional incorpora dos fuentes de entrada directamente en el overlay Wazuh, según A15. Consume APIs de solo lectura y escribe JSONL por proveedor; Wazuh las incorpora mediante `<localfile log_format="json">`. Los eventos y archivos de ingesta quedan separados por fuente, mientras el manager y sus logs internos conservan sus rutas propias.
 
 ## Estado y límites
 
 - Los conectores quedan apagados si `provider_ingestion` no los habilita. Habilitarlos requiere una referencia Key Vault por credencial, egress HTTPS explícito y una prueba con eventos sintéticos del tenant.
-- El código no lee ni presenta valores secretos durante plan/build. `wazuh_secret_names` materializa `sophos-client-id`, `sophos-client-secret` y `cato-api-key` en `/etc/qapaq-secrets`; el instalador los lee localmente. No poner valores en tfvars, variables de entorno persistentes, GitHub Actions ni logs.
+- El código no lee ni presenta valores secretos durante plan/build. `wazuh_secret_names` materializa `sophos-client-id`, `sophos-client-secret` y `cato-api-key` en `/etc/b89-secrets`; el instalador los lee localmente. No poner valores en tfvars, variables de entorno persistentes, GitHub Actions ni logs.
 - El acceso de red de Key Vault del entorno actual negó la consulta del portal; por ello este cambio no afirma que existan esos secretos, que los permisos de Sophos/Cato estén concedidos ni que el runtime Azure esté operativo.
-- No se instalan reglas de severidad automática basadas en datos de prueba. Acordar primero los campos/eventos reales de cada tenant y agregar fixtures anonimizados; los playbooks deben requerir aprobación QAPAQ Core.
+- No se instalan reglas de severidad automática basadas en datos de prueba. Acordar primero los campos/eventos reales de cada tenant y agregar fixtures anonimizados; los playbooks deben requerir aprobación B89 Core.
 
 ## Sophos Central
 

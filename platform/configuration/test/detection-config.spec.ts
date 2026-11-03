@@ -15,7 +15,7 @@ function rejectedPath(load: () => unknown): string {
   throw new Error('Se esperaba un ConfigurationError.');
 }
 
-const BASE = { QAPAQ_PROFILE: 'test' } as const;
+const BASE = { B89_PROFILE: 'test' } as const;
 
 describe('C-16 · contexto de detección', () => {
   it('sin variables arranca con listas vacías: prioriza solo por severidad', () => {
@@ -33,30 +33,30 @@ describe('C-16 · contexto de detección', () => {
   it('normaliza identidades a minúsculas y elimina duplicados', () => {
     const config = loadDetectionContextConfig({
       ...BASE,
-      QAPAQ_DETECTION_PRIVILEGED_IDENTITIES:
-        'Admin.Sintetico@qapaq-lab.example, admin.sintetico@qapaq-lab.example,,ops@qapaq-lab.example',
+      B89_DETECTION_PRIVILEGED_IDENTITIES:
+        'Admin.Sintetico@b89-lab.example, admin.sintetico@b89-lab.example,,ops@b89-lab.example',
     });
 
     expect(config.privilegedIdentities).toEqual([
-      'admin.sintetico@qapaq-lab.example',
-      'ops@qapaq-lab.example',
+      'admin.sintetico@b89-lab.example',
+      'ops@b89-lab.example',
     ]);
   });
 
   it('toda cuenta break-glass cuenta también como privilegiada', () => {
     const config = loadDetectionContextConfig({
       ...BASE,
-      QAPAQ_DETECTION_BREAK_GLASS_IDENTITIES: 'BG-01@qapaq-lab.example',
+      B89_DETECTION_BREAK_GLASS_IDENTITIES: 'BG-01@b89-lab.example',
     });
 
-    expect(config.breakGlassIdentities).toEqual(['bg-01@qapaq-lab.example']);
-    expect(config.privilegedIdentities).toContain('bg-01@qapaq-lab.example');
+    expect(config.breakGlassIdentities).toEqual(['bg-01@b89-lab.example']);
+    expect(config.privilegedIdentities).toContain('bg-01@b89-lab.example');
   });
 
   it('exige referencia documental para cada regla benigna', () => {
     const config = loadDetectionContextConfig({
       ...BASE,
-      QAPAQ_DETECTION_KNOWN_BENIGN_RULES: '91532:CAB-2026-014,100520:ACTA-SOC-07',
+      B89_DETECTION_KNOWN_BENIGN_RULES: '91532:CAB-2026-014,100520:ACTA-SOC-07',
     });
 
     expect(config.knownBenignRules).toEqual([
@@ -65,14 +65,14 @@ describe('C-16 · contexto de detección', () => {
     ]);
     expect(
       rejectedPath(() =>
-        loadDetectionContextConfig({ ...BASE, QAPAQ_DETECTION_KNOWN_BENIGN_RULES: '91532' }),
+        loadDetectionContextConfig({ ...BASE, B89_DETECTION_KNOWN_BENIGN_RULES: '91532' }),
       ),
-    ).toBe('QAPAQ_DETECTION_KNOWN_BENIGN_RULES');
+    ).toBe('B89_DETECTION_KNOWN_BENIGN_RULES');
     expect(
       rejectedPath(() =>
-        loadDetectionContextConfig({ ...BASE, QAPAQ_DETECTION_KNOWN_BENIGN_RULES: '91532:' }),
+        loadDetectionContextConfig({ ...BASE, B89_DETECTION_KNOWN_BENIGN_RULES: '91532:' }),
       ),
-    ).toBe('QAPAQ_DETECTION_KNOWN_BENIGN_RULES');
+    ).toBe('B89_DETECTION_KNOWN_BENIGN_RULES');
   });
 
   it('rechaza la misma regla benigna declarada dos veces', () => {
@@ -80,20 +80,20 @@ describe('C-16 · contexto de detección', () => {
       rejectedPath(() =>
         loadDetectionContextConfig({
           ...BASE,
-          QAPAQ_DETECTION_KNOWN_BENIGN_RULES: '91532:CAB-1,91532:CAB-2',
+          B89_DETECTION_KNOWN_BENIGN_RULES: '91532:CAB-1,91532:CAB-2',
         }),
       ),
-    ).toBe('QAPAQ_DETECTION_KNOWN_BENIGN_RULES');
+    ).toBe('B89_DETECTION_KNOWN_BENIGN_RULES');
   });
 
-  it.each(['admin con espacio@qapaq-lab.example', 'a;b', `${'x'.repeat(321)}`])(
+  it.each(['admin con espacio@b89-lab.example', 'a;b', `${'x'.repeat(321)}`])(
     'rechaza la entrada mal formada %s en lugar de ignorarla',
     (entry) => {
       expect(
         rejectedPath(() =>
-          loadDetectionContextConfig({ ...BASE, QAPAQ_DETECTION_CRITICAL_ASSETS: entry }),
+          loadDetectionContextConfig({ ...BASE, B89_DETECTION_CRITICAL_ASSETS: entry }),
         ),
-      ).toBe('QAPAQ_DETECTION_CRITICAL_ASSETS');
+      ).toBe('B89_DETECTION_CRITICAL_ASSETS');
     },
   );
 
@@ -105,15 +105,15 @@ describe('C-16 · contexto de detección', () => {
 
     expect(
       rejectedPath(() =>
-        loadDetectionContextConfig({ ...BASE, QAPAQ_DETECTION_CRITICAL_ASSETS: tooMany }),
+        loadDetectionContextConfig({ ...BASE, B89_DETECTION_CRITICAL_ASSETS: tooMany }),
       ),
-    ).toBe('QAPAQ_DETECTION_CRITICAL_ASSETS');
+    ).toBe('B89_DETECTION_CRITICAL_ASSETS');
   });
 
   it('el resultado es inmutable', () => {
     const config = loadDetectionContextConfig({
       ...BASE,
-      QAPAQ_DETECTION_CRITICAL_ASSETS: 'srv-core-01',
+      B89_DETECTION_CRITICAL_ASSETS: 'srv-core-01',
     });
 
     expect(Object.isFrozen(config)).toBe(true);
@@ -122,16 +122,16 @@ describe('C-16 · contexto de detección', () => {
 });
 
 describe('D-10b/D-13 · clave de referencias de entidad', () => {
-  const PRODUCTION = { QAPAQ_PROFILE: 'production' } as const;
+  const PRODUCTION = { B89_PROFILE: 'production' } as const;
 
   it('en memoria puede faltar: el API arranca sin pivote', () => {
-    expect(loadEntityRefKey({ ...PRODUCTION, QAPAQ_SOC_PERSISTENCE: 'memory' })).toBeUndefined();
+    expect(loadEntityRefKey({ ...PRODUCTION, B89_SOC_PERSISTENCE: 'memory' })).toBeUndefined();
   });
 
   it('con persistencia postgres es obligatoria', () => {
     expect(
-      rejectedPath(() => loadEntityRefKey({ ...PRODUCTION, QAPAQ_SOC_PERSISTENCE: 'postgres' })),
-    ).toBe('QAPAQ_ENTITY_REF_KEY');
+      rejectedPath(() => loadEntityRefKey({ ...PRODUCTION, B89_SOC_PERSISTENCE: 'postgres' })),
+    ).toBe('B89_ENTITY_REF_KEY');
   });
 
   it('rechaza una clave corta en cualquier modo', () => {
@@ -139,18 +139,18 @@ describe('D-10b/D-13 · clave de referencias de entidad', () => {
       rejectedPath(() =>
         loadEntityRefKey({
           ...PRODUCTION,
-          QAPAQ_SOC_PERSISTENCE: 'memory',
-          QAPAQ_ENTITY_REF_KEY: 'corta',
+          B89_SOC_PERSISTENCE: 'memory',
+          B89_ENTITY_REF_KEY: 'corta',
         }),
       ),
-    ).toBe('QAPAQ_ENTITY_REF_KEY');
+    ).toBe('B89_ENTITY_REF_KEY');
   });
 
   it('acepta una clave de 32 o más caracteres y no la expone al serializar', () => {
     const key = loadEntityRefKey({
       ...PRODUCTION,
-      QAPAQ_SOC_PERSISTENCE: 'postgres',
-      QAPAQ_ENTITY_REF_KEY: 'k'.repeat(48),
+      B89_SOC_PERSISTENCE: 'postgres',
+      B89_ENTITY_REF_KEY: 'k'.repeat(48),
     });
     expect(key?.reveal()).toHaveLength(48);
     expect(JSON.stringify({ key })).not.toContain('kkkk');

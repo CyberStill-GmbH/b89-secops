@@ -1,10 +1,10 @@
-# Núcleo QAPAQ como componente del SIEM QAPAQ (docs/12, opción B). Corre en el host Wazuh junto al
+# Núcleo B89 como componente del SIEM B89 (docs/12, opción B). Corre en el host Wazuh junto al
 # dashboard (wazuh/core): API en 127.0.0.1:3000 y worker de colas. Persistencia sin cambios: RDS, S3 y
 # Valkey. wazuh/core/apply-core.sh lee este parámetro y los secretos con el rol de la instancia.
 
 resource "aws_ssm_parameter" "core_environment" {
   name        = "/${var.project}/${var.environment}/core/environment"
-  description = "Entorno del núcleo QAPAQ en el SIEM: variables no secretas y referencias ARN a secretos (sin valores)."
+  description = "Entorno del núcleo B89 en el SIEM: variables no secretas y referencias ARN a secretos (sin valores)."
   type        = "String"
   tier        = "Advanced"
   value = jsonencode({
@@ -49,7 +49,7 @@ resource "aws_vpc_security_group_egress_rule" "wazuh_core_out" {
   for_each                     = local.core_targets
   security_group_id            = module.security.security_group_ids.wazuh
   referenced_security_group_id = each.value.sg
-  description                  = "QAPAQ core to SIEM dependency ${each.key}"
+  description                  = "B89 core to SIEM dependency ${each.key}"
   from_port                    = each.value.port
   ip_protocol                  = "tcp"
   to_port                      = each.value.port
@@ -59,13 +59,13 @@ resource "aws_vpc_security_group_ingress_rule" "core_in_from_wazuh" {
   for_each                     = local.core_targets
   security_group_id            = each.value.sg
   referenced_security_group_id = module.security.security_group_ids.wazuh
-  description                  = "${each.key} access from QAPAQ core"
+  description                  = "${each.key} access from B89 core"
   from_port                    = each.value.port
   ip_protocol                  = "tcp"
   to_port                      = each.value.port
 }
 
 output "core_environment_parameter" {
-  description = "Parámetro SSM que consume wazuh/core/apply-core.sh (QAPAQ_CORE_ENV_PARAM)."
+  description = "Parámetro SSM que consume wazuh/core/apply-core.sh (B89_CORE_ENV_PARAM)."
   value       = aws_ssm_parameter.core_environment.name
 }

@@ -39,9 +39,9 @@ resource "aws_secretsmanager_secret" "teams_workflow_url" {
 
 locals {
   notification_api_environment = var.alert_mail_sender == "" ? {} : {
-    QAPAQ_ALERT_MAIL_SENDER = lower(var.alert_mail_sender)
+    B89_ALERT_MAIL_SENDER = lower(var.alert_mail_sender)
   }
   notification_api_secrets = var.teams_notifications_enabled ? [
-    { name = "QAPAQ_TEAMS_WORKFLOW_URL", valueFrom = aws_secretsmanager_secret.teams_workflow_url.arn },
+    { name = "B89_TEAMS_WORKFLOW_URL", valueFrom = aws_secretsmanager_secret.teams_workflow_url.arn },
   ] : []
 }

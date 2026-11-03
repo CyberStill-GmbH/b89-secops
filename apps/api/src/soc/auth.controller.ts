@@ -132,7 +132,7 @@ export class AuthController {
    *
    * El dashboard (fork de OpenSearch Dashboards) no tiene login propio: confía en esta
    * misma sesión. El proxy pregunta aquí en cada navegación y, con 204, inyecta la persona
-   * y sus roles QAPAQ como cabeceras de *proxy auth* hacia el Security plugin. Sin cuerpo:
+   * y sus roles B89 como cabeceras de *proxy auth* hacia el Security plugin. Sin cuerpo:
    * `auth_request` solo lee estado y cabeceras. Los fallos reutilizan el catálogo (401/403).
    */
   @Get('introspect')
@@ -143,8 +143,8 @@ export class AuthController {
     await reply
       .status(204)
       .header('cache-control', 'no-store')
-      .header('x-qapaq-user', proxyHeaderValue(resolved.session.email ?? resolved.actor.subjectId))
-      .header('x-qapaq-roles', resolved.actor.roles.map(proxyHeaderValue).join(','))
+      .header('x-b89-user', proxyHeaderValue(resolved.session.email ?? resolved.actor.subjectId))
+      .header('x-b89-roles', resolved.actor.roles.map(proxyHeaderValue).join(','))
       .header('x-correlation-id', correlationId)
       .send();
   }

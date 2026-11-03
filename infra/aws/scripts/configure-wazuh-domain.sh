@@ -41,20 +41,20 @@ if [[ -n "$legacy_hostname" ]]; then domains+=(-d "$legacy_hostname"); fi
 if [[ -n "$redirect_hostname" ]]; then domains+=(-d "$redirect_hostname"); fi
 certbot certonly --non-interactive --agree-tos --register-unsafely-without-email \
   --webroot --webroot-path /var/www/certbot --expand \
-  --cert-name qapaq-wazuh-dashboard --keep-until-expiring "${domains[@]}"
+  --cert-name b89-wazuh-dashboard --keep-until-expiring "${domains[@]}"
 
-# Un edge QAPAQ ya desplegado conserva su configuración y solo recarga el certificado
+# Un edge B89 ya desplegado conserva su configuración y solo recarga el certificado
 # expandido. No lo reemplazamos con el proxy simple de bootstrap.
-if grep -qs 'QAPAQ edge' /etc/nginx/conf.d/qapaq-wazuh-dashboard.conf; then
+if grep -qs 'B89 edge' /etc/nginx/conf.d/b89-wazuh-dashboard.conf; then
   nginx -t
   systemctl reload nginx
-  echo 'Edge QAPAQ activo: certificado ampliado y Nginx recargado sin cambiar la configuración.'
+  echo 'Edge B89 activo: certificado ampliado y Nginx recargado sin cambiar la configuración.'
   exit 0
 fi
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
-configuration=/etc/nginx/conf.d/qapaq-wazuh-dashboard.conf
+configuration=/etc/nginx/conf.d/b89-wazuh-dashboard.conf
 if [[ -f "$configuration" ]]; then cp "$configuration" "$work/previous"; fi
 restore_configuration() {
   if [[ -f "$work/previous" ]]; then
@@ -65,15 +65,15 @@ restore_configuration() {
 }
 
 cat >"$work/next" <<NGINX
-log_format qapaq_wazuh_domain '\$remote_addr \$request_method \$uri \$server_protocol \$status';
+log_format b89_wazuh_domain '\$remote_addr \$request_method \$uri \$server_protocol \$status';
 server {
   listen 443 ssl;
   server_name $dashboard_hostname ${legacy_hostname:-} ${redirect_hostname:-};
-  ssl_certificate /etc/letsencrypt/live/qapaq-wazuh-dashboard/fullchain.pem;
-  ssl_certificate_key /etc/letsencrypt/live/qapaq-wazuh-dashboard/privkey.pem;
+  ssl_certificate /etc/letsencrypt/live/b89-wazuh-dashboard/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/b89-wazuh-dashboard/privkey.pem;
   ssl_protocols TLSv1.2 TLSv1.3;
   client_max_body_size 50m;
-  access_log /var/log/nginx/qapaq-wazuh-dashboard-access.log qapaq_wazuh_domain;
+  access_log /var/log/nginx/b89-wazuh-dashboard-access.log b89_wazuh_domain;
   location / {
     proxy_pass https://127.0.0.1:5601;
     proxy_http_version 1.1;

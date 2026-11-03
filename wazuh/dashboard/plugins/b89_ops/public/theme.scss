@@ -1,0 +1,127 @@
+// B89 SecOps · capa visual global sobre el tema OUI v7 de OSD 2.19.6.
+//
+// Se carga en todas las páginas del dashboard (los estilos de los plugins se inyectan al
+// arrancar), así que es deliberadamente contenida: superficies, cabecera, menú, selección,
+// foco y transiciones. No toca tipografía (OUI), espaciados ni componentes de datos, para no
+// romper la maquetación de Discover, los módulos de Wazuh ni las visualizaciones.
+//
+// Tokens del doc 02 de b89-secops (sistema visual): fondo #080808, ámbar #c49a5a solo en
+// marca e indicador activo, grises jerárquicos, sin degradados. Movimiento: opacidad y
+// transformación de 150–250 ms; nada con `prefers-reduced-motion`.
+
+$b89Bg: #080808;
+$b89Surface: #0d0d0f;
+$b89Raised: #131315;
+$b89Line: #29292d;
+$b89LineStrong: #49494e;
+$b89Text: #f4f4f5;
+$b89Text2: #b0b0b5;
+$b89Text3: #8f8f95;
+$b89Amber: #c49a5a;
+$b89Ease: cubic-bezier(0.16, 1, 0.3, 1);
+
+// El optimizer compila este SCSS una vez por tema (v7light, v7dark, …). La capa oscura solo
+// se emite en los temas oscuros; en claro solo quedan selección, foco y movimiento.
+$b89IsDark: lightness($euiColorEmptyShade) < 50%;
+
+::selection {
+  background-color: rgba($b89Amber, 0.32);
+  color: inherit;
+}
+
+@if $b89IsDark {
+  :root {
+    color-scheme: dark;
+  }
+
+  body,
+  .app-wrapper,
+  .euiPage,
+  .euiPageBody {
+    background-color: $b89Bg;
+  }
+
+  // Cabecera: negro B89, una línea de 1 px en lugar de sombra.
+  .euiHeader,
+  .euiHeader--dark,
+  .euiHeader--default {
+    background-color: $b89Bg;
+    border-bottom: 1px solid $b89Line;
+    box-shadow: none;
+  }
+
+  .euiHeaderLogo__text,
+  .euiHeaderLink,
+  .euiHeaderSectionItemButton {
+    color: $b89Text2;
+  }
+
+  // Menú lateral: superficie apenas elevada; el elemento activo lleva el indicador ámbar.
+  .euiCollapsibleNav,
+  .euiFlyout.euiCollapsibleNav {
+    background-color: $b89Surface;
+    border-right: 1px solid $b89Line;
+  }
+
+  .euiCollapsibleNavGroup {
+    border-color: $b89Line;
+  }
+
+  .euiCollapsibleNav .euiListGroupItem-isActive {
+    box-shadow: inset 2px 0 0 $b89Amber;
+    background-color: $b89Raised;
+  }
+
+  // Flyouts, modales y popovers: superficies de doc 02 con borde neutro.
+  .euiFlyout,
+  .euiModal,
+  .euiPopover__panel,
+  .euiContextMenuPanel {
+    background-color: $b89Surface;
+    border-color: $b89Line;
+  }
+
+  .euiHorizontalRule {
+    background-color: $b89Line;
+  }
+
+  // Barra de carga global (chrome): ámbar sobre fondo neutro.
+  .osdLoadingIndicator__bar,
+  .euiProgress--indeterminate.euiProgress--accent::before {
+    background-color: $b89Amber;
+  }
+
+  // Barras de desplazamiento discretas (WebKit/Blink y Firefox).
+  * {
+    scrollbar-color: $b89LineStrong transparent;
+  }
+}
+
+// Foco visible: blanco de 2 px con separación (doc 07, accesibilidad).
+:focus-visible {
+  outline-color: $b89Text;
+}
+
+// Entrada suave de las vistas B89 (opacidad + 4 px). Solo en nuestras apps: animar el
+// contenedor de otras apps crearía un bloque contenedor para sus elementos `position: fixed`.
+.b89App {
+  animation: b89AppEnter 200ms $b89Ease both;
+}
+
+@keyframes b89AppEnter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .b89App {
+    animation: none;
+  }
+}

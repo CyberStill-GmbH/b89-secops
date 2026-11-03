@@ -4,22 +4,22 @@ run "private_wazuh_ingestion_gateway_contract" {
   command = plan
 
   variables {
-    resource_group_name             = "rg-qapaq-test"
+    resource_group_name             = "rg-b89-test"
     location                        = "eastus2"
-    name_base                       = "qapaqtest"
+    name_base                       = "b89test"
     tags                            = { environment = "test" }
-    virtual_network_id              = "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-qapaq-test/providers/Microsoft.Network/virtualNetworks/vnet-qapaqtest"
-    subnet_id                       = "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-qapaq-test/providers/Microsoft.Network/virtualNetworks/vnet-qapaqtest/subnets/snet-krakend-private"
+    virtual_network_id              = "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-b89-test/providers/Microsoft.Network/virtualNetworks/vnet-b89test"
+    subnet_id                       = "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-b89-test/providers/Microsoft.Network/virtualNetworks/vnet-b89test/subnets/snet-krakend-private"
     subnet_cidr                     = "10.80.0.64/27"
     siem_indexer_proxy_ip           = "10.80.4.4"
-    siem_bootstrap_extension_id     = "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-qapaq-test/providers/Microsoft.Compute/virtualMachines/vm-qapaqtest-siem/extensions/qapaq-siem-bootstrap"
+    siem_bootstrap_extension_id     = "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-b89-test/providers/Microsoft.Compute/virtualMachines/vm-b89test-siem/extensions/b89-siem-bootstrap"
     firewall_private_ip             = "10.80.64.4"
-    log_analytics_workspace_id      = "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-qapaq-test/providers/Microsoft.OperationalInsights/workspaces/law-qapaqtest"
-    container_registry_id           = "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-qapaq-test/providers/Microsoft.ContainerRegistry/registries/acrqapaqtest"
-    container_registry_login_server = "acrqapaqtest.azurecr.io"
-    key_vault_id                    = "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-qapaq-test/providers/Microsoft.KeyVault/vaults/kv-qapaqtest"
-    key_vault_uri                   = "https://kv-qapaqtest.vault.azure.net/"
-    image                           = "acrqapaqtest.azurecr.io/qapaq-secops-krakend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    log_analytics_workspace_id      = "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-b89-test/providers/Microsoft.OperationalInsights/workspaces/law-b89test"
+    container_registry_id           = "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-b89-test/providers/Microsoft.ContainerRegistry/registries/acrb89test"
+    container_registry_login_server = "acrb89test.azurecr.io"
+    key_vault_id                    = "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-b89-test/providers/Microsoft.KeyVault/vaults/kv-b89test"
+    key_vault_uri                   = "https://kv-b89test.vault.azure.net/"
+    image                           = "acrb89test.azurecr.io/b89-secops-krakend@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     tenant_id                       = "00000000-0000-0000-0000-000000000001"
     client_scope                    = "api://00000000-0000-0000-0000-000000000002/.default"
     core_client_id                  = "00000000-0000-0000-0000-000000000003"
@@ -58,7 +58,7 @@ run "private_wazuh_ingestion_gateway_contract" {
   }
 
   assert {
-    condition     = anytrue([for env in azurerm_container_app.this.template[0].container[0].env : env.name == "QAPAQ_CORE_CLIENT_ID" && env.value == var.core_client_id])
+    condition     = anytrue([for env in azurerm_container_app.this.template[0].container[0].env : env.name == "B89_CORE_CLIENT_ID" && env.value == var.core_client_id])
     error_message = "The caller allowlist must be pinned to the configured Core client ID."
   }
 

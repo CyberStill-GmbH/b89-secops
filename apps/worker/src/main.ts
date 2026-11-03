@@ -1,5 +1,5 @@
 import { pathToFileURL } from 'node:url';
-import { ConfigurationError } from '@qapaq/configuration';
+import { ConfigurationError } from '@b89/configuration';
 import { buildWorker } from './bootstrap.js';
 
 export function main(): void {
@@ -10,7 +10,7 @@ export function main(): void {
     process.stdout.write(
       `${JSON.stringify({
         event: `application.${state}`,
-        service: 'qapaq-secops-worker',
+        service: 'b89-secops-worker',
         timestamp: new Date().toISOString(),
         ...(errorCode ? { errorCode } : {}),
       })}\n`,

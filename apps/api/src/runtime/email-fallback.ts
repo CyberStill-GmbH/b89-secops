@@ -9,11 +9,11 @@
  * El correo sale por Microsoft Graph (`POST /users/<buzón>/sendMail`) con un token de aplicación
  * de la misma app del API; requiere el permiso de aplicación `Mail.Send`, que conviene acotar al
  * buzón del SOC con una Application Access Policy de Exchange. El contenido es el mismo mínimo
- * que la tarjeta de Teams: severidad, título y enlace a QAPAQ. Ni identidades afectadas, ni IPs,
+ * que la tarjeta de Teams: severidad, título y enlace a B89. Ni identidades afectadas, ni IPs,
  * ni crudo.
  */
 
-import type { FallbackChannel, FallbackNotification, NotificationChannel } from '@qapaq/soar';
+import type { FallbackChannel, FallbackNotification, NotificationChannel } from '@b89/soar';
 
 const GRAPH = 'https://graph.microsoft.com';
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -47,7 +47,7 @@ export class GraphMailFallbackChannel implements FallbackChannel {
           body: JSON.stringify({
             message: {
               subject:
-                `QAPAQ SecOps · ${notification.severity.toUpperCase()} · ${notification.title}`.slice(
+                `B89 SecOps · ${notification.severity.toUpperCase()} · ${notification.title}`.slice(
                   0,
                   255,
                 ),
@@ -59,7 +59,7 @@ export class GraphMailFallbackChannel implements FallbackChannel {
                   `Severidad: ${notification.severity}`,
                   `Título: ${notification.title}`,
                   `Ocurrido: ${notification.at.toISOString()}`,
-                  notification.link ? `Abrir en QAPAQ: ${notification.link}` : '',
+                  notification.link ? `Abrir en B89: ${notification.link}` : '',
                 ].join('\n'),
               },
               toRecipients: recipients.map((recipient) => ({

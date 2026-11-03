@@ -6,7 +6,7 @@ ALB, NAT, EC2 Wazuh y servicios ECS antes de fallar. Antes de cualquier apply, r
 recursos AWS y el state conforme a
 `terraform-apply-recovery.md` (histórico en git `050f9fa`). La migración
 posterior de producto está en
-[`qapaq-wazuh-terraform-rollout.md`](../../docs/reference/qapaq-wazuh-terraform-rollout.md).
+[`b89-wazuh-terraform-rollout.md`](../../docs/reference/b89-wazuh-terraform-rollout.md).
 
 ## Arquitectura de esta fase
 
@@ -55,10 +55,10 @@ rutas no se resuelven aquí con NAT ni reglas amplias.
 ## Bootstrap, OIDC y state
 
 El backend existente usa el bucket bootstrap
-`qapaq-secops-terraform-state-955200662475`, key `demo/terraform.tfstate`,
+`b89-secops-terraform-state-955200662475`, key `demo/terraform.tfstate`,
 `us-east-1`, cifrado y lockfile S3. El stack no declara ni destruye ese bucket.
 GitHub Actions usa OIDC con el role existente
-`arn:aws:iam::955200662475:role/qapaq-secops-github-terraform-demo`; no se usan
+`arn:aws:iam::955200662475:role/b89-secops-github-terraform-demo`; no se usan
 access keys permanentes. Los cambios en `infra/aws/**` en `main` ejecutan
 automáticamente fmt, init, validate y plan con `environments/demo.tfvars`. Apply
 y auditoría solo se ejecutan mediante despacho manual con la opción explícita.
@@ -93,7 +93,7 @@ plan guardado desde `main` y terminó correctamente el 5 de octubre de 2026. El
 apply solo contiene esos 44 recursos de Fase 1; no se ejecutó ningún servicio de
 aplicación.
 
-Ejecuciones: [Terraform Demo #2 — plan](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/37339466733) · [Terraform Demo #3 — apply](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/37340825790).
+Ejecuciones: [Terraform Demo #2 — plan](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/37339466733) · [Terraform Demo #3 — apply](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/37340825790).
 
 ## Costo, límites y siguientes gates
 
@@ -107,8 +107,8 @@ recursos futuros.
 Esta fase agrega recursos base para publicar imágenes y almacenar datos de demo,
 sin desplegar workloads de aplicación:
 
-- **ECR privado:** repositorios `qapaq-secops-api`,
-  `qapaq-secops-worker` y `qapaq-secops-krakend`, cifrado AES-256 de
+- **ECR privado:** repositorios `b89-secops-api`,
+  `b89-secops-worker` y `b89-secops-krakend`, cifrado AES-256 de
   ECR, scan on push y tags inmutables. La política conserva los 20 tags `git-*`
   más recientes y vence imágenes sin tag luego de un día. Publicar tags de commit
   como `git-<commit>` permite identificar una versión; el manifiesto registra el
@@ -156,7 +156,7 @@ bloques de egress declarados en el recurso SG mientras conserva reglas egress
 explícitas gestionadas por `aws_vpc_security_group_egress_rule`. Revisar esta
 coexistencia antes de aplicar para asegurar que no cambien las reglas efectivas
 de red. No hay reemplazos ni destrucciones de los 44 recursos de Fase 1.
-Ejecución: [Terraform Demo #6 — plan](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/37354138323).
+Ejecución: [Terraform Demo #6 — plan](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/37354138323).
 Si se aplica
 el metadata de seis secretos, Secrets Manager factura por secreto almacenado; la
 tarifa pública actual de referencia es USD 0.40 por secreto/mes, o USD 2.40/mes
@@ -182,7 +182,7 @@ arriba. Una auditoría posterior encontró que esos recursos aún no estaban en 
 ni en el state remoto. El apply correcto se ejecutó desde `main` en **Terraform
 Demo #9**: 34 recursos añadidos, 4 cambios in-place y 0 destruidos, para un total
 de 78 recursos. El plan no incluyó ECS, ALB, RDS, Redis/Valkey ni Wazuh. La
-ejecución terminó correctamente: [Terraform Demo #9 — apply Fase 2B](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/37404363686).
+ejecución terminó correctamente: [Terraform Demo #9 — apply Fase 2B](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/37404363686).
 
 La VPC pública no implica que todas las subnets/instancias tengan IP pública; las
 subnets no asignan IP pública automáticamente. El SG público con HTTP pertenece a
@@ -210,7 +210,7 @@ cuenta se fija en `955200662475` y se valida contra STS; la región es `us-east-
 igual a `environments/demo.tfvars`. No hay access keys estáticas.
 
 El rol verifica el `sub` inmutable de este repositorio:
-`repo:CyberStill-GmbH@220633794/qapaq-secops@1374673243:ref:refs/heads/main`.
+`repo:CyberStill-GmbH@220633794/b89-secops@1374673243:ref:refs/heads/main`.
 GitHub introdujo este formato como valor predeterminado para repositorios nuevos
 creados desde el 15 de julio de 2026; confiar en el formato anterior basado solo
 en nombres hace que STS rechace `AssumeRoleWithWebIdentity`. Los IDs son variables
@@ -221,37 +221,37 @@ a los IDs reales del repositorio y su propietario. La rama sigue restringida a
 El commit `5ea083b` cambió el pipeline a despacho manual desde `main`, tags
 `git-<full-sha>`, validación explícita de cuenta/repositorios y manifiesto de 30
 días; también añadió `DescribeRepositories` al rol, limitado a los tres ARN ECR.
-El CI requerido pasó: [CI Security #218](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/37406590291).
-El plan remoto [Terraform Demo #10](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/37407190420)
+El CI requerido pasó: [CI Security #218](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/37406590291).
+El plan remoto [Terraform Demo #10](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/37407190420)
 fue de 12 altas, 1 cambio y 3 bajas: nueve reglas egress declaradas para la red
 que faltaban en AWS, tres reemplazos de lifecycle ECR (`sha-`→`git-`) y un cambio
 in-place de policy IAM. Tras revisar que no incluía workloads, el [apply Terraform
-Demo #11](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/37407657228)
+Demo #11](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/37407657228)
 completó exactamente ese plan: 12 añadidos, 1 cambiado y 3 reemplazados; el state
 queda con 87 recursos. Ningún recurso de aplicación se creó. Una auditoría
 posterior detectó cuatro diffs in-place porque `egress = []` en el recurso SG
 competía con las reglas standalone; se eliminó ese argumento inline. La nueva
-auditoría [Terraform Demo #13](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/37409018924)
+auditoría [Terraform Demo #13](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/37409018924)
 reportó “No changes. Your infrastructure matches the configuration.” y verificó
 las políticas IAM activas del publisher.
 
-La publicación manual [Publish verified images #8](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/37407871065)
+La publicación manual [Publish verified images #8](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/37407871065)
 pasó todos los gates y publicó las tres imágenes de `5ea083bd6dccf12580d00b43ee66d1086c0e06ea`.
 Trivy HIGH/CRITICAL dio código de salida 0 para API, Worker y KrakenD. El artifact
 `image-manifest-5ea083bd6dccf12580d00b43ee66d1086c0e06ea` expira el 5 de noviembre de 2026.
 El worker sigue siendo una imagen que inicia correctamente pero permanece en
 espera; todavía no consume BullMQ.
 
-| Imagen  | URI ECR                                                             | Tag                                            | Digest                                                                    |
-| ------- | ------------------------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------- |
-| API     | `955200662475.dkr.ecr.us-east-1.amazonaws.com/qapaq-secops-api`     | `git-5ea083bd6dccf12580d00b43ee66d1086c0e06ea` | `sha256:5183b8dbc8a01f0870429837db0b4bfc7dc2867cc5e8a4b6b36f32d1e7c81068` |
-| Worker  | `955200662475.dkr.ecr.us-east-1.amazonaws.com/qapaq-secops-worker`  | `git-5ea083bd6dccf12580d00b43ee66d1086c0e06ea` | `sha256:5b9bfd85b87f14ce0e4bad4d5ba784c9a8b5bb530e1963411fa846784d941624` |
-| KrakenD | `955200662475.dkr.ecr.us-east-1.amazonaws.com/qapaq-secops-krakend` | `git-5ea083bd6dccf12580d00b43ee66d1086c0e06ea` | `sha256:7223fd58694264dec9c2630314ab3234b45af70a7cb8c3c4f5ab3573af7a5460` |
+| Imagen  | URI ECR                                                           | Tag                                            | Digest                                                                    |
+| ------- | ----------------------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------- |
+| API     | `955200662475.dkr.ecr.us-east-1.amazonaws.com/b89-secops-api`     | `git-5ea083bd6dccf12580d00b43ee66d1086c0e06ea` | `sha256:5183b8dbc8a01f0870429837db0b4bfc7dc2867cc5e8a4b6b36f32d1e7c81068` |
+| Worker  | `955200662475.dkr.ecr.us-east-1.amazonaws.com/b89-secops-worker`  | `git-5ea083bd6dccf12580d00b43ee66d1086c0e06ea` | `sha256:5b9bfd85b87f14ce0e4bad4d5ba784c9a8b5bb530e1963411fa846784d941624` |
+| KrakenD | `955200662475.dkr.ecr.us-east-1.amazonaws.com/b89-secops-krakend` | `git-5ea083bd6dccf12580d00b43ee66d1086c0e06ea` | `sha256:7223fd58694264dec9c2630314ab3234b45af70a7cb8c3c4f5ab3573af7a5460` |
 
 El job recuperó cada digest por `ecr:BatchGetImage`, confirmó que el tag
 correspondiera al commit y validó el patrón SHA-256 antes de crear el manifest.
 El role publisher confía solo en el subject OIDC inmutable de
-`CyberStill-GmbH/qapaq-secops` para `refs/heads/main`, con `aud=sts.amazonaws.com`.
+`CyberStill-GmbH/b89-secops` para `refs/heads/main`, con `aud=sts.amazonaws.com`.
 Tiene `ecr:GetAuthorizationToken` con `Resource: "*"`; las demás acciones
 (`BatchGetImage`, `BatchCheckLayerAvailability`, `CompleteLayerUpload`,
 `DescribeRepositories`, `InitiateLayerUpload`, `PutImage`, `UploadLayerPart`) se
@@ -268,7 +268,7 @@ ECR y adjunta `image-manifest-<commit>.json` con repositorio, tag, digest, commi
 región y timestamp UTC. El artifact se conserva por 30 días.
 
 Las URLs siguen los nombres declarados por Terraform:
-`<cuenta>.dkr.ecr.us-east-1.amazonaws.com/qapaq-secops-{api,worker,krakend}`.
+`<cuenta>.dkr.ecr.us-east-1.amazonaws.com/b89-secops-{api,worker,krakend}`.
 No se publica `latest`. ECR escanea cada push y conserva los 20 tags `git-*` más
 recientes. El futuro ECS debe referenciar las imágenes por digest. Esta fase no
 despliega ECS, ALB, RDS, Redis/Valkey ni Wazuh. El Worker sigue arrancando como
@@ -330,9 +330,9 @@ endpoints y almacenamiento llevan el delta Fase 3 a ~USD 85/mes. Precio real
 depende de I/O, backups/snapshots, transferencia, créditos CPU, impuestos y free
 tier; destruir al terminar la demo.
 
-El plan remoto [Terraform Demo #14](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/37412251901) terminó correctamente sobre `main` (commit `d95170532501290f5e445b91036a3e3133f475b3`): `terraform fmt -check -recursive`, `terraform validate` y `terraform plan` quedaron verdes. Delta de ese plan frente a los 87 recursos registrados entonces: **19 por añadir, 0 cambios, 0 destrucciones y 0 reemplazos**. Los 19 eran 3 recursos RDS, 4 Valkey y 12 de egress privado. [CI / required](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/37412251883/job/112103959095) y [evidence](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/37412551653/job/112103995310) también pasaron. Apply y Audit quedaron omitidos en ese run, aunque el usuario confirmó que Fase 3 se aplicó después. La auditoría posterior del state, en Terraform Demo #16, reportó una base distinta y propuso 44 adiciones; revisar la sección Fase 4 y reconciliar la divergencia antes de cualquier apply.
+El plan remoto [Terraform Demo #14](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/37412251901) terminó correctamente sobre `main` (commit `d95170532501290f5e445b91036a3e3133f475b3`): `terraform fmt -check -recursive`, `terraform validate` y `terraform plan` quedaron verdes. Delta de ese plan frente a los 87 recursos registrados entonces: **19 por añadir, 0 cambios, 0 destrucciones y 0 reemplazos**. Los 19 eran 3 recursos RDS, 4 Valkey y 12 de egress privado. [CI / required](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/37412251883/job/112103959095) y [evidence](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/37412551653/job/112103995310) también pasaron. Apply y Audit quedaron omitidos en ese run, aunque el usuario confirmó que Fase 3 se aplicó después. La auditoría posterior del state, en Terraform Demo #16, reportó una base distinta y propuso 44 adiciones; revisar la sección Fase 4 y reconciliar la divergencia antes de cualquier apply.
 
-El plan de Fase 4 [Terraform Demo #18](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/37418417341) quedó verde en fmt/validate/plan y propuso 44 adiciones: las 19 de Fase 3 más 25 de runtime. [CI / required #228](https://github.com/CyberStill-GmbH/qapaq-secops/actions/runs/37418417347) también terminó verde, incluyendo Trivy, contenedores, contratos KrakenD, calidad y CodeQL. No se ejecutó apply. Aunque el usuario confirmó que la Fase 3 se aplicó, el plan remoto propone de nuevo sus 19 recursos; reconcilia el estado real de AWS y Terraform antes de desplegar para evitar duplicados.
+El plan de Fase 4 [Terraform Demo #18](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/37418417341) quedó verde en fmt/validate/plan y propuso 44 adiciones: las 19 de Fase 3 más 25 de runtime. [CI / required #228](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/37418417347) también terminó verde, incluyendo Trivy, contenedores, contratos KrakenD, calidad y CodeQL. No se ejecutó apply. Aunque el usuario confirmó que la Fase 3 se aplicó, el plan remoto propone de nuevo sus 19 recursos; reconcilia el estado real de AWS y Terraform antes de desplegar para evitar duplicados.
 
 Fase 3 no habilita por sí sola el runtime: la API todavía no tiene persistencia
 PostgreSQL/S3 ni readiness de dependencias; Worker no consume BullMQ; la

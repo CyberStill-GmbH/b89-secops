@@ -13,8 +13,8 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import type { EventQuery, ProviderRecord, SecurityEventProvider } from '@qapaq/connectors';
-import { InMemoryIngestionState, type InMemorySoc } from '@qapaq/soc';
+import type { EventQuery, ProviderRecord, SecurityEventProvider } from '@b89/connectors';
+import { InMemoryIngestionState, type InMemorySoc } from '@b89/soc';
 
 import { buildApi } from '../src/bootstrap.js';
 import { createIngestionPass } from '../src/runtime/ingestion-poller.js';
@@ -38,7 +38,7 @@ function office365Document(id: string, timestamp: string): ProviderRecord {
         id: '100510',
         level: 12,
         description: 'Office 365: regla de bandeja que reenvía correo',
-        groups: ['office365', 'qapaq_persistence'],
+        groups: ['office365', 'b89_persistence'],
       },
       agent: { id: '000', name: 'wazuh-manager' },
       data: {
@@ -49,7 +49,7 @@ function office365Document(id: string, timestamp: string): ProviderRecord {
           Workload: 'Exchange',
           RecordType: 1,
           ResultStatus: 'True',
-          UserId: 'usuario.sintetico@qapaq-lab.example',
+          UserId: 'usuario.sintetico@b89-lab.example',
           ClientIP: '203.0.113.24:51544',
           Parameters: [{ Name: 'ForwardTo', Value: 'externo@dominio-ajeno.example' }],
         },
@@ -203,7 +203,7 @@ describe('ingesta Wazuh de punta a punta con el runtime', () => {
   let stop: () => Promise<void>;
 
   beforeAll(async () => {
-    const built = await buildApi({ QAPAQ_PROFILE: 'test' }, () => {});
+    const built = await buildApi({ B89_PROFILE: 'test' }, () => {});
     runtime = built.runtime;
     stop = built.stop;
   });

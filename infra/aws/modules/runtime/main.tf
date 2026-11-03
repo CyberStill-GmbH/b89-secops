@@ -11,60 +11,60 @@ locals {
   log_group_arns = [for group in aws_cloudwatch_log_group.service : "${group.arn}:*"]
   api_environment = merge({
     NODE_ENV                      = "production"
-    QAPAQ_PROFILE                 = "production"
-    QAPAQ_API_HOST                = "0.0.0.0"
-    QAPAQ_API_PORT                = "3000"
-    QAPAQ_ENTRA_CLIENT_SECRET_REF = "secret://aws-secretsmanager/qapaq-secops/demo/entra/client-secret"
+    B89_PROFILE                 = "production"
+    B89_API_HOST                = "0.0.0.0"
+    B89_API_PORT                = "3000"
+    B89_ENTRA_CLIENT_SECRET_REF = "secret://aws-secretsmanager/b89-secops/demo/entra/client-secret"
     # El perfil de producción exige declarar la persistencia del estado SOC. Con
     # `soc_database` activado pasa a PostgreSQL (docs/05-datos-y-retencion.md).
-    QAPAQ_SOC_PERSISTENCE = var.soc_database == null ? "memory" : "postgres"
+    B89_SOC_PERSISTENCE = var.soc_database == null ? "memory" : "postgres"
   }, local.soc_database_environment, local.ingestion_api_environment, local.valkey_environment, var.api_environment)
   # Sprint 5 · fase 0: el API lee el Indexer por KrakenD con service discovery privado. Sin
   # ingesta declara `disabled` explícitamente (el perfil de producción no adivina).
   # Valkey (docs/11-cache-y-colas.md): caché con TTL y colas BullMQ. Sin `valkey`, la API usa su
   # comportamiento en memoria y en proceso (una réplica, loops propios).
   valkey_environment = var.valkey == null ? {} : {
-    QAPAQ_REDIS_HOST         = var.valkey.host
-    QAPAQ_REDIS_PORT         = tostring(var.valkey.port)
-    QAPAQ_REDIS_TLS          = "true"
-    QAPAQ_REDIS_DATABASE     = "0"
-    QAPAQ_REDIS_PASSWORD_REF = "secret://aws-secretsmanager/${var.project}/${var.environment}/valkey/auth-token"
+    B89_REDIS_HOST         = var.valkey.host
+    B89_REDIS_PORT         = tostring(var.valkey.port)
+    B89_REDIS_TLS          = "true"
+    B89_REDIS_DATABASE     = "0"
+    B89_REDIS_PASSWORD_REF = "secret://aws-secretsmanager/${var.project}/${var.environment}/valkey/auth-token"
   }
   ingestion_api_environment = var.wazuh_ingestion == null ? {
-    QAPAQ_INGESTION_SOURCE = "disabled"
+    B89_INGESTION_SOURCE = "disabled"
     } : {
-    QAPAQ_INGESTION_SOURCE        = "wazuh"
-    QAPAQ_WAZUH_GATEWAY_BASE_URL  = "http://krakend.${var.environment}.qapaq.internal:8080"
-    QAPAQ_INGESTION_GATEWAY_SCOPE = var.wazuh_ingestion.gateway_scope
+    B89_INGESTION_SOURCE        = "wazuh"
+    B89_WAZUH_GATEWAY_BASE_URL  = "http://krakend.${var.environment}.b89.internal:8080"
+    B89_INGESTION_GATEWAY_SCOPE = var.wazuh_ingestion.gateway_scope
   }
   # KrakenD publica /wazuh/* solo con WAZUH_INDEXER_URL. La CA del proxy llega como secreto y el
   # entrypoint de la imagen la escribe en WAZUH_INDEXER_CA_FILE antes de arrancar.
   ingestion_krakend_environment = var.wazuh_ingestion == null ? {} : {
     WAZUH_INDEXER_URL     = var.wazuh_ingestion.indexer_url
     WAZUH_INDEX_PATTERN   = var.wazuh_ingestion.index_pattern
-    WAZUH_INDEXER_CA_FILE = "/tmp/qapaq/indexer-ca.pem"
+    WAZUH_INDEXER_CA_FILE = "/tmp/b89/indexer-ca.pem"
     # No lo lee KrakenD: ata la task definition a la inicialización de Wazuh (orden y redespliegue).
-    QAPAQ_WAZUH_ACCESS_REVISION = var.wazuh_ingestion.access_revision
+    B89_WAZUH_ACCESS_REVISION = var.wazuh_ingestion.access_revision
   }
   krakend_secrets = var.wazuh_ingestion == null ? [] : [
     { name = "WAZUH_BASIC_AUTH_B64", valueFrom = "${var.wazuh_ingestion.reader_secret_arn}:basic_auth_b64::" },
     { name = "WAZUH_INDEXER_CA_PEM", valueFrom = var.wazuh_ingestion.proxy_ca_secret_arn },
   ]
-  # C-1: conexión no secreta al estado SOC. La contraseña es de `qapaq_soc_runtime` (DML sin
+  # C-1: conexión no secreta al estado SOC. La contraseña es de `b89_soc_runtime` (DML sin
   # DDL), nunca la master de RDS (D-6). TLS con verify-full contra el bundle de la imagen.
   soc_database_environment = var.soc_database == null ? {} : {
-    QAPAQ_POSTGRES_HOST     = var.soc_database.host
-    QAPAQ_POSTGRES_PORT     = tostring(var.soc_database.port)
-    QAPAQ_POSTGRES_DATABASE = var.soc_database.database
-    QAPAQ_POSTGRES_USERNAME = "qapaq_soc_runtime"
-    QAPAQ_POSTGRES_TLS      = "true"
+    B89_POSTGRES_HOST     = var.soc_database.host
+    B89_POSTGRES_PORT     = tostring(var.soc_database.port)
+    B89_POSTGRES_DATABASE = var.soc_database.database
+    B89_POSTGRES_USERNAME = "b89_soc_runtime"
+    B89_POSTGRES_TLS      = "true"
   }
   api_secrets = concat(
-    [{ name = "QAPAQ_ENTRA_CLIENT_SECRET", valueFrom = var.entra_client_secret_arn }],
+    [{ name = "B89_ENTRA_CLIENT_SECRET", valueFrom = var.entra_client_secret_arn }],
     var.soc_database == null ? [] : [
-      { name = "QAPAQ_POSTGRES_PASSWORD", valueFrom = "${var.soc_database.runtime_secret_arn}:password::" },
-      { name = "QAPAQ_ENTITY_REF_KEY", valueFrom = var.soc_database.entity_ref_key_secret_arn },
-      { name = "QAPAQ_VAPID_PRIVATE_KEY", valueFrom = var.soc_database.vapid_key_secret_arn },
+      { name = "B89_POSTGRES_PASSWORD", valueFrom = "${var.soc_database.runtime_secret_arn}:password::" },
+      { name = "B89_ENTITY_REF_KEY", valueFrom = var.soc_database.entity_ref_key_secret_arn },
+      { name = "B89_VAPID_PRIVATE_KEY", valueFrom = var.soc_database.vapid_key_secret_arn },
     ],
     var.api_extra_secrets,
   )
@@ -83,7 +83,7 @@ locals {
     [for secret in var.api_extra_secrets : secret.valueFrom],
   )
   krakend_environment = merge({
-    QAPAQ_API_UPSTREAM        = "http://api.${var.environment}.qapaq.internal:3000"
+    B89_API_UPSTREAM        = "http://api.${var.environment}.b89.internal:3000"
     GATEWAY_ENDPOINT_TIMEOUT  = "4s"
     GATEWAY_METRICS_PORT      = "9091"
     GATEWAY_RATE_PER_SECOND   = "20"
@@ -143,10 +143,10 @@ locals {
       cpu               = 256
       memoryReservation = 448
       # C-02: este entrypoint solo valida el perfil y permanece inactivo; no consume BullMQ.
-      # Evitar inyectar variables QAPAQ_* que su allowlist rechaza y secretos que no usa.
+      # Evitar inyectar variables B89_* que su allowlist rechaza y secretos que no usa.
       environment = [
         { name = "NODE_ENV", value = "production" },
-        { name = "QAPAQ_PROFILE", value = "production" },
+        { name = "B89_PROFILE", value = "production" },
       ]
       secrets = []
       logConfiguration = {
@@ -215,7 +215,7 @@ resource "aws_iam_role_policy" "execution" {
         Resource = "*"
       },
       {
-        Sid      = "PullOnlyQapaqImages"
+        Sid      = "PullOnlyB89Images"
         Effect   = "Allow"
         Action   = ["ecr:BatchCheckLayerAvailability", "ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer"]
         Resource = local.repository_arns
@@ -260,8 +260,8 @@ resource "aws_cloudwatch_log_group" "service" {
 }
 
 resource "aws_service_discovery_private_dns_namespace" "this" {
-  name        = "${var.environment}.qapaq.internal"
-  description = "Private ECS service discovery for QAPAQ SECOPS demo."
+  name        = "${var.environment}.b89.internal"
+  description = "Private ECS service discovery for B89 SECOPS demo."
   vpc         = var.vpc_id
   tags        = { Project = var.project, Environment = var.environment }
 }

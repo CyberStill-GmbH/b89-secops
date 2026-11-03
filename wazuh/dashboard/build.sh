@@ -1,44 +1,44 @@
 #!/usr/bin/env bash
 #
-# Construye el .deb de QAPAQ SecOps Dashboard (Wazuh 4.14.8 / OpenSearch Dashboards 2.19.6)
+# Construye el .deb de B89 SecOps Dashboard (Wazuh 4.14.8 / OpenSearch Dashboards 2.19.6)
 # como overlay: clona upstream en los SHA fijados, aplica parches, copia activos y plugins
-# QAPAQ y empaqueta con el flujo oficial de Wazuh.
+# B89 y empaqueta con el flujo oficial de Wazuh.
 #
 #   bash wazuh/dashboard/build.sh <OUT_DIR>
 #
-# Resultado: exactamente un `wazuh-dashboard_<WAZUH_VERSION>-<QAPAQ_REVISION>_amd64.deb` y
+# Resultado: exactamente un `wazuh-dashboard_<WAZUH_VERSION>-<B89_REVISION>_amd64.deb` y
 # `SHA256SUMS` en OUT_DIR. El paquete se llama `wazuh-dashboard`, instala en
 # /usr/share/wazuh-dashboard y /etc/wazuh-dashboard con el mismo usuario y servicio, y su
-# versión (4.14.8-1qapaq1) es mayor que la oficial (4.14.8-1): `dpkg -i` actualiza. Los ficheros
+# versión (4.14.8-1b891) es mayor que la oficial (4.14.8-1): `dpkg -i` actualiza. Los ficheros
 # de /etc son conffiles: dpkg conserva los del host (usar `--force-confold` en modo no interactivo).
 #
-# Modos (QAPAQ_BUILD_MODE):
+# Modos (B89_BUILD_MODE):
 #   source  (por defecto) compila OSD desde el fork de Wazuh con los parches del core y
 #           empaqueta con dev-tools/build-packages (Docker). Aplica TODOS los parches.
 #   repack  descarga el .deb oficial, verifica su SHA256 (índice APT firmado), sustituye
-#           activos de marca y plugins (app de Wazuh parcheada, qapaq_ops, qapaq_i18n) y lo
+#           activos de marca y plugins (app de Wazuh parcheada, b89_ops, b89_i18n) y lo
 #           reempaqueta con dpkg-deb. No compila el core: los parches de wazuh-dashboard
 #           (pantalla de carga, menú de ayuda, títulos por defecto) NO se aplican.
 #
 # Variables opcionales:
-#   QAPAQ_WORK_DIR   directorio de trabajo (por defecto, uno temporal que se borra al terminar)
-#   QAPAQ_KEEP_WORK  =1 para conservar el directorio de trabajo
-#   QAPAQ_SKIP_NODE_INSTALL =1 si node/yarn ya están en el PATH con las versiones fijadas
+#   B89_WORK_DIR   directorio de trabajo (por defecto, uno temporal que se borra al terminar)
+#   B89_KEEP_WORK  =1 para conservar el directorio de trabajo
+#   B89_SKIP_NODE_INSTALL =1 si node/yarn ya están en el PATH con las versiones fijadas
 #
 # Requisitos (ubuntu-latest): git, curl, jq, zip, unzip, xz-utils, sha256sum; Docker (source);
 # dpkg-deb (repack). Node y Yarn se instalan en el directorio de trabajo si no coinciden.
 
 set -euo pipefail
 
-log() { printf '\n[qapaq-build] %s\n' "$*" >&2; }
-die() { printf '\n[qapaq-build] ERROR: %s\n' "$*" >&2; exit 1; }
+log() { printf '\n[b89-build] %s\n' "$*" >&2; }
+die() { printf '\n[b89-build] ERROR: %s\n' "$*" >&2; exit 1; }
 
 [ $# -eq 1 ] || die "uso: bash wazuh/dashboard/build.sh <OUT_DIR>"
 mkdir -p "$1"
 OUT_DIR="$(cd "$1" && pwd)"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MODE="${QAPAQ_BUILD_MODE:-source}"
-[ "$MODE" = source ] || [ "$MODE" = repack ] || die "QAPAQ_BUILD_MODE debe ser source o repack"
+MODE="${B89_BUILD_MODE:-source}"
+[ "$MODE" = source ] || [ "$MODE" = repack ] || die "B89_BUILD_MODE debe ser source o repack"
 
 # shellcheck source=upstream.lock
 source "$HERE/upstream.lock"
@@ -47,16 +47,16 @@ for tool in git curl jq zip unzip sha256sum tar; do
   command -v "$tool" >/dev/null || die "falta la herramienta $tool"
 done
 if [ "$MODE" = source ]; then
-  command -v docker >/dev/null || die "el modo source necesita Docker (o usa QAPAQ_BUILD_MODE=repack)"
+  command -v docker >/dev/null || die "el modo source necesita Docker (o usa B89_BUILD_MODE=repack)"
 else
   command -v dpkg-deb >/dev/null || die "el modo repack necesita dpkg-deb"
 fi
 
-WORK="${QAPAQ_WORK_DIR:-$(mktemp -d -t qapaq-dashboard-XXXXXX)}"
+WORK="${B89_WORK_DIR:-$(mktemp -d -t b89-dashboard-XXXXXX)}"
 mkdir -p "$WORK"
 WORK="$(cd "$WORK" && pwd)"
 cleanup() {
-  if [ "${QAPAQ_KEEP_WORK:-0}" != 1 ] && [ -z "${QAPAQ_WORK_DIR:-}" ]; then rm -rf "$WORK"; fi
+  if [ "${B89_KEEP_WORK:-0}" != 1 ] && [ -z "${B89_WORK_DIR:-}" ]; then rm -rf "$WORK"; fi
 }
 trap cleanup EXIT
 
@@ -64,7 +64,7 @@ OSD="$WORK/wazuh-dashboard"          # raíz OSD (fork de Wazuh)
 PLUGINS_SRC="$WORK/wazuh-dashboard-plugins"
 SECURITY_SRC="$WORK/wazuh-security-dashboards-plugin"
 PKG="$WORK/packages"
-DEB_NAME="wazuh-dashboard_${WAZUH_VERSION}-${QAPAQ_REVISION}_amd64.deb"
+DEB_NAME="wazuh-dashboard_${WAZUH_VERSION}-${B89_REVISION}_amd64.deb"
 
 # --- Utilidades ---------------------------------------------------------------------------
 
@@ -94,7 +94,7 @@ apply_patches() {
 # Copia los activos de assets/targets.tsv cuyo repo sea `repo` bajo `root`.
 copy_assets() {
   local repo="$1" root="$2" src kind dst
-  log "Activos QAPAQ → $repo"
+  log "Activos B89 → $repo"
   while IFS=$'\t' read -r src kind dst; do
     case "$src" in ''|'#'*) continue ;; esac
     [ "$kind" = "$repo" ] || continue
@@ -105,7 +105,7 @@ copy_assets() {
 }
 
 ensure_node() {
-  if [ "${QAPAQ_SKIP_NODE_INSTALL:-0}" = 1 ]; then return; fi
+  if [ "${B89_SKIP_NODE_INSTALL:-0}" = 1 ]; then return; fi
   if [ "$(node --version 2>/dev/null || true)" != "v$NODE_VERSION" ]; then
     log "Instalando Node $NODE_VERSION (de .nvmrc de wazuh-dashboard)"
     local base="https://nodejs.org/dist/v$NODE_VERSION" file="node-v$NODE_VERSION-linux-x64.tar.xz"
@@ -181,7 +181,7 @@ if [ "$MODE" = source ]; then
   (cd "$PKG/base" && zip -q -j dashboard-package.zip "$base_tar")
 fi
 
-# --- 3. Plugins: app de Wazuh (parcheada) + plugins QAPAQ (+ security en source) ----------
+# --- 3. Plugins: app de Wazuh (parcheada) + plugins B89 (+ security en source) ----------
 
 for plugin in "$PLUGINS_SRC"/plugins/*/; do
   name="$(basename "$plugin")"
@@ -190,7 +190,7 @@ for plugin in "$PLUGINS_SRC"/plugins/*/; do
   build_plugin "$OSD/plugins/$name" "$PKG/app"
 done
 
-# Todos los plugins propios de QAPAQ (qapaq_ops, qapaq_i18n, …): fuera del código de Wazuh.
+# Todos los plugins propios de B89 (b89_ops, b89_i18n, …): fuera del código de Wazuh.
 for plugin in "$HERE"/plugins/*/; do
   name="$(basename "$plugin")"
   [ -f "$plugin/opensearch_dashboards.json" ] || continue
@@ -222,12 +222,12 @@ ls -1 "$PKG/app" >&2
 if [ "$MODE" = source ]; then
   (cd "$PKG/app" && zip -q -j ../wazuh-package.zip ./*.zip)
   (cd "$PKG/security" && zip -q -j ../security-package.zip ./*.zip)
-  log "dev-tools/build-packages/build-packages.sh --deb -r $QAPAQ_REVISION"
+  log "dev-tools/build-packages/build-packages.sh --deb -r $B89_REVISION"
   (cd "$OSD/dev-tools/build-packages" && bash ./build-packages.sh \
     --app "file://$PKG/wazuh-package.zip" \
     --base "file://$PKG/base/dashboard-package.zip" \
     --security "file://$PKG/security-package.zip" \
-    --revision "$QAPAQ_REVISION" --deb --production)
+    --revision "$B89_REVISION" --deb --production)
   deb="$OSD/dev-tools/build-packages/output/$DEB_NAME"
   [ -f "$deb" ] || die "build-packages no produjo $DEB_NAME"
   cp "$deb" "$OUT_DIR/$DEB_NAME"
@@ -256,7 +256,7 @@ if [ "$MODE" = repack ]; then
       cp -R "$dir" "$R/plugins/$name"
     done
   done
-  sed -i "s/^Version: .*/Version: ${WAZUH_VERSION}-${QAPAQ_REVISION}/" "$ROOT/DEBIAN/control"
+  sed -i "s/^Version: .*/Version: ${WAZUH_VERSION}-${B89_REVISION}/" "$ROOT/DEBIAN/control"
   (cd "$ROOT" && find . -path ./DEBIAN -prune -o -type f -print0 | sort -z | xargs -0 md5sum | sed 's# \./# #' > DEBIAN/md5sums)
   dpkg-deb --root-owner-group -Zxz --build "$ROOT" "$OUT_DIR/$DEB_NAME"
 fi
