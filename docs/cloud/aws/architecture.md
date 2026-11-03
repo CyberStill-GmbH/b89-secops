@@ -1,9 +1,12 @@
 # AWS serverless: topología, costos y gates
 
-> Estado: **propuesto**. Lo que hoy existe en `infra/aws/` es el Terraform heredado de la demo
-> (EC2 de Wazuh, ECS, RDS, ElastiCache y S3). Este documento define el destino y el orden de
-> migración. Las cifras de costo son **estimaciones de orden de magnitud**, no mediciones: hay que
-> validarlas con AWS Pricing Calculator y la factura real antes de comprometer presupuesto.
+> Estado: la topología serverless está implementada en Terraform en
+> [`infra/aws-serverless/`](../../../infra/aws-serverless/README.md) (red sin NAT, Cognito/Entra,
+> Lambda + HTTP API, Aurora Serverless v2, SQS/EventBridge, Step Functions Standard de B89 Respond,
+> CloudFront/WAF, nodo Wazuh y agentes dinámicos). Solo pasó `fmt`, `validate` y pruebas con
+> proveedores simulados: **no hubo plan ni apply contra AWS**. `infra/aws/` es el stack legado
+> ECS/Fargate, RDS, Valkey y KrakenD. Siguen sin Terraform: el endpoint Client VPN y la Step Function
+> Express. Los costos de esta propuesta no son cotización ni evidencia de recursos desplegados.
 
 La arquitectura lógica está en [02](../../02-arquitectura.md). Aquí se justifica cada servicio por
 robustez, estabilidad y costo.
@@ -19,7 +22,8 @@ robustez, estabilidad y costo.
 | Orquestación | Step Functions **Standard** (aprobaciones) y **Express** (alto volumen) | `waitForTaskToken` espera horas sin costo de cómputo |
 | Datos | Aurora Serverless v2 PostgreSQL | Conserva Prisma, el trigger de auditoría y las transacciones; escala a 0 ACU en inactividad |
 | Evidencia | S3 Object Lock (compliance) + KMS + réplica | Inmutabilidad exigible a una fintech |
-| Núcleo de detección | EC2 Graviton + EBS, un nodo, ASG `min=max=1` | Único componente sin versión serverless ([02](../../02-arquitectura.md#el-núcleo-wazuh-por-qué-no-es-serverless-y-cómo-se-hace-robusto)) |
+| Núcleo de detección | EC2 Graviton + EBS, un nodo con auto-recovery (alarmas `ec2:recover`/`ec2:reboot`) y snapshots DLM | Único componente sin versión serverless ([02](../../02-arquitectura.md#el-núcleo-wazuh-por-qué-no-es-serverless-y-cómo-se-hace-robusto)) |
+| Agentes Wazuh | SSM (documento + asociación por tag) + Lambda de onboarding | Toda instancia con `b89-agent=enabled` (o todas, en modo `all`) instala y registra su agente sola; nodos on-premises por activación híbrida de SSM |
 | Fuentes AWS | CloudTrail, GuardDuty, Security Hub, WAF logs | Entran por EventBridge a SQS y se normalizan a `SecurityEvent` |
 | Secretos | Secrets Manager + KMS | Solo por referencia (`secretRef`) |
 | Observabilidad | CloudWatch Logs, métricas y alarmas | Los logs de seguridad van a Wazuh; los de infraestructura a CloudWatch |
@@ -28,10 +32,18 @@ robustez, estabilidad y costo.
 
 - **Multi-AZ donde es gratis**: Lambda, API Gateway, SQS, Step Functions, DynamoDB/S3 son regionales.
   Aurora usa dos AZ; el nodo Wazuh es el único de una sola AZ.
-- **Falla del nodo Wazuh**: el ASG lo reemplaza y el volumen de datos se reconecta o se restaura del
-  último snapshot. Mientras tanto, la ingesta cloud-native sigue (EventBridge → SQS retiene hasta
-  14 días) y B89 Cases sigue operando; solo se pierde la UI de Wazuh y la detección de agentes.
+- **Falla del nodo Wazuh**: ante falla del host, una alarma `StatusCheckFailed_System` ejecuta
+  `ec2:recover` (misma instancia, volumen EBS, IP privada y EIP, así que los agentes no se
+  reconfiguran); ante falla del SO, `StatusCheckFailed_Instance` lo reinicia. Se prefirió a un ASG
+  `min=max=1` por simplicidad y porque conserva disco e IP. Si se pierde el volumen, se restaura del
+  último snapshot diario (DLM) o de los snapshots del Indexer en S3. Mientras tanto, la ingesta
+  cloud-native sigue (EventBridge → SQS retiene hasta 14 días) y B89 Cases sigue operando; solo se
+  pierde la UI de Wazuh y la detección de agentes.
   RTO/RPO objetivo: **por definir y medir** en el gate de recuperación ([09](../../09-plan-de-lanzamiento.md)).
+- **Agentes dinámicos**: EventBridge (instancia `running`) y un barrido diario invocan una Lambda que
+  asocia un perfil base o adjunta la política de enrolamiento (solo lectura del password de registro)
+  al rol de la instancia; una asociación SSM por tag instala el agente de forma idempotente y lo
+  registra con `authd` por contraseña. Detalle en el [README del stack](../../../infra/aws-serverless/README.md#enrolamiento-dinámico-de-agentes-wazuh).
 - **Idempotencia**: ejecuciones de Step Functions nombradas por el id de la solicitud; consumidores
   SQS con clave de idempotencia. Entrega al menos una vez es el supuesto.
 - **Contrapresión**: concurrencia reservada en las Lambdas que escriben en Aurora, para no agotar
@@ -41,9 +53,12 @@ robustez, estabilidad y costo.
 
 ## Decisiones de costo
 
-- **Sin NAT Gateway.** Es el gasto oculto típico. El nodo Wazuh usa endpoints de VPC (gateway de S3
-  gratis; interfaces para Secrets Manager, KMS y CloudWatch Logs) y los Lambdas fuera de VPC cuando
-  no necesitan el Indexer.
+- **Sin NAT Gateway.** Es el gasto oculto típico. Las Lambdas que necesitan Aurora o el nodo Wazuh
+  viven en subredes privadas aisladas y alcanzan AWS por endpoints de VPC (gateway de S3 y DynamoDB
+  gratis; interfaces para Secrets Manager, SSM, Step Functions, SQS y KMS, con toggle); las que no
+  los necesitan (onboarding de agentes) corren fuera de VPC. En esta versión el nodo Wazuh está en
+  una subred pública con EIP (agentes y dashboard restringidos por security group), no detrás de un
+  NLB; el dashboard no pasa por CloudFront.
 - **Graviton en todo** (EC2 y Lambda).
 - **Retención caliente corta**: el Indexer guarda 7 días; el resto en snapshots S3 con ciclo de
   vida a Intelligent-Tiering y luego Glacier.

@@ -134,11 +134,18 @@ describe('renderLoginPage', () => {
     expect(html).not.toMatch(/ style="/u);
   });
 
+  it('carga Satoshi desde la ruta pública de los activos de marca', () => {
+    const html = renderLoginPage({ ...base, nextUrl: '/dash/app/home', notice: clean });
+    expect(html).toContain('href="/dash/ui/b89/fonts/satoshi.css"');
+    expect(html).toContain("'Satoshi'");
+  });
+
   it('usa la ilustración y la paleta de marca', () => {
     const html = renderLoginPage({ ...base, nextUrl: '/dash/app/home', notice: clean });
-    expect(html).toContain('/dash/ui/b89/b89_login_hero.webp');
-    expect(html).toContain('#fb38a2');
-    expect(html).toContain('#fd8b22');
+    expect(html).toContain('/dash/ui/b89/b89-remi.png');
+    expect(html).toContain('/dash/ui/b89/b89-mundi.png');
+    expect(html).toContain('#ff5899');
+    expect(html).toContain('#ffc136');
   });
 
   it('muestra el mensaje público del catálogo como alerta, nunca el código crudo', () => {

@@ -8,8 +8,8 @@ index 1313707..20c8a10 100644
              line-height: 1.5;
 -            background-color: ${themeDefinition.ouiHeaderBackgroundColor};
 +            /* B89: la pantalla de carga siempre es oscura (el planeta brilla sobre ella) */
-+            background: radial-gradient(ellipse at 50% 42%, #14305f 0%, #0a1226 55%, #05080f 100%);
-+            background-color: #0a1226;
++            background: radial-gradient(ellipse at 70% 45%, #29202a 0%, #17171d 48%, #101014 100%);
++            background-color: #101014;
              height: 100%;
              display: -webkit-box;
              display: -webkit-flex;
@@ -20,12 +20,12 @@ index 1313707..20c8a10 100644
 -            font-size: 24px; /* Wazuh */
 -            font-family: sans-serif;
 +            font-size: 13px; /* B89 */
-+            font-family: 'Segoe UI', Inter, ui-sans-serif, system-ui, sans-serif;
++            font-family: 'Satoshi', ui-sans-serif, system-ui, sans-serif;
 +            letter-spacing: 0.01em;
              line-height: 40px !important;
              height: 40px !important;
 -            color: ${themeDefinition.euiColorDarkShade};
-+            color: #9fb3d9;
++            color: #cdcced;
 +            /* B89: el texto aparece cuando ya entró la mascota */
 +            animation: b89SplashText 600ms ease-out 1.2s both;
            }
@@ -41,7 +41,7 @@ index 1313707..20c8a10 100644
              transform: scaleX(0) translateX(0%);
              animation: osdProgress 1s cubic-bezier(.694, .0482, .335, 1) infinite;
 -            background-color: ${darkMode ? '#1BA9F5' : '#006DE4'};
-+            background-color: #c49a5a; /* B89 */
++            background: linear-gradient(90deg, #ff5899, #ff5841 55%, #ffc136);
            }
  
            .loadingLogoContainer {
@@ -99,7 +99,7 @@ index c76ef5a..55f74c9 100644
          <link
            rel="mask-icon"
 -          color="#003553"
-+          color="#080808"
++          color="#101014"
            href={favicon ?? `${uiPublicUrl}/favicons/safari-pinned-tab.svg`}
          />
          <link rel="shortcut icon" href={favicon ?? `${uiPublicUrl}/favicons/favicon.ico`} />
@@ -108,7 +108,7 @@ index c76ef5a..55f74c9 100644
          />
  
 -        <meta name="theme-color" content="#ffffff" />
-+        <meta name="theme-color" content="#080808" />
++        <meta name="theme-color" content="#101014" />
          <Styles darkMode={darkMode} theme={themeVersion} />
  
          {/* Inject stylesheets into the <head> before scripts so that KP plugins with bundled styles will override them */}

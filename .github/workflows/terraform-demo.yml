@@ -118,14 +118,68 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && (inputs.action == 'apply' || inputs.action == 'bootstrap-dns')
         run: |
           set -euo pipefail
-          for service in api krakend worker; do
-            desired="$(aws ecs describe-services --cluster b89-secops-demo --services "b89-secops-demo-$service" --query 'services[0].desiredCount' --output text)"
-            if [[ "$desired" == 0 || "$desired" == None ]]; then
-              echo "::error::Demo cost-control pause detected (ECS $service desired_count=0). Resume with AWS Demo Cost Control before a Terraform apply."
+          cluster_status="$(aws ecs describe-clusters --clusters b89-secops-demo --query 'clusters[0].status' --output text)"
+          if [[ "$cluster_status" != None ]]; then
+            [[ "$cluster_status" == ACTIVE ]] || { echo "::error::Unexpected ECS cluster status: $cluster_status"; exit 1; }
+            for service in api krakend worker; do
+              service_status="$(aws ecs describe-services --cluster b89-secops-demo --services "b89-secops-demo-$service" --query 'services[0].status' --output text)"
+              if [[ "$service_status" == ACTIVE ]]; then
+                desired="$(aws ecs describe-services --cluster b89-secops-demo --services "b89-secops-demo-$service" --query 'services[0].desiredCount' --output text)"
+                if [[ "$desired" == 0 ]]; then
+                  echo "::error::Demo cost-control pause detected (ECS $service desired_count=0). Resume with AWS Demo Cost Control before a Terraform apply."
+                  exit 1
+                fi
+              fi
+            done
+          else
+            echo 'No existing ECS demo cluster; continuing with the initial deployment.'
+          fi
+          terraform apply -input=false -auto-approve -no-color tfplan
+
+      - name: Bootstrap database roles and migrate before readiness
+        if: github.event_name == 'workflow_dispatch' && inputs.action == 'apply'
+        shell: bash
+        run: |
+          set -euo pipefail
+          database="$(terraform output -json database_migrator)"
+          bootstrap_task="$(jq -r '.bootstrap_task_definition_arn // empty' <<< "$database")"
+          migrate_task="$(jq -r '.migrate_task_definition_arn // empty' <<< "$database")"
+          subnets="$(jq -r '.subnet_ids | join(",")' <<< "$database")"
+          security_group="$(jq -r '.security_group_id // empty' <<< "$database")"
+          if [[ -z "$bootstrap_task" || -z "$migrate_task" || -z "$subnets" || -z "$security_group" ]]; then
+            echo '::error::Database bootstrap/migration task definitions or private networking are missing. Do not continue to application readiness.'
+            exit 1
+          fi
+
+          network="awsvpcConfiguration={subnets=[${subnets}],securityGroups=[${security_group}],assignPublicIp=DISABLED}"
+          for mode in bootstrap migrate; do
+            if [[ "$mode" == bootstrap ]]; then task_definition="$bootstrap_task"; else task_definition="$migrate_task"; fi
+            response="$(aws ecs run-task \
+              --cluster b89-secops-demo \
+              --launch-type FARGATE \
+              --task-definition "$task_definition" \
+              --network-configuration "$network" \
+              --started-by "github-${GITHUB_RUN_ID}-${mode}" \
+              --output json)"
+            task_arn="$(jq -r '.tasks[0].taskArn // empty' <<< "$response")"
+            if [[ -z "$task_arn" ]]; then
+              jq -c '{failures: [.failures[]? | {reason,detail}]}' <<< "$response"
+              echo "::error::Could not start database ${mode} task."
               exit 1
             fi
+            echo "Running database ${mode} task: $task_arn"
+            aws ecs wait tasks-stopped --cluster b89-secops-demo --tasks "$task_arn"
+            exit_code="$(aws ecs describe-tasks --cluster b89-secops-demo --tasks "$task_arn" --query 'tasks[0].containers[0].exitCode' --output text)"
+            if [[ "$exit_code" != 0 ]]; then
+              reason="$(aws ecs describe-tasks --cluster b89-secops-demo --tasks "$task_arn" --query 'tasks[0].stoppedReason' --output text)"
+              echo "::error::Database ${mode} task failed (exit=${exit_code}, reason=${reason}). Readiness checks are blocked."
+              exit 1
+            fi
+            if [[ "$mode" == bootstrap ]]; then
+              aws ecs update-service --cluster b89-secops-demo --service b89-secops-demo-api \
+                --force-new-deployment --query 'service.serviceName' --output text
+            fi
           done
-          terraform apply -input=false -auto-approve -no-color tfplan
 
 
       - name: Verify Wazuh initialization and recover the gateway

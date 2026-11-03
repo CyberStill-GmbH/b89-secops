@@ -22,6 +22,7 @@ b89_ops.enabled: true
 b89_ops.apiPrefix: '/api'
 b89_ops.login.enabled: true
 b89_ops.login.defaultNextUrl: '/app/b89-alerts'
+b89_ops.bunny.enabled: true
 b89_ops.login.passwordEnabled: true
 b89_ops.login.destinationLabel: 'B89'
 

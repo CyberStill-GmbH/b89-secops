@@ -5,7 +5,7 @@
 export const PLUGIN_ID = 'b89Ops';
 export const PLUGIN_NAME = 'B89 SecOps';
 /** Nombre descriptivo del grupo de navegación en el menú lateral. */
-export const NAV_CATEGORY_NAME = 'Observabilidad de la aplicación';
+export const NAV_CATEGORY_NAME = 'B89 SOC';
 
 /** Rutas propias del dashboard (servidas por este plugin, sin sesión de OSD). */
 export const LOGIN_PATH = '/b89/login';
@@ -24,7 +24,7 @@ export const BRAND_ASSETS_PATH = '/ui/b89';
 export const ATTRIBUTION = 'Basado en Wazuh (GPLv2) y OpenSearch Dashboards (Apache-2.0).';
 
 /**
- * Apps registradas en este orden bajo «Observabilidad de la aplicación» (primera categoría
+ * Apps registradas en este orden bajo «B89 SOC» (primera categoría
  * del menú). Cada una monta la misma consola en la vista indicada.
  */
 export const B89_APPS = [

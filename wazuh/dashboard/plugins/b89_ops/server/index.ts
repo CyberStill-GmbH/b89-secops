@@ -12,6 +12,7 @@ export const config: PluginConfigDescriptor<ConfigSchema> = {
   exposeToBrowser: {
     apiPrefix: true,
     p1Watch: true,
+    bunny: true,
   },
 };
 

@@ -2,7 +2,14 @@
 
 > **Nota (legado):** los servicios ECS, RDS, ALB, NAT, Valkey y KrakenD de este documento son el diseño AWS anterior.
 > La arquitectura vigente reemplaza ECS por Lambda + API Gateway, RDS por Aurora Serverless v2 y quita NAT y
-> KrakenD ([02](../../docs/02-arquitectura.md)); su Terraform aún no existe en `infra/aws/`.
+> KrakenD ([02](../../docs/02-arquitectura.md)).
+> Este directorio no implementa B89 Respond/Step Functions ni la arquitectura serverless objetivo; no declarar
+> el producto listo para producción basándose en un plan o apply exitoso de este stack legado.
+>
+> **Stack vigente:** [`infra/aws-serverless/`](../aws-serverless/README.md) implementa la arquitectura
+> serverless (Lambda, HTTP API, Aurora Serverless v2, Step Functions, CloudFront/WAF, nodo Wazuh con
+> auto-recovery y agentes que se enrolan solos). Los cambios nuevos van allí; este directorio queda
+> solo como referencia histórica.
 
 **Contexto histórico:** las fases 1, 2B y 2C documentadas aquí pasaron sus gates; ese snapshot
 ya no describe por sí solo el state actual. Terraform Demo #50 aplicó parcialmente RDS, Valkey,
@@ -48,7 +55,13 @@ con `availability_zones` y reemplazar los CIDRs generados en `demo.tfvars`.
 - **RDS:** ingress TCP/5432 solo desde API y Worker; sin egress iniciado.
 - **Redis/Valkey:** ingress TCP/6379 solo desde API y Worker; sin egress iniciado.
 - **Wazuh:** Indexer TCP/9200 solo desde KrakenD. Dashboard TCP/443 desde
-  `allowed_admin_cidrs`, que por defecto es `[]`; no abre acceso administrativo.
+  `allowed_admin_cidrs`, que debe contener las redes cliente de AWS Client VPN. La misma lista limita
+  HTTPS al edge público del host. Una lista vacía bloquea plan/apply y no abre acceso administrativo.
+  Terraform no crea el endpoint Client VPN ni configura identidad, rutas o autorización de usuarios;
+  esos gates son externos y deben completarse antes del despliegue. El endpoint debe tener una ruta
+  hacia el host y DNS que resuelva el nombre del Dashboard a una dirección alcanzable por el túnel;
+  configurar solo el CIDR no prueba conectividad. TCP/80 sigue público solo para ACME HTTP-01 y
+  redirección; no sirve el Dashboard por HTTP.
   Ningún puerto de manager/agentes ni SSH queda expuesto en esta fase.
 
 Las reglas de respuesta se permiten por el seguimiento stateful de Security
@@ -66,6 +79,15 @@ GitHub Actions usa OIDC con el role existente
 access keys permanentes. Los cambios en `infra/aws/**` en `main` ejecutan
 automáticamente fmt, init, validate y plan con `environments/demo.tfvars`. Apply
 y auditoría solo se ejecutan mediante despacho manual con la opción explícita.
+
+El despacho `apply` encadena Terraform, bootstrap de roles PostgreSQL, migraciones,
+bootstrap de Wazuh, renovación de tareas ECS y comprobaciones de readiness. Si las
+task definitions de migración no existen o cualquier tarea falla, el workflow termina
+antes de reportar la aplicación lista. Esto no elimina prerequisitos externos ni hace
+que la instalación sea un apply único desde cero: hay que reconciliar el state, preparar
+el bucket/rol OIDC, definir dominios reales, delegar DNS, provisionar y configurar AWS
+Client VPN, proporcionar los CIDR asignados, poblar Entra/secretos y publicar imágenes
+verificadas. El workflow sigue desplegando la arquitectura ECS/RDS/Valkey/KrakenD heredada.
 
 ## Ejecutar verificaciones
 

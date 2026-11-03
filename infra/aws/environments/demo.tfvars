@@ -4,7 +4,8 @@ environment = "demo"
 vpc_cidr    = "10.0.0.0/16"
 az_count    = 2
 
-# Empty means no inbound path to the Wazuh Dashboard.
+# Required before plan/apply: provide the assigned AWS Client VPN client CIDR(s).
+# No VPN endpoint or identity is provisioned here; empty remains fail-closed.
 allowed_admin_cidrs = []
 
 # Public application traffic must terminate TLS at the ALB; Terraform requires
@@ -57,9 +58,6 @@ runtime_api_environment = {
   # del grupo de admisión recibe admin por `soc_group_owner_oids` (variable de GitHub); los
   # miembros del grupo de admisión, por `B89_ADMIN_GROUP_IDS` (identity.tf).
   B89_ROLE_BINDINGS = "707e3194-cdbe-4072-b17e-712c4e5fdadb=b89.soc.analyst"
-  # Excepción temporal solo para el demo; vence en 24 h (hora Lima: 2026-10-16 22:41).
-  # Se retira al terminar la prueba; no cambia MFA ni Conditional Access en Entra.
-  B89_DEMO_MFA_EXCEPTION_UNTIL = "2026-10-17T03:41:30Z"
 }
 
 # El token de workload de la ingesta es v1.0 (scope `<clientid>/.default`, la app no expone

@@ -14,11 +14,13 @@ import type { PublicConfigSchema } from '../config';
 import { ChangeFeed } from './api/change_feed';
 import { B89ApiClient } from './api/client';
 import { mountP1Watch } from './p1_watch';
+import { BunnyState, mountBunnyPanel, registerBunnyLauncher } from './bunny/bunny_panel';
+import { fetchBunnyConfig } from './bunny/chat_client';
 
 /**
  * Plugin público de B89 SecOps para OSD 2.19.6.
  *
- * - Registra «Observabilidad de la aplicación» primera en el menú.
+ * - Registra la categoría «B89 SOC» primera en el menú.
  * - Un único cliente de API y un único long-poll de `/api/changes` por página del dashboard,
  *   compartidos por todas las apps B89 y por el aviso de P1 de la cabecera.
  * - No importa valores del core en tiempo de ejecución (solo tipos): el plugin no depende de
@@ -29,6 +31,8 @@ export class B89OpsPublicPlugin implements Plugin<void, void> {
   private api: B89ApiClient | null = null;
   private feed: ChangeFeed | null = null;
   private stopWatch: (() => void) | null = null;
+  private fontStylesheet: HTMLLinkElement | null = null;
+  private stopBunny: (() => void) | null = null;
 
   constructor(initializerContext: PluginInitializerContext<PublicConfigSchema>) {
     this.config = initializerContext.config.get();
@@ -78,13 +82,40 @@ export class B89OpsPublicPlugin implements Plugin<void, void> {
   }
 
   public start(core: CoreStart) {
-    if (this.config.p1Watch === false) return;
+    this.fontStylesheet = document.createElement('link');
+    this.fontStylesheet.rel = 'stylesheet';
+    this.fontStylesheet.href = core.http.basePath.prepend('/ui/b89/fonts/satoshi.css');
+    this.fontStylesheet.dataset.b89Typography = 'satoshi';
+    document.head.appendChild(this.fontStylesheet);
     const { api, feed } = this.shared(core.http.basePath.get());
+    this.startBunny(core, api);
+    if (this.config.p1Watch === false) return;
     // Aviso de P1 en la cabecera: visible en todo el dashboard (también en el SIEM).
     this.stopWatch = mountP1Watch(core, api, feed);
   }
 
+  /**
+   * Bunny (asistente de IA): el botón y el panel solo se montan si la API lo tiene habilitado
+   * (`GET /api/assistant/config`) y la persona tiene permisos de lectura; si no, no hay rastro.
+   */
+  private startBunny(core: CoreStart, api: B89ApiClient) {
+    if (this.config.bunny?.enabled === false) return;
+    fetchBunnyConfig(api).then(
+      (bunny) => {
+        if (!bunny.enabled) return;
+        const state = new BunnyState();
+        registerBunnyLauncher(core, state);
+        this.stopBunny = mountBunnyPanel(core, api, state);
+      },
+      () => undefined, // Sin sesión o con la API degradada no hay asistente.
+    );
+  }
+
   public stop() {
+    this.stopBunny?.();
+    this.stopBunny = null;
+    this.fontStylesheet?.remove();
+    this.fontStylesheet = null;
     this.stopWatch?.();
     this.feed?.stop();
   }

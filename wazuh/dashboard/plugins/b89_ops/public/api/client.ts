@@ -113,6 +113,16 @@ export class B89ApiClient {
     return this.request<T>('POST', path, body, session.csrfToken);
   }
 
+  public async patch<T>(path: string, body: unknown): Promise<T> {
+    const session = await this.session();
+    return this.request<T>('PATCH', path, body, session.csrfToken);
+  }
+
+  public async delete<T>(path: string): Promise<T> {
+    const session = await this.session();
+    return this.request<T>('DELETE', path, undefined, session.csrfToken);
+  }
+
   public loginUrl(): string {
     const current =
       this.options.currentUrl?.() ??
@@ -121,7 +131,7 @@ export class B89ApiClient {
   }
 
   private async request<T>(
-    method: 'GET' | 'POST',
+    method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
     path: string,
     body?: unknown,
     csrfToken?: string,

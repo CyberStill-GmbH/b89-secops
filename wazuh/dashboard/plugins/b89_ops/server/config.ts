@@ -27,6 +27,8 @@ export const configSchema = schema.object({
   }),
   /** Aviso de nuevas alertas P1 en la cabecera (todo el dashboard). */
   p1Watch: schema.boolean({ defaultValue: true }),
+  /** Bunny, el asistente de IA: el botón solo aparece si la API lo tiene habilitado (B89_BUNNY_ENABLED). */
+  bunny: schema.object({ enabled: schema.boolean({ defaultValue: true }) }),
   login: schema.object({
     /** Sirve el login B89 y sustituye `/app/login` del Security plugin / Wazuh. */
     enabled: schema.boolean({ defaultValue: true }),
@@ -40,4 +42,4 @@ export const configSchema = schema.object({
 });
 
 export type ConfigSchema = TypeOf<typeof configSchema>;
-export type PublicConfigSchema = Pick<ConfigSchema, 'apiPrefix' | 'p1Watch'>;
+export type PublicConfigSchema = Pick<ConfigSchema, 'apiPrefix' | 'p1Watch' | 'bunny'>;
