@@ -3,7 +3,8 @@
  */
 
 /**
- * Tema del login B89 SOC con la paleta oficial y las mascotas extraídas del manual de marca.
+ * Tema del login B89 SOC con la paleta oficial; el panel de marca usa la ilustración
+ * `b89_login_hero.webp`. `__UI__` se sustituye por la ruta pública de los activos de marca.
  */
 export const LOGIN_THEME = `:root{
   --b89-pink:#ff5899;
@@ -77,25 +78,18 @@ img,svg{display:block;max-width:100%}
 .auth-footer .auth-attribution{margin-top:2px;color:#8b7f93;font-size:11px}
 
 /* --- Panel de marca: la ilustración es el fondo --- */
-.login-hero{position:relative;display:flex;min-height:320px;align-items:center;justify-content:center;gap:clamp(8px,3vw,36px);overflow:hidden;padding:28px;background:linear-gradient(130deg,var(--b89-pink),var(--b89-rose) 54%,var(--b89-orange))}
-.login-hero::before{position:absolute;width:min(70vw,520px);aspect-ratio:1;border:1px solid rgb(255 255 255 / 30%);border-radius:50%;content:''}
-.login-mascot{position:relative;width:min(36vw,300px);max-height:82%;object-fit:contain}
-.login-mascot-mundi{width:min(33vw,270px)}
+.login-hero{position:relative;min-height:320px;overflow:hidden;background:url(__UI__/b89_login_hero.webp) 62% center/cover no-repeat,linear-gradient(115deg,var(--b89-pink),var(--b89-rose) 38%,var(--b89-orange))}
 
 @media (max-width:1000px){
   .login-shell{grid-template-columns:minmax(0,1fr);grid-template-rows:auto 1fr}
-  .login-hero{order:-1;min-height:220px}
-  .login-mascot{width:min(30vw,220px);max-height:200px}
-  .login-mascot-mundi{width:min(27vw,200px)}
+  .login-hero{order:-1;min-height:220px;background:url(__UI__/b89_login_hero_sm.webp) 66% center/cover no-repeat,linear-gradient(115deg,var(--b89-pink),var(--b89-rose) 38%,var(--b89-orange))}
   .login-side{padding:28px 24px 32px}
 }
 @media (max-width:600px){
   .login-destination{display:none}
 }
 @media (max-width:480px){
-  .login-hero{min-height:170px;padding:12px}
-  .login-mascot{width:min(42vw,180px);max-height:150px}
-  .login-mascot-mundi{width:min(38vw,160px)}
+  .login-hero{min-height:170px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 `;

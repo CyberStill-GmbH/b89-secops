@@ -142,8 +142,8 @@ describe('renderLoginPage', () => {
 
   it('usa la ilustración y la paleta de marca', () => {
     const html = renderLoginPage({ ...base, nextUrl: '/dash/app/home', notice: clean });
-    expect(html).toContain('/dash/ui/b89/b89-remi.png');
-    expect(html).toContain('/dash/ui/b89/b89-mundi.png');
+    expect(html).toContain('/dash/ui/b89/b89_login_hero.webp');
+    expect(html).toContain('/dash/ui/b89/b89_login_hero_sm.webp');
     expect(html).toContain('#ff5899');
     expect(html).toContain('#ffc136');
   });

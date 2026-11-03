@@ -326,8 +326,8 @@ export function renderLoginPage(options: LoginPageOptions): string {
 <link rel="apple-touch-icon" sizes="180x180" href="${ui}/favicons/apple-touch-icon.png">
 <link rel="manifest" href="${ui}/favicons/manifest.json">
 <link rel="stylesheet" href="${brand}/fonts/satoshi.css">
-<link rel="preload" as="image" type="image/png" href="${brand}/b89-remi.png">
-<link rel="preload" as="image" type="image/png" href="${brand}/b89-mundi.png">
+<link rel="preload" as="image" type="image/webp" href="${brand}/b89_login_hero.webp" media="(min-width: 1001px)">
+<link rel="preload" as="image" type="image/webp" href="${brand}/b89_login_hero_sm.webp" media="(max-width: 1000px)">
 <title>Iniciar sesión · B89 SOC</title>
 <style nonce="${nonce}">${css}</style>
 </head>
@@ -356,10 +356,7 @@ export function renderLoginPage(options: LoginPageOptions): string {
       <span class="auth-attribution">${escapeHtml(ATTRIBUTION)}</span>
     </footer>
   </section>
-  <aside class="login-hero" aria-label="Mascotas de B89 SOC">
-    <img class="login-mascot login-mascot-remi" src="${brand}/b89-remi.png" alt="Remi">
-    <img class="login-mascot login-mascot-mundi" src="${brand}/b89-mundi.png" alt="Mundi">
-  </aside>
+  <aside class="login-hero" role="img" aria-label="Ilustración de B89: el conejo analista y el planeta vigilan el panel de seguridad"></aside>
 </main>
 <aside id="b89-cookie-notice" class="b89-cookie-notice b89-cookie-bar" aria-labelledby="cookie-notice-title" hidden>
   <div class="b89-cookie-notice__mark" aria-hidden="true">${COOKIE_ICON}</div>

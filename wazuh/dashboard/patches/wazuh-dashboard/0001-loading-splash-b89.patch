@@ -1,5 +1,5 @@
 diff --git a/src/core/server/rendering/views/styles.tsx b/src/core/server/rendering/views/styles.tsx
-index 1313707..20c8a10 100644
+index 1313707..232b91f 100644
 --- a/src/core/server/rendering/views/styles.tsx
 +++ b/src/core/server/rendering/views/styles.tsx
 @@ -77,7 +77,9 @@ export const Styles: FunctionComponent<Props> = ({ theme, darkMode }) => {
@@ -7,9 +7,9 @@ index 1313707..20c8a10 100644
            .osdWelcomeView {
              line-height: 1.5;
 -            background-color: ${themeDefinition.ouiHeaderBackgroundColor};
-+            /* B89: la pantalla de carga siempre es oscura (el planeta brilla sobre ella) */
-+            background: radial-gradient(ellipse at 70% 45%, #29202a 0%, #17171d 48%, #101014 100%);
-+            background-color: #101014;
++            /* B89: la pantalla de carga siempre es blanca */
++            background: #ffffff;
++            background-color: #ffffff;
              height: 100%;
              display: -webkit-box;
              display: -webkit-flex;
@@ -25,8 +25,8 @@ index 1313707..20c8a10 100644
              line-height: 40px !important;
              height: 40px !important;
 -            color: ${themeDefinition.euiColorDarkShade};
-+            color: #cdcced;
-+            /* B89: el texto aparece cuando ya entró la mascota */
++            color: #5d5266;
++            /* B89: sin texto «Loading»; solo se ve el mensaje de error si la carga falla */
 +            animation: b89SplashText 600ms ease-out 1.2s both;
            }
  
@@ -47,15 +47,15 @@ index 1313707..20c8a10 100644
            .loadingLogoContainer {
 -            height: 100px; /* Wazuh */
 -            padding: 10px 10px 10px 10px;
-+            /* B89: la animación SVG (planeta + mascota) ocupa el centro, sin pasar del 90 % del ancho */
-+            height: min(52vh, 400px);
++            /* B89: la animación SVG (planeta + mascota) ocupa el centro, sin pasar del 92 % del ancho */
++            height: min(66vh, 520px);
 +            padding: 0;
            }
  
            .loadingLogo {
              height: 100%;
 -            max-width: 100%;
-+            max-width: 90vw;
++            max-width: 92vw;
 +            width: auto;
 +          }
 +
@@ -91,7 +91,7 @@ index 1313707..20c8a10 100644
  
            @keyframes osdProgress {
 diff --git a/src/core/server/rendering/views/template.tsx b/src/core/server/rendering/views/template.tsx
-index c76ef5a..55f74c9 100644
+index c76ef5a..af58aed 100644
 --- a/src/core/server/rendering/views/template.tsx
 +++ b/src/core/server/rendering/views/template.tsx
 @@ -103,7 +103,7 @@ export const Template: FunctionComponent<Props> = ({
@@ -103,12 +103,16 @@ index c76ef5a..55f74c9 100644
            href={favicon ?? `${uiPublicUrl}/favicons/safari-pinned-tab.svg`}
          />
          <link rel="shortcut icon" href={favicon ?? `${uiPublicUrl}/favicons/favicon.ico`} />
-@@ -113,7 +113,7 @@ export const Template: FunctionComponent<Props> = ({
-           content={favicon ? `` : `${uiPublicUrl}/favicons/browserconfig.xml`}
-         />
- 
--        <meta name="theme-color" content="#ffffff" />
-+        <meta name="theme-color" content="#101014" />
-         <Styles darkMode={darkMode} theme={themeVersion} />
- 
-         {/* Inject stylesheets into the <head> before scripts so that KP plugins with bundled styles will override them */}
+@@ -153,11 +153,7 @@ export const Template: FunctionComponent<Props> = ({
+                 values: { applicationTitle },
+               })}
+             >
+-              {i18n('core.ui.welcomeMessage', {
+-                // Wazuh: change the default message to avoid
+-                // showing the "Loading Wazuh" message twice.
+-                defaultMessage: 'Loading ...',
+-              })}
++              {/* B89: la pantalla de carga no muestra texto, solo la animación */}
+             </div>
+             {/* Show a progress bar if a static custom branded logo is used */}
+             {logos.AnimatedMark.type === ImageType.ALTERNATIVE && <div className="osdProgress" />}

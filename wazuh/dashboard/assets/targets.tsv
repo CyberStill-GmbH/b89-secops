@@ -58,6 +58,8 @@ svg/b89_wordmark_on_light.svg	plugins	plugins/main/public/assets/images/themes/l
 svg/b89_mark_on_dark.svg	plugins	plugins/main/public/assets/images/themes/dark/icon.svg
 svg/b89_mark_on_light.svg	plugins	plugins/main/public/assets/images/themes/light/icon.svg
 wazuh-app/logo_reports.png	plugins	plugins/main/public/assets/images/logo_reports.png
+images/b89_login_hero.webp	dashboard	src/core/server/core_app/assets/b89/b89_login_hero.webp
+images/b89_login_hero_sm.webp	dashboard	src/core/server/core_app/assets/b89/b89_login_hero_sm.webp
 images/b89-remi.png	dashboard	src/core/server/core_app/assets/b89/b89-remi.png
 images/b89-mundi.png	dashboard	src/core/server/core_app/assets/b89/b89-mundi.png
 images/b89-bunny.webp	dashboard	src/core/server/core_app/assets/b89/b89-bunny.webp
