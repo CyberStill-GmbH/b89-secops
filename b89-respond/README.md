@@ -13,6 +13,7 @@ Overlay versionado sobre **Shuffle v2.3.0** ([`upstream.lock`](upstream.lock)). 
 | `frontend/patches/0002-b89-respond-html-y-manifest.patch`          | Título, `theme-color` y manifest PWA (`lang` sigue en `en` hasta traducir la UI de B89 Respond)                                                                                                                                                                                                                         |
 | `frontend/patches/0003-b89-respond-csp-mismo-origen.patch`         | CSP de mismo origen: el frontend no puede llamar a la nube de Shuffle, Algolia ni otros terceros (N1)                                                                                                                                                                                                                   |
 | `frontend/assets/`                                                 | Arte B89 Respond: el monograma oficial de B89 (sin redibujar; ver [identidad visual](../docs/brand/b89-visual-identity.md)). Reemplaza los logos con los mismos nombres de archivo (`targets.tsv`). Se regenera con `python assets/tools/build-brand.py`                                                                |
+| `frontend/patches/0004-b89-respond-tipografia-satoshi.patch`       | `@font-face` de Satoshi Medium/Bold (los archivos los copia `build.sh` a `public/fonts/`)                                                                                                                                                                                                                               |
 | `frontend/rebrand.mjs`                                             | Codemod con AST de TypeScript: colores naranja de Shuffle → Coral `#FF5841` y Fucsia `#FF5899` de la paleta oficial en todo el código, y «Shuffle» → «B89 Respond» **solo en texto visible**. No toca la lógica, los datos, los nombres de apps del backend (Shuffle Tools, DB, AI) ni los textos que el código compara |
 | `build.sh`                                                         | Clona el tag, verifica el SHA, aplica parches, arte y codemod, publica el código fuente en `/source/` (AGPL §13) y construye la imagen                                                                                                                                                                                  |
 
@@ -26,12 +27,13 @@ ruta pública.
 ## Identidad visual
 
 Sigue [Identidad visual B89 · Frontend](../docs/brand/b89-visual-identity.md): paleta oficial de siete
-colores, monograma sin modificar y ninguna imagen de QAPAQ. Se usa el Coral como acento (el naranja de
+colores, monograma sin modificar y ninguna imagen de otras marcas. Se usa el Coral como acento (el naranja de
 Shuffle), pero **la paleta de marca no codifica severidad ni estado**: los colores semánticos de Shuffle
 (éxito, error, advertencia) se conservan.
 
-**Pendiente: tipografía.** La guía fija Satoshi Medium/Bold, pero los archivos licenciados todavía no están
-en el repositorio; Shuffle sigue con su tipografía hasta empaquetarlos (no se simula con una sustituta).
+**Tipografía.** Satoshi Medium y Bold (`frontend/assets/fonts/`, con su licencia ITF FFL) se declaran en el
+patch 0004 y el codemod cambia la pila de Inter/Roboto de Shuffle por Satoshi. La licencia permite
+autoalojarla en las propias aplicaciones, pero **no redistribuirla**: este repositorio debe seguir privado.
 
 ## Uso
 

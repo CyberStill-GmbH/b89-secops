@@ -16,7 +16,7 @@ de revisión de costo. El resumen de plan rechaza acciones destructivas.
 flowchart LR
   SOC[Analista SOC]
   Entra[Microsoft Entra ID]
-  DNS[app.jappi.net.pe<br/>Punto.pe DNS]
+  DNS[app.b89.example<br/>Punto.pe DNS]
   FW[Azure Firewall<br/>IP pública + DNAT 80/443]
   ILB[Load Balancer interno]
   Nginx[Nginx B89<br/>TLS + auth_request]
@@ -188,7 +188,7 @@ topología debe calcularse aparte.
   snapshots S3 ni autoriza copiar datos confidenciales sin una decisión de residencia.
   El blob del diagrama es solo el canal privado del bundle de instalación; no es un
   destino aprobado para eventos, snapshots o evidencia.
-- **DNS:** el root Terraform no modifica DNS público. `app.jappi.net.pe` se cambia en
+- **DNS:** el root Terraform no modifica DNS público. `app.b89.example` se cambia en
   Punto.pe únicamente cuando el endpoint, certificado, login, ingestión y rollback estén
   probados. El registro anterior se conserva hasta cerrar la aceptación.
 

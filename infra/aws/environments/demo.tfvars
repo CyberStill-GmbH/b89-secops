@@ -10,12 +10,12 @@ allowed_admin_cidrs = []
 # Public application traffic must terminate TLS at the ALB; Terraform requires
 # an ACM certificate ARN in this region before planning or applying.
 enable_https                      = true
-public_api_hostname               = "api.jappi.net.pe"
-public_route53_zone_name          = "api.jappi.net.pe"
-public_root_route53_zone_name     = "jappi.net.pe"
-wazuh_dashboard_hostname          = "app.jappi.net.pe"
-wazuh_dashboard_legacy_hostname   = "wazuh.jappi.net.pe"
-wazuh_dashboard_redirect_hostname = "b89-secops.jappi.net.pe"
+public_api_hostname               = "api.b89.example"
+public_route53_zone_name          = "api.b89.example"
+public_root_route53_zone_name     = "b89.example"
+wazuh_dashboard_hostname          = "app.b89.example"
+wazuh_dashboard_legacy_hostname   = "wazuh.b89.example"
+wazuh_dashboard_redirect_hostname = "b89-secops.b89.example"
 siem_app_cutover                  = true
 wazuh_version                     = "4.14.8"
 wazuh_instance_type               = "t3.xlarge"
@@ -48,11 +48,11 @@ soc_database_enabled = true
 runtime_api_environment = {
   B89_ACCESS_ALLOWED_CIDRS        = "0.0.0.0/0,::/0"
   B89_ACCESS_TRUSTED_PROXY_CIDRS  = "10.0.0.0/16"
-  B89_ENTRA_TENANT_ID             = "45f2f938-dbe3-4a3e-8a54-930893f94ef8"
-  B89_ENTRA_CLIENT_ID             = "336d44fe-b99d-4cfd-9c6e-0ed2d7e48998"
-  B89_ENTRA_REDIRECT_URI          = "https://app.jappi.net.pe/api/auth/callback"
-  B89_ENTRA_ALLOWED_REDIRECT_URIS = "https://app.jappi.net.pe/api/auth/callback"
-  B89_CONSOLE_BASE_URL            = "https://app.jappi.net.pe"
+  B89_ENTRA_TENANT_ID             = "11111111-1111-4111-8111-111111111111"
+  B89_ENTRA_CLIENT_ID             = "22222222-2222-4222-8222-222222222222"
+  B89_ENTRA_REDIRECT_URI          = "https://app.b89.example/api/auth/callback"
+  B89_ENTRA_ALLOWED_REDIRECT_URIS = "https://app.b89.example/api/auth/callback"
+  B89_CONSOLE_BASE_URL            = "https://app.b89.example"
   # Sprint 5: asignación permanente (sin vencimiento) de la persona analista del demo. El dueño
   # del grupo de admisión recibe admin por `soc_group_owner_oids` (variable de GitHub); los
   # miembros del grupo de admisión, por `B89_ADMIN_GROUP_IDS` (identity.tf).
@@ -66,9 +66,9 @@ runtime_api_environment = {
 # `api://…`): su emisor es sts.windows.net, no login.microsoftonline.com/v2.0. KrakenD valida
 # contra ese emisor; las claves de firma del tenant las sirve el mismo JWKS v2.0.
 runtime_krakend_environment = {
-  OIDC_ISSUER   = "https://sts.windows.net/45f2f938-dbe3-4a3e-8a54-930893f94ef8/"
-  OIDC_JWKS_URL = "https://login.microsoftonline.com/45f2f938-dbe3-4a3e-8a54-930893f94ef8/discovery/v2.0/keys"
-  OIDC_AUDIENCE = "336d44fe-b99d-4cfd-9c6e-0ed2d7e48998"
+  OIDC_ISSUER   = "https://sts.windows.net/11111111-1111-4111-8111-111111111111/"
+  OIDC_JWKS_URL = "https://login.microsoftonline.com/11111111-1111-4111-8111-111111111111/discovery/v2.0/keys"
+  OIDC_AUDIENCE = "22222222-2222-4222-8222-222222222222"
 }
 
 # Sprint 5 — demo operativo sin pasos manuales (docs/09-plan-de-lanzamiento.md).

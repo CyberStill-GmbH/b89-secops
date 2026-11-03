@@ -44,6 +44,10 @@ grep -v '^#' "$HERE/frontend/assets/targets.tsv" | while IFS=$'\t' read -r src d
   cp "$HERE/frontend/assets/$src" "$FE/$dst"
 done
 
+# Tipografía oficial (Satoshi Medium/Bold, licencia ITF FFL): el patch 0004 declara el @font-face.
+mkdir -p "$FE/public/fonts"
+cp "$HERE"/frontend/assets/fonts/* "$FE/public/fonts/"
+
 node "$HERE/frontend/rebrand.mjs" "$FE"
 
 # AGPL-3.0 §13: el código fuente correspondiente, servido por la propia aplicación.

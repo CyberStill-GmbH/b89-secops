@@ -4,7 +4,7 @@
 > La arquitectura vigente reemplaza ECS por Lambda + API Gateway, RDS por Aurora Serverless v2 y quita NAT y
 > KrakenD ([02](../02-arquitectura.md)); su Terraform aún no existe en `infra/aws/`.
 
-**Estado:** runbook operativo para la cuenta demo `955200662475`, región `us-east-1`.
+**Estado:** runbook operativo para la cuenta demo `123456789012`, región `us-east-1`.
 **Workflow:** `AWS Demo Cost Control` (`.github/workflows/aws-demo-cost-control.yml`).
 **Límite de seguridad:** ninguna operación `destroy`, `terminate`, borrado de datos/secretos,
 cambio de DNS o modificación de Terraform de recursos persistentes.

@@ -1,6 +1,6 @@
 # B89 core runtime builds
 
-> **Nota (legado):** las menciones a Azure describen el perfil heredado de QAPAQ SecOps, archivado en
+> **Nota (legado):** las menciones a Azure describen el perfil heredado de la base de código original, archivado en
 > [`docs/archive/azure`](../../docs/archive/azure/README.md). B89 SOC opera solo en AWS ([02](../../docs/02-arquitectura.md)); lo técnico
 > que sigue aquí vale como referencia del perfil heredado, no como runbook vigente.
 

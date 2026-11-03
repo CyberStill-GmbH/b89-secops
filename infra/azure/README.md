@@ -141,7 +141,7 @@ Key Vault, no los valores de secretos.
 5. Probar paridad descrita en `docs/12-backend-en-el-siem.md`, agentes de prueba,
    ingestión, reglas, sesiones, recuperación, playbooks read-only y notificaciones.
 6. Revisar costos, residencia, TLS, exposición y rollback. El cutover de
-   `app.jappi.net.pe` se trata por separado; este root no gestiona DNS.
+   `app.b89.example` se trata por separado; este root no gestiona DNS.
 
 ## Protecciones y límites
 

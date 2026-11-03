@@ -15,7 +15,7 @@ apagados. No certifica el SOC como operativo.
 | Storage de releases | `b89demoeus2rel3a2405f3`: `PublicNetworkAccess=Enabled`, `defaultAction=Allow`, `allowBlobPublicAccess=false`, TLS 1.2; contenedor `siem-release` listado | Los blobs no permiten acceso anónimo a nivel de cuenta. El endpoint acepta tráfico autenticado desde redes públicas; no se leyó contenido ni una clave de cuenta. |
 | Azure Container Registry | `b89secopsdemoeus3a2405f3`: `PublicNetworkAccess=Enabled`, `adminUserEnabled=false`, sin repositorios | Endpoint público que requiere autenticación; no hay artefactos runtime publicados. |
 | Detecciones AD | PR [#159](https://github.com/CyberStill-GmbH/b89-secops/pull/159), commit `c96e35f`; Wazuh Manager 4.14.8 `logtest` y CI pasaron | Reglas locales 101300–101307, en modo observación. No se aplicaron al Manager ni a un dominio y no se instaló/configuró ningún agente o GPO. |
-| DNS | No hubo cambios en Route 53, Azure DNS ni `app.jappi.net.pe` | Sin cutover. |
+| DNS | No hubo cambios en Route 53, Azure DNS ni `app.b89.example` | Sin cutover. |
 
 ## No desplegado / no comprobado
 

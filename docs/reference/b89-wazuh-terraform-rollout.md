@@ -1,6 +1,6 @@
 # Migración de Wazuh a B89 SOC en AWS
 
-> **Contexto heredado de QAPAQ SecOps; vigente solo lo que recoge [docs/10-decisiones.md](../10-decisiones.md).**
+> **Contexto heredado de la base de código original; vigente solo lo que recoge [docs/10-decisiones.md](../10-decisiones.md).**
 > Se conserva como historia; la arquitectura vigente es serverless sobre AWS ([02](../02-arquitectura.md)).
 
 > **Nota (legado):** los servicios ECS, RDS, ALB, NAT, Valkey y KrakenD de este documento son el diseño AWS anterior.
@@ -29,7 +29,7 @@ reemplazo. Los digests de `runtime_image_digests` son solo API, Worker y KrakenD
 La última evidencia del workflow es Terraform Demo #50: el plan pasó, pero el apply falló después
 de crear parcialmente RDS, Valkey, ALB, NAT, EC2 Wazuh y servicios ECS. La existencia y salud de
 cada recurso debe reconciliarse contra AWS y el state antes de planificar cambios. La rama usa el
-mismo backend `s3://b89-secops-terraform-state-955200662475/demo/terraform.tfstate`; una rama
+mismo backend `s3://b89-secops-terraform-state-123456789012/demo/terraform.tfstate`; una rama
 separa el código y el historial de Git, pero **no** aísla el state ni los recursos de AWS.
 
 El workflow `terraform-demo.yml` fue ajustado para que `apply` solo verifique que el secreto Entra
@@ -41,11 +41,11 @@ contraseñas cuando coincide el usuario guardado, pero genera otra si el secreto
 de usuario no coincide. Antes de cambiar ese bootstrap, debe agregarse una protección que falle
 ante diferencias y evite crear una nueva versión de Secrets Manager con el mismo valor.
 
-La zona declarada actualmente es `jappi.net.pe` y el dashboard es `wazuh.jappi.net.pe`. Cambiar la
+La zona declarada actualmente es `b89.example` y el dashboard es `wazuh.b89.example`. Cambiar la
 zona raíz a `secops.net.pe` puede reemplazar la hosted zone y afectar delegación y registros. Antes
 de añadir `b89.secops.net.pe`, hay que verificar en AWS quién administra `secops.net.pe`, su
 delegación autoritativa, los registros actuales y el certificado TLS. No modificar la zona raíz
-existente como atajo. La URI de callback y la URL pública de Entra siguen en `app.jappi.net.pe`;
+existente como atajo. La URI de callback y la URL pública de Entra siguen en `app.b89.example`;
 el cambio de hostname del Dashboard no debe cambiarlas accidentalmente.
 
 ## Secuencia requerida

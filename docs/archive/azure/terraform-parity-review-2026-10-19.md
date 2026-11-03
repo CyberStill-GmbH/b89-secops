@@ -61,7 +61,7 @@ aún no tienen consumidor o artefacto comprobado.
   un modelo explícito de NSG/egress e inspección. No se debe añadir reglas
   copiadas de AWS sin validar primero requisitos de Azure Container Apps y
   PostgreSQL.
-- DNS y custom domain están fuera del root. `app.jappi.net.pe` debe conservar
+- DNS y custom domain están fuera del root. `app.b89.example` debe conservar
   el flujo de corte independiente y con rollback descrito en el runbook; no
   hay target Azure para publicarlo todavía.
 
@@ -202,7 +202,7 @@ ese endpoint ([guía de NSG de Azure Container Apps](https://learn.microsoft.com
 
 El endpoint mantiene TLS gestionado por ACA y la autorización de la aplicación
 debe seguir en el edge con el mecanismo de sesión B89 existente. Antes del DNS
-`app.jappi.net.pe` se debe decidir y cotizar el perímetro público: aceptar ACA
+`app.b89.example` se debe decidir y cotizar el perímetro público: aceptar ACA
 external con controles de aplicación y restricciones admitidas por ingress, o
 adoptar un entorno interno detrás de una capa WAF/LB que soporte el flujo y TLS.
 No se deben declarar KrakenD ni los backends públicos: solo `edge` debe aceptar

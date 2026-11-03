@@ -3,7 +3,7 @@
 **State as of 2026-10-30: partial SIEM apply.** The SIEM Custom Script extension was
 imported into the isolated Terraform state, updated, and then failed with exit code 1
 after 81 seconds. The VM bootstrap log has not yet been retrieved, so Wazuh/Core service
-health is unverified. `app.jappi.net.pe` resolves to Azure, but HTTPS has not been
+health is unverified. `app.b89.example` resolves to Azure, but HTTPS has not been
 reachable from the current network. The owner now requires public HTTPS/443; the next
 reviewed apply will permit all IPv4 sources to the Dashboard while agent ports remain
 restricted. The JSON-shaped block below is intentionally **not valid JSON** and is not

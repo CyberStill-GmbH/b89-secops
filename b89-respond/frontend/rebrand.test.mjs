@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { comparedLiterals, recolor, retext } from './rebrand.mjs';
+import { comparedLiterals, recolor, retext, retypeface } from './rebrand.mjs';
 
 test('recolor cambia el naranja de Shuffle por el Coral y Fucsia de B89 sin importar mayúsculas', () => {
   assert.equal(
@@ -108,4 +108,16 @@ test('conserva los nombres de apps del backend en los textos de ayuda', () => {
     retext('const t = <Tooltip title="Runs the Shuffle Tools action in Shuffle" />;'),
     'const t = <Tooltip title="Runs the Shuffle Tools action in B89 Respond" />;',
   );
+});
+
+test('retypeface cambia la pila de Inter/Roboto por Satoshi', () => {
+  assert.equal(
+    retypeface('fontFamily: `"inter", "Roboto", "Helvetica", "Arial", sans-serif`'),
+    'fontFamily: `"Satoshi", "Helvetica", "Arial", sans-serif`',
+  );
+  assert.equal(
+    retypeface('"var(--zds-typography-base,Inter,Helvetica,arial,sans-serif)"'),
+    '"var(--zds-typography-base,Satoshi,Helvetica,arial,sans-serif)"',
+  );
+  assert.equal(retypeface("font-family: 'Inter';"), "font-family: 'Inter';");
 });

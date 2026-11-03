@@ -1,6 +1,6 @@
 # Ingeniería de detección B89: incorporación de reglas abiertas y control de falsos positivos
 
-> **Nota (legado):** las menciones a Azure describen el perfil heredado de QAPAQ SecOps, archivado en
+> **Nota (legado):** las menciones a Azure describen el perfil heredado de la base de código original, archivado en
 > [`docs/archive/azure`](../archive/azure/README.md). B89 SOC opera solo en AWS ([02](../02-arquitectura.md)); lo técnico
 > que sigue aquí vale como referencia del perfil heredado, no como runbook vigente.
 

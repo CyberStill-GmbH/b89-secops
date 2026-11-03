@@ -11,7 +11,7 @@
 - La lectura [39831099993](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39831099993) repitió el cambio de red del Storage después del apply. La [documentación de AzureRM](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/storage_account) requiere `Deny` y al menos una regla al declarar `network_rules`; PR [#116](https://github.com/CyberStill-GmbH/b89-secops/pull/116) retiró el bloque incompatible y conservó `public_network_access_enabled=true`, OAuth/RBAC, claves compartidas deshabilitadas y contenedor privado. El plan posterior de solo lectura [39832251308](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39832251308) reportó **“No changes”**.
 - Auditoría de solo lectura de B89 Respond: el workflow vigente solo construye/publica frontend; faltan backend, Orborus, worker, OpenSearch fijados por digest y Compose aprobado. El bootstrap de la VM no instala Docker ni arranca Shuffle. El host no debe habilitarse hasta resolver ese contrato y su ejecución.
 - El Firewall Standard solo se crea junto con el SIEM configurado y cuesta aproximadamente **USD 912.50/mes**, más procesamiento/IP. El piso documentado Wazuh + PostgreSQL + Firewall Standard es **USD 1,155.01/mes** antes de B89 Respond y otros costos. El budget de USD 200 genera avisos; no limita cargos ni apaga servicios.
-- No se ejecutó apply ni se cambió DNS. `app.jappi.net.pe` aún no tiene un destino Azure/TLS verificado.
+- No se ejecutó apply ni se cambió DNS. `app.b89.example` aún no tiene un destino Azure/TLS verificado.
 
 La descripción del botón `apply` del workflow se corrigió para no afirmar que requiere una aprobación de environment inexistente; mantiene la restricción a `main` y aplica el plan guardado de esa misma corrida.
 
@@ -267,10 +267,10 @@ secretos ni adjuntarlos a planes, logs o artefactos de CI.
   faltan producto/edición, API y versión, región, autenticación, permisos,
   datasets, cuotas, replay, credencial y conectores validados. Tener credenciales
   sin esos contratos no habilita ingestión.
-- La zona pública `jappi.net.pe` está delegada a Route 53 (`awsdns`). No hay A,
+- La zona pública `b89.example` está delegada a Route 53 (`awsdns`). No hay A,
   AAAA ni CNAME para `app`, `b89-secops` o `wazuh`; los registros encontrados
   para esos tres nombres son solo CAA para Let's Encrypt. El único A de la zona
-  apunta Vercel en `codexpt.jappi.net.pe`, fuera de los hostnames de corte. No se
+  apunta Vercel en `codexpt.b89.example`, fuera de los hostnames de corte. No se
   borró ningún DNS porque no existe un destino web antiguo en los hostnames
   solicitados; quitar CAA no redirige el tráfico y alteraría la política TLS.
 - En la última lectura autenticada de Azure se observó la suscripción `Enabled`,
@@ -278,7 +278,7 @@ secretos ni adjuntarlos a planes, logs o artefactos de CI.
   grupos de recursos en el portal. No se ejecutó un apply desde este checkout.
   La CLI `az` local no está instalada; renovar inventario desde Cloud Shell o
   Actions antes del plan. `aws sts get-caller-identity` respondió como la cuenta
-  `955200662475` con ARN `root`; no
+  `123456789012` con ARN `root`; no
   se usará esa identidad para cambios. No se inspeccionaron valores de secretos
   en Azure, AWS, Sophos o Cato.
 
@@ -445,7 +445,7 @@ Sophos y Cato permanecen `TO_BE_PROVIDED`/`planned` en el inventario de fuentes;
 faltan contratos de API/licencia/tenant y las credenciales de acceso a sus
 consolas. No se afirma que sus agentes, reglas o políticas estén aplicados.
 
-## DNS y TLS para `app.jappi.net.pe`
+## DNS y TLS para `app.b89.example`
 
 1. Crear y verificar el host SIEM, Azure Firewall DNAT, Load Balancer interno y edge
    Nginx con TLS. La IP pública estable pertenece al Firewall; el Dashboard y la VM
@@ -496,7 +496,7 @@ usar una clave compartida como sustituto del control de acceso.
    OpenSearch de Shuffle) con almacenamiento/recuperación; validar TLS, ruta
    protegida, workflows sintéticos y flujos de notificación. Enrolar primero
    agentes sintéticos.
-8. Configurar TLS/DNS, cortar solo `app.jappi.net.pe` y ejecutar smoke tests desde
+8. Configurar TLS/DNS, cortar solo `app.b89.example` y ejecutar smoke tests desde
    red externa y SOC. Documentar run IDs, digests, IDs de recursos y evidencia
    redactada.
 

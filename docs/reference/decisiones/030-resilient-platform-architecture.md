@@ -1,6 +1,6 @@
 # ADR-030 — Arquitectura resiliente y escalamiento progresivo de B89 SOC
 
-> **Contexto heredado de QAPAQ SecOps; vigente solo lo que recoge [docs/10-decisiones.md](../../10-decisiones.md).**
+> **Contexto heredado de la base de código original; vigente solo lo que recoge [docs/10-decisiones.md](../../10-decisiones.md).**
 > Se conserva como historia; la arquitectura vigente es serverless sobre AWS ([02](../../02-arquitectura.md)).
 
 > **Nota (legado):** los servicios ECS, RDS, ALB, NAT, Valkey y KrakenD de este documento son el diseño AWS anterior.

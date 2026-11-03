@@ -23,7 +23,7 @@
 - **Teams:** el código de integración no está instalado en el Manager Azure ni se validó contra un webhook real.
 - **B89 Respond/Shuffle:** el módulo de host prepara una VM/disco y reglas de red; no instala Docker ni levanta Compose. Aún faltan imágenes fijadas para backend, Orborus, worker, `shuffle-security` y OpenSearch, ruta protegida validada, playbooks, backup/restore y prueba end-to-end.
 - **Administración:** el plugin `b89_ops` incluye la vista de usuarios, sesiones y solicitudes de rol; el backend en `main` persiste grants/solicitudes en PostgreSQL y audita las decisiones. La aprobación de `b89.platform.admin` falla cerrada con `STEP_UP_REQUIRED`: el runtime no acredita una reautenticación reciente. El flujo de roles está cubierto por el CI de [PR #88](https://github.com/CyberStill-GmbH/b89-secops/pull/88), pero no se ha verificado en Azure un inicio de sesión ni una acción administrativa contra el servicio desplegado porque no hay perfil runtime habilitado. No se deben elevar roles ni relajar autenticación como sustituto de una prueba controlada.
-- **DNS:** no se modificó. `app.jappi.net.pe` no tiene un endpoint Azure probado al cual apuntar.
+- **DNS:** no se modificó. `app.b89.example` no tiene un endpoint Azure probado al cual apuntar.
 
 ## Costo y decisión de despliegue
 

@@ -183,7 +183,7 @@ arriba. Hasta cerrar esas comprobaciones, no se debe habilitar runtime ni declar
   fallback a Internet directo cuando faltan o no responden esos servicios.
 
 - No copia ni elimina datos de AWS, no migra secretos, no crea DNS ni un certificado TLS. El output
-  `siem_firewall_public_ip` entrega el destino estable para revisar antes del corte `app.jappi.net.pe`.
+  `siem_firewall_public_ip` entrega el destino estable para revisar antes del corte `app.b89.example`.
 - HTTPS queda denegado por defecto. Al indicar `dashboard_ingress_cidrs`, el operador debe haber
   verificado que el bundle configura el edge B89 con TLS y `auth_request`; el módulo no puede
   certificar esa condición desde Terraform.

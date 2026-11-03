@@ -9,7 +9,7 @@ Estados: **Vigente**, **Gate** (decidida, pero falta evidencia antes de producci
 
 ## Decisiones B89 (fork serverless, 2026-11-02)
 
-Estas decisiones definen B89 SOC frente a la base heredada de QAPAQ SecOps. Detalle en
+Estas decisiones definen B89 SOC frente a la base heredada. Detalle en
 [02](02-arquitectura.md).
 
 | ID | Decisión | Estado |
@@ -57,10 +57,10 @@ Estas decisiones definen B89 SOC frente a la base heredada de QAPAQ SecOps. Deta
 | A10 | **Retirar Grafana, Loki y Prometheus.** CloudWatch para métricas de infraestructura. Logs de API y ALB a Wazuh (cumple N1) | Vigente | 2026-10-13 (sustituye ADR-025 en lo de observabilidad) |
 | A11 | Retención hot/warm/cold con ISM y snapshots a S3 (no Azure) | Vigente (gate N7 para el borrado) | 2026-10-13 (sustituye ADR-008/018 en el mecanismo) |
 | A12 | ML con OpenSearch Anomaly Detection. Python solo si un caso medido supera a RCF | Vigente | 2026-10-13 (sustituye ADR-007) |
-| A13 | **El SOAR propio de B89 no se construye como producto aparte; B89 Respond es la capa de respuesta gobernada.** Heredado de QAPAQ: Shuffle rebrandeado. **Vigente para B89 (B2): se implementa sobre Step Functions** y **B89 Core gobierna** catálogo/versiones, capacidades, SoD, aprobaciones, idempotencia, auditoría y estado. Ningún analista invoca la ejecución directamente. | Vigente; implementación Step Functions propuesta | 2026-10-13 (QAPAQ), B89 2026-11-02 |
+| A13 | **El SOAR propio de B89 no se construye como producto aparte; B89 Respond es la capa de respuesta gobernada.** Heredado: Shuffle rebrandeado. **Vigente para B89 (B2): se implementa sobre Step Functions** y **B89 Core gobierna** catálogo/versiones, capacidades, SoD, aprobaciones, idempotencia, auditoría y estado. Ningún analista invoca la ejecución directamente. | Vigente; implementación Step Functions propuesta | 2026-10-13 (base original), B89 2026-11-02 |
 | A14 | Ingesta push (`custom-b89`) más pull de reconciliación | Vigente (fase 2) | 2026-10-13 |
 | A15 | Fuentes nuevas por módulos de Wazuh, no por adaptadores TS | Vigente | 2026-10-13 |
-| A16 | Lanzamiento sobre **Wazuh 4.14.8** (lo que corre en AWS). La imagen anterior queda como histórico: AMI `ami-096d5a424506d1999` (`b89-secops-wazuh-historico-4.14.8-20261013`). Wazuh 5 llega como cluster nuevo cuando haya GA | Vigente | 2026-10-13 (dueño) |
+| A16 | Lanzamiento sobre **Wazuh 4.14.8** (lo que corre en AWS). La imagen anterior queda como histórico: AMI `ami-0123456789abcdef0` (`b89-secops-wazuh-historico-4.14.8-20261013`). Wazuh 5 llega como cluster nuevo cuando haya GA | Vigente | 2026-10-13 (dueño) |
 | A22 | ~~El backend vive dentro del SIEM (opción B)~~ **Sustituida por B1/B5.** El backend B89 corre en Lambda, no en el host del SIEM ni en ECS | Sustituida | 2026-10-14, revisada para B89 |
 | A17 | CI, candidato, publicación y despliegue separados. Imágenes inmutables `git-<sha>` | Vigente | ADR-023 |
 | A18 | **Sin capas de complejidad nuevas.** Se reutiliza lo que hay: host Wazuh como edge, API y Postgres actuales y long-poll; nada de SSE, colas nuevas ni servicios extra para el lanzamiento | Vigente | 2026-10-13 (dueño) |

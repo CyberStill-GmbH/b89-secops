@@ -1,6 +1,6 @@
 # Perfil multifuente para la demo SOC B89
 
-> **Nota (legado):** las menciones a Azure describen el perfil heredado de QAPAQ SecOps, archivado en
+> **Nota (legado):** las menciones a Azure describen el perfil heredado de la base de código original, archivado en
 > [`docs/archive/azure`](../archive/azure/README.md). B89 SOC opera solo en AWS ([02](../02-arquitectura.md)); lo técnico
 > que sigue aquí vale como referencia del perfil heredado, no como runbook vigente.
 
@@ -34,7 +34,7 @@ propuesto debajo y no equivale a una aceptación de despliegue.
   La base `b89_jobs` no demuestra que exista un worker ni una cola en funcionamiento.
 - **SIEM y runtime:** `siem_host` y `b89_respond_host` siguen ausentes del perfil aplicado;
   `enable_runtime=false`. No hay Manager, Indexer, Dashboard B89, Core ni edge
-  instalados en Azure. No se ha hecho el corte DNS de `app.jappi.net.pe`.
+  instalados en Azure. No se ha hecho el corte DNS de `app.b89.example`.
 - **Artefacto Wazuh:** el candidato de Wazuh/B89 para EUS2 se publicó en Blob privado
   el 2026-10-27 (bundle [40445959714](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/40445959714),
   publicación [40453658942](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/40453658942),

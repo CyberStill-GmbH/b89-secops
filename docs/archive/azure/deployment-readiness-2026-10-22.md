@@ -43,7 +43,7 @@
 - The immutable Wazuh release bundle is published to the private Blob channel, but no Azure VM has installed it. The missing non-secret SIEM/B89 Respond configuration, SSH public key, approved ingress ranges, Key Vault references, complete B89 Respond image digests/Compose, connector credentials, and cost review remain deployment gates.
 - The latest apply [39871214888](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39871214888) on `main` (`a3699cc`) completed **0 additions, 0 changes, 0 destructions**. Its inputs were `siem_host=null`, `b89_respond_host=null`, and `enable_runtime=false`; it did not deploy the SOC. The workflow change in this branch defaults to the `soc` scope and refuses its apply when the SIEM host object is absent; `foundation` remains available for explicitly scoped base maintenance.
 - At 2026-10-23 00:18 UTC, the `azure-demo` GitHub environment had a main-only branch policy and no required reviewers. The branch allowlist was later widened to include `codex/azure-soc-continuation`; see PR #125. The old firewall dependency has been removed by PR #115. The Terraform workflow description was corrected to stop implying an environment reviewer gate.
-- No DNS change was performed. `app.jappi.net.pe` has no verified Azure edge/TLS target; do not cut it over yet.
+- No DNS change was performed. `app.b89.example` has no verified Azure edge/TLS target; do not cut it over yet.
 - A read-only B89 Respond audit found that only the frontend image is built/published; backend, Orborus, worker and OpenSearch digests/Compose are not ready, and the VM bootstrap does not install Docker or start Shuffle. B89 Respond is not deployable yet.
 
 The selected Standard firewall has a documented list-price estimate of about **USD 912.50/month plus processing and public IP** when enabled continuously in Chile Central. It is not included in run 39829577577 because SIEM is disabled. The current estimate for Wazuh + PostgreSQL + Standard Firewall is about USD 1,155/month before disks, B89 Respond, other services, data processing, or logs. See [cost feasibility](cost-feasibility-2026-10-20.md) and Microsoft's [Azure Firewall pricing](https://azure.microsoft.com/en-us/pricing/details/azure-firewall/). A USD 200 budget is an alert threshold, not a hard spending cap or automatic shutdown.
@@ -56,7 +56,7 @@ The selected Standard firewall has a documented list-price estimate of about **U
 - The protected, read-only SOC plan [40026813710](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/40026813710) on the merge commit succeeded with **no changes**. The saved plan reported “No changes”; apply was skipped. Its effective settings still had `siem_host=null`, `b89_respond_host=null`, `enable_runtime=false`, no container-image digests, and an empty Key Vault secret-ID map. This proves CI/OIDC/state access and a converged foundation, not a running SOC.
 - Read-only GitHub metadata on 2026-10-23 found no `AZURE_SIEM_HOST_JSON`, `AZURE_B89_RESPOND_HOST_JSON`, `AZURE_CONTAINER_IMAGES_JSON`, `AZURE_KEY_VAULT_SECRET_IDS_JSON`, or `AZURE_ENABLE_RUNTIME` in repository or `azure-demo` environment variables/secrets. The repository secret names include Entra and Azure bootstrap credentials, but no Sophos, Cato, Teams Workflow, or VirusTotal credential names. Secret values were not accessed. Key Vault secret metadata was not queried.
 - The SIEM profile still needs the subnet CIDR, admin public key, approved dashboard and agent source CIDRs, pinned release URL/digest, Key Vault secret-name mappings, Core environment, and M365 application settings. The Key Vault must already hold the Wazuh install archive, Entra client secret, and Teams Workflow secret before first boot. The current release bundle does not install the B89 access/role overlay, edge TLS, B89 Respond, or vendor connectors; those remain separate work items.
-- No Azure apply, DNS change, or secret write occurred in this run. `app.jappi.net.pe` has no verified Azure endpoint or TLS certificate. Do not represent Azure as operational until the host profile and secret references are reviewed, the exact plan and estimated cost are reviewed, deployment is applied, and health, authentication, M365 ingestion, alert delivery, and B89 Respond workflows are verified end to end.
+- No Azure apply, DNS change, or secret write occurred in this run. `app.b89.example` has no verified Azure endpoint or TLS certificate. Do not represent Azure as operational until the host profile and secret references are reviewed, the exact plan and estimated cost are reviewed, deployment is applied, and health, authentication, M365 ingestion, alert delivery, and B89 Respond workflows are verified end to end.
 
 ## Execution evidence — 2026-10-22
 
@@ -112,7 +112,7 @@ The earlier portal snapshot recorded ACR as Basic and contained dashboard/B89 Re
 
 The Key Vault is private and has private endpoints. The portal denied listing secret metadata from the current Cloud Shell session because it was neither on a trusted service path nor using the approved private link. No secret names or values were read. This proves only that the vault is not reachable from that session, not whether particular secrets exist. DNS and Key Vault contents were not changed.
 
-Public DNS lookup showed `jappi.net.pe` delegated to four Route 53 name servers. The queried public resolver returned no A or CNAME answer for `app.jappi.net.pe` (only the zone's negative SOA response). No DNS record was modified. A cutover remains premature until Azure has a healthy TLS edge and a stable public address.
+Public DNS lookup showed `b89.example` delegated to four Route 53 name servers. The queried public resolver returned no A or CNAME answer for `app.b89.example` (only the zone's negative SOA response). No DNS record was modified. A cutover remains premature until Azure has a healthy TLS edge and a stable public address.
 
 ## What this proves
 
@@ -126,7 +126,7 @@ Terraform state now includes the dedicated artifact channel, but it does not pro
 4. Complete and validate the B89 Respond release: backend, frontend, Orborus, worker, Shuffle security service, OpenSearch, pinned image digests, Compose, and protected `/b89-respond/*` integration.
 5. Add and test Valkey/BullMQ only after a real consumer, retry/idempotency behavior, and failure handling are verified. The current Terraform plan does not include it.
 6. Recalculate the full monthly cost and review a new exact plan before applying. The existing list-price estimate puts Wazuh + PostgreSQL + Azure Firewall Basic above USD 530/month before B89 Respond and other services; it is not a tenant quote. The USD 200 budget is an alert threshold, not an automatic spending cap.
-7. Validate TLS, dashboard authentication, M365/Sophos/Cato/Teams integration, agents, and rollback before any DNS cutover for `app.jappi.net.pe`.
+7. Validate TLS, dashboard authentication, M365/Sophos/Cato/Teams integration, agents, and rollback before any DNS cutover for `app.b89.example`.
 
 ## Credential handling
 

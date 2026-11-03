@@ -1,6 +1,6 @@
 # ADR-029 — B89 SOC como plataforma SIEM/XDR y espacio de trabajo SOC
 
-> **Contexto heredado de QAPAQ SecOps; vigente solo lo que recoge [docs/10-decisiones.md](../../10-decisiones.md).**
+> **Contexto heredado de la base de código original; vigente solo lo que recoge [docs/10-decisiones.md](../../10-decisiones.md).**
 > Se conserva como historia; la arquitectura vigente es serverless sobre AWS ([02](../../02-arquitectura.md)).
 
 > **Nota (2026-10-14):** la parte de «consola propia B89» de esta decisión fue reemplazada por la

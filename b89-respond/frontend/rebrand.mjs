@@ -94,6 +94,20 @@ const VISIBLE_PROPS = new Set([
 const WORD = /(?<![A-Za-z0-9_$./-])Shuffle(?![A-Za-z0-9_$-])(?! (?:Tools|DB|AI|Subflow)\b)/g;
 const NOT_TEXT = /https?:|\/\/|\.(png|svg|jpe?g|gif|ico|js|jsx|css|json)\b|shuffler/i;
 
+/**
+ * Pila tipográfica de Shuffle (Inter/Roboto) → Satoshi, la tipografía oficial de B89. Solo toca las
+ * declaraciones de pila (`"inter", "Roboto", …` y la variable por defecto `Inter,Helvetica,…`); los
+ * `@font-face` de Inter siguen declarados porque otros textos de terceros pueden pedirlos.
+ */
+export function retypeface(source) {
+  return source
+    .replace(/"inter",\s*"Roboto",\s*"Helvetica"/g, '"Satoshi", "Helvetica"')
+    .replace(
+      /var\(--zds-typography-base,\s*Inter,\s*Helvetica/g,
+      'var(--zds-typography-base,Satoshi,Helvetica',
+    );
+}
+
 export function recolor(source) {
   return source.replace(/#[0-9a-fA-F]{6}\b/g, (hex) => COLOR_MAP[hex.toLowerCase()] ?? hex);
 }
@@ -287,7 +301,9 @@ function main() {
   for (const path of files(join(root, 'src'))) {
     const before = readFileSync(path, 'utf8');
     const after =
-      extname(path) === '.css' ? recolor(before) : retext(recolor(before), path, compared);
+      extname(path) === '.css'
+        ? retypeface(recolor(before))
+        : retext(retypeface(recolor(before)), path, compared);
     if (extname(path) !== '.css' && after !== before) {
       const parsed = ts.createSourceFile(
         path,

@@ -42,7 +42,7 @@ inventario ARM después del apply; este texto conserva un snapshot histórico, n
 el recuento actual de recursos.
 
 El snapshot de portal anterior no mostraba host Wazuh, host B89 Respond, Azure Firewall, balanceador/edge público ni cambio DNS para
-`app.jappi.net.pe`; tampoco hay servicios SIEM/B89 Respond desplegados. `siem_host`, `b89_respond_host` y el runtime
+`app.b89.example`; tampoco hay servicios SIEM/B89 Respond desplegados. `siem_host`, `b89_respond_host` y el runtime
 genérico permanecen deshabilitados en Terraform. La ejecución [39751334214](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39751334214)
 fue un plan de solo lectura con cero cambios, no un apply operativo. El apply anterior [39649721166](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/39649721166)
 falló al asignar roles de Storage (403 `roleAssignments/write`) y al crear Container Apps por falta de registro
@@ -82,7 +82,7 @@ A18 registró inicialmente la simplificación de lanzamiento sin colas nuevas; A
 | Secretos | Key Vault con RBAC mínimo, acceso privado y Managed Identity por runtime | Key Vault está en la fundación privada. El inventario operativo no verificó sus valores; el perfil EUS2 no tiene refs completas. Bootstrap puede leer referencias necesarias para Wazuh, pero eso no prueba que Core las resuelva en runtime. No copiar valores a Git, tfvars o logs. |
 | Artefactos | ACR para OCI/imágenes y cuenta de Blob dedicada para bundle de SIEM, con contenedor privado y acceso de red autenticado por OIDC/RBAC | ACR no tenía imágenes runtime en la última lectura. El bundle EUS2 actual se publicó en Blob privado en [40453658942](https://github.com/CyberStill-GmbH/b89-secops/actions/runs/40453658942), con SHA-256 `89040cb69535da6b7b6b763b77fa0bdb3e15c2089481d139fa9cd2f23c7e5472`; es candidato de instalación, no prueba de una VM ni de servicios operativos. |
 | Logs operativos | Azure Monitor/Log Analytics solo para salud y plataforma, sujeto al control de residencia/retención | Separar de eventos de seguridad y evidencia mantenidos en Wazuh/OpenSearch. No está demostrado que el código Azure emita logs de aplicación hacia Log Analytics ni hacia Wazuh. |
-| DNS y certificado | Solo `app.jappi.net.pe` después de TLS, endpoint y pruebas | DNS permanece sin cambios bajo administración de Punto.pe; el Terraform Azure no gestiona DNS. No hay corte. Solo preparar cambio tras endpoint, TLS, auth, ingesta y rollback aceptados. |
+| DNS y certificado | Solo `app.b89.example` después de TLS, endpoint y pruebas | DNS permanece sin cambios bajo administración de Punto.pe; el Terraform Azure no gestiona DNS. No hay corte. Solo preparar cambio tras endpoint, TLS, auth, ingesta y rollback aceptados. |
 
 ## Flujo de tráfico
 

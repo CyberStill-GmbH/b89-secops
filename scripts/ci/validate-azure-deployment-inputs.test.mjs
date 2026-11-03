@@ -42,8 +42,8 @@ function siemHost(overrides = {}) {
     },
     core_environment: {
       B89_ENTRA_CLIENT_SECRET_REF: 'secret://keyvault/entra-client-secret',
-      B89_ENTRA_TENANT_ID: '45f2f938-dbe3-4a3e-8a54-930893f94ef8',
-      B89_ENTRA_CLIENT_ID: '336d44fe-b99d-4cfd-9c6e-0ed2d7e48998',
+      B89_ENTRA_TENANT_ID: '11111111-1111-4111-8111-111111111111',
+      B89_ENTRA_CLIENT_ID: '22222222-2222-4222-8222-222222222222',
       B89_INGESTION_SOURCE: 'wazuh',
     },
     office365: {
@@ -61,9 +61,9 @@ function siemHost(overrides = {}) {
 function krakendGateway(overrides = {}) {
   return {
     image: registry + '/b89-secops-krakend@sha256:' + sha,
-    tenant_id: '45f2f938-dbe3-4a3e-8a54-930893f94ef8',
+    tenant_id: '11111111-1111-4111-8111-111111111111',
     client_scope: 'api://00000000-0000-4000-8000-000000000002/.default',
-    core_client_id: '336d44fe-b99d-4cfd-9c6e-0ed2d7e48998',
+    core_client_id: '22222222-2222-4222-8222-222222222222',
     indexer_reader_secret_name: 'wazuh-reader-b64',
     indexer_proxy_ca_secret_name: 'wazuh-proxy-ca',
     ...overrides,

@@ -925,9 +925,9 @@ export class SecOpsRuntime {
       (decision.reason === 'MFA_REQUIRED' || decision.reason === 'PASSKEY_REQUIRED') &&
       validation.ok &&
       capabilities.size > 0 &&
-      this.options.access.redirectUri === 'https://app.jappi.net.pe/api/auth/callback' &&
-      this.options.access.tenantId === '45f2f938-dbe3-4a3e-8a54-930893f94ef8' &&
-      this.options.access.clientId === '336d44fe-b99d-4cfd-9c6e-0ed2d7e48998' &&
+      this.options.access.redirectUri === 'https://app.b89.example/api/auth/callback' &&
+      this.options.access.tenantId === '11111111-1111-4111-8111-111111111111' &&
+      this.options.access.clientId === '22222222-2222-4222-8222-222222222222' &&
       Number.isFinite(exceptionUntil) &&
       exceptionUntil <= at.getTime() + 30 * 86_400_000 &&
       at.getTime() < exceptionUntil;

@@ -16,11 +16,11 @@
 # Requiere que el Security plugin ya tenga el dominio de proxy auth
 # (wazuh/indexer/security/apply-security.sh). Si no, el dashboard no reconoce a nadie.
 #
-# Variables: SOC_HOSTNAME (dominio público; p. ej. wazuh.jappi.net.pe)
+# Variables: SOC_HOSTNAME (dominio público; p. ej. wazuh.b89.example)
 #            B89_API    (salida `b89_edge_api_origin` de Terraform; p. ej. http://api.demo.b89.internal:3000)
 #            B89_RESPOND_UPSTREAM (opcional; host:puerto privado del frontend B89 Respond)
 #            CERT_NAME    (opcional; certificado de Let's Encrypt, por defecto b89-wazuh-dashboard)
-#            SOC_EXTRA_HOSTNAMES (opcional; p. ej. "app.jappi.net.pe": hostnames adicionales del mismo SIEM.
+#            SOC_EXTRA_HOSTNAMES (opcional; p. ej. "app.b89.example": hostnames adicionales del mismo SIEM.
 #                         Expande el certificado con certbot (HTTP-01; el DNS ya debe apuntar a este host).
 set -euo pipefail
 umask 022

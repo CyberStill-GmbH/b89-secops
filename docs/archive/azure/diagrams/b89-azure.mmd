@@ -1,5 +1,5 @@
 flowchart LR
-  Analysts[Analistas SOC] -->|HTTPS, DNS app.jappi.net.pe| Firewall
+  Analysts[Analistas SOC] -->|HTTPS, DNS app.b89.example| Firewall
   Firewall -->|DNAT 443 allowlist · 80 ACME| SIEM_LB[Azure Standard Load Balancer<br/>frontend privado · sin IP en VM]
   SIEM_LB -->|TCP 443 / health probe| Edge
 

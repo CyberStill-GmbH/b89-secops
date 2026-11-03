@@ -59,10 +59,10 @@ rutas no se resuelven aquí con NAT ni reglas amplias.
 ## Bootstrap, OIDC y state
 
 El backend existente usa el bucket bootstrap
-`b89-secops-terraform-state-955200662475`, key `demo/terraform.tfstate`,
+`b89-secops-terraform-state-123456789012`, key `demo/terraform.tfstate`,
 `us-east-1`, cifrado y lockfile S3. El stack no declara ni destruye ese bucket.
 GitHub Actions usa OIDC con el role existente
-`arn:aws:iam::955200662475:role/b89-secops-github-terraform-demo`; no se usan
+`arn:aws:iam::123456789012:role/b89-secops-github-terraform-demo`; no se usan
 access keys permanentes. Los cambios en `infra/aws/**` en `main` ejecutan
 automáticamente fmt, init, validate y plan con `environments/demo.tfvars`. Apply
 y auditoría solo se ejecutan mediante despacho manual con la opción explícita.
@@ -88,7 +88,7 @@ esta lista. No ejecutar `apply` todavía.
 
 El workflow manual **Terraform Demo #2** terminó correctamente el 5 de octubre de
 2026 sobre `main` (commit `def9f03`). OIDC autenticó en la cuenta AWS
-`955200662475`, región `us-east-1`; Terraform resolvió las AZ
+`123456789012`, región `us-east-1`; Terraform resolvió las AZ
 `us-east-1a` y `us-east-1b`. `fmt`, `validate` y `plan` pasaron. El plan mostró
 **44 para crear, 0 para cambiar y 0 para destruir**: 18 recursos de red y 26 de
 security groups/reglas. No incluyó API, Worker, KrakenD, ALB, RDS, Redis, Wazuh,
@@ -210,7 +210,7 @@ mismo SHA antes de pedir credenciales OIDC. Hace checkout del SHA exacto que pas
 CI. Usa GitHub OIDC con el rol
 `github_ecr_publisher_role_arn`; el ARN se configura como variable no secreta del
 repositorio `AWS_ECR_PUBLISHER_ROLE_ARN`, copiada del output de Terraform. La
-cuenta se fija en `955200662475` y se valida contra STS; la región es `us-east-1`,
+cuenta se fija en `123456789012` y se valida contra STS; la región es `us-east-1`,
 igual a `environments/demo.tfvars`. No hay access keys estáticas.
 
 El rol verifica el `sub` inmutable de este repositorio:
@@ -248,9 +248,9 @@ espera; todavía no consume BullMQ.
 
 | Imagen  | URI ECR                                                           | Tag                                            | Digest                                                                    |
 | ------- | ----------------------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------------------- |
-| API     | `955200662475.dkr.ecr.us-east-1.amazonaws.com/b89-secops-api`     | `git-5ea083bd6dccf12580d00b43ee66d1086c0e06ea` | `sha256:5183b8dbc8a01f0870429837db0b4bfc7dc2867cc5e8a4b6b36f32d1e7c81068` |
-| Worker  | `955200662475.dkr.ecr.us-east-1.amazonaws.com/b89-secops-worker`  | `git-5ea083bd6dccf12580d00b43ee66d1086c0e06ea` | `sha256:5b9bfd85b87f14ce0e4bad4d5ba784c9a8b5bb530e1963411fa846784d941624` |
-| KrakenD | `955200662475.dkr.ecr.us-east-1.amazonaws.com/b89-secops-krakend` | `git-5ea083bd6dccf12580d00b43ee66d1086c0e06ea` | `sha256:7223fd58694264dec9c2630314ab3234b45af70a7cb8c3c4f5ab3573af7a5460` |
+| API     | `123456789012.dkr.ecr.us-east-1.amazonaws.com/b89-secops-api`     | `git-5ea083bd6dccf12580d00b43ee66d1086c0e06ea` | `sha256:5183b8dbc8a01f0870429837db0b4bfc7dc2867cc5e8a4b6b36f32d1e7c81068` |
+| Worker  | `123456789012.dkr.ecr.us-east-1.amazonaws.com/b89-secops-worker`  | `git-5ea083bd6dccf12580d00b43ee66d1086c0e06ea` | `sha256:5b9bfd85b87f14ce0e4bad4d5ba784c9a8b5bb530e1963411fa846784d941624` |
+| KrakenD | `123456789012.dkr.ecr.us-east-1.amazonaws.com/b89-secops-krakend` | `git-5ea083bd6dccf12580d00b43ee66d1086c0e06ea` | `sha256:7223fd58694264dec9c2630314ab3234b45af70a7cb8c3c4f5ab3573af7a5460` |
 
 El job recuperó cada digest por `ecr:BatchGetImage`, confirmó que el tag
 correspondiera al commit y validó el patrón SHA-256 antes de crear el manifest.
