@@ -91,16 +91,20 @@ data = yaml.safe_load(open(path))
 for host in data["hosts"]:
     for entry in host.values():
         entry["password"] = os.environ["WAZUH_API_PASSWORD"]
+        # run_as: false (como infra/local/wazuh-dashboard/wazuh.local.yml): la app habla con la API
+        # del manager como wazuh-wui; con run_as la API intentaría mapear cada usuario B89 y el
+        # chequeo «API connection» se queda girando.
+        entry["run_as"] = False
 yaml.safe_dump(data, open(path, "w"), sort_keys=False)
 PY
 chown 1000:1000 config/wazuh_dashboard/wazuh.yml; chmod 0600 config/wazuh_dashboard/wazuh.yml
 
 # --- 4. Config del dashboard y del API ------------------------------------------
-cp "$SRC/infra/local/wazuh-dashboard/opensearch_dashboards.local.yml" "$ROOT/config/opensearch_dashboards.yml"
-if compgen -G "$SRC/infra/local/wazuh-dashboard/plugins-dist/*.zip" >/dev/null; then
-  log 'plugins B89 presentes: se habilitan sus claves'
-  { echo; cat "$SRC/infra/local/wazuh-dashboard/b89-plugins.local.yml"; } >>"$ROOT/config/opensearch_dashboards.yml"
-fi
+# Sin los plugins B89 (login b89_ops) no hay proxy auth posible: se aborta en vez de exponer el
+# formulario del Security plugin.
+compgen -G "$SRC/infra/local/wazuh-dashboard/plugins-dist/b89Ops-*.zip" >/dev/null \
+  || { echo 'faltan los plugins B89 en infra/local/wazuh-dashboard/plugins-dist (build-plugins.sh)' >&2; exit 1; }
+cp "$HOST_DIR/opensearch_dashboards.yml" "$ROOT/config/opensearch_dashboards.yml"
 chmod 0644 "$ROOT/config/opensearch_dashboards.yml"
 
 if [[ ! -s $SECRETS/api.env ]]; then
@@ -123,7 +127,29 @@ DEMO_UNTIL="$(date -u -d '+29 days' +%Y-%m-%dT%H:%M:%SZ)" SOC_HOSTNAME="$SOC_HOS
   envsubst '${SOC_HOSTNAME} ${DEMO_UNTIL}' <"$HOST_DIR/api.env.template" >"$ROOT/config/api.env"
 chmod 0644 "$ROOT/config/api.env"
 
+# Bunny (asistente IA): sin IAM no hay Bedrock, así que usa Claude por la API directa de Anthropic
+# con la clave B89_CLAUDE_API de /opt/b89/secrets/services.env (nunca en el repo). Cada despliegue
+# la vuelve a copiar a api.env (así una rotación se aplica). Sin clave queda apagado.
+# Guarda: hasta que platform/configuration acepte las variables B89_BUNNY_* (KNOWN_B89_VARIABLES),
+# activarlas tumba el arranque del API con CONFIG_VALUE_INVALID.
+sed -i '/^B89_BUNNY_/d' "$SECRETS/api.env"
+bunny_key="$(grep -s '^B89_CLAUDE_API=.\+' "$SECRETS/services.env" | cut -d= -f2- || true)"
+if ! grep -q "'B89_BUNNY_API_KEY'" "$SRC/platform/configuration/src/schema/environment.schema.ts"; then
+  log 'Bunny: el código aún no admite B89_BUNNY_* en la configuración; asistente apagado'
+elif [[ -n $bunny_key ]]; then
+  printf 'B89_BUNNY_API_KEY=%s\n' "$bunny_key" >>"$SECRETS/api.env"; chmod 600 "$SECRETS/api.env"
+  log 'Bunny: clave de Anthropic presente, asistente activado (Claude)'
+  printf '%s\n' 'B89_BUNNY_ENABLED=true' 'B89_BUNNY_PROVIDER=anthropic' 'B89_BUNNY_EFFORT=medium' \
+    'B89_BUNNY_REDACT_PII=true' >>"$ROOT/config/api.env"
+  sed -i "s/^b89_ops.bunny.enabled: .*/b89_ops.bunny.enabled: true/" "$ROOT/config/opensearch_dashboards.yml"
+else
+  log 'Bunny: sin B89_CLAUDE_API en secrets/services.env, asistente apagado'
+fi
+unset bunny_key
+
 COMPOSE=(docker compose --env-file "$SECRETS/compose.env" -f "$WD/docker-compose.yml" -f "$HOST_DIR/compose.b89.yaml")
+# Con B89 Respond ya desplegado (deploy-respond.sh), el proyecto incluye sus servicios.
+[[ -d $ROOT/respond/frontend ]] && COMPOSE+=(-f "$HOST_DIR/compose.respond.yaml")
 
 # --- 5. Certificado público (HTTP-01 con webroot servido por un nginx temporal) ------
 if [[ ! -s /etc/letsencrypt/live/$SOC_HOSTNAME/fullchain.pem ]]; then
@@ -143,8 +169,15 @@ EOF
 chmod 0755 /etc/letsencrypt/renewal-hooks/deploy/b89-edge.sh
 
 # --- 6. Build y arranque -----------------------------------------------------
-log 'construyendo imágenes (dashboard B89, API, migrador)'
-"${COMPOSE[@]}" --profile tools build wazuh.dashboard api migrator
+# SKIP_API_BUILD=1: conserva las imágenes vigentes del API y del migrador (p. ej. si apps/api
+# tiene trabajo en curso que aún no compila).
+if [[ ${SKIP_API_BUILD:-0} == 1 ]]; then
+  log 'construyendo imagen del dashboard B89 (API y migrador sin cambios)'
+  "${COMPOSE[@]}" build wazuh.dashboard
+else
+  log 'construyendo imágenes (dashboard B89, API, migrador)'
+  "${COMPOSE[@]}" --profile tools build wazuh.dashboard api migrator
+fi
 log 'arrancando Wazuh y PostgreSQL'
 "${COMPOSE[@]}" up -d wazuh.indexer wazuh.manager postgres --wait
 
@@ -160,7 +193,20 @@ log 'roles de base de datos'
 log 'migraciones'
 "${COMPOSE[@]}" --profile tools run --rm migrator migrate
 
+log 'proxy auth B89 en el indexer (solo desde la IP del dashboard)'
+INDEXER_ADMIN_PASSWORD="$INDEXER_ADMIN_PASSWORD" bash "$SRC/infra/aws-poweruser/scripts/apply-indexer-security.sh"
+
+log 'ingesta sin Entra: lector, token y gateway'
+INDEXER_ADMIN_PASSWORD="$INDEXER_ADMIN_PASSWORD" bash "$SRC/infra/aws-poweruser/scripts/setup-ingestion.sh"
+"${COMPOSE[@]}" up -d --force-recreate wazuh-gateway
+
+log 'contenido B89 del manager (reglas, grupos, integraciones sin activar)'
+bash "$SRC/infra/aws-poweruser/scripts/setup-wazuh-content.sh"
+log 'agente Wazuh del propio nodo'
+bash "$SRC/infra/aws-poweruser/scripts/setup-host-agent.sh"
+
 log 'arrancando dashboard, API y edge'
-"${COMPOSE[@]}" up -d wazuh.dashboard api edge
+"${COMPOSE[@]}" up -d --force-recreate wazuh.dashboard api edge
+bash "$SRC/infra/aws-poweruser/scripts/bootstrap-wazuh-app.sh"
 "${COMPOSE[@]}" ps --format 'table {{.Name}}\t{{.Status}}'
 log 'listo'

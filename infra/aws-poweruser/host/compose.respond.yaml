@@ -1,0 +1,80 @@
+# B89 Respond (Shuffle v2.3.0 rebrandeado) en el nodo PowerUser. Mismo proyecto Compose `b89`
+# que el SOC: el edge llega al frontend por la red interna. Nada se publica en el host.
+# Imágenes oficiales fijadas a 2.3.0 (no `latest`); el frontend es el overlay b89-respond/.
+# Valores ${...} desde /opt/b89/secrets/compose.env; el resto en /opt/b89/respond/shuffle.env.
+services:
+  b89-respond-frontend:
+    image: b89/respond-frontend:2.3.0
+    build:
+      context: /opt/b89/respond/frontend
+    hostname: b89-respond-frontend
+    environment:
+      - BACKEND_HOSTNAME=shuffle-backend
+    depends_on:
+      - shuffle-backend
+    restart: unless-stopped
+
+  shuffle-backend:
+    image: ghcr.io/shuffle/shuffle-backend:2.3.0
+    hostname: shuffle-backend
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /opt/b89/respond/apps:/shuffle-apps
+      - /opt/b89/respond/files:/shuffle-files
+    env_file: /opt/b89/respond/shuffle.env
+    environment:
+      - SHUFFLE_APP_HOTLOAD_FOLDER=/shuffle-apps
+      - SHUFFLE_FILE_LOCATION=/shuffle-files
+      - SHUFFLE_OPENSEARCH_PASSWORD=${SHUFFLE_OPENSEARCH_PASSWORD}
+      - SHUFFLE_DEFAULT_USERNAME=${SHUFFLE_ADMIN_USERNAME}
+      - SHUFFLE_DEFAULT_PASSWORD=${SHUFFLE_ADMIN_PASSWORD}
+      - SHUFFLE_ENCRYPTION_MODIFIER=${SHUFFLE_ENCRYPTION_MODIFIER}
+    depends_on:
+      - shuffle-opensearch
+    restart: unless-stopped
+
+  shuffle-orborus:
+    image: ghcr.io/shuffle/shuffle-orborus:2.3.0
+    hostname: shuffle-orborus
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    env_file: /opt/b89/respond/shuffle.env
+    environment:
+      - SHUFFLE_APP_SDK_TIMEOUT=300
+      - ENVIRONMENT_NAME=Shuffle
+      - ORG_ID=Shuffle
+      - BASE_URL=http://shuffle-backend:5001
+      - DOCKER_API_VERSION=1.44
+      - SHUFFLE_STATS_DISABLED=true
+      - SHUFFLE_LOGS_DISABLED=true
+      - SHUFFLE_SWARM_CONFIG=run
+      - CLEANUP=false
+      - SHUFFLE_WORKER_IMAGE=ghcr.io/shuffle/shuffle-worker:2.3.0
+    security_opt:
+      - seccomp:unconfined
+    restart: unless-stopped
+
+  shuffle-opensearch:
+    image: opensearchproject/opensearch:3.2.0
+    hostname: shuffle-opensearch
+    environment:
+      - 'OPENSEARCH_JAVA_OPTS=-Xms3g -Xmx3g'
+      - bootstrap.memory_lock=true
+      - DISABLE_PERFORMANCE_ANALYZER_AGENT_CLI=true
+      - cluster.initial_master_nodes=shuffle-opensearch
+      - cluster.routing.allocation.disk.threshold_enabled=false
+      - cluster.name=shuffle-cluster
+      - node.name=shuffle-opensearch
+      - node.store.allow_mmap=false
+      - discovery.seed_hosts=shuffle-opensearch
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${SHUFFLE_OPENSEARCH_PASSWORD}
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - /opt/b89/respond/db:/usr/share/opensearch/data
+    restart: unless-stopped

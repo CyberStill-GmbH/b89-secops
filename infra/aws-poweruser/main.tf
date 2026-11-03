@@ -88,24 +88,8 @@ resource "aws_vpc_security_group_ingress_rule" "ssh" {
   cidr_ipv4         = each.value
 }
 
-resource "aws_vpc_security_group_ingress_rule" "https" {
-  for_each          = toset(var.allowed_admin_cidrs)
-  security_group_id = aws_security_group.soc.id
-  description       = "HTTPS admin"
-  ip_protocol       = "tcp"
-  from_port         = 443
-  to_port           = 443
-  cidr_ipv4         = each.value
-}
-
-resource "aws_vpc_security_group_ingress_rule" "acme" {
-  security_group_id = aws_security_group.soc.id
-  description       = "HTTP only for ACME HTTP-01 and redirect"
-  ip_protocol       = "tcp"
-  from_port         = 80
-  to_port           = 80
-  cidr_ipv4         = "0.0.0.0/0"
-}
+# HTTPS al nodo: solo desde el ALB (public.tf). El puerto 80 ya no se abre: TLS público lo
+# termina ACM en el ALB.
 
 resource "aws_vpc_security_group_ingress_rule" "agents" {
   for_each          = toset(var.agent_cidrs)
@@ -173,6 +157,19 @@ resource "aws_eip" "soc" {
 resource "aws_route53_record" "soc" {
   zone_id = var.route53_zone_id
   name    = var.domain_name
+  type    = "A"
+  alias {
+    name                   = aws_lb.soc.dns_name
+    zone_id                = aws_lb.soc.zone_id
+    evaluate_target_health = true
+  }
+}
+
+# Agentes Wazuh (TCP 1514/1515): el ALB no transporta esos puertos, así que van directo a la EIP.
+# La apertura del SG la controla var.agent_cidrs.
+resource "aws_route53_record" "agents" {
+  zone_id = var.route53_zone_id
+  name    = "agents.${var.domain_name}"
   type    = "A"
   ttl     = 300
   records = [aws_eip.soc.public_ip]

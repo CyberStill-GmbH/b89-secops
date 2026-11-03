@@ -15,4 +15,4 @@ tar -C "$REPO" -czf - \
   . | "${SSH[@]}" 'sudo rm -rf /opt/b89/src.new && sudo mkdir -p /opt/b89/src.new && sudo tar -C /opt/b89/src.new -xzf - \
       && sudo rm -rf /opt/b89/src && sudo mv /opt/b89/src.new /opt/b89/src \
       && sudo find /opt/b89/src -type f \( -name "*.sh" -o -name "*.tsv" -o -name "*.yml" -o -name "*.yaml" -o -name "*.template" -o -name "*.conf" \) -exec sed -i "s/\r$//" {} +'
-"${SSH[@]}" "sudo SOC_HOSTNAME='$SOC_HOSTNAME' bash /opt/b89/src/infra/aws-poweruser/scripts/deploy-host.sh"
+"${SSH[@]}" "sudo SKIP_API_BUILD=${SKIP_API_BUILD:-0} SOC_HOSTNAME='$SOC_HOSTNAME' bash /opt/b89/src/infra/aws-poweruser/scripts/deploy-host.sh"

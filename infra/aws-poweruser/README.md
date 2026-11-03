@@ -8,19 +8,30 @@ reemplaza por **un nodo EC2 sin rol** que corre todo el SOC en Docker.
 
 ## Qué crea Terraform (sin IAM)
 
-VPC propia con una subred pública e IGW, SG (22 y 443 solo desde `allowed_admin_cidrs`;
-80 abierto solo para ACME HTTP-01 y la redirección; 1514/1515 desde `agent_cidrs`), CMK de
-KMS con rotación (EBS y S3), EC2 `r7i.large` Ubuntu 24.04 con IMDSv2 y disco gp3 cifrado,
-EIP, registro A `dev.security.b89.io` en la zona `security.b89.io`, bucket S3 de evidencia
-(KMS, versionado, TLS-only, sin acceso público) y Budget mensual.
+VPC propia con dos subredes públicas e IGW; ALB público (`public.tf`) con ACM (TLS 1.3/1.2),
+WAFv2 (IpReputation, KnownBadInputs, Common, límite por IP) y access logs; SG del nodo con 443
+solo desde el ALB, 22 desde `allowed_admin_cidrs` y TCP 1514/1515 desde `agent_cidrs`; CMK de
+KMS con rotación (EBS y S3), EC2 `r7i.xlarge` Ubuntu 24.04 con IMDSv2 y disco gp3 cifrado, EIP,
+registros `dev.security.b89.io` (alias al ALB) y `agents.dev.security.b89.io` (A a la EIP),
+bucket S3 de evidencia (KMS, versionado, TLS-only, sin acceso público) y Budget mensual.
 
-## Qué corre en el nodo (`host/compose.b89.yaml`)
+## Qué corre en el nodo (`host/compose.b89.yaml`, `host/compose.respond.yaml`)
 
-Wazuh 4.14.8 single-node (manager, indexer, dashboard con la marca B89 construido con
-`infra/local/wazuh-dashboard/Dockerfile`), PostgreSQL 18 con TLS (CA interna), migrador y
-API B89 (perfil `production`, identidad fija de demo y login de administrador demo) y edge
-nginx con Let's Encrypt. Los secretos se generan en el host, en `/opt/b89/secrets` (0700,
-archivos 0600): no pasan por Terraform, el estado, el user_data ni Git.
+- Wazuh 4.14.8 single-node: manager, indexer y dashboard con la marca B89 y los plugins
+  `b89_ops`/`b89_i18n` (imagen de `infra/local/wazuh-dashboard/Dockerfile`).
+- Login: **solo el de B89** (proxy auth). El edge fija `x-proxy-user`/`x-proxy-roles` tras
+  `/api/auth/introspect`; el indexer solo los acepta desde la IP fija del dashboard
+  (172.30.89.10, `scripts/apply-indexer-security.sh`). El formulario del Security plugin no es
+  accesible.
+- PostgreSQL 18 con TLS (CA interna), migrador y API B89 (perfil `production`, identidad fija de
+  demo y login de administrador demo), con la ingesta de Wazuh por el gateway de token estático.
+- B89 Respond (Shuffle v2.3.0 rebrandeado) en `/b89-respond/`, detrás de la sesión B89 y
+  embebible solo por el mismo origen (`scripts/deploy-respond.sh`).
+- Contenido del manager: reglas B89, grupos de agentes e integraciones instaladas sin activar
+  (`scripts/setup-wazuh-content.sh`); el propio nodo enrolado como agente
+  (`scripts/setup-host-agent.sh`). Agentes externos: [AGENTS.md](AGENTS.md).
+- Edge nginx. Los secretos se generan en el host, en `/opt/b89/secrets` (0700, archivos 0600):
+  no pasan por Terraform, el estado, el user_data ni Git.
 
 ## Despliegue
 
@@ -37,12 +48,17 @@ y ejecuta `scripts/deploy-host.sh`, que es idempotente.
 
 Credenciales generadas (en el host, solo root):
 
-- Login del dashboard (Security plugin): `admin` / `INDEXER_ADMIN_PASSWORD` de `/opt/b89/secrets/compose.env`.
-- Administrador demo del API B89: `admin@b89.io` / `/opt/b89/secrets/demo-admin-password.txt`.
+- Login B89 (administrador demo): `admin@b89.io` / `/opt/b89/secrets/demo-admin-password.txt`.
+- B89 Respond: `SHUFFLE_ADMIN_USERNAME` / `SHUFFLE_ADMIN_PASSWORD` de `/opt/b89/secrets/compose.env`.
+- Break-glass del indexer (solo por SSH, no por el dashboard): `admin` / `INDEXER_ADMIN_PASSWORD`.
+- Contraseña de enrolamiento de agentes: `/opt/b89/secrets/wazuh-authd.pass`.
+- Secretos de servicios (Anthropic, Entra, Bitdefender, Snyk, correo, Cloudflare):
+  `/opt/b89/secrets/services.env`, copiado por SSH desde el `.env` local, nunca versionado.
 
 ## Ingesta de alertas de Wazuh (sin Entra)
 
-El API viene con `B89_INGESTION_SOURCE=disabled`. Para que lea alertas sin Entra (la identidad
+`deploy-host.sh` lo deja configurado (`scripts/setup-ingestion.sh` crea `b89_reader`, el token y el
+certificado; el servicio `wazuh-gateway` está en `host/compose.b89.yaml`). Para que lea alertas sin Entra (la identidad
 demo no emite tokens de workload) se usa el modo `static-token`: el API envía un bearer estático
 a un gateway nginx interno (`platform/gateway/static-token/wazuh-gateway.conf.template`) que
 inyecta la credencial read-only `b89_reader` hacia el Indexer. Detalle y modelo de amenaza en

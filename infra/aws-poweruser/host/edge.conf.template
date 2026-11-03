@@ -1,8 +1,33 @@
-# Edge B89 del nodo PowerUser (nginx en contenedor). Semántica de wazuh/edge/b89-edge.conf:
-# rutas del API B89 → api:3000; el resto → Wazuh Dashboard con marca B89.
+# Edge B89 del nodo PowerUser (nginx en contenedor). Copia de wazuh/edge/b89-edge.conf adaptada
+# a Docker: upstreams por nombre de servicio y B89 Respond en /b89-respond/. La única forma de
+# entrar es la sesión B89 (login del plugin b89_ops); el dashboard confía en x-proxy-user /
+# x-proxy-roles solo porque los fija este edge tras /api/auth/introspect.
+# Mantener sincronizado con wazuh/edge/b89-edge.conf (rutas, allowlist y cabeceras).
 # Variables (envsubst en deploy-host.sh): ${SOC_HOSTNAME}
 
 resolver 127.0.0.11 valid=30s ipv6=off;
+
+# IP real del cliente detrás del ALB (subredes de la VPC del stack).
+set_real_ip_from 10.89.0.0/24;
+real_ip_header X-Forwarded-For;
+real_ip_recursive on;
+
+proxy_cache_path /var/cache/nginx/b89_auth levels=1 keys_zone=b89_auth:10m max_size=50m inactive=60s;
+
+upstream b89_api {
+  server api:3000;
+  keepalive 16;
+}
+
+upstream b89_osd {
+  server wazuh.dashboard:5601;
+  keepalive 16;
+}
+
+map $http_accept $b89_wants_html {
+  default 0;
+  "~*text/html" 1;
+}
 
 server {
   listen 80;
@@ -13,7 +38,7 @@ server {
 }
 
 server {
-  listen 443 ssl;
+  listen 443 ssl default_server;
   http2 on;
   server_name ${SOC_HOSTNAME};
   ssl_certificate     /etc/letsencrypt/live/${SOC_HOSTNAME}/fullchain.pem;
@@ -29,11 +54,13 @@ server {
   proxy_http_version 1.1;
   proxy_set_header Connection "";
 
-  set $b89_api http://api:3000;
-  set $b89_osd https://wazuh.dashboard:5601;
+  # Health check del ALB (y smoke): solo el liveness del API.
+  location = /health/live {
+    proxy_pass http://b89_api;
+  }
 
-  location ~ ^/(api/(auth|alerts|incidents|changes|sources|operations|audit|admin|me|assistant)(/|$)|health/) {
-    proxy_pass $b89_api;
+  location ~ ^/api/(auth|alerts|incidents|changes|sources|operations|audit|admin|me|assistant)(/|$) {
+    proxy_pass http://b89_api;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-Proto https;
     proxy_set_header X-Forwarded-For $remote_addr;
@@ -45,7 +72,7 @@ server {
   }
 
   location ~ "^/api/notifications(/[0-9a-fA-F-]{36}/acknowledge)?$" {
-    proxy_pass $b89_api;
+    proxy_pass http://b89_api;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-Proto https;
     proxy_set_header X-Forwarded-For $remote_addr;
@@ -54,14 +81,117 @@ server {
     proxy_set_header x-proxy-roles "";
   }
 
-  location / {
-    proxy_pass $b89_osd;
-    proxy_ssl_verify off;
+  location = /_b89/introspect {
+    internal;
+    proxy_pass http://b89_api/api/auth/introspect;
+    proxy_pass_request_body off;
+    proxy_set_header Content-Length "";
     proxy_set_header Host $host;
+    proxy_set_header Cookie $http_cookie;
+    proxy_set_header Accept "application/json";
+    proxy_set_header Origin https://$host;
     proxy_set_header X-Forwarded-Proto https;
     proxy_set_header X-Forwarded-For $remote_addr;
     proxy_set_header x-proxy-user "";
     proxy_set_header x-proxy-roles "";
+    proxy_cache          b89_auth;
+    proxy_cache_key      $cookie_b89_session;
+    proxy_cache_valid    204 5s;
+    proxy_cache_valid    401 403 0;
+    proxy_ignore_headers Cache-Control Expires Set-Cookie;
+  }
+
+  location ^~ /b89/ {
+    proxy_pass http://b89_osd;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header x-proxy-user "";
+    proxy_set_header x-proxy-roles "";
+  }
+
+  location ^~ /ui/ {
+    proxy_pass http://b89_osd;
+    proxy_set_header Host $host;
+    proxy_set_header x-proxy-user "";
+    proxy_set_header x-proxy-roles "";
+  }
+
+  location = /app/login {
+    return 302 /b89/login$is_args$args;
+  }
+
+  # B89 Respond (Shuffle rebrandeado), solo con sesión B89 (wazuh/edge/b89-b89-respond.location.conf).
+  location = /b89-respond {
+    return 308 /b89-respond/;
+  }
+
+  location ^~ /b89-respond/ {
+    auth_request /_b89/introspect;
+    error_page 401 = @b89_sign_in;
+    error_page 403 = @b89_forbidden;
+
+    set $b89_respond http://b89-respond-frontend:80;
+    rewrite ^/b89-respond/(.*)$ /$1 break;
+    proxy_pass $b89_respond;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Prefix /b89-respond;
+    proxy_set_header x-proxy-user "";
+    proxy_set_header x-proxy-roles "";
+    proxy_read_timeout 300s;
+    proxy_buffering off;
+    proxy_set_header Accept-Encoding "";
+    sub_filter 'href="/' 'href="/b89-respond/';
+    sub_filter 'src="/' 'src="/b89-respond/';
+    sub_filter 'href:"/' 'href:"/b89-respond/';
+    sub_filter '/static/' '/b89-respond/static/';
+    sub_filter '/images/' '/b89-respond/images/';
+    sub_filter_types text/html text/css application/javascript application/json;
+    sub_filter_once off;
+
+    # Embebido en el SIEM (app «B89 Respond» de b89_ops, iframe del mismo origen): se reemplazan
+    # X-Frame-Options DENY y frame-ancestors 'none' de Shuffle por SAMEORIGIN / 'self'. El resto
+    # de la CSP es la de b89-respond (patch 0003). add_header en un location anula los del
+    # server, por eso se repiten.
+    proxy_hide_header X-Frame-Options;
+    proxy_hide_header Content-Security-Policy;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Content-Security-Policy "default-src 'self'; connect-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:; font-src 'self' data:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'" always;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+  }
+
+  location / {
+    auth_request /_b89/introspect;
+    auth_request_set $b89_user  $upstream_http_x_b89_user;
+    auth_request_set $b89_roles $upstream_http_x_b89_roles;
+    error_page 401 = @b89_sign_in;
+    error_page 403 = @b89_forbidden;
+
+    proxy_pass http://b89_osd;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header x-proxy-user  $b89_user;
+    proxy_set_header x-proxy-roles $b89_roles;
     proxy_read_timeout 120s;
+  }
+
+  location @b89_sign_in {
+    if ($b89_wants_html) {
+      return 302 /b89/login?nextUrl=$request_uri;
+    }
+    default_type application/json;
+    return 401 '{"code":"AUTH_REQUIRED"}';
+  }
+
+  location @b89_forbidden {
+    if ($b89_wants_html) {
+      return 302 /b89/login?authError=NETWORK_NOT_ALLOWED;
+    }
+    default_type application/json;
+    return 403 '{"code":"NETWORK_NOT_ALLOWED"}';
   }
 }

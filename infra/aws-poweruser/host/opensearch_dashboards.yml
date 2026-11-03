@@ -1,0 +1,44 @@
+# opensearch_dashboards.yml del nodo PowerUser = wazuh/dashboard/opensearch_dashboards.b89.yml +
+# conexión al indexer de wazuh-docker. La única entrada es la sesión B89 (proxy auth): el edge
+# fija x-proxy-user / x-proxy-roles tras /api/auth/introspect y el indexer solo los acepta desde
+# la IP fija del contenedor del dashboard (172.30.89.10).
+server.host: 0.0.0.0
+server.port: 5601
+server.ssl.enabled: false
+
+opensearch.hosts: https://wazuh.indexer:9200
+opensearch.ssl.verificationMode: certificate
+opensearch.ssl.certificateAuthorities: ['/usr/share/wazuh-dashboard/certs/root-ca.pem']
+opensearch_security.readonly_mode.roles: ['kibana_read_only']
+opensearch_security.cookie.secure: true
+opensearch_security.cookie.ttl: 900000
+opensearch_security.session.ttl: 900000
+opensearch_security.session.keepalive: true
+
+opensearch_security.auth.type: 'proxy'
+opensearch_security.proxycache.user_header: 'x-proxy-user'
+opensearch_security.proxycache.roles_header: 'x-proxy-roles'
+opensearch_security.auth.logout_url: '/b89/logout'
+opensearch_security.multitenancy.enabled: false
+opensearch.requestHeadersAllowlist:
+  ['securitytenant', 'Authorization', 'x-forwarded-for', 'x-proxy-user', 'x-proxy-roles']
+
+b89_ops.enabled: true
+b89_ops.apiPrefix: '/api'
+b89_ops.login.enabled: true
+b89_ops.login.defaultNextUrl: '/app/b89-alerts'
+# Bunny usa DeepSeek desde la API B89; la clave solo vive en el backend.
+b89_ops.bunny.enabled: true
+b89_ops.login.passwordEnabled: true
+b89_ops.login.destinationLabel: 'B89'
+
+opensearchDashboards.branding:
+  applicationTitle: 'B89 SecOps'
+  useExpandedHeader: false
+
+uiSettings:
+  overrides:
+    'theme:version': 'v7'
+    'theme:darkMode': true
+    defaultRoute: '/app/b89-alerts'
+    'state:storeInSessionStorage': true
