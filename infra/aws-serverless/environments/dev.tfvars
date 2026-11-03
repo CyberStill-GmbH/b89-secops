@@ -34,3 +34,9 @@ log_retention_days = 14
 
 agent_target_mode       = "tag"
 hybrid_activation_limit = 0
+
+# Despliegue de código desde GitHub Actions. El proveedor OIDC lo crea
+# scripts/bootstrap-github-oidc.sh, por eso Terraform solo lo referencia.
+github_repository           = "CyberStill-GmbH/b89-secops"
+github_oidc_subject_prefix  = "repo:CyberStill-GmbH@220633794/b89-secops@1443659704"
+create_github_oidc_provider = false

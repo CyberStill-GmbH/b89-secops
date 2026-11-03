@@ -392,6 +392,12 @@ variable "create_github_oidc_provider" {
   default     = true
 }
 
+variable "github_oidc_subject_prefix" {
+  description = "Prefijo del claim sub de GitHub. Vacío = repo:<github_repository>. Si el repositorio usa subject inmutable, usar repo:<owner>@<owner_id>/<repo>@<repo_id> (gh api repos/<owner>/<repo>/actions/oidc/customization/sub)."
+  type        = string
+  default     = ""
+}
+
 # ---------------------------------------------------------------------------
 # Costos y alertas
 # ---------------------------------------------------------------------------
