@@ -47,15 +47,15 @@ index 1313707..232b91f 100644
            .loadingLogoContainer {
 -            height: 100px; /* Wazuh */
 -            padding: 10px 10px 10px 10px;
-+            /* B89: la animación SVG (planeta + mascota) ocupa el centro, sin pasar del 92 % del ancho */
-+            height: min(66vh, 520px);
++            /* B89: la animación SVG (planeta + mascota) ocupa el centro, sin pasar del 90 % del ancho */
++            height: min(52vh, 400px);
 +            padding: 0;
            }
  
            .loadingLogo {
              height: 100%;
 -            max-width: 100%;
-+            max-width: 92vw;
++            max-width: 90vw;
 +            width: auto;
 +          }
 +
