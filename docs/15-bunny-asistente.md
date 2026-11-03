@@ -154,10 +154,11 @@ botón solo aparece si la API lo habilita y la persona tiene permisos de lectura
   administrador, CSRF, paginación, historial apagado, guardado fallido (`saved: false`), conversación
   llena, retención y que el historial guardado reemplaza al del cliente
   (`apps/api/test/assistant-history.spec.ts`).
-- **[sin verificar]** El adaptador PostgreSQL del historial y su migración contra una base real: la
-  prueba `modules/assistant/test/postgres-conversation-store.integration.spec.ts` y el permiso `DELETE` en
-  `postgres-roles.integration.spec.ts` existen pero requieren `DATABASE_URL` (no se ejecutaron). La
-  interfaz del historial en el panel aún no existe.
+- **[verificado]** El adaptador PostgreSQL del historial y su migración contra PostgreSQL 18.6 real
+  (Docker local): `postgres-conversation-store.integration.spec.ts` (5 pruebas) y el permiso `DELETE` del
+  runtime en `postgres-roles.integration.spec.ts`. La migración no presenta deriva frente al esquema
+  Prisma en `assistant_conversations`. La interfaz del historial en el panel tiene pruebas de su cliente
+  (`chat_client.test.ts`).
 - **[sin verificar]** Llamadas reales a Claude (Anthropic o Bedrock): las pruebas usan un modelo falso.
   El acceso a los modelos en Bedrock se habilita en la consola de AWS por cuenta y región. La interfaz dentro
   del dashboard de Wazuh desplegado (el typecheck de OSD y el SCSS compilado por OSD no se ejecutaron).
