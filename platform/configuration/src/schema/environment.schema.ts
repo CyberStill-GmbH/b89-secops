@@ -2,7 +2,6 @@ import { configurationError } from '../configuration.errors.js';
 import type { EnvironmentInput } from '../configuration.types.js';
 import { CONFIGURATION_LIMITS } from '../limits.js';
 import type { ConfigurationProfile } from '../profiles/index.js';
-import { ASSISTANT_VARIABLES } from './assistant.schema.js';
 
 export const KNOWN_B89_VARIABLES = new Set([
   'B89_PROFILE',
@@ -104,8 +103,18 @@ export const KNOWN_B89_VARIABLES = new Set([
   'B89_ALERT_MAIL_SENDER',
   'B89_VAPID_PRIVATE_KEY',
   'B89_VAPID_PRIVATE_KEY_REF',
-  // Bunny (asistente IA): ver assistant.schema.ts.
-  ...ASSISTANT_VARIABLES,
+  // Bunny (asistente IA); validación en assistant.schema.ts (la lista se repite literal: el
+  // despliegue AWS la busca con grep antes de activar el asistente).
+  'B89_BUNNY_ENABLED',
+  'B89_BUNNY_PROVIDER',
+  'B89_BUNNY_MODEL',
+  'B89_BUNNY_EFFORT',
+  'B89_BUNNY_REDACT_PII',
+  'B89_BUNNY_API_KEY',
+  'B89_BUNNY_TIMEOUT_MS',
+  'B89_BUNNY_RATE_LIMIT',
+  'B89_BUNNY_HISTORY_ENABLED',
+  'B89_BUNNY_RETENTION_DAYS',
 ]);
 
 export function rejectUnknownB89Variables(
