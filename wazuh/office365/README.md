@@ -131,3 +131,15 @@ bash wazuh/office365/tests/run-logtest.sh b89-wazuh
 `tests/architecture/wazuh-office365-rules.spec.ts` verifica sin Wazuh el rango de IDs, MITRE,
 los grupos reconocidos por la correlación, los padres de cada regla y que los casos sean
 sintéticos.
+
+## B89 AWS (Docker) y permisos verificados
+
+`apply-office365-docker.sh` aplica este directorio dentro del contenedor `b89-wazuh.manager-1`
+con `TENANT_ID`/`CLIENT_ID`/`CLIENT_SECRET` (archivos `/opt/b89/secrets/collectors/entra-*`) y
+persiste `ossec.conf` en el montaje del host. `check_entra_app.py` informa los roles del token
+(sin secretos). Estado 2026-11-04 de la app "Soc Interno": `manage.office.com` emite token **sin
+roles** y `subscriptions/list` responde 401 `AF10001` → falta **ActivityFeed.Read** (Office 365
+Management APIs, aplicación, consentimiento de administrador). Graph tiene
+`SecurityEvents.Read.All` (API heredada `/security/alerts`), pero el módulo `ms-graph`
+(`security/alerts_v2`, `security/incidents`) necesita `SecurityAlert.Read.All` y
+`SecurityIncident.Read.All`, que faltan.

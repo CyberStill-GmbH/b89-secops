@@ -54,3 +54,39 @@ Los timers consultan cada 60 s con jitter; el Manager supervisa JSONL de cada pr
 - Sophos: [Get events](https://developer.sophos.com/reference/siem-v1/events/get-events/), [Get alerts](https://developer.sophos.com/reference/siem-v1/alerts/get-alerts/), [API guide](https://developer.sophos.com/siem/), [schemas](https://developer.sophos.com/siem-api-schemas/), [official integration](https://github.com/sophos/Sophos-Central-SIEM-Integration).
 - Cato: [GraphQL API reference](https://api.catonetworks.com/documentation/) (`eventsFeed`; permission `Events`; queue marker semantics).
 - Wazuh: [JSON log labels](https://documentation.wazuh.com/current/user-manual/reference/ossec-conf/localfile.html) y [command monitoring](https://documentation.wazuh.com/current/user-manual/capabilities/command-monitoring/configuration.html).
+
+## Bitdefender GravityZone, Snyk y Cloudflare (B89 AWS, Docker)
+
+Collectors de solo lectura con la librería común `common/b89_collector.py` (secretos en archivos
+0600, JSONL con `fsync`, checkpoint write-ahead como Cato, errores sin cuerpo de respuesta).
+Se ejecutan en el host con timers systemd y escriben dentro del volumen de logs del manager
+(`/var/ossec/logs/b89-collectors/*.jsonl`); Wazuh los lee con `<localfile log_format="json">`.
+
+| Proveedor | Script | Qué recoge (alcance verificado 2026-11-03) | Reglas | Timer |
+| --- | --- | --- | --- | --- |
+| Bitdefender | `bitdefender/gravityzone.py` | Estado de endpoints administrados (cambios + snapshot diario) y cuarentena. La key tiene Network, Quarantine, Accounts, Companies, Policies, Reports; **no** Push/Licensing/Packages/Integrations; Incidents responde "sin EDR". | 101400–101411 | 10 min |
+| Snyk | `snyk/issues.py` | Issues REST (`version=2024-10-15`) por `updated_after`, dedupe por id+updated_at; sin `SNYK_ORG_ID` lee todas las orgs visibles. | 101450–101458 | 15 min |
+| Cloudflare | `cloudflare/security.py` | Audit logs de cuenta y `firewallEventsAdaptive` (GraphQL) por zona. | 101500–101513 | 5 min |
+
+Niveles alineados con `modules/telemetry` (12+ crítica, 8–11 alta): Snyk critical 12 (13 con exploit
+maduro), high 10 (11); Bitdefender infectado 12, detección/aislado/antimalware off/cuarentena 10;
+Cloudflare zona eliminada 12, control de seguridad eliminado o cambio de tokens/miembros 10,
+20 bloqueos de una IP en 5 min 10.
+
+Instalación en el host (root):
+
+```bash
+sudo bash wazuh/provider-ingestion/install-b89-collectors.sh
+```
+
+Secretos: `/opt/b89/secrets/services.env` (`BITDEFENDER_API_KEY`, `BITDEFENDER_REGION`, `SNYK_TOKEN`,
+`SNYK_ORG_ID`, `SNYK_API_URL`, `CLOUDFLARE_API_TOKEN`, `TENANT_ID`, `CLIENT_ID`, `CLIENT_SECRET`,
+`ALERT_EMAIL_TO`, `ALERT_EMAIL_FROM`, `ALERT_INTERVAL_MIN`) se separa en archivos 0600 de
+`/opt/b89/secrets/collectors/`: `bitdefender-api-key`, `bitdefender-region`, `snyk-token`,
+`snyk-org-id`, `snyk-api-url`, `cloudflare-api-token`, `entra-tenant-id`, `entra-client-id`,
+`entra-client-secret`, `alert-email-to`, `alert-email-from`, `alert-interval-min`. El instalador
+valida con `wazuh-analysisd -t` (revierte si falla), persiste `ossec.conf` en el montaje del host y
+reinicia solo el manager. Estado: `systemctl list-timers 'b89-*'`, `journalctl -u b89-collector-snyk`.
+
+Pruebas: `python -m unittest tests/test_b89_collectors.py` y, con un manager 4.14.8,
+`bash tests/run-collector-logtest.sh <contenedor>` (casos sintéticos `tests/collector-cases.jsonl`).
