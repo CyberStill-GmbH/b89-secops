@@ -60,7 +60,7 @@ b89_mexec bash -euo pipefail -c '
   trap "rm -rf $S" EXIT
   same() { [ -f "$2" ] && [ "$(sha256sum <"$1")" = "$(sha256sum <"$2")" ]; }
   for f in $S/rules/*.xml; do same "$f" "$O/etc/rules/$(basename "$f")" || changed=1; done
-  [ -e $O/etc/lists/b89-break-glass ] || changed=1
+  [ -s $O/etc/lists/b89-break-glass ] || changed=1
   [ "$1" = changed ] && changed=1
   if [ $changed = 0 ]; then echo "[b89-policy] manager ya cumple la política: sin cambios ni reinicio"; exit 0; fi
 
@@ -73,7 +73,9 @@ b89_mexec bash -euo pipefail -c '
     $O/bin/wazuh-control restart >/dev/null 2>&1 || true
   }
   install -o wazuh -g wazuh -m 0660 $S/rules/*.xml $O/etc/rules/
-  [ -e $O/etc/lists/b89-break-glass ] || install -o wazuh -g wazuh -m 0660 /dev/null $O/etc/lists/b89-break-glass
+  # Vacía rompe GET /lists de la API («Bad format in CDB list»): centinela que nunca coincide.
+  [ -s $O/etc/lists/b89-break-glass ] || { echo b89-sin-cuentas-break-glass@b89.invalid:placeholder >$O/etc/lists/b89-break-glass
+    chown wazuh:wazuh $O/etc/lists/b89-break-glass; chmod 0660 $O/etc/lists/b89-break-glass; }
   install -o root -g wazuh -m 0660 $S/ossec.conf $O/etc/ossec.conf
   for t in wazuh-analysisd wazuh-modulesd wazuh-remoted wazuh-execd; do
     if ! $O/bin/$t -t >/tmp/b89-policy-test.log 2>&1; then

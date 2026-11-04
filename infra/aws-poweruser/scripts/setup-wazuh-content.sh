@@ -18,8 +18,10 @@ stage=$(mktemp -d); trap 'rm -rf "$stage"' EXIT
 
 mkdir -p "$stage/rules" "$stage/lists" "$stage/integrations" "$stage/groups"
 cp "$SRC"/wazuh/office365/rules/*.xml "$SRC"/infra/wazuh/{active-directory,endpoint,launch-detections}/rules/*.xml "$stage/rules/"
-# La lista de break-glass se instala vacía: el ejemplo trae identidades ficticias.
-: >"$stage/lists/b89-break-glass"
+# La lista de break-glass se instala sin identidades (el ejemplo trae cuentas ficticias), con un
+# centinela que nunca coincide (TLD .invalid): una lista CDB vacía rompe GET /lists de la API del
+# manager («Bad format in CDB list») y la vista CDB lists de la app de Wazuh.
+echo 'b89-sin-cuentas-break-glass@b89.invalid:placeholder' >"$stage/lists/b89-break-glass"
 cp "$SRC/wazuh/manager/integrations/custom-b89.py" "$stage/integrations/custom-b89.py"
 printf '%s\n' '#!/bin/sh' 'exec /var/ossec/framework/python/bin/python3 "$(dirname "$0")/custom-b89.py" "$@"' \
   >"$stage/integrations/custom-b89"

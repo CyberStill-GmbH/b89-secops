@@ -1,5 +1,9 @@
 # Fragmento para opensearch-security/roles.yml. Mínimo privilegio por rol B89.
 # Ninguno de estos roles escribe en índices de Wazuh ni gestiona la seguridad.
+# Las vistas de la app de Wazuh leen además wazuh-monitoring-* (estado de agentes),
+# wazuh-statistics-* (Estadísticas del servidor) y wazuh-states-* (vulnerabilidades, IT Hygiene,
+# FIM): sin `read` sobre ellos los paneles fallan con security_exception aunque el index pattern
+# exista (lo precrea como admin infra/aws-poweruser/scripts/bootstrap-wazuh-app.sh).
 _meta:
   type: 'roles'
   config_version: 2
@@ -7,7 +11,14 @@ _meta:
 b89_soc_analyst:
   cluster_permissions: ['cluster_composite_ops_ro']
   index_permissions:
-    - index_patterns: ['wazuh-alerts-*', 'restored-wazuh-alerts-*']
+    - index_patterns:
+        [
+          'wazuh-alerts-*',
+          'restored-wazuh-alerts-*',
+          'wazuh-monitoring-*',
+          'wazuh-statistics-*',
+          'wazuh-states-*',
+        ]
       allowed_actions: ['read', 'indices:admin/mappings/get']
   tenant_permissions:
     - tenant_patterns: ['global_tenant']
@@ -22,7 +33,15 @@ b89_soc_lead:
     ]
   index_permissions:
     - index_patterns:
-        ['wazuh-alerts-*', 'wazuh-archives-*', 'restored-*', '.opendistro-anomaly-results*']
+        [
+          'wazuh-alerts-*',
+          'wazuh-archives-*',
+          'restored-*',
+          'wazuh-monitoring-*',
+          'wazuh-statistics-*',
+          'wazuh-states-*',
+          '.opendistro-anomaly-results*',
+        ]
       allowed_actions: ['read', 'indices:admin/mappings/get']
   tenant_permissions:
     - tenant_patterns: ['global_tenant']
@@ -31,8 +50,9 @@ b89_soc_lead:
 b89_auditor:
   cluster_permissions: ['cluster_composite_ops_ro']
   index_permissions:
-    - index_patterns: ['wazuh-alerts-*', 'restored-*']
-      allowed_actions: ['read']
+    - index_patterns:
+        ['wazuh-alerts-*', 'restored-*', 'wazuh-monitoring-*', 'wazuh-statistics-*', 'wazuh-states-*']
+      allowed_actions: ['read', 'indices:admin/mappings/get']
   tenant_permissions:
     - tenant_patterns: ['global_tenant']
       allowed_actions: ['kibana_all_read']
