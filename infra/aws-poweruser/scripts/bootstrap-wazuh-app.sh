@@ -127,3 +127,20 @@ if code != 200:
     print(f"uiSettings → HTTP {code}: {str(res)[:300]}", file=sys.stderr); failed = True
 sys.exit(1 if failed else 0)
 PY
+
+# Dashboards B89 de los proveedores sin módulo nativo en la app de Wazuh (Bitdefender GravityZone,
+# Snyk, Cloudflare, AWS) y de Microsoft 365 (wazuh/dashboard/saved-objects). Tenant global, misma
+# identidad de servicio. Idempotente: IDs estables `b89-*` + overwrite.
+NDJSON="${B89_PROVIDER_DASHBOARDS:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/wazuh/dashboard/saved-objects/b89-provider-dashboards.ndjson}"
+if [[ -f $NDJSON ]]; then
+  result="$(docker exec -i "$C" curl -s -H 'osd-xsrf: true' \
+    -H 'x-proxy-user: b89-bootstrap' -H 'x-proxy-roles: b89.platform.admin' \
+    -H 'x-forwarded-for: 127.0.0.1' -F 'file=@-;filename=b89-provider-dashboards.ndjson' \
+    'http://127.0.0.1:5601/api/saved_objects/_import?overwrite=true' <"$NDJSON")"
+  if [[ $result == *'"success":true'* ]]; then
+    echo "[b89-deploy] dashboards de proveedores: $(grep -o '"successCount":[0-9]*' <<<"$result")"
+  else
+    echo "dashboards de proveedores: importación fallida: ${result:0:500}" >&2
+    exit 1
+  fi
+fi
