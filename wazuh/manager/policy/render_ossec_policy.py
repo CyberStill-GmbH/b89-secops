@@ -9,6 +9,7 @@ Cambios en su sitio (solo el primer bloque activo de cada sección):
   <vulnerability-detection>            enabled=yes, index-status=yes, feed-update-interval
   <indexer><enabled>yes                exigido por la detección de vulnerabilidades
   <ruleset><list>etc/lists/b89-break-glass  lista que referencian las reglas B89 de Office 365
+  <ruleset><list>etc/lists/b89-internet-facing-projects  proyectos Snyk expuestos (detections/snyk, 101730-101731)
 Bloque administrado B89:policy:begin/end (al final): Active Response opt-in y white_list.
 
 Variables: B89_LOG_ALERT_LEVEL (3), B89_VD_FEED_INTERVAL (60m), B89_AR_AUTO_BLOCK (0|1),
@@ -23,7 +24,7 @@ import sys
 
 BEGIN = "<!-- B89:policy:begin"
 END = "<!-- B89:policy:end -->"
-B89_LISTS = ("etc/lists/b89-break-glass",)
+B89_LISTS = ("etc/lists/b89-break-glass", "etc/lists/b89-internet-facing-projects")
 
 
 def env_int(name, default, lo, hi):

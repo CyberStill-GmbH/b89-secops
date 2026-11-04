@@ -3,7 +3,9 @@
 #
 #   1. Reglas: comprueba que los IDs B89 no colisionan entre sí ni con lo instalado
 #      (check_rule_ids.py) y prepara wazuh/office365/rules + infra/wazuh/*/rules.
-#      La lista etc/lists/b89-break-glass se crea vacía si falta (nunca se pisa una existente).
+#      Incluye las reglas del programa de detección (detections/*/*/rule.xml → b89_soc_*.xml).
+#      Las listas etc/lists/b89-break-glass y b89-internet-facing-projects se crean con un
+#      centinela .invalid si faltan o están vacías (nunca se pisa una con contenido).
 #   2. ossec.conf: render_ossec_policy.py (VD + indexer, umbral de alertas, correo apagado,
 #      lista B89 en <ruleset>, bloque B89:policy con Active Response opt-in).
 #   3. Si algo cambió: respaldo en etc/b89-backup-<ts>-policy/, instala, valida con
@@ -30,6 +32,12 @@ b89_log "manager: $M (auto-block=${B89_AR_AUTO_BLOCK:-0})"
 mapfile -t rule_files < <(ls "$B89_REPO_ROOT"/wazuh/office365/rules/*.xml "$B89_REPO_ROOT"/infra/wazuh/*/rules/*.xml)
 stage="$B89_WORK/stage"; mkdir -p "$stage/rules"
 for f in "${rule_files[@]}"; do tr -d '\r' <"$f" >"$stage/rules/$(basename "$f")"; done
+# Reglas del programa de detección (docs/17): detections/<fuente>/<caso>/rule.xml → b89_soc_<fuente>_<caso>.xml.
+for f in "$B89_REPO_ROOT"/detections/*/*/rule.xml; do
+  [[ -f "$f" ]] || continue
+  rel="${f#"$B89_REPO_ROOT"/detections/}"; rel="${rel%/rule.xml}"
+  tr -d '\r' <"$f" >"$stage/rules/b89_soc_$(tr '/-' '__' <<<"$rel").xml"
+done
 names="$(cd "$stage/rules" && ls)"
 # IDs instalados fuera de los archivos B89 (ruleset oficial y reglas locales de otros dueños).
 # shellcheck disable=SC2016
@@ -61,6 +69,7 @@ b89_mexec bash -euo pipefail -c '
   same() { [ -f "$2" ] && [ "$(sha256sum <"$1")" = "$(sha256sum <"$2")" ]; }
   for f in $S/rules/*.xml; do same "$f" "$O/etc/rules/$(basename "$f")" || changed=1; done
   [ -s $O/etc/lists/b89-break-glass ] || changed=1
+  [ -s $O/etc/lists/b89-internet-facing-projects ] || changed=1
   [ "$1" = changed ] && changed=1
   if [ $changed = 0 ]; then echo "[b89-policy] manager ya cumple la política: sin cambios ni reinicio"; exit 0; fi
 
@@ -76,6 +85,9 @@ b89_mexec bash -euo pipefail -c '
   # Vacía rompe GET /lists de la API («Bad format in CDB list»): centinela que nunca coincide.
   [ -s $O/etc/lists/b89-break-glass ] || { echo b89-sin-cuentas-break-glass@b89.invalid:placeholder >$O/etc/lists/b89-break-glass
     chown wazuh:wazuh $O/etc/lists/b89-break-glass; chmod 0660 $O/etc/lists/b89-break-glass; }
+  # Proyectos Snyk expuestos por Cloudflare (detections/snyk/exposed-critical-exploit): mismo centinela.
+  [ -s $O/etc/lists/b89-internet-facing-projects ] || { echo b89-sin-proyectos-expuestos.invalid:placeholder >$O/etc/lists/b89-internet-facing-projects
+    chown wazuh:wazuh $O/etc/lists/b89-internet-facing-projects; chmod 0660 $O/etc/lists/b89-internet-facing-projects; }
   install -o root -g wazuh -m 0660 $S/ossec.conf $O/etc/ossec.conf
   for t in wazuh-analysisd wazuh-modulesd wazuh-remoted wazuh-execd; do
     if ! $O/bin/$t -t >/tmp/b89-policy-test.log 2>&1; then

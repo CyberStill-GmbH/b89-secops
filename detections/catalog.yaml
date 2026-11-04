@@ -1,0 +1,114 @@
+# B89 SOC · catálogo de detección como código (docs/17-ingenieria-de-deteccion.md).
+#
+# Fuente única de: rangos de IDs por fuente, dueño de cada archivo de reglas y suites de prueba.
+# Los archivos de reglas que ya existían NO se mueven (los instalan scripts de otros owners y la CI
+# los monta por ruta): el árbol detections/<fuente>/<caso-de-uso>/ los referencia desde metadata.yaml.
+# Las reglas nuevas del programa viven en detections/<fuente>/<caso-de-uso>/rule.xml y se instalan
+# como etc/rules/b89_soc_<fuente>_<caso_de_uso>.xml (prefijo b89_soc_ = cargan después de todo B89).
+#
+# Validación: python3 detections/tools/b89_detections.py lint
+
+version: 1
+program: B89 SOC · Ingeniería de detección
+rule_prefix: "B89 "          # toda descripción de regla B89 empieza por "B89 <Fuente>:"
+user_range: [100000, 120000]  # rango de usuario de Wazuh
+
+sources:
+  m365:        {name: "Microsoft 365", prefix: "B89 M365:"}
+  entra:       {name: "Microsoft Entra ID", prefix: "B89 Entra:"}
+  windows:     {name: "Windows (Sysmon y Security)", prefix: "B89 Windows:"}
+  ad:          {name: "Active Directory", prefix: "B89 AD:"}
+  linux:       {name: "Servidores Linux", prefix: "B89 Linux:"}
+  aws:         {name: "AWS (CloudTrail vía EventBridge)", prefix: "B89 AWS:"}
+  bitdefender: {name: "Bitdefender GravityZone", prefix: "B89 Bitdefender:"}
+  snyk:        {name: "Snyk", prefix: "B89 Snyk:"}
+  cloudflare:  {name: "Cloudflare", prefix: "B89 Cloudflare:"}
+  sophos:      {name: "Sophos Central (normalizado)", prefix: "B89 Sophos:"}
+  cato:        {name: "Cato Networks (normalizado)", prefix: "B89 Cato:"}
+  platform:    {name: "Salud de integraciones B89", prefix: "B89 Integración:"}
+  launch:      {name: "Paquete de lanzamiento (proveedores normalizados)", prefix: "B89 <Fuente>:"}
+
+# Rangos reservados. Un ID no se reutiliza: una regla retirada deja su ID documentado en su metadata.
+id_ranges:
+  - {from: 100500, to: 100549, source: m365,        owner: soc-detection-engineering, note: "M365/Entra vía módulo office365"}
+  - {from: 101100, to: 101199, source: windows,     owner: soc-detection-engineering, note: "Endpoint Windows (Sysmon)"}
+  - {from: 101200, to: 101215, source: launch-pack, owner: soc-detection-engineering, note: "Paquete de lanzamiento de proveedores normalizados"}
+  - {from: 101216, to: 101299, source: platform,    owner: provider-monitoring,       note: "Servicio de proveedores (archivo de otro owner, en curso)"}
+  - {from: 101300, to: 101399, source: ad,          owner: soc-detection-engineering, note: "Active Directory (Security de DC)"}
+  - {from: 101400, to: 101449, source: bitdefender, owner: provider-ingestion,        note: "Collector GravityZone"}
+  - {from: 101450, to: 101499, source: snyk,        owner: provider-ingestion,        note: "Collector de issues"}
+  - {from: 101500, to: 101549, source: cloudflare,  owner: provider-ingestion,        note: "Collector de auditoría y WAF"}
+  - {from: 101550, to: 101599, source: reserved,    owner: soc-detection-engineering, note: "Reservado: Sophos/Cato directos"}
+  - {from: 101600, to: 101699, source: aws,         owner: aws-monitoring,            note: "Receptor EventBridge→SNS (archivo de otro owner)"}
+  - {from: 101700, to: 101709, source: m365,        owner: soc-detection-engineering, note: "Programa: cadenas M365/Entra"}
+  - {from: 101710, to: 101719, source: aws,         owner: soc-detection-engineering, note: "Programa: correlación AWS"}
+  - {from: 101720, to: 101729, source: bitdefender, owner: soc-detection-engineering, note: "Programa: malware + evasión"}
+  - {from: 101730, to: 101739, source: snyk,        owner: soc-detection-engineering, note: "Programa: exposición a Internet"}
+  - {from: 101740, to: 101749, source: cloudflare,  owner: soc-detection-engineering, note: "Programa: oleadas WAF"}
+  - {from: 101750, to: 101769, source: linux,       owner: soc-detection-engineering, note: "Programa: servidores Linux"}
+  - {from: 101770, to: 101799, source: reserved,    owner: soc-detection-engineering, note: "Reservado: correlación Windows/AD cuando haya agentes"}
+
+# Archivos de reglas B89 existentes (ruta canónica, no se mueven) y su suite de wazuh-logtest.
+rule_files:
+  - path: wazuh/office365/rules/b89_office365_rules.xml
+    owner: soc-detection-engineering
+    installer: wazuh/manager/policy/apply-manager-policy.sh
+    suite: {name: office365, fixtures: wazuh/office365/tests/logtest-cases.jsonl, expected: wazuh/office365/tests/expected-rules.txt}
+  - path: infra/wazuh/endpoint/rules/b89_endpoint_rules.xml
+    owner: soc-detection-engineering
+    installer: wazuh/manager/policy/apply-manager-policy.sh
+    suite: {name: endpoint, validator: infra/wazuh/endpoint/tests/validate-fixtures.py}
+  - path: infra/wazuh/launch-detections/rules/b89_launch_provider_rules.xml
+    owner: soc-detection-engineering
+    installer: wazuh/manager/policy/apply-manager-policy.sh
+    suite: {name: launch, fixtures: infra/wazuh/launch-detections/tests/provider-cases.jsonl, expected: infra/wazuh/launch-detections/tests/expected-rules.txt}
+  - path: infra/wazuh/active-directory/rules/b89_active_directory_rules.xml
+    owner: soc-detection-engineering
+    installer: wazuh/manager/policy/apply-manager-policy.sh
+    # La CI adapta la regla 60000 del contenedor desechable (decoded_as json) para leer los fixtures EventChannel;
+    # test-in-container.sh hace lo mismo. Producción no cambia.
+    suite: {name: active-directory, fixtures: infra/wazuh/active-directory/tests/ad-cases.jsonl, expected: infra/wazuh/active-directory/tests/expected-rules.txt}
+  - path: wazuh/provider-ingestion/rules/b89_bitdefender_rules.xml
+    owner: provider-ingestion
+    installer: wazuh/provider-ingestion/install-b89-collectors.sh
+    suite: {name: collectors, fixtures: wazuh/provider-ingestion/tests/collector-cases.jsonl, expected: wazuh/provider-ingestion/tests/collector-expected-rules.txt}
+  - path: wazuh/provider-ingestion/rules/b89_snyk_rules.xml
+    owner: provider-ingestion
+    installer: wazuh/provider-ingestion/install-b89-collectors.sh
+    suite: {name: collectors}
+  - path: wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml
+    owner: provider-ingestion
+    installer: wazuh/provider-ingestion/install-b89-collectors.sh
+    suite: {name: collectors}
+  # Archivos de otros owners en curso (sin commitear al crear este catálogo). Se leen si existen.
+  - path: wazuh/aws-events/rules/b89_aws_rules.xml
+    owner: aws-monitoring
+    optional: true
+    installer: wazuh/aws-events/install-aws-events.sh
+    suite: {name: aws, fixtures: wazuh/aws-events/tests/aws-cases.jsonl, expected: wazuh/aws-events/tests/aws-expected-rules.txt}
+  - path: infra/wazuh/launch-detections/rules/b89_provider_service_rules.xml
+    owner: provider-monitoring
+    optional: true
+    installer: wazuh/manager/policy/apply-manager-policy.sh
+
+# Listas CDB que usan las reglas del programa. El instalador las crea vacías si faltan y nunca pisa una existente.
+lists:
+  - name: b89-break-glass
+    path: etc/lists/b89-break-glass
+    example: wazuh/office365/lists/b89-break-glass.example
+    used_by: [100530]
+  - name: b89-internet-facing-projects
+    path: etc/lists/b89-internet-facing-projects
+    example: detections/snyk/exposed-critical-exploit/lists/b89-internet-facing-projects.example
+    used_by: [101730, 101731]
+
+# Refinamientos esperados: con las reglas del programa cargadas, estos casos de suites existentes bajan
+# a una regla hija más específica. Es comportamiento buscado (más contexto), no una regresión.
+refinements:
+  - {suite: office365, case: 8,  from: 100520, to: 101704, reason: "Global Administrator es tier 0"}
+  - {suite: office365, case: 44, from: 100520, to: 101704, reason: "Global Administrator es tier 0"}
+  - {suite: collectors, case: 5, from: 101405, to: 101721, reason: "ep-0001 tuvo malware (casos 2-3) y luego antimalware deshabilitado"}
+  - {suite: collectors, case: 6, from: 101406, to: 101721, reason: "ep-0001 tuvo malware (casos 2-3) y luego ATC deshabilitado"}
+  - {suite: aws, case: 15, from: 101622, to: 101712, reason: "mismo principal ya detuvo CloudTrail (caso 13): cegamiento múltiple"}
+  - {suite: aws, case: 16, from: 101623, to: 101712, reason: "mismo principal: cegamiento múltiple"}
+  - {suite: aws, case: 17, from: 101624, to: 101712, reason: "mismo principal: cegamiento múltiple"}
