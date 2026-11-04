@@ -626,9 +626,17 @@ export function BunnyPanel({
 export function mountBunnyPanel(core: CoreStart, api: B89ApiClient, state: BunnyState): () => void {
   const container = document.createElement('div');
   container.dataset.b89Bunny = 'panel';
-  document.body.appendChild(container);
+  // OSD vuelve a renderizar <body> después del `start` de los plugins y elimina los nodos
+  // añadidos antes: el contenedor se (re)inserta cada vez que el panel se abre.
+  const attach = () => {
+    if (!container.isConnected) document.body.appendChild(container);
+  };
+  attach();
   // El panel va a la izquierda y empuja el contenido: una clase en <html> activa el desplazamiento.
-  const sync = () => document.documentElement.classList.toggle('b89-bunny-open', state.isOpen());
+  const sync = () => {
+    if (state.isOpen()) attach();
+    document.documentElement.classList.toggle('b89-bunny-open', state.isOpen());
+  };
   const unsubscribe = state.subscribe(sync);
   const imageUrl = core.http.basePath.prepend(`${BRAND_ASSETS_PATH}/b89-bunny.webp`);
   ReactDOM.render(
