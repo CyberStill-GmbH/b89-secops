@@ -21,6 +21,7 @@ original (sprints, informes, auditorías C-0X y ADR previos) sigue en git: `git 
 | 13 | [B89 Respond](13-b89-respond.md) | Diseño de la respuesta gobernada sobre Step Functions y estado heredado de Shuffle |
 | 14 | [B89 Respond y B89 Core](14-b89-respond-conexion-b89.md) | Contrato entre el catálogo, las aprobaciones y la ejecución |
 | 15 | [Bunny](15-bunny-asistente.md) | El asistente de IA integrado: qué lee, con qué permisos, privacidad y configuración |
+| 16 | [Políticas de seguridad](16-politicas.md) | Catálogo de políticas como código: agentes, manager, reglas, retención del Indexer y roles |
 
 La referencia visual del frontend B89 está en [Identidad visual B89](brand/b89-visual-identity.md); incluye tipografía, paleta, logo y la biblioteca recortada de mascotas e ilustraciones.
 
