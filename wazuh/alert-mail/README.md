@@ -2,8 +2,8 @@
 
 `b89_alert_mail.py` envía por Microsoft Graph `sendMail` (client credentials) un correo por
 intervalo (`ALERT_INTERVAL_MIN`, timer `b89-alert-mail.timer`) con las alertas Wazuh de
-`rule.level >= 10` nuevas en `alerts.json`. Severidad según `modules/telemetry`: 12+ crítica,
-8–11 alta (el umbral 10 es el pedido; `min_level` es configurable). Lotes de hasta 50 alertas,
+`rule.level >= 8` nuevas en `alerts.json`. Severidad según `modules/telemetry`: 12+ crítica,
+8–11 alta (umbral 8: críticas y altas según B89; `min_level` es configurable). Lotes de hasta 50 alertas,
 máximo 6 correos/hora, dedupe por id de alerta, cola acotada si Graph falla o se alcanza el límite.
 HTML + texto en español con enlace a https://dev.security.b89.io/app/b89-alerts. No registra
 secretos, tokens ni contenido de alertas.

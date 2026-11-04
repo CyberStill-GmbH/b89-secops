@@ -124,7 +124,7 @@ write("alert-mail.json", {"tenant_id_file": f"{cs}/entra-tenant-id", "client_id_
     "client_secret_file": f"{cs}/entra-client-secret", "from": sender,
     "to": [a.strip() for a in to.replace(";", ",").split(",") if a.strip()],
     "alerts_file": f"{logvol}/alerts/alerts.json", "state_file": f"{state}/alert-mail.json",
-    "min_level": 10, "max_per_email": 50, "max_emails_per_hour": 6,
+    "min_level": 8, "max_per_email": 50, "max_emails_per_hour": 6,
     "console_url": "https://dev.security.b89.io/app/b89-alerts"})
 PY
 
