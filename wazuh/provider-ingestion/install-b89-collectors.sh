@@ -95,7 +95,12 @@ for d in common bitdefender snyk cloudflare; do
 done
 install -m 0640 "${REPO_WAZUH}/alert-mail/b89_alert_mail.py" "$ROOT/alert-mail/"
 find "$ROOT" -name '*.py' -exec sed -i 's/\r$//' {} +
-read_file() { tr -d '\r\n' <"${CS}/$1" 2>/dev/null || true; }
+read_file() { if [[ -s ${CS}/$1 ]]; then tr -d '\r\n' <"${CS}/$1"; fi; }
+# Crear los JSONL antes de reiniciar el manager: si no existen al arrancar, logcollector los abre
+# más tarde desde el final y se pierde el primer lote.
+for f in bitdefender-gz snyk-issues cloudflare-security; do
+  [[ -e $OUT/$f.jsonl ]] || install -m 0640 /dev/null "$OUT/$f.jsonl"
+done
 
 python3 - "$ETC" "$CS" "$STATE" "$OUT" "$LOGVOL" "$(read_file bitdefender-region)" "$(read_file snyk-org-id)" \
   "$(read_file snyk-api-url)" "$(read_file alert-email-to)" "$(read_file alert-email-from)" <<'PY'
@@ -225,7 +230,7 @@ for p in bitdefender snyk cloudflare; do
     systemctl start "b89-collector-$p.service" || true
     systemctl enable --now "b89-collector-$p.timer" >/dev/null
     rc="$(systemctl show -p ExecMainStatus --value "b89-collector-$p.service")"
-    msg="$(journalctl -u "b89-collector-$p.service" -n 1 --no-pager -o cat 2>/dev/null | tail -1)"
+    msg="$(journalctl -u "b89-collector-$p.service" --no-pager -o cat 2>/dev/null | grep -E "^b89-$p:" | tail -1)"
     log "$p: exit=$rc · $msg · líneas JSONL=$(wc -l <"$OUT/$(case $p in bitdefender) echo bitdefender-gz ;; snyk) echo snyk-issues ;; cloudflare) echo cloudflare-security ;; esac).jsonl" 2>/dev/null || echo 0)"
   else
     systemctl disable --now "b89-collector-$p.timer" >/dev/null 2>&1 || true
