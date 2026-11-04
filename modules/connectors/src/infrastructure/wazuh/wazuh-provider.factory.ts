@@ -32,6 +32,8 @@ export interface WazuhProviderConfiguration {
   readonly compileFilters?: (filters: EventFilters) => readonly JsonObject[] | undefined;
   /** Campo de stream para la actividad (ver `WazuhSecurityEventProviderOptions`). */
   readonly activityField?: string;
+  /** Grupos de proveedor medidos como streams (ver `WazuhSecurityEventProviderOptions`). */
+  readonly activityGroups?: readonly string[];
 }
 
 /** Composition root helper; callers pass C-28 credentials already resolved through C-03. */
@@ -70,5 +72,6 @@ export function createWazuhSecurityEventProvider(
     ...(config.telemetry ? { telemetry: config.telemetry } : {}),
     ...(config.compileFilters ? { compileFilters: config.compileFilters } : {}),
     ...(config.activityField ? { activityField: config.activityField } : {}),
+    ...(config.activityGroups ? { activityGroups: config.activityGroups } : {}),
   });
 }

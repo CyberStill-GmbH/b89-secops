@@ -194,7 +194,12 @@ export function buildSocTools(get: InternalGet, actor: ActorSummary): AssistantT
           description: '`open` = todo lo pendiente de trabajo.',
         },
         priority: { type: 'string', enum: ['P1', 'P2', 'P3', 'P4'] },
-        q: { type: 'string', maxLength: 120, description: 'Texto a buscar en título y razones.' },
+        q: {
+          type: 'string',
+          maxLength: 120,
+          description:
+            'Texto a buscar en título y razones. El título nombra al proveedor de origen: «Snyk», «Bitdefender», «Cloudflare», «Office 365», «AWS».',
+        },
         entity: {
           type: 'string',
           description: 'Referencia opaca de entidad (`entities[].ref` de otra alerta).',
@@ -308,7 +313,8 @@ export function buildSocTools(get: InternalGet, actor: ActorSummary): AssistantT
         },
         category: {
           type: 'string',
-          description: 'Lista separada por comas, p. ej. authentication,network.',
+          description:
+            'Lista separada por comas, p. ej. authentication,network. Proveedores: vulnerability (Snyk), malware/host (Bitdefender GravityZone), web/network (Cloudflare), api (AWS), iam/email (Microsoft 365).',
         },
         outcome: { type: 'string', enum: ['success', 'failure'] },
         ...PAGING,
@@ -328,7 +334,7 @@ export function buildSocTools(get: InternalGet, actor: ActorSummary): AssistantT
       name: 'sources_health',
       label: 'Revisando la salud de las fuentes',
       description:
-        'Estado de las fuentes de datos (¿llegan eventos?, fallas consecutivas, última recepción).',
+        'Estado de las fuentes de datos (¿llegan eventos?, fallas consecutivas, última recepción). `subscriptions.items` trae la actividad 24 h por stream: suscripciones de Office 365 (`Audit.*`) y proveedores integrados (`provider.bitdefender`, `provider.snyk`, `provider.cloudflare`, `provider.aws`).',
       anyOf: ['sources.health.read'],
       properties: {},
       build: () => '/api/sources/health',

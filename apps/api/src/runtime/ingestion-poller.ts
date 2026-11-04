@@ -119,6 +119,17 @@ export function createIngestionPass(options: IngestionPassOptions): () => Promis
         if (recordsSeen === 0 && claim.watermark === null) {
           await options.state.advanceCursor(claim, window.from, options.now());
         }
+        // Ventana recortada por `maximumWindowMs` y leída completa: la marca sube a su borde
+        // aunque no hubiera eventos nuevos. Sin esto, un hueco de más de una ventana sin
+        // eventos (p. ej. una noche sin alertas) deja la marca clavada en el último evento y
+        // cada pasada relee la misma hora para siempre: lo posterior nunca llega al SOC.
+        // El borde ya quedó atrás (`to` < ahora − retraso), así que el solape de la pasada
+        // siguiente cubre lo indexado tarde. Queda trabajo: se pide otra pasada enseguida.
+        const capped = window.to.getTime() < attemptedAt.getTime() - options.window.lagMs;
+        if (capped && !pending) {
+          await options.state.advanceCursor(claim, window.to, options.now());
+          pending = true;
+        }
       }
     } catch (error) {
       failure = classify(error);

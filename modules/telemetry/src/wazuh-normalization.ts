@@ -3,6 +3,7 @@ import {
   SECURITY_EVENT_SCHEMA_VERSION,
   validateSecurityEvent,
   type Identity,
+  type IngestionHop,
   type Raw,
   type Resource,
   type SecurityEvent,
@@ -40,11 +41,15 @@ import {
  *   workload, objeto, resultado y extensión `microsoft.office365`; además `data.srcip`
  *   como recurso IP para cualquier alerta. Un evento 1.0.0 almacenado sigue siendo válido:
  *   el cambio es aditivo dentro del contrato 1.0.0.
+ * - 1.2.0: proveedores integrados por los collectors B89 (wazuh/provider-ingestion):
+ *   Bitdefender GravityZone, Snyk, Cloudflare y AWS. Sus grupos (`bitdefender`, `snyk`,
+ *   `cloudflare`, `b89_*`) tienen categoría, y el proveedor de origen viaja como primer salto
+ *   `origin` de `provenance.ingestionPath`. Aditivo, como 1.1.0.
  */
 
 export const WAZUH_MAPPING_ID = 'wazuh.alerts' as const;
-export const WAZUH_MAPPING_VERSION = '1.1.0' as const;
-export const WAZUH_PARSER_VERSION = '1.1.0' as const;
+export const WAZUH_MAPPING_VERSION = '1.2.0' as const;
+export const WAZUH_PARSER_VERSION = '1.2.0' as const;
 export const WAZUH_SEVERITY_MAPPING_ID = 'wazuh.alerts.severity' as const;
 export const WAZUH_SEVERITY_SCALE = 'provider-level-0-15' as const;
 
@@ -217,7 +222,55 @@ const CATEGORY_BY_GROUP: Readonly<Record<string, SecurityEventCategory>> = Objec
   mssql: 'database',
   mysql: 'database',
   postgresql: 'database',
+  // Collectors B89 (wazuh/provider-ingestion/rules): grupo del proveedor + grupo `b89_*`.
+  bitdefender: 'host',
+  b89_endpoint_status: 'host',
+  b89_containment: 'host',
+  b89_malware: 'malware',
+  b89_hygiene: 'configuration',
+  b89_defense_evasion: 'configuration',
+  snyk: 'vulnerability',
+  b89_vulnerability: 'vulnerability',
+  cloudflare: 'network',
+  b89_waf: 'web',
+  b89_attack: 'intrusion_detection',
+  b89_audit: 'configuration',
+  b89_dns_change: 'configuration',
+  b89_persistence: 'iam',
+  b89_impact: 'configuration',
+  aws: 'api',
+  amazon: 'api',
 });
+
+/**
+ * Proveedor de origen de las alertas que no nacen en un agente Wazuh, por grupo de la regla.
+ * El primero que coincide gana; el orden no importa porque los grupos son disjuntos.
+ */
+export const WAZUH_PROVIDER_ORIGINS: readonly {
+  readonly group: string;
+  readonly vendor: string;
+  readonly product: string;
+}[] = Object.freeze([
+  { group: 'office365', vendor: 'Microsoft', product: 'Microsoft 365' },
+  { group: 'bitdefender', vendor: 'Bitdefender', product: 'GravityZone' },
+  { group: 'snyk', vendor: 'Snyk', product: 'Snyk' },
+  { group: 'cloudflare', vendor: 'Cloudflare', product: 'Cloudflare' },
+  { group: 'aws', vendor: 'Amazon Web Services', product: 'AWS' },
+  { group: 'amazon', vendor: 'Amazon Web Services', product: 'AWS' },
+]);
+
+function withOrigin(
+  origin: IngestionHop | undefined,
+  path: [IngestionHop, ...IngestionHop[]],
+): [IngestionHop, ...IngestionHop[]] {
+  return origin ? [origin, ...path] : path;
+}
+
+function originHop(groups: readonly string[]): IngestionHop | undefined {
+  const lowered = new Set(groups.map((group) => group.toLowerCase()));
+  const origin = WAZUH_PROVIDER_ORIGINS.find((candidate) => lowered.has(candidate.group));
+  return origin ? { kind: 'origin', vendor: origin.vendor, product: origin.product } : undefined;
+}
 
 const SUCCESS_GROUPS = new Set(['authentication_success']);
 const FAILURE_GROUPS = new Set([
@@ -454,6 +507,7 @@ export function normalizeWazuhAlert(
     : [];
 
   const severity = mapSeverity(level);
+  const origin = originHop(groups);
   const office365 = projectOffice365(readObject(source['data']));
   const occurredAt = new Date(timestamp).toISOString();
   const observedAt = new Date(record.collectedAt).toISOString();
@@ -506,7 +560,7 @@ export function normalizeWazuhAlert(
       parserVersion: WAZUH_PARSER_VERSION,
       mappingVersion: WAZUH_MAPPING_VERSION,
       timestampQuality: 'source',
-      ingestionPath: [
+      ingestionPath: withOrigin(origin, [
         {
           kind: 'collector',
           vendor: 'Wazuh, Inc.',
@@ -514,7 +568,7 @@ export function normalizeWazuhAlert(
           instanceId: context.instanceId,
         },
         { kind: 'adapter', vendor: 'B89', product: 'B89 SecOps' },
-      ],
+      ]),
     },
     ...(office365 && Object.keys(office365.extension).length > 0
       ? { extensions: { [OFFICE365_EXTENSION_NAMESPACE]: office365.extension } }

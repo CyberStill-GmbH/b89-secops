@@ -75,6 +75,51 @@ describe('C-12 normalización de alertas Wazuh', () => {
     expect(outcome.event.occurredAt).toBe('2026-11-03T18:52:19.984Z');
   });
 
+  it('las alertas de los collectors B89 llevan categoría y proveedor de origen (1.2.0)', () => {
+    const cases = [
+      {
+        groups: ['b89_provider', 'snyk', 'b89_vulnerability'],
+        category: 'vulnerability',
+        product: 'Snyk',
+      },
+      {
+        groups: ['b89_provider', 'bitdefender', 'b89_malware'],
+        category: 'malware',
+        product: 'GravityZone',
+      },
+      { groups: ['b89_provider', 'cloudflare', 'b89_waf'], category: 'web', product: 'Cloudflare' },
+    ];
+    for (const item of cases) {
+      const outcome = normalizeWazuhAlert(
+        alert({
+          rule: {
+            id: '101455',
+            level: 10,
+            description: 'B89 proveedor sintético',
+            groups: item.groups,
+          },
+          data: {},
+        }),
+        context,
+      );
+      expect(outcome.status).toBe('normalized');
+      if (outcome.status !== 'normalized') return;
+      expect(outcome.event.category).toContain(item.category);
+      expect(outcome.event.category).not.toContain('unclassified');
+      expect(outcome.event.provenance.ingestionPath[0]).toMatchObject({
+        kind: 'origin',
+        product: item.product,
+      });
+    }
+  });
+
+  it('una alerta de agente no declara proveedor de origen', () => {
+    const outcome = normalizeWazuhAlert(alert(), context);
+    expect(outcome.status).toBe('normalized');
+    if (outcome.status !== 'normalized') return;
+    expect(outcome.event.provenance.ingestionPath[0]?.kind).toBe('collector');
+  });
+
   it('convierte una alerta válida en un documento que cumple el contrato', () => {
     const outcome = normalizeWazuhAlert(alert(), context);
 

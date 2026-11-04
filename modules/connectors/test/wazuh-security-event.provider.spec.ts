@@ -355,6 +355,48 @@ describe('WazuhSecurityEventProvider', () => {
       }),
       undefined,
     );
+    const withGroups = new WazuhSecurityEventProvider({
+      sourceId: 'lab',
+      allowedDatasets: ['wazuh-alerts'],
+      maximumPageSize: 10,
+      maximumResponseBytes: 1_000_000,
+      cursorSecret: SECRET,
+      client,
+      activityField: 'data.office365.Subscription',
+      activityGroups: ['snyk', 'bitdefender', 'cloudflare'],
+    });
+    client.search.mockResolvedValueOnce({
+      hits: { hits: [] },
+      aggregations: {
+        streams: { buckets: [] },
+        providers: {
+          buckets: [{ key: 'snyk', doc_count: 121, last: { value: Date.parse(QUERY.to) } }],
+        },
+      },
+    });
+    await expect(
+      withGroups.readActivity({
+        sourceId: 'lab',
+        dataset: 'wazuh-alerts',
+        from: QUERY.from,
+        to: QUERY.to,
+      }),
+    ).resolves.toEqual([{ stream: 'provider.snyk', count: 121, lastEventAt: QUERY.to }]);
+    expect(client.search).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        aggs: expect.objectContaining({
+          providers: {
+            terms: {
+              field: 'rule.groups',
+              include: ['snyk', 'bitdefender', 'cloudflare'],
+              size: 3,
+            },
+            aggs: { last: { max: { field: 'timestamp' } } },
+          },
+        }),
+      }),
+      undefined,
+    );
     client.search.mockResolvedValueOnce({ hits: { hits: [] }, aggregations: { streams: {} } });
     await expect(
       withField.readActivity({

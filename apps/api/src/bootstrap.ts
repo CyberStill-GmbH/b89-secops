@@ -35,6 +35,7 @@ import {
   createWazuhEventsReader,
   createWazuhIngestion,
   OFFICE365_SUBSCRIPTIONS,
+  PROVIDER_STREAMS,
   WAZUH_DATASET,
 } from './runtime/wazuh-ingestion.js';
 import {
@@ -472,7 +473,7 @@ export async function buildApi(
                 monitor,
                 state: runtime.soc.ingestion,
                 readActivity,
-                expectedStreams: OFFICE365_SUBSCRIPTIONS,
+                expectedStreams: [...OFFICE365_SUBSCRIPTIONS, ...PROVIDER_STREAMS],
                 now: runtime.now(),
               }).catch(() => false);
             }

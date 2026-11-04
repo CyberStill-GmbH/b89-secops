@@ -58,6 +58,12 @@ function office365Document(id: string, timestamp: string): ProviderRecord {
   };
 }
 
+function wazuhRecordToEventId(record: ProviderRecord): string {
+  const converted = wazuhRecordToEvent(record, KEY.tenantId, KEY.sourceId);
+  if (converted.status !== 'normalized') throw new Error('documento de prueba inválido');
+  return converted.event.recordId;
+}
+
 /** Proveedor falso que pagina una lista fija dentro de la ventana pedida. */
 function fakeReader(documents: readonly ProviderRecord[], pageSize = 2) {
   const calls: EventQuery[] = [];
@@ -183,6 +189,25 @@ describe('pasada de ingesta', () => {
     const pass = createIngestionPass({ ...base(), readPage: reader.readPage });
     expect(await pass()).toBe(0);
     expect(reader.calls).toHaveLength(0);
+  });
+
+  it('un hueco de más de una ventana sin eventos no deja la marca clavada', async () => {
+    // Marca en un evento de hace 20 h; el siguiente evento llegó hace 10 min. Cada ventana
+    // (1 h) intermedia está vacía o solo contiene lo ya leído: la marca tiene que avanzar
+    // tramo a tramo hasta alcanzar el evento nuevo.
+    const old = office365Document('doc-viejo', '2026-10-11T22:00:00.000Z');
+    const fresh = office365Document('doc-nuevo', '2026-10-12T17:50:00.000Z');
+    const reader = fakeReader([old, fresh]);
+    const claim = await state.claimCursor(KEY, NOW, 1);
+    await state.advanceCursor(claim!, new Date(old.occurredAt!), NOW);
+    await state.releaseCursor(claim!);
+    const pass = createIngestionPass({ ...base(), readPage: reader.readPage });
+    let passes = 0;
+    while ((await pass()) === 1 && passes < 50) passes += 1;
+    expect(passes).toBeLessThan(50);
+    expect(promoted).toContain(wazuhRecordToEventId(fresh));
+    const cursor = state.cursors.get(`${KEY.tenantId}|${KEY.sourceId}|${KEY.dataset}`);
+    expect(cursor?.watermark?.toISOString()).toBe('2026-10-12T17:50:00.000Z');
   });
 
   it('con más páginas que el tope pide otra pasada sin esperar el intervalo', async () => {

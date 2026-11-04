@@ -41,6 +41,15 @@ export const OFFICE365_SUBSCRIPTIONS = Object.freeze([
   'Audit.General',
   'Audit.SharePoint',
 ]);
+/**
+ * Proveedores integrados por los collectors B89 (wazuh/provider-ingestion) y por el receptor
+ * de AWS: grupo de regla que los identifica en `wazuh-alerts-*`. Cada uno se mide como stream
+ * `provider.<grupo>` en la salud de la fuente, junto a las suscripciones de Office 365.
+ */
+export const PROVIDER_ACTIVITY_GROUPS = Object.freeze(['bitdefender', 'snyk', 'cloudflare', 'aws']);
+export const PROVIDER_STREAMS = Object.freeze(
+  PROVIDER_ACTIVITY_GROUPS.map((group) => `provider.${group}`),
+);
 const DATASET = WAZUH_DATASET;
 const CONNECTOR_VERSION = '1.0.0';
 /** Ventana de lectura (ver `IngestionWindowPolicy`). */
@@ -134,6 +143,7 @@ export function createWazuhEventProvider(options: {
     },
     compileFilters: compileWazuhEventFilters,
     activityField: OFFICE365_SUBSCRIPTION_FIELD,
+    activityGroups: PROVIDER_ACTIVITY_GROUPS,
   });
 }
 

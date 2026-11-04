@@ -68,7 +68,16 @@ export interface WazuhSecurityEventProviderOptions {
    * root, que conoce la fuente). Sin él, la actividad no está disponible.
    */
   readonly activityField?: string;
+  /**
+   * Grupos de regla (`rule.groups`) que identifican a un proveedor integrado por un collector
+   * (p. ej. `snyk`, `bitdefender`). Cada grupo se mide como stream `provider.<grupo>` en la
+   * misma consulta de `readActivity`.
+   */
+  readonly activityGroups?: readonly string[];
 }
+
+/** Prefijo de los streams por proveedor en `readActivity`. */
+export const PROVIDER_STREAM_PREFIX = 'provider.';
 
 interface CursorPayload {
   readonly v: 1;
@@ -506,6 +515,7 @@ export class WazuhSecurityEventProvider implements SecurityEventProvider {
    */
   public async readActivity(query: ActivityQuery): Promise<readonly StreamActivity[]> {
     const field = this.options.activityField;
+    const groups = (this.options.activityGroups ?? []).slice(0, ACTIVITY_STREAMS);
     const from = Date.parse(query.from);
     const to = Date.parse(query.to);
     if (
@@ -529,6 +539,14 @@ export class WazuhSecurityEventProvider implements SecurityEventProvider {
               terms: { field, size: ACTIVITY_STREAMS },
               aggs: { last: { max: { field: 'timestamp' } } },
             },
+            ...(groups.length > 0
+              ? {
+                  providers: {
+                    terms: { field: 'rule.groups', include: [...groups], size: groups.length },
+                    aggs: { last: { max: { field: 'timestamp' } } },
+                  },
+                }
+              : {}),
           },
         },
         query.signal,
@@ -536,31 +554,36 @@ export class WazuhSecurityEventProvider implements SecurityEventProvider {
     } catch (error) {
       throw error instanceof SecurityEventProviderError ? error : errorFrom(error, 'readPage');
     }
-    const buckets = (response.aggregations as { streams?: { buckets?: unknown } } | undefined)
-      ?.streams?.buckets;
+    const aggregations = response.aggregations as
+      { streams?: { buckets?: unknown }; providers?: { buckets?: unknown } } | undefined;
+    const buckets = aggregations?.streams?.buckets;
     if (!Array.isArray(buckets) || buckets.length > ACTIVITY_STREAMS)
       throw new SecurityEventProviderError('PROVIDER_RESPONSE_INVALID', 'readPage', false);
-    return buckets.map((bucket: unknown) => {
-      const item = bucket as {
-        key?: unknown;
-        doc_count?: unknown;
-        last?: { value?: unknown; value_as_string?: unknown };
-      };
-      if (
-        typeof item.key !== 'string' ||
-        item.key.length > 128 ||
-        !Number.isInteger(item.doc_count)
-      )
-        throw new SecurityEventProviderError('PROVIDER_RESPONSE_INVALID', 'readPage', false);
-      const last =
-        typeof item.last?.value === 'number' && Number.isFinite(item.last.value)
-          ? new Date(item.last.value).toISOString()
-          : null;
-      return { stream: item.key, count: item.doc_count as number, lastEventAt: last };
-    });
+    const providerBuckets = groups.length > 0 ? aggregations?.providers?.buckets : [];
+    if (!Array.isArray(providerBuckets) || providerBuckets.length > groups.length)
+      throw new SecurityEventProviderError('PROVIDER_RESPONSE_INVALID', 'readPage', false);
+    return [
+      ...buckets.map((bucket: unknown) => streamActivityOf(bucket, '')),
+      ...providerBuckets.map((bucket: unknown) => streamActivityOf(bucket, PROVIDER_STREAM_PREFIX)),
+    ];
   }
 
   public async close(): Promise<void> {
     await this.options.client.close();
   }
+}
+
+function streamActivityOf(bucket: unknown, prefix: string): StreamActivity {
+  const item = bucket as {
+    key?: unknown;
+    doc_count?: unknown;
+    last?: { value?: unknown; value_as_string?: unknown };
+  };
+  if (typeof item.key !== 'string' || item.key.length > 128 || !Number.isInteger(item.doc_count))
+    throw new SecurityEventProviderError('PROVIDER_RESPONSE_INVALID', 'readPage', false);
+  const last =
+    typeof item.last?.value === 'number' && Number.isFinite(item.last.value)
+      ? new Date(item.last.value).toISOString()
+      : null;
+  return { stream: `${prefix}${item.key}`, count: item.doc_count as number, lastEventAt: last };
 }
