@@ -1,0 +1,107 @@
+<!--
+  B89 · Bitdefender GravityZone (wazuh/provider-ingestion/bitdefender/gravityzone.py).
+  IDs reservados: 101400-101449. Eventos JSONL con b89.vendor=bitdefender. Monitor-only.
+  Niveles alineados con modules/telemetry: 12+ crítica, 8-11 alta, 4-7 media, 1-3 baja.
+-->
+<group name="b89_provider,bitdefender,">
+  <rule id="101400" level="0">
+    <decoded_as>json</decoded_as>
+    <field name="b89.vendor">^bitdefender$</field>
+    <description>B89 Bitdefender: evento del collector GravityZone.</description>
+    <options>no_full_log</options>
+  </rule>
+
+  <rule id="101401" level="2">
+    <if_sid>101400</if_sid>
+    <field name="b89.event_type">^endpoint_status$</field>
+    <description>B89 Bitdefender: estado del endpoint $(bitdefender.endpoint.name) sin hallazgos de protección.</description>
+    <options>no_full_log</options>
+    <group>b89_endpoint_status,</group>
+  </rule>
+
+  <rule id="101402" level="12">
+    <if_sid>101401</if_sid>
+    <field name="bitdefender.endpoint.infected">^true$</field>
+    <description>B89 Bitdefender: endpoint $(bitdefender.endpoint.name) infectado (malware activo sin remediar).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1204</id></mitre>
+    <group>b89_malware,</group>
+  </rule>
+
+  <rule id="101403" level="10">
+    <if_sid>101401</if_sid>
+    <field name="bitdefender.endpoint.detection">^true$</field>
+    <description>B89 Bitdefender: detección de malware en $(bitdefender.endpoint.name).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1204</id></mitre>
+    <group>b89_malware,</group>
+  </rule>
+
+  <rule id="101404" level="10">
+    <if_sid>101401</if_sid>
+    <field name="bitdefender.endpoint.isolated">^true$</field>
+    <description>B89 Bitdefender: endpoint $(bitdefender.endpoint.name) aislado de la red.</description>
+    <options>no_full_log</options>
+    <group>b89_containment,</group>
+  </rule>
+
+  <rule id="101405" level="10">
+    <if_sid>101401</if_sid>
+    <field name="bitdefender.endpoint.antimalware_disabled">^true$</field>
+    <description>B89 Bitdefender: antimalware deshabilitado en $(bitdefender.endpoint.name).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1562.001</id></mitre>
+    <group>b89_defense_evasion,</group>
+  </rule>
+
+  <rule id="101406" level="7">
+    <if_sid>101401</if_sid>
+    <field name="bitdefender.endpoint.atc_disabled">^true$</field>
+    <description>B89 Bitdefender: Advanced Threat Control deshabilitado en $(bitdefender.endpoint.name).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1562.001</id></mitre>
+    <group>b89_defense_evasion,</group>
+  </rule>
+
+  <rule id="101407" level="5">
+    <if_sid>101401</if_sid>
+    <field name="bitdefender.endpoint.signature_outdated">^true$</field>
+    <description>B89 Bitdefender: firmas desactualizadas en $(bitdefender.endpoint.name).</description>
+    <options>no_full_log</options>
+    <group>b89_hygiene,</group>
+  </rule>
+
+  <rule id="101408" level="4">
+    <if_sid>101401</if_sid>
+    <field name="bitdefender.endpoint.product_outdated">^true$</field>
+    <description>B89 Bitdefender: agente desactualizado en $(bitdefender.endpoint.name).</description>
+    <options>no_full_log</options>
+    <group>b89_hygiene,</group>
+  </rule>
+
+  <rule id="101409" level="5">
+    <if_sid>101401</if_sid>
+    <field name="bitdefender.endpoint.policy_applied">^false$</field>
+    <description>B89 Bitdefender: la política $(bitdefender.endpoint.policy_name) no está aplicada en $(bitdefender.endpoint.name).</description>
+    <options>no_full_log</options>
+    <group>b89_hygiene,</group>
+  </rule>
+
+  <rule id="101410" level="10">
+    <if_sid>101400</if_sid>
+    <field name="b89.event_type">^quarantine_item$</field>
+    <description>B89 Bitdefender: amenaza $(bitdefender.quarantine.threat_name) puesta en cuarentena en $(bitdefender.quarantine.endpoint_name).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1204</id></mitre>
+    <group>b89_malware,</group>
+  </rule>
+
+  <rule id="101411" level="13" frequency="3" timeframe="3600">
+    <if_matched_sid>101410</if_matched_sid>
+    <same_field>bitdefender.quarantine.endpoint_id</same_field>
+    <description>B89 Bitdefender: 3+ amenazas en cuarentena en $(bitdefender.quarantine.endpoint_name) en 1 h; posible infección persistente.</description>
+    <options>no_full_log</options>
+    <mitre><id>T1204</id></mitre>
+    <group>b89_malware,</group>
+  </rule>
+</group>
