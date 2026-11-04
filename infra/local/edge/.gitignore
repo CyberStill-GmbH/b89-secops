@@ -3,3 +3,4 @@ certs/
 .security-backup/
 respond.local.env
 gateway/
+respond-sso/

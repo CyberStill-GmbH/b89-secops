@@ -14,6 +14,35 @@ services:
       - shuffle-backend
     restart: unless-stopped
 
+  # Puente SSO sesión B89 → sesión Shuffle (decisión B11, docs/14 §8.1). Sin puertos:
+  # solo lo alcanza el edge. Secretos en /opt/b89/secrets/respond-sso (bootstrap.mjs, deploy-respond.sh).
+  b89-respond-sso:
+    image: b89/respond-sso:1
+    build:
+      context: /opt/b89/src/b89-respond/sso
+    hostname: b89-respond-sso
+    environment:
+      - SHUFFLE_URL=http://shuffle-backend:5001
+      - RESPOND_SSO_SECRETS=/run/b89-respond-sso
+      # Admin inicial de Shuffle: si también es persona de B89, entra con esta contraseña (no se rota).
+      - SHUFFLE_ADMIN_USERNAME=${SHUFFLE_ADMIN_USERNAME}
+      - SHUFFLE_ADMIN_PASSWORD=${SHUFFLE_ADMIN_PASSWORD}
+    volumes:
+      - /opt/b89/secrets/respond-sso:/run/b89-respond-sso:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - shuffle-backend
+    mem_limit: 128m
+    restart: unless-stopped
+
+  # El edge (compose.b89.yaml) lee el token compartido con el puente.
+  edge:
+    volumes:
+      - /opt/b89/secrets/respond-sso:/etc/nginx/b89-respond-sso:ro
+
   shuffle-backend:
     image: ghcr.io/shuffle/shuffle-backend:2.3.0
     hostname: shuffle-backend

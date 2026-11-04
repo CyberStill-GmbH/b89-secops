@@ -17,6 +17,36 @@ services:
       - shuffle-backend
     restart: unless-stopped
 
+  # Puente SSO sesión B89 → sesión Shuffle (decisión B11, docs/14 §8.1). Solo lo alcanza
+  # el edge (red interna, sin puertos). Secretos en edge/respond-sso/ (gitignored), generados con:
+  #   docker compose … run --rm --no-deps -v $B89_REPO/infra/local/edge/respond-sso:/out   #     --env-file $B89_REPO/infra/local/edge/respond.local.env b89-respond-sso node bootstrap.mjs
+  b89-respond-sso:
+    image: b89/respond-sso:dev
+    build:
+      context: ${B89_REPO:-../../../../b89-secops}/b89-respond/sso
+    hostname: b89-respond-sso
+    environment:
+      - SHUFFLE_URL=http://shuffle-backend:5001
+      - RESPOND_SSO_SECRETS=/run/b89-respond-sso
+    # Solo se usan SHUFFLE_ADMIN_USERNAME/PASSWORD (admin inicial, que el puente no rota).
+    env_file:
+      - ${B89_REPO:-../../../../b89-secops}/infra/local/edge/respond.local.env
+    volumes:
+      - ${B89_REPO:-../../../../b89-secops}/infra/local/edge/respond-sso:/run/b89-respond-sso:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - shuffle-backend
+    mem_limit: 96m
+    restart: unless-stopped
+
+  # El edge (definido en compose.wazuh-dashboard-b89.yaml) lee el token compartido del puente.
+  b89-edge:
+    volumes:
+      - ${B89_REPO:-../../../../b89-secops}/infra/local/edge/respond-sso:/etc/nginx/b89-respond-sso:ro
+
   shuffle-backend:
     image: ghcr.io/shuffle/shuffle-backend:2.3.0
     hostname: shuffle-backend

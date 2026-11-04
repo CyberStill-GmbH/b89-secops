@@ -158,7 +158,8 @@ stateDiagram-v2
 
 El diseño anterior, **nunca desplegado**, ponía a Shuffle en un host privado detrás del edge del SIEM:
 
-- Edge con `auth_request` sirviendo `/b89-respond/*` hacia el frontend rebrandeado de Shuffle.
+- Edge con `auth_request` sirviendo `/b89-respond/*` hacia el frontend rebrandeado de Shuffle, con
+  SSO desde la sesión B89 (§8.1).
 - Despacho: núcleo B89 → cola Valkey → webhook de Shuffle con HMAC (`X-B89-Signature`), `executionKey` y
   una app de validación en Python; callback firmado hacia un listener privado `:8443` (contrato no
   implementado).
@@ -171,6 +172,44 @@ El diseño anterior, **nunca desplegado**, ponía a Shuffle en un host privado d
 Cobertura en el repo: `b89-respond/` (frontend), `infra/wazuh/shuffle/` (adaptador de alertas nivel 12+),
 `infra/azure/modules/b89_respond_host/`, y los playbooks de triage en
 `docs/security/b89-respond-playbooks/`. Todo se retira en la fase M5 de [13](13-b89-respond.md).
+
+### 8.1 SSO desde B89 SOC (decisión B11)
+
+Decisión del dueño (2026-11-03, [10 · B11](10-decisiones.md)): una vez dentro del SOC se entra a B89
+Respond sin segundo login y se puede volver al SIEM. Sustituye la regla anterior de que la autenticación
+propia de Shuffle siguiera controlando el acceso dentro de `/b89-respond/`. La regla central (§1) sigue
+valiendo para las acciones del catálogo de la B89 API; Shuffle es el estado heredado hasta M5.
+
+```mermaid
+sequenceDiagram
+  participant N as Navegador (sesión B89)
+  participant E as Edge nginx
+  participant A as B89 API
+  participant P as Puente respond-sso
+  participant S as Shuffle backend
+  N->>E: GET /b89-respond/login (o /b89-respond/sso)
+  E-->>N: 302 /b89-respond/sso
+  N->>E: GET /b89-respond/sso
+  E->>A: auth_request /api/auth/introspect
+  A-->>E: 204 + x-b89-user, x-b89-roles
+  E->>P: /sso + x-b89-* (del introspect) + X-B89-Edge-Token
+  P->>S: getusers / register / updateuser (API key de servicio)
+  P->>S: login con contraseña aleatoria que solo conoce el puente
+  P-->>N: Set-Cookie session_token (HttpOnly, Secure, SameSite=Strict, Path=/b89-respond) + 302 next
+```
+
+| Tema | Regla |
+| --- | --- |
+| Confianza | El puente no publica puertos y exige `X-B89-Edge-Token` (secreto en archivo, comparación en tiempo constante). El edge pisa `x-b89-user`/`x-b89-roles` con lo que devuelve el introspect; lo que mande el navegador no llega |
+| Roles | `b89.platform.admin` → admin; `b89.soc.lead` / `b89.soc.analyst` → user; `b89.auditor` → org-reader (Shuffle le niega ejecutar, editar y programar); otro rol → 403 y se revoca su sesión de Shuffle. En el SIEM, la app «B89 Respond» sigue pidiendo `incidents.write` |
+| Secretos | La API key es de la cuenta de servicio admin `b89-respond-sso@b89.internal` (creada por `bootstrap.mjs`); las contraseñas de las personas son aleatorias, viven en memoria del puente y se rotan con la API de admin. Al navegador solo llega la cookie de sesión de Shuffle. El admin inicial de Shuffle no se rota: si también es persona de B89, entra con su contraseña y solo con rol admin |
+| Cookies | Todas las de sesión de Shuffle quedan en `Path=/b89-respond` con `HttpOnly; Secure; SameSite=Strict` (también las que emita el backend: `proxy_cookie_path`/`proxy_cookie_flags`). El frontend ya no copia el token a una cookie legible por JavaScript (`frontend/sso-overlay.mjs`) |
+| Logout | Login y logout de B89 borran las cookies de Shuffle; el logout además avisa al puente (mirror de nginx) para cerrar la sesión en Shuffle. El «Logout» propio de Shuffle se oculta |
+| Navegación | Botón «Volver al SIEM» (`/app/b89-alerts`, `target=_top`) en todas las páginas de B89 Respond; funciona embebido y en pestaña aparte. Nada navega `top` sin un clic |
+| Idioma y marca | `frontend/i18n/b89-i18n.js` traduce en el DOM los textos de interfaz por coincidencia exacta y cambia «Shuffle» visible por «B89 Respond», sin tocar la lógica ni los nombres de apps del backend |
+
+Despliegue: `infra/local/compose.b89-respond.yaml` (local) y `infra/aws-poweruser/scripts/deploy-respond.sh`
+(AWS) construyen el puente, corren `bootstrap.mjs` y montan el token en el edge.
 
 Equivalencias en la migración:
 

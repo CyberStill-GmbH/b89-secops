@@ -2,6 +2,7 @@
 # B89 Respond en el nodo PowerUser: Shuffle v2.3.0 (backend, orborus, opensearch) y el frontend
 # rebrandeado de b89-respond/. Se ejecuta EN el host como root, después de deploy-host.sh, con el
 # fuente del frontend ya generado por `b89-respond/build.sh` en /opt/b89/respond/frontend-source.tar.gz.
+# Con SOC_HOSTNAME, vuelve a renderizar /opt/b89/config/edge.conf desde edge.conf.template (rutas del SSO).
 set -euo pipefail
 umask 022
 ROOT=/opt/b89
@@ -42,6 +43,26 @@ log 'construyendo el frontend de B89 Respond'
 "${COMPOSE[@]}" build b89-respond-frontend
 log 'arrancando B89 Respond'
 "${COMPOSE[@]}" up -d shuffle-opensearch shuffle-backend shuffle-orborus b89-respond-frontend
+
+# SSO B89 → B89 Respond (decisión B11): imagen del puente, secretos (token edge↔puente y API key
+# de la cuenta de servicio admin de Shuffle) y edge con las rutas /b89-respond/sso.
+log 'puente SSO de B89 Respond'
+"${COMPOSE[@]}" build b89-respond-sso
+install -d -m 0700 -o 1000 -g 1000 "$SECRETS/respond-sso"
+# Credenciales del admin inicial de Shuffle solo para este proceso (no se imprimen).
+set -a; . "$SECRETS/compose.env"; set +a
+for attempt in $(seq 1 20); do
+  if "${COMPOSE[@]}" run --rm --no-deps -v "$SECRETS/respond-sso:/out" -e SHUFFLE_ADMIN_USERNAME -e SHUFFLE_ADMIN_PASSWORD b89-respond-sso node bootstrap.mjs; then
+    break
+  fi
+  [[ $attempt -lt 20 ]] || { echo 'bootstrap del SSO fallido' >&2; exit 1; }
+  sleep 15
+done
+"${COMPOSE[@]}" up -d --force-recreate b89-respond-sso
+if [[ -n ${SOC_HOSTNAME:-} ]]; then
+  SOC_HOSTNAME="$SOC_HOSTNAME" envsubst '${SOC_HOSTNAME}' <"$HOST_DIR/edge.conf.template" >"$ROOT/config/edge.conf"
+  chmod 0644 "$ROOT/config/edge.conf"
+fi
 "${COMPOSE[@]}" up -d --force-recreate edge
 "${COMPOSE[@]}" ps --format 'table {{.Name}}\t{{.Status}}'
 log 'listo'

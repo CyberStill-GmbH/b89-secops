@@ -36,6 +36,8 @@ done
 
 # Shuffle v2.3.0 provides this supported source-level subpathing pattern for reverse proxies.
 # Keep the frontend deployable under the B89 edge's protected /b89-respond/ prefix.
+# SSO B89 (decisión B11): sin cookie de sesión legible por JS, «Volver al SIEM» y capa de español.
+node "$HERE/frontend/sso-overlay.mjs" "$FE"
 node "$HERE/frontend/subpath.mjs" "$FE"
 
 grep -v '^#' "$HERE/frontend/assets/targets.tsv" | while IFS=$'\t' read -r src dst _; do
@@ -47,6 +49,9 @@ done
 # Tipografía oficial (Satoshi Medium/Bold, licencia ITF FFL): el patch 0004 declara el @font-face.
 mkdir -p "$FE/public/fonts"
 cp "$HERE"/frontend/assets/fonts/* "$FE/public/fonts/"
+
+# Capa de español y marca en el DOM (sso-overlay.mjs la carga desde index.html).
+cp "$HERE/frontend/i18n/b89-i18n.js" "$FE/public/b89-i18n.js"
 
 node "$HERE/frontend/rebrand.mjs" "$FE"
 

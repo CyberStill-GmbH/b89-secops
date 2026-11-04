@@ -3,7 +3,7 @@
 > **Nota (heredado):** Shuffle y su webhook son el estado heredado de B89 Respond. El diseño vigente es
 > Step Functions ([13](../docs/13-b89-respond.md), [14](../docs/14-b89-respond-conexion-b89.md)); este material se reemplaza (fase M5).
 
-El frontend se construye para alojarse en la ruta `/b89-respond/` detrás de la sesión B89. La autenticación propia de B89 Respond conserva el control de acceso a sus funciones.
+El frontend se construye para alojarse en la ruta `/b89-respond/` detrás de la sesión B89. Se entra con la sesión de B89 SOC, sin segundo login: el puente `sso/` abre la sesión de Shuffle con el rol mapeado desde B89 (decisión B11, [14 §8.1](../docs/14-b89-respond-conexion-b89.md)). `frontend/i18n/b89-i18n.js` pone la interfaz en español y `frontend/sso-overlay.mjs` añade «Volver al SIEM».
 
 Overlay versionado sobre **Shuffle v2.3.0** ([`upstream.lock`](upstream.lock)). Diseño vigente (Step Functions) y plan de migración en [`docs/13-b89-respond.md`](../docs/13-b89-respond.md).
 
