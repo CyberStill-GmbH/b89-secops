@@ -222,6 +222,23 @@
     'Invite your team': 'Invita a tu equipo',
     'Invite Users': 'Invitar usuarios',
     'Need help?': '¿Necesitas ayuda?',
+    // Panel (dashboard)
+    Daily: 'Diario',
+    Monthly: 'Mensual',
+    Last: 'Últimos',
+    '30 days': '30 días',
+    '7 days': '7 días',
+    Successful: 'Correctas',
+    Failed: 'Fallidas',
+    'Build a workflow': 'Crear un flujo',
+    'Successful Workflow Runs': 'Ejecuciones correctas',
+    'Failed Workflow Runs': 'Ejecuciones fallidas',
+    'Workflow Activity': 'Actividad de los flujos',
+    'Custom Stats': 'Estadísticas personalizadas',
+    'Find your stat': 'Busca una estadística',
+    'Add custom stats': 'Añadir estadística',
+    'Not enough workflow runs in this range to chart trends yet':
+      'Aún no hay suficientes ejecuciones en este periodo para mostrar tendencias',
     // Administración
     'App auth': 'Credenciales de apps',
     Tenants: 'Tenants',
@@ -251,7 +268,10 @@
 
   // «Shuffle» como marca visible; los nombres de apps del backend se conservan.
   var BRAND = /(^|[^A-Za-z0-9_./-])Shuffle(?![A-Za-z0-9_-])(?! (?:Tools|DB|AI|Subflow)\b)/gu;
-  var SKIP = /^(SCRIPT|STYLE|NOSCRIPT|TEXTAREA|CODE|PRE|INPUT|SVG)$/u;
+  // Texto que no se toca (código, editores, valores). Los atributos (placeholder…) sí se traducen
+  // también en INPUT y TEXTAREA; solo se saltan SCRIPT y STYLE.
+  var SKIP = /^(SCRIPT|STYLE|NOSCRIPT|TEXTAREA|CODE|PRE|INPUT|SVG)$/iu;
+  var SKIP_ATTRS = /^(SCRIPT|STYLE|NOSCRIPT)$/iu;
   var ATTRS = ['placeholder', 'title', 'aria-label'];
 
   function translate(text) {
@@ -281,7 +301,8 @@
     if (!el || !HIDE[text.trim()]) return;
     var target = el.closest('li,button,a,[role="menuitem"]') || el;
     if (target.id === 'b89-back-to-siem') return;
-    target.style.setProperty('display', 'none', 'important');
+    // Atributo + regla CSS (no estilo inline): React reescribe `style` al volver a renderizar.
+    target.setAttribute('data-b89-hidden', '');
   }
 
   function fixText(node) {
@@ -304,19 +325,22 @@
 
   function walk(rootNode) {
     if (rootNode.nodeType === 3) return fixText(rootNode);
-    if (rootNode.nodeType !== 1 || SKIP.test(rootNode.tagName)) return;
+    if (rootNode.nodeType !== 1 || SKIP_ATTRS.test(rootNode.tagName)) return;
     fixAttrs(rootNode);
     var doc = rootNode.ownerDocument;
     var walker = doc.createTreeWalker(rootNode, 5 /* ELEMENT | TEXT */);
     var node;
     while ((node = walker.nextNode())) {
       if (node.nodeType === 3) fixText(node);
-      else if (!SKIP.test(node.tagName)) fixAttrs(node);
+      else if (!SKIP_ATTRS.test(node.tagName)) fixAttrs(node);
     }
   }
 
   function start(doc) {
     doc.documentElement.setAttribute('lang', 'es');
+    var style = doc.createElement('style');
+    style.textContent = '[data-b89-hidden]{display:none!important}';
+    doc.head.appendChild(style);
     walk(doc.body);
     var observer = new MutationObserver(function (mutations) {
       for (var i = 0; i < mutations.length; i += 1) {

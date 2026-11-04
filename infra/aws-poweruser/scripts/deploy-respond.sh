@@ -58,11 +58,14 @@ for attempt in $(seq 1 20); do
   [[ $attempt -lt 20 ]] || { echo 'bootstrap del SSO fallido' >&2; exit 1; }
   sleep 15
 done
-"${COMPOSE[@]}" up -d --force-recreate b89-respond-sso
+"${COMPOSE[@]}" up -d --no-deps --force-recreate b89-respond-sso
 if [[ -n ${SOC_HOSTNAME:-} ]]; then
-  SOC_HOSTNAME="$SOC_HOSTNAME" envsubst '${SOC_HOSTNAME}' <"$HOST_DIR/edge.conf.template" >"$ROOT/config/edge.conf"
-  chmod 0644 "$ROOT/config/edge.conf"
+  SOC_HOSTNAME="$SOC_HOSTNAME" envsubst '${SOC_HOSTNAME}' <"$HOST_DIR/edge.conf.template" >"$ROOT/config/edge.conf.new"
+  # nginx -t en un contenedor desechable en la misma red: si falla, el edge vivo no se toca.
+  net="$(docker inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' b89-edge-1 | awk '{print $1}')"
+  docker run --rm --network "$net" -v "$ROOT/config/edge.conf.new:/etc/nginx/conf.d/default.conf:ro"     -v /etc/letsencrypt:/etc/letsencrypt:ro -v "$SECRETS/respond-sso:/etc/nginx/b89-respond-sso:ro"     nginx:1.29.3 nginx -t
+  install -m 0644 "$ROOT/config/edge.conf.new" "$ROOT/config/edge.conf" && rm -f "$ROOT/config/edge.conf.new"
 fi
-"${COMPOSE[@]}" up -d --force-recreate edge
+"${COMPOSE[@]}" up -d --no-deps --force-recreate edge
 "${COMPOSE[@]}" ps --format 'table {{.Name}}\t{{.Status}}'
 log 'listo'
