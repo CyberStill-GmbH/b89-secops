@@ -19,6 +19,11 @@
  *   persona recibe solo la cookie HttpOnly de una sesión servidor-side revocable.
  * - **Vigencia**: `activeAt` corta en `until` sin reinicio; el runtime invalida además las
  *   sesiones de esta cuenta al vencer.
+ * - **Cuentas adicionales** (opcional, `B89_DEMO_ACCOUNTS`): hasta `DEMO_ACCOUNTS_MAX` cuentas
+ *   sintéticas más, cada una con exactamente uno de los cuatro roles runtime (nunca un rol
+ *   aprobador). Comparten emisor, clave, vencimiento, tope de intentos y verificación en tiempo
+ *   constante con el administrador; cada una tiene su propio `sub` (derivado de usuario y rol), así
+ *   que la sesión única es por cuenta y un cambio de rol invalida las sesiones anteriores.
  */
 
 import {
@@ -33,7 +38,13 @@ import {
 } from 'node:crypto';
 
 import type { JsonWebKey, JwksProvider, TokenExchange, TokenExchangeResult } from '@b89/access';
-import { ConfigurationError, type ConfigurationProfileName } from '@b89/configuration';
+import {
+  ConfigurationError,
+  DEMO_ACCOUNT_ROLES,
+  DEMO_ACCOUNTS_MAX,
+  type ConfigurationProfileName,
+  type DemoAccountRole,
+} from '@b89/configuration';
 
 /** Único rol que concede la excepción. */
 export const DEMO_ADMIN_ROLE = 'b89.platform.admin';
@@ -202,6 +213,38 @@ export async function verifyScryptPassword(password: string, hash: ScryptHash): 
   return timingSafeEqual(derived, hash.key);
 }
 
+/** `sub` de una cuenta demo adicional: depende del usuario y del rol (cambiar el rol lo cambia). */
+export function demoAccountSubjectOf(username: string, role: string): string {
+  const digest = createHash('sha256')
+    .update(`b89-demo-account:${role}:${username}`, 'utf8')
+    .digest('hex');
+  return `${DEMO_ADMIN_SUBJECT_PREFIX}${digest.slice(0, 16)}`;
+}
+
+const ROLE_DISPLAY_NAMES: Readonly<Record<DemoAccountRole, string>> = Object.freeze({
+  'b89.platform.admin': 'Administrador demo',
+  'b89.soc.analyst': 'Analista SOC demo',
+  'b89.soc.lead': 'Líder SOC demo',
+  'b89.auditor': 'Auditor demo',
+});
+
+/** Cuenta sintética ya validada: el hash se conserva interpretado, nunca su texto. */
+export interface DemoAccount {
+  readonly username: string;
+  readonly role: DemoAccountRole;
+  readonly subjectId: string;
+  readonly displayName: string;
+  readonly hash: ScryptHash;
+  readonly usernameDigest: Buffer;
+}
+
+export interface DemoAccountOptions {
+  readonly username: string;
+  readonly role: string;
+  /** Hash autodescrito; se valida aquí y su texto no se conserva. */
+  readonly passwordHash: string;
+}
+
 export function isDemoAdminSubject(subjectId: string): boolean {
   return subjectId.startsWith(DEMO_ADMIN_SUBJECT_PREFIX);
 }
@@ -222,24 +265,33 @@ export interface DemoAdminLoginOptions {
   readonly audience: string;
   readonly tenantId: string;
   readonly profile: ConfigurationProfileName;
+  /** Cuentas demo adicionales (`B89_DEMO_ACCOUNTS`); como máximo `DEMO_ACCOUNTS_MAX`. */
+  readonly accounts?: readonly DemoAccountOptions[];
 }
 
 export type DemoAdminVerification = 'match' | 'mismatch' | 'busy';
 
+export type DemoAccountAuthentication =
+  | { readonly result: 'match'; readonly account: DemoAccount }
+  | { readonly result: 'mismatch' | 'busy' };
+
 interface IssuedCode {
+  readonly subjectId: string;
   readonly nonce: string;
   readonly codeVerifierDigest: Buffer;
   readonly expiresAt: number;
 }
 
 export class DemoAdminLogin {
+  /** `sub` del administrador (compatibilidad: la cuenta original de la excepción). */
   public readonly subjectId: string;
   public readonly username: string;
   public readonly until: Date;
   public readonly issuer: string;
   public readonly jwks: readonly JsonWebKey[];
-  readonly #hash: ScryptHash;
-  readonly #usernameDigest: Buffer;
+  /** Administrador primero; después, las cuentas adicionales en el orden configurado. */
+  public readonly accounts: readonly DemoAccount[];
+  readonly #bySubject: ReadonlyMap<string, DemoAccount>;
   readonly #privateKey: KeyObject;
   readonly #kid: string;
   readonly #codes = new Map<string, IssuedCode>();
@@ -247,20 +299,65 @@ export class DemoAdminLogin {
   #inFlight = 0;
 
   public constructor(private readonly options: DemoAdminLoginOptions) {
-    const hash = parseScryptHash(options.passwordHash);
-    if (!hash) {
-      // Solo el nombre de la variable: ni el hash ni una parte de él llegan al error.
-      throw new ConfigurationError({
+    // Solo el nombre de la variable: ni el usuario ni el hash llegan al error.
+    const invalid = (path: string, message: string) =>
+      new ConfigurationError({
         code: 'CONFIG_VALUE_INVALID',
-        message: 'El hash de la contraseña demo no es un scrypt válido.',
-        path: 'B89_DEMO_ADMIN_PASSWORD_HASH',
+        message,
+        path,
         profile: options.profile,
       });
+    const hash = parseScryptHash(options.passwordHash);
+    if (!hash) {
+      throw invalid(
+        'B89_DEMO_ADMIN_PASSWORD_HASH',
+        'El hash de la contraseña demo no es un scrypt válido.',
+      );
     }
-    this.#hash = hash;
+    const admin: DemoAccount = Object.freeze({
+      username: options.username,
+      role: DEMO_ADMIN_ROLE,
+      subjectId: demoAdminSubjectOf(options.username),
+      displayName: 'Administrador demo (excepción temporal)',
+      hash,
+      usernameDigest: this.#digest(options.username),
+    });
+    const extra = options.accounts ?? [];
+    if (extra.length > DEMO_ACCOUNTS_MAX) {
+      throw invalid('B89_DEMO_ACCOUNTS', 'Demasiadas cuentas demo.');
+    }
+    const accounts: DemoAccount[] = [admin];
+    for (const account of extra) {
+      const accountHash = parseScryptHash(account.passwordHash);
+      if (!accountHash) {
+        throw invalid('B89_DEMO_ACCOUNTS', 'El hash de una cuenta demo no es un scrypt válido.');
+      }
+      if (!(DEMO_ACCOUNT_ROLES as readonly string[]).includes(account.role)) {
+        throw invalid('B89_DEMO_ACCOUNTS', 'Una cuenta demo tiene un rol no admitido.');
+      }
+      if (accounts.some((existing) => existing.username === account.username)) {
+        throw invalid('B89_DEMO_ACCOUNTS', 'Una cuenta demo repite usuario.');
+      }
+      const role = account.role as DemoAccountRole;
+      accounts.push(
+        Object.freeze({
+          username: account.username,
+          role,
+          subjectId: demoAccountSubjectOf(account.username, role),
+          displayName: `${ROLE_DISPLAY_NAMES[role]} (excepción temporal)`,
+          hash: accountHash,
+          usernameDigest: this.#digest(account.username),
+        }),
+      );
+    }
+    const bySubject = new Map(accounts.map((account) => [account.subjectId, account]));
+    if (bySubject.size !== accounts.length) {
+      throw invalid('B89_DEMO_ACCOUNTS', 'Dos cuentas demo comparten sujeto.');
+    }
+    this.accounts = Object.freeze(accounts);
+    this.#bySubject = bySubject;
     this.username = options.username;
-    this.#usernameDigest = this.#digest(options.username);
-    this.subjectId = demoAdminSubjectOf(options.username);
+    this.subjectId = admin.subjectId;
     this.until = new Date(options.until.getTime());
     this.issuer = options.issuer;
     const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -270,6 +367,11 @@ export class DemoAdminLogin {
     this.jwks = Object.freeze([
       { kid: this.#kid, kty: 'RSA', n: jwk.n, e: jwk.e, alg: 'RS256', use: 'sig' } as const,
     ]);
+  }
+
+  /** Cuenta configurada con ese `sub`; `undefined` si no es una cuenta de esta excepción. */
+  public accountForSubject(subjectId: string): DemoAccount | undefined {
+    return this.#bySubject.get(subjectId);
   }
 
   /** Vigente estrictamente antes de `until`. Vencida, la excepción no existe. */
@@ -309,28 +411,53 @@ export class DemoAdminLogin {
    * distinguen «usuario inexistente» de «contraseña errónea».
    */
   public async verify(username: string, password: string): Promise<DemoAdminVerification> {
-    if (this.#inFlight >= DEMO_ADMIN_ATTEMPT_POLICY.maxConcurrentVerifications) return 'busy';
+    return (await this.authenticate(username, password)).result;
+  }
+
+  /**
+   * Como `verify`, pero devuelve la cuenta que coincide. Compara el usuario con TODAS las cuentas
+   * (sin cortocircuito) y calcula exactamente un scrypt: el de la cuenta encontrada o, si no hay
+   * ninguna, el del administrador. Así ni el tiempo ni la respuesta revelan qué usuarios existen.
+   */
+  public async authenticate(
+    username: string,
+    password: string,
+  ): Promise<DemoAccountAuthentication> {
+    if (this.#inFlight >= DEMO_ADMIN_ATTEMPT_POLICY.maxConcurrentVerifications) {
+      return { result: 'busy' };
+    }
     this.#inFlight += 1;
     try {
-      const usernameMatches = timingSafeEqual(
-        this.#digest(username.trim().toLowerCase()),
-        this.#usernameDigest,
-      );
-      const passwordMatches = await verifyScryptPassword(password, this.#hash);
+      const candidate = this.#digest(username.trim().toLowerCase());
+      let found: DemoAccount | undefined;
+      for (const account of this.accounts) {
+        const matches = timingSafeEqual(candidate, account.usernameDigest);
+        if (matches && found === undefined) found = account;
+      }
+      const target = found ?? this.accounts[0]!;
+      const passwordMatches = await verifyScryptPassword(password, target.hash);
       // Ambos valores ya están calculados: combinarlos no abre una diferencia de tiempo.
-      return usernameMatches && passwordMatches ? 'match' : 'mismatch';
+      return found !== undefined && passwordMatches
+        ? { result: 'match', account: found }
+        : { result: 'mismatch' };
     } finally {
       this.#inFlight -= 1;
     }
   }
 
   /** Código de un solo uso, ligado al `nonce` y al `code_verifier` PKCE del handshake. */
-  public issueCode(nonce: string, codeVerifier: string, now: Date): string {
+  public issueCode(
+    nonce: string,
+    codeVerifier: string,
+    now: Date,
+    account: DemoAccount = this.accounts[0]!,
+  ): string {
     for (const [code, issued] of this.#codes) {
       if (issued.expiresAt <= now.getTime()) this.#codes.delete(code);
     }
     const code = randomBytes(32).toString('base64url');
     this.#codes.set(code, {
+      subjectId: account.subjectId,
       nonce,
       codeVerifierDigest: this.#digest(codeVerifier),
       expiresAt: now.getTime() + CODE_TTL_MS,
@@ -346,11 +473,13 @@ export class DemoAdminLogin {
       throw new Error('DEMO_ADMIN_PKCE_MISMATCH');
     }
     if (!this.activeAt(now)) throw new Error('DEMO_ADMIN_LOGIN_EXPIRED');
-    return this.sign(issued.nonce, now);
+    const account = this.#bySubject.get(issued.subjectId);
+    if (!account) throw new Error('DEMO_ADMIN_CODE_UNKNOWN');
+    return this.sign(issued.nonce, now, account);
   }
 
   /** Firma el JWT de la persona sintética. `exp` nunca supera el vencimiento de la excepción. */
-  public sign(nonce: string, now: Date): string {
+  public sign(nonce: string, now: Date, account: DemoAccount = this.accounts[0]!): string {
     const seconds = Math.floor(now.getTime() / 1000);
     const exp = Math.min(
       seconds + DEMO_ADMIN_TOKEN_TTL_SECONDS,
@@ -361,7 +490,7 @@ export class DemoAdminLogin {
     const claims = {
       iss: this.issuer,
       aud: this.options.audience,
-      sub: this.subjectId,
+      sub: account.subjectId,
       tid: this.options.tenantId,
       iat: seconds,
       nbf: seconds,
@@ -369,9 +498,9 @@ export class DemoAdminLogin {
       jti,
       nonce,
       amr: ['pwd'],
-      roles: [DEMO_ADMIN_ROLE],
-      preferred_username: this.username,
-      name: 'Administrador demo (excepción temporal)',
+      roles: [account.role],
+      preferred_username: account.username,
+      name: account.displayName,
       sid: `demo-admin-session:${jti}`,
     };
     const encode = (value: unknown) =>
