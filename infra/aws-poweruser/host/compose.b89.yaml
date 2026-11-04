@@ -144,6 +144,41 @@ services:
       - wazuh.indexer
     restart: unless-stopped
 
+  # Receptor del webhook SNS (monitoreo de la cuenta AWS sin IAM; wazuh/aws-events/README.md).
+  # Sin puerto publicado: solo el edge le llega por /hooks/aws-sns. Escribe el JSONL dentro del
+  # volumen de logs del manager (b89-collectors/aws), que Wazuh lee como <localfile log_format="json">.
+  aws-events:
+    image: node:24.21.0-trixie-slim
+    user: '1000:1000'
+    working_dir: /app
+    command: ['node', '/app/sns-receiver.mjs']
+    env_file:
+      - /opt/b89/src/infra/aws-poweruser/host/aws-events.env
+    environment:
+      B89_AWS_EVENTS_FILE: /out/aws-events.jsonl
+      NODE_ENV: production
+    volumes:
+      - /opt/b89/src/wazuh/aws-events/receiver/sns-receiver.mjs:/app/sns-receiver.mjs:ro
+      - type: volume
+        source: wazuh_logs
+        target: /out
+        volume:
+          subpath: b89-collectors/aws
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    mem_limit: 128m
+    pids_limit: 64
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: '3' }
+    restart: unless-stopped
+
   edge:
     image: nginx:1.29.3
     # IP fija: único proxy de confianza del API (B89_ACCESS_TRUSTED_PROXY_CIDRS).

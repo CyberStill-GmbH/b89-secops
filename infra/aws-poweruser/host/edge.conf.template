@@ -14,6 +14,9 @@ real_ip_recursive on;
 
 proxy_cache_path /var/cache/nginx/b89_auth levels=1 keys_zone=b89_auth:10m max_size=50m inactive=60s;
 
+# Webhook SNS (monitoreo de la cuenta AWS, wazuh/aws-events): límite por IP de origen de SNS.
+limit_req_zone $binary_remote_addr zone=b89_aws_sns:1m rate=50r/s;
+
 upstream b89_api {
   server api:3000;
   keepalive 16;
@@ -66,6 +69,30 @@ server {
   location = /health/live {
     proxy_pass http://b89_api;
   }
+
+  # B89:aws-sns:begin — EventBridge → SNS → este webhook → receptor aws-events (wazuh/aws-events).
+  # Sin sesión B89: la autenticidad la da la firma SNS (v2/SHA256) y la lista de TopicArn que
+  # verifica el receptor. Solo POST, cuerpo acotado (SNS ≤ 256 KB) y límite de tasa (503 → SNS reintenta).
+  location = /hooks/aws-sns {
+    limit_except POST { deny all; }
+    limit_req zone=b89_aws_sns burst=200 nodelay;
+    limit_req_status 503;
+    client_max_body_size 300k;
+    client_body_buffer_size 300k;
+    resolver 127.0.0.11 valid=30s ipv6=off;
+    set $b89_aws_events http://aws-events:8080;
+    proxy_pass $b89_aws_events;
+    proxy_set_header Host aws-events;
+    proxy_set_header Connection "";
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header Cookie "";
+    proxy_set_header Authorization "";
+    proxy_set_header x-proxy-user "";
+    proxy_set_header x-proxy-roles "";
+    proxy_connect_timeout 3s;
+    proxy_read_timeout 20s;
+  }
+  # B89:aws-sns:end
 
   # Inicio y cierre de sesión B89: además de proxyear al API, borran la sesión de B89 Respond
   # (cookies de Shuffle acotadas a /b89-respond). Así una sesión de Shuffle nunca sobrevive a un
