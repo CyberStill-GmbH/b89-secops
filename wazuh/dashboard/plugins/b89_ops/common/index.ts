@@ -23,17 +23,29 @@ export const BRAND_ASSETS_PATH = '/ui/b89';
 /** Atribución visible (NOTICE): B89 SecOps es un trabajo derivado. */
 export const ATTRIBUTION = 'Basado en Wazuh (GPLv2) y OpenSearch Dashboards (Apache-2.0).';
 
+/** Categoría del menú para la vigilancia en vivo (la cola de alertas). */
+export const MONITORING_CATEGORY_NAME = 'Monitoreo';
+
 /**
- * Apps registradas en este orden bajo «B89 SOC» (primera categoría
- * del menú). Cada una monta la misma consola en la vista indicada.
+ * Apps registradas bajo «B89 SOC» (primera categoría del menú) o «Monitoreo». Cada una monta
+ * la misma consola en la vista indicada. El orden sigue `order` dentro de cada categoría.
  */
 export const B89_APPS = [
+  {
+    id: 'b89-overview',
+    view: 'overview',
+    title: 'Resumen del SOC',
+    icon: 'b89-observability.svg',
+    order: 1,
+    category: 'soc',
+  },
   {
     id: 'b89-alerts',
     view: 'alerts',
     title: 'Cola de alertas',
     icon: 'b89-alerts.svg',
     order: 10,
+    category: 'monitoring',
   },
   {
     id: 'b89-incidents',
@@ -41,6 +53,7 @@ export const B89_APPS = [
     title: 'Incidentes',
     icon: 'b89-incidents.svg',
     order: 20,
+    category: 'soc',
   },
   {
     id: 'b89-notifications',
@@ -48,6 +61,23 @@ export const B89_APPS = [
     title: 'Notificaciones',
     icon: 'b89-notifications.svg',
     order: 30,
+    category: 'soc',
+  },
+  {
+    id: 'b89-integrations',
+    view: 'integrations',
+    title: 'Integraciones',
+    icon: 'b89-sources.svg',
+    order: 35,
+    category: 'soc',
+  },
+  {
+    id: 'b89-policies',
+    view: 'policies',
+    title: 'Políticas',
+    icon: 'b89-audit.svg',
+    order: 37,
+    category: 'soc',
   },
   {
     id: 'b89-audit',
@@ -55,6 +85,7 @@ export const B89_APPS = [
     title: 'Auditoría e integridad',
     icon: 'b89-audit.svg',
     order: 40,
+    category: 'soc',
   },
   {
     id: 'b89-access',
@@ -62,6 +93,7 @@ export const B89_APPS = [
     title: 'Usuarios y sesiones',
     icon: 'b89-access.svg',
     order: 50,
+    category: 'soc',
   },
   {
     id: 'b89-sources',
@@ -69,6 +101,7 @@ export const B89_APPS = [
     title: 'Salud de fuentes',
     icon: 'b89-sources.svg',
     order: 60,
+    category: 'soc',
   },
   {
     id: 'b89-session',
@@ -76,6 +109,7 @@ export const B89_APPS = [
     title: 'Mi sesión',
     icon: 'b89-session.svg',
     order: 70,
+    category: 'soc',
   },
 ] as const;
 
@@ -94,10 +128,13 @@ export const RESPOND_APP = {
 export const RESPOND_PATH = '/b89-respond/';
 
 /** Destino por defecto tras iniciar sesión (y `uiSettings.overrides.defaultRoute`). */
-export const DEFAULT_LANDING = '/app/b89-alerts';
+export const DEFAULT_LANDING = '/app/b89-overview';
+/** Cola de alertas (categoría «Monitoreo»): destino de los avisos P1. */
+export const ALERTS_PATH = '/app/b89-alerts';
 
 export * from './api_contract';
 export * from './catalog';
 export * from './discover';
 export * from './user_state';
 export * from './audit_filters';
+export * from './integrations';

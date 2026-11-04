@@ -7,6 +7,7 @@ import type { PublicConfigSchema } from '../config';
 import './theme.scss';
 import './index.scss';
 import './bunny/bunny.scss';
+import './overview.scss';
 import { B89OpsPublicPlugin } from './plugin';
 
 export function plugin(initializerContext: PluginInitializerContext<PublicConfigSchema>) {

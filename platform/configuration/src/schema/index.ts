@@ -34,13 +34,9 @@ export {
 } from './role-grants.schema.js';
 export { parseDirectoryConfig, type DirectoryConfig } from './directory.schema.js';
 export {
-  DEMO_ACCOUNT_ROLES,
-  DEMO_ACCOUNTS_MAX,
   DEMO_ADMIN_LOGIN_MAX_WINDOW_MS,
   DEMO_DEPLOYMENT_IDENTITY,
   parseDemoAdminLogin,
-  type DemoAccountConfig,
-  type DemoAccountRole,
   type DemoAdminLoginConfig,
 } from './demo-admin-login.schema.js';
 export { parseAlertMailSender, parseTeamsWorkflowUrl } from './notifications.schema.js';

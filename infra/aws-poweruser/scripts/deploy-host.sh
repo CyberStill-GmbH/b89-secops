@@ -95,6 +95,10 @@ for host in data["hosts"]:
         # del manager como wazuh-wui; con run_as la API intentaría mapear cada usuario B89 y el
         # chequeo «API connection» se queda girando.
         entry["run_as"] = False
+# Los datos viven en wazuh-alerts-* (el manager no se renombra). Un `pattern`/prefijo b89-* deja
+# los módulos de la app (Office 365, vulnerabilidades, SCA, FIM...) vacíos: se vuelve al default.
+for key in ("pattern", "alerts.sample.prefix", "cron.prefix"):
+    data.pop(key, None)
 yaml.safe_dump(data, open(path, "w"), sort_keys=False)
 PY
 chown 1000:1000 config/wazuh_dashboard/wazuh.yml; chmod 0600 config/wazuh_dashboard/wazuh.yml
@@ -121,31 +125,6 @@ if [[ ! -s $SECRETS/api.env ]]; then
     echo "B89_DEMO_ADMIN_PASSWORD_HASH='$demo_hash'"
   } >"$SECRETS/api.env"
   chmod 600 "$SECRETS/api.env"
-fi
-# Cuentas demo por rol (B89_DEMO_ACCOUNTS, docs/04-identidad-y-acceso.md): la fuente es
-# secrets/demo-accounts.txt (0600, una cuenta por línea: `usuario rol contraseña`; `#` comenta).
-# Una línea B89_DEMO_ACCOUNTS ya presente en secrets/api.env se conserva tal cual; si falta (p. ej.
-# api.env regenerado), se rehacen los hashes scrypt desde el .txt. Guarda: si el código aún no
-# admite la variable (KNOWN_B89_VARIABLES), definirla tumbaría el arranque del API.
-if [[ -s $SECRETS/demo-accounts.txt ]] && ! grep -q '^B89_DEMO_ACCOUNTS=' "$SECRETS/api.env"; then
-  if grep -q "'B89_DEMO_ACCOUNTS'" "$SRC/platform/configuration/src/schema/environment.schema.ts"; then
-    log 'cuentas demo: regenerando B89_DEMO_ACCOUNTS desde secrets/demo-accounts.txt'
-    demo_accounts=''
-    while read -r demo_user demo_role demo_password; do
-      [[ -z $demo_user || $demo_user == \#* ]] && continue
-      [[ $demo_user =~ ^[a-z0-9][a-z0-9._@+-]{2,63}$ && $demo_role =~ ^b89\.(soc\.analyst|soc\.lead|auditor|platform\.admin)$ ]] \
-        || { echo 'secrets/demo-accounts.txt: línea inválida' >&2; exit 1; }
-      demo_account_hash="$(printf '%s' "$demo_password" | docker run --rm -i -v "$SRC/scripts/dev:/s:ro" \
-        node:24.21.0-trixie-slim node /s/hash-demo-admin-password.mjs)"
-      demo_accounts+="${demo_accounts:+,}{\"username\":\"$demo_user\",\"role\":\"$demo_role\",\"passwordHash\":\"$demo_account_hash\"}"
-    done <"$SECRETS/demo-accounts.txt"
-    # Comillas simples: Compose interpola `$` en env_file y los hashes scrypt los contienen.
-    [[ -n $demo_accounts ]] && printf "B89_DEMO_ACCOUNTS='[%s]'\n" "$demo_accounts" >>"$SECRETS/api.env"
-    chmod 600 "$SECRETS/api.env"
-    unset demo_accounts demo_user demo_role demo_password demo_account_hash
-  else
-    log 'cuentas demo: el código aún no admite B89_DEMO_ACCOUNTS; solo la cuenta admin'
-  fi
 fi
 # La excepción demo vence como máximo a los 30 días del arranque: se renueva en cada despliegue.
 DEMO_UNTIL="$(date -u -d '+29 days' +%Y-%m-%dT%H:%M:%SZ)" SOC_HOSTNAME="$SOC_HOSTNAME" \

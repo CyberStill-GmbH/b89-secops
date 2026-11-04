@@ -14,6 +14,8 @@ import type {
 } from '../../../src/core/server';
 import type { ConfigSchema } from './config';
 import { LEGACY_LOGIN_PATHS, LOGIN_PATH, LOGOUT_PATH } from '../common';
+import { OVERVIEW_ROUTE } from '../common/integrations';
+import { buildOverview, SearchClient } from './overview';
 import {
   loginContentSecurityPolicy,
   logoutContentSecurityPolicy,
@@ -43,10 +45,25 @@ export class B89OpsServerPlugin implements Plugin<void, void> {
       .create<ConfigSchema>()
       .pipe(first())
       .toPromise();
-    if (!config.enabled || !config.login.enabled) return;
+    if (!config.enabled) return;
 
     const basePath = core.http.basePath.serverBasePath;
     const router = core.http.createRouter();
+
+    // «Resumen del SOC» e «Integraciones»: agregaciones del Indexer con la identidad de quien
+    // mira (proxy auth). Nunca con la identidad interna del dashboard.
+    router.get({ path: OVERVIEW_ROUTE, validate: false }, async (context, _request, response) => {
+      const client = (
+        context as { core: { opensearch: { client: { asCurrentUser: SearchClient } } } }
+      ).core.opensearch.client.asCurrentUser;
+      const body = await buildOverview(client, config.integrations);
+      return response.ok({
+        body,
+        headers: { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' },
+      });
+    });
+
+    if (!config.login.enabled) return;
 
     // El login de Wazuh / Security plugin deja de existir: cualquier navegación a él
     // (redirect por sesión ausente, enlace antiguo, logout) llega al login B89.

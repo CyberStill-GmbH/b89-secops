@@ -138,30 +138,6 @@ despliegue demo (tenant, client y redirect de `infra/aws/environments/demo.tfvar
 atadura que la antigua excepción de MFA). Cualquier otro despliegue de producción no arranca
 (`CONFIG_VALUE_INVALID` en `B89_DEMO_ADMIN_LOGIN_ENABLED`, `reason: DEMO_ADMIN_LOGIN_NOT_ALLOWED_IN_PROFILE`).
 
-### Cuentas demo adicionales por rol (opcional)
-
-Para probar separación de funciones y dar a agentes SOC y QA cuentas no administrativas (sin
-expulsar la sesión del administrador), `B89_DEMO_ACCOUNTS` (o `B89_DEMO_ACCOUNTS_REF` en Key
-Vault) admite un arreglo JSON secreto `[{"username","role","passwordHash"}]`:
-
-- Solo existe con la excepción del administrador habilitada (mismo interruptor, mismo
-  `B89_DEMO_ADMIN_LOGIN_UNTIL` ≤ 30 días, mismos perfiles: en `production` solo con
-  `DEMO_DEPLOYMENT_IDENTITY`). Definida con la excepción apagada, el arranque falla
-  (`reason: DEMO_ACCOUNTS_REQUIRE_DEMO_ADMIN_LOGIN`).
-- Como máximo 8 cuentas; usuarios con el mismo formato que el admin, únicos y distintos del admin;
-  cada cuenta con **exactamente uno** de los cuatro roles runtime (`b89.soc.analyst`,
-  `b89.soc.lead`, `b89.auditor`, `b89.platform.admin`). Los roles aprobadores
-  (`b89.access.approver`, `b89.security.approver`) se rechazan: ninguna cuenta demo resuelve
-  solicitudes de rol.
-- Mismo hash scrypt (mismo script), mismo tope de intentos por origen, verificación en tiempo
-  constante (un único scrypt por intento, exista o no el usuario), misma auditoría
-  (`demo_admin_password_login` / `demo_admin_denied`), misma cookie estricta y sesión ≤ 8 h.
-- `sub = demo-admin:<16 hex de sha256(rol + usuario)>`: la sesión única es **por cuenta** y cambiar
-  el rol de una cuenta invalida sus sesiones anteriores; una sesión cuyo rol no coincide con el de
-  su cuenta configurada se revoca en `resolveActor`.
-
-Pruebas: `apps/api/test/demo-accounts.spec.ts`, `platform/configuration/test/demo-accounts-config.spec.ts`.
-
 ### Qué concede y qué no
 
 - **Una persona sintética fija:** `sub = demo-admin:<16 hex de sha256(usuario)>`, sin `oid` (no

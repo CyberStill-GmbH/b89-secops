@@ -21,7 +21,7 @@ opensearch.requestHeadersAllowlist:
 b89_ops.enabled: true
 b89_ops.apiPrefix: '/api'
 b89_ops.login.enabled: true
-b89_ops.login.defaultNextUrl: '/app/b89-alerts'
+b89_ops.login.defaultNextUrl: '/app/b89-overview'
 b89_ops.bunny.enabled: true
 b89_ops.login.passwordEnabled: true
 b89_ops.login.destinationLabel: 'B89'
@@ -36,7 +36,7 @@ uiSettings:
   overrides:
     'theme:version': 'v7' # v9 es preview en OSD 2.19
     'theme:darkMode': true
-    defaultRoute: '/app/b89-alerts'
+    defaultRoute: '/app/b89-overview'
     # D-10b: el estado de las apps (consultas de Discover con UPN/IP) va a sessionStorage y la URL
     # solo lleva un hash, así ningún dato personal queda en URLs, historial ni Referer.
     'state:storeInSessionStorage': true

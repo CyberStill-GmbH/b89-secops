@@ -24,6 +24,18 @@ import {
 import { B89Page, useChanges, useConsole } from './console_context';
 import { EmptyLine, ErrorCallout, HealthMark, Mono, Timestamp, useAsync } from './primitives';
 
+/** Streams medidos por la API: suscripciones de Office 365 y proveedores por grupo de regla. */
+const STREAM_LABEL: Readonly<Record<string, string>> = {
+  'Audit.AzureActiveDirectory': 'Entra ID',
+  'Audit.Exchange': 'Exchange',
+  'Audit.SharePoint': 'SharePoint',
+  'Audit.General': 'Microsoft 365 General',
+  'provider.bitdefender': 'Bitdefender GravityZone',
+  'provider.snyk': 'Snyk',
+  'provider.cloudflare': 'Cloudflare',
+  'provider.aws': 'AWS',
+};
+
 function minutes(ms: number): string {
   const value = Math.round(ms / 60000);
   return value === 1 ? '1 min' : `${value} min`;
@@ -145,7 +157,18 @@ function SourceCard({ source }: { source: SourceHealth }) {
             responsive
             items={[...source.subscriptions.items]}
             columns={[
-              { field: 'stream', name: 'Flujo', render: (value: string) => <Mono>{value}</Mono> },
+              {
+                field: 'stream',
+                name: 'Flujo',
+                render: (value: string) =>
+                  STREAM_LABEL[value] ? (
+                    <span>
+                      {STREAM_LABEL[value]} <Mono>{value}</Mono>
+                    </span>
+                  ) : (
+                    <Mono>{value}</Mono>
+                  ),
+              },
               {
                 field: 'eventsInWindow',
                 name: 'Eventos',

@@ -113,7 +113,6 @@ export async function main(): Promise<void> {
       log('auth.demo_admin_password.active', undefined, {
         warning: `excepción demo de contraseña ACTIVA hasta ${until}`,
         until,
-        additionalAccounts: String(runtime.demoAccountCount),
       });
     }
     process.on('SIGINT', onSignal);

@@ -219,12 +219,6 @@ export async function buildApi(
         audience: access.clientId,
         tenantId: access.tenantId,
         profile: config.profile,
-        // Cuentas demo adicionales (B89_DEMO_ACCOUNTS): mismas reglas, un rol cada una.
-        accounts: demoAdminConfig.accounts.map((account) => ({
-          username: account.username,
-          role: account.role,
-          passwordHash: account.passwordHash.reveal(),
-        })),
       })
     : undefined;
   const detection = loadDetectionContextConfig(environment);
@@ -555,8 +549,6 @@ export async function buildApi(
     ingestion: ingestionConfig.source,
     /** Vencimiento de la excepción demo de contraseña, para la advertencia del arranque. */
     demoAdminLoginUntil: demoAdminLogin?.until,
-    /** Cuentas demo adicionales (sin el administrador), para la advertencia del arranque. */
-    demoAccountCount: Math.max(0, (demoAdminLogin?.accounts.length ?? 1) - 1),
     async start() {
       try {
         if (lifecycle.state !== 'starting') throw new Error('STARTUP_CANCELLED');

@@ -3,6 +3,36 @@
  */
 
 import { schema, TypeOf } from '@osd/config-schema';
+import { DECLARED_STATES } from '../common/integrations';
+
+/**
+ * Estado declarado de una integración (`b89_ops.integrations.<id>`). `auto` deja que lo
+ * decidan los datos; `blocked` exige `missingPermissions` o `note` con el siguiente paso.
+ */
+const integration = (
+  defaults: {
+    state?: (typeof DECLARED_STATES)[number];
+    missingPermissions?: string[];
+    note?: string;
+  } = {},
+) =>
+  schema.object({
+    state: schema.oneOf(
+      [
+        schema.literal('auto'),
+        schema.literal('blocked'),
+        schema.literal('disabled'),
+        schema.literal('pending'),
+      ],
+      { defaultValue: defaults.state ?? 'auto' },
+    ),
+    missingPermissions: schema.arrayOf(schema.string({ maxLength: 120 }), {
+      defaultValue: defaults.missingPermissions ?? [],
+      maxSize: 10,
+    }),
+    note: schema.string({ defaultValue: defaults.note ?? '', maxLength: 500 }),
+  });
+
 
 /**
  * `b89_ops.*` en `opensearch_dashboards.yml`.
@@ -33,11 +63,32 @@ export const configSchema = schema.object({
     /** Sirve el login B89 y sustituye `/app/login` del Security plugin / Wazuh. */
     enabled: schema.boolean({ defaultValue: true }),
     /** Destino tras iniciar sesión cuando no hay `nextUrl`. */
-    defaultNextUrl: schema.string({ defaultValue: '/app/b89-alerts' }),
+    defaultNextUrl: schema.string({ defaultValue: '/app/b89-overview' }),
     /** Muestra el formulario de usuario y contraseña junto al acceso con Entra. */
     passwordEnabled: schema.boolean({ defaultValue: true }),
+    /**
+     * Muestra «Continuar con Microsoft Entra». Desactivarlo cuando el despliegue no tiene un
+     * tenant real: el formulario lleva directo al dashboard del SIEM sin pasos intermedios.
+     */
+    entraEnabled: schema.boolean({ defaultValue: true }),
     /** Texto de la barra superior del login («Estás iniciando sesión en …»). */
     destinationLabel: schema.string({ defaultValue: 'B89' }),
+  }),
+  /**
+   * Estado declarado de las integraciones para «Resumen del SOC» e «Integraciones». Lo que no
+   * se puede medir en el Indexer (un permiso de Entra que falta, un servicio no contratado) se
+   * declara aquí; el resto lo deciden los datos (`auto`).
+   */
+  integrations: schema.object({
+    wazuh: integration(),
+    office365: integration(),
+    bitdefender: integration(),
+    snyk: integration(),
+    cloudflare: integration(),
+    aws: integration(),
+    respond: integration(),
+    bunny: integration(),
+    alertMail: integration(),
   }),
 });
 

@@ -13,6 +13,9 @@ import { AlertsView } from './components/alerts_view';
 import { AuditView } from './components/audit_view';
 import { ConsoleProvider } from './components/console_context';
 import { IncidentsView } from './components/incidents_view';
+import { IntegrationsView } from './components/integrations_view';
+import { OverviewView } from './components/overview_view';
+import { PoliciesView } from './components/policies_view';
 import { NotificationsView } from './components/notifications_view';
 import { OperationsView } from './components/operations_view';
 import { SessionView } from './components/session_view';
@@ -47,6 +50,12 @@ function Console({
   const [selected, select] = useSelection(history);
   const params = new URLSearchParams(history.location.search);
   switch (view) {
+    case 'overview':
+      return <OverviewView basePath={basePath} />;
+    case 'integrations':
+      return <IntegrationsView basePath={basePath} />;
+    case 'policies':
+      return <PoliciesView basePath={basePath} />;
     case 'alerts':
       return (
         <AlertsView

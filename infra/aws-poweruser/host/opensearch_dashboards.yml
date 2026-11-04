@@ -26,11 +26,22 @@ opensearch.requestHeadersAllowlist:
 b89_ops.enabled: true
 b89_ops.apiPrefix: '/api'
 b89_ops.login.enabled: true
-b89_ops.login.defaultNextUrl: '/app/b89-alerts'
+b89_ops.login.defaultNextUrl: '/app/b89-overview'
 # Bunny usa DeepSeek desde la API B89; la clave solo vive en el backend.
 b89_ops.bunny.enabled: true
 b89_ops.login.passwordEnabled: true
 b89_ops.login.destinationLabel: 'B89'
+
+# Estado declarado de las integraciones («Resumen del SOC» e «Integraciones», b89_ops server/config.ts).
+# state: auto (lo deciden los datos del Indexer) | blocked | disabled | pending. Lo que no se puede
+# medir en el Indexer (un permiso de Entra que falta) se declara aquí; al conceder el permiso, volver
+# a `auto` (o borrar la clave) y recrear solo el contenedor del dashboard.
+b89_ops.integrations.office365.state: 'blocked'
+b89_ops.integrations.office365.missingPermissions: ['ActivityFeed.Read']
+b89_ops.integrations.office365.note: 'La app de Entra no tiene Office 365 Management APIs › ActivityFeed.Read (aplicación) con consentimiento de administrador: el módulo office365 de Wazuh no puede leer las suscripciones.'
+b89_ops.integrations.alertMail.state: 'blocked'
+b89_ops.integrations.alertMail.missingPermissions: ['Mail.Send']
+b89_ops.integrations.alertMail.note: 'Sin Microsoft Graph › Mail.Send (aplicación) el notificador no puede enviar el correo de alertas de nivel ≥ 8.'
 
 opensearchDashboards.branding:
   applicationTitle: 'B89 SecOps'
@@ -40,5 +51,5 @@ uiSettings:
   overrides:
     'theme:version': 'v7'
     'theme:darkMode': true
-    defaultRoute: '/app/b89-alerts'
+    defaultRoute: '/app/b89-overview'
     'state:storeInSessionStorage': true

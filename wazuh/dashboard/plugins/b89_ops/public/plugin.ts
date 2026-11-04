@@ -9,7 +9,13 @@ import type {
   Plugin,
   PluginInitializerContext,
 } from '../../../src/core/public';
-import { BRAND_ASSETS_PATH, NAV_CATEGORY_NAME, PLUGIN_NAME, B89_APPS } from '../common';
+import {
+  BRAND_ASSETS_PATH,
+  MONITORING_CATEGORY_NAME,
+  NAV_CATEGORY_NAME,
+  PLUGIN_NAME,
+  B89_APPS,
+} from '../common';
 import type { PublicConfigSchema } from '../config';
 import { ChangeFeed } from './api/change_feed';
 import { B89ApiClient } from './api/client';
@@ -57,11 +63,19 @@ export class B89OpsPublicPlugin implements Plugin<void, void> {
       order: -1000,
       euiIconType: core.http.basePath.prepend(`${BRAND_ASSETS_PATH}/b89-observability.svg`),
     };
+    // «Monitoreo» justo debajo de «B89 SOC»: la vigilancia en vivo (cola de alertas) separada
+    // del resumen, que es la portada tras iniciar sesión.
+    const monitoring = {
+      id: 'b89-monitoring',
+      label: MONITORING_CATEGORY_NAME,
+      order: -999,
+      euiIconType: core.http.basePath.prepend(`${BRAND_ASSETS_PATH}/b89-alerts.svg`),
+    };
     for (const app of B89_APPS) {
       core.application.register({
         id: app.id,
         title: app.title,
-        category,
+        category: app.category === 'monitoring' ? monitoring : category,
         order: app.order,
         euiIconType: core.http.basePath.prepend(`${BRAND_ASSETS_PATH}/${app.icon}`),
         mount: async (params: AppMountParameters) => {
