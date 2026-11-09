@@ -9,7 +9,9 @@
  * aparezcan en texto libre no se detectan.
  */
 
-const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/gu;
+// Cuantificadores acotados (RFC 5321: 64 local, 253 dominio): sin ellos, un texto largo sin «@»
+// cuesta O(n²) en retrocesos (un resultado de herramienta de 50 kB tardaba segundos).
+const EMAIL = /[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,253}\.[A-Za-z]{2,24}/gu;
 const IPV4 = /\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b/gu;
 const MARKER = /<(?:usuario|ip)_\d+>/gu;
 

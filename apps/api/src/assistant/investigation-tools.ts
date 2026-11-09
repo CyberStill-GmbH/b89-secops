@@ -102,6 +102,21 @@ function failure(response: InternalResponse): ToolOutcome {
 
 type Row = Record<string, unknown>;
 
+/** Añade `<campo>Lima` junto a cada marca de tiempo ISO (`…At`, `firstSeen`, `lastSeen`). */
+function withLima(value: unknown, depth = 0): unknown {
+  if (depth > 5 || value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map((item) => withLima(item, depth + 1));
+  const out: Row = {};
+  for (const [key, field] of Object.entries(value as Row)) {
+    out[key] = withLima(field, depth + 1);
+    if ((/At$/u.test(key) || /Seen$/u.test(key)) && typeof field === 'string') {
+      const label = limaLabel(field);
+      if (label) out[`${key}Lima`] = label;
+    }
+  }
+  return out;
+}
+
 function rowsOf(body: unknown): Row[] {
   const items = (body as Row | null)?.['items'];
   return Array.isArray(items) ? (items as Row[]) : [];
@@ -506,41 +521,101 @@ export function buildInvestigationTools(
     });
   }
 
-  if (capabilities.has('alerts.read') || canEvents) {
+  if (capabilities.has('alerts.read')) {
+    const RISK_TYPES = ['user', 'ip', 'host', 'cloud'] as const;
+    const unavailable = (note: string): ToolOutcome => ({ ok: true, data: { available: false, note } });
+    const ENGINE_DOWN =
+      'El motor de riesgo de entidades (correlador B89) no está disponible ahora. No hay un valor de riesgo que informar: no lo estimes; usa entity_activity para describir la actividad.';
     tools.push({
       name: 'get_entity_risk',
       label: 'Consultando el riesgo de la entidad',
       description:
-        'Puntuación de riesgo de una entidad (usuario, IP o host) calculada por el motor de correlación de B89, con sus factores si el motor los expone. Si el motor no está desplegado o no tiene puntuación para la entidad, lo indica: en ese caso no estimes un riesgo numérico; usa entity_activity para describir la actividad.',
+        'Riesgo de entidades calculado por el correlador de B89 (puntaje, pico, observaciones, tácticas, fuentes, contribuyentes por regla y candidatos a alerta). Con `value` (UPN/correo, IP, host o referencia `ent_…`) devuelve el detalle de esa entidad; sin `value` devuelve el ranking de entidades con más riesgo (opcionalmente de un `type`). Si el motor no está desplegado o la entidad no tiene puntaje, lo indica: en ese caso no estimes un riesgo numérico.',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
         properties: {
-          type: { type: 'string', enum: ['user', 'ip', 'host'] },
-          value: { type: 'string', maxLength: 254, description: 'UPN/correo, IP o nombre de host.' },
+          type: { type: 'string', enum: [...RISK_TYPES], description: 'Tipo de entidad.' },
+          value: {
+            type: 'string',
+            maxLength: 254,
+            description: 'UPN/correo, IP, host o referencia `ent_…`. Omítelo para el ranking.',
+          },
+          top: { type: 'integer', minimum: 1, maximum: 50, description: 'Tamaño del ranking (10).' },
         },
-        required: ['type', 'value'],
       },
       run: guarded(async (input) => {
-        const type = oneOf(input, 'type', ['user', 'ip', 'host'] as const);
+        const type = oneOf(input, 'type', RISK_TYPES);
         const value = str(input, 'value', 254);
-        if (!type || !value) throw new InputError('Indica «type» y «value».');
-        if (!/^[A-Za-z0-9@._:\-]{1,254}$/u.test(value) || value.includes('..')) {
-          throw new InputError('«value» no es un usuario, IP o host válido.');
+        if (!value) {
+          const top = int(input, 'top', 1, 50, 10);
+          const response = await get(`/api/risk/entities?top=${top}${type ? `&type=${type}` : ''}`);
+          if ([404, 501, 502, 503].includes(response.status)) return unavailable(ENGINE_DOWN);
+          if (response.status !== 200) return failure(response);
+          const { correlationId: _omit, ...data } = (response.body ?? {}) as Row;
+          return { ok: true, data: withLima({ available: true, ...data }) };
         }
-        const response = await get(`/api/risk/entities/${type}/${encodeURIComponent(value)}`);
-        if (response.status === 404 || response.status === 501 || response.status === 503) {
-          return {
-            ok: true,
-            data: {
-              available: false,
-              note: 'El motor de riesgo de entidades no está disponible todavía o no tiene puntuación para esta entidad. No hay un valor de riesgo que informar.',
-            },
-          };
+        if (!type) throw new InputError('Indica «type» (user, ip, host o cloud) junto con «value».');
+        // La API de riesgo solo acepta referencias opacas `ent_…` en la URL (D-10b): un UPN o una
+        // IP se resuelven primero contra el ranking del correlador y las entidades de las alertas.
+        let ref = /^ent_[A-Za-z0-9_-]{22}$/u.test(value) ? value : undefined;
+        if (!ref) {
+          const needle = value.toLocaleLowerCase('es');
+          const ranking = await get(`/api/risk/entities?top=100&type=${type}`);
+          if ([404, 501, 502, 503].includes(ranking.status)) return unavailable(ENGINE_DOWN);
+          if (ranking.status === 200) {
+            const hit = rowsOf(ranking.body).find(
+              (item) => String(item['label'] ?? '').toLocaleLowerCase('es') === needle,
+            );
+            if (typeof hit?.['ref'] === 'string') ref = hit['ref'];
+          }
+          if (!ref) {
+            const scan = await scanAlerts(get, { entity: value, from: new Date(Date.now() - 30 * DAY) });
+            if (isScan(scan)) {
+              for (const alert of scan.matched) {
+                const entity = entitiesOf(alert).find(
+                  (item) =>
+                    item['kind'] === type &&
+                    String(item['label'] ?? '').toLocaleLowerCase('es') === needle &&
+                    typeof item['ref'] === 'string',
+                );
+                if (entity) {
+                  ref = String(entity['ref']);
+                  break;
+                }
+              }
+            }
+          }
+          if (!ref) {
+            return unavailable(
+              'El correlador no tiene puntaje de riesgo para esa entidad (no aparece en el ranking ni en alertas de los últimos 30 días). No estimes un riesgo numérico.',
+            );
+          }
         }
+        const response = await get(`/api/risk/entities/${type}/${ref}`);
+        if (response.status === 404 || response.status === 403) {
+          return unavailable('El correlador no tiene puntaje de riesgo para esa entidad.');
+        }
+        if ([501, 502, 503].includes(response.status)) return unavailable(ENGINE_DOWN);
         if (response.status !== 200) return failure(response);
         const { correlationId: _omit, ...data } = (response.body ?? {}) as Row;
-        return { ok: true, data: { available: true, ...data } };
+        const candidates = Array.isArray(data['candidates']) ? (data['candidates'] as Row[]) : [];
+        const alertIds = candidates.flatMap((candidate) =>
+          Array.isArray(candidate['b89AlertIds']) ? (candidate['b89AlertIds'] as string[]) : [],
+        );
+        return {
+          ok: true,
+          data: withLima({ available: true, ...data }),
+          ...(alertIds.length > 0
+            ? {
+                citations: alertIds.slice(0, 10).map((id) => ({
+                  kind: 'alert' as const,
+                  id,
+                  label: 'Alerta del correlador',
+                })),
+              }
+            : {}),
+        };
       }),
     });
   }

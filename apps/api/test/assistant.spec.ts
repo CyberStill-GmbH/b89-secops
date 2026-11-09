@@ -242,7 +242,6 @@ describe('herramientas del SOC', () => {
     const context = tools.find((t) => t.name === 'get_alert_context');
     expect(await context?.run({ id: '../../admin' })).toMatchObject({ ok: false });
     const risk = tools.find((t) => t.name === 'get_entity_risk');
-    expect(await risk?.run({ type: 'ip', value: '../admin' })).toMatchObject({ ok: false });
     expect(called).toBe(false);
   });
 
@@ -362,13 +361,41 @@ describe('herramientas del SOC', () => {
     const urls: string[] = [];
     const tools = buildSocTools(async (url) => {
       urls.push(url);
-      return { status: 404, body: null };
+      return { status: 503, body: null };
     }, analyst);
     const result = await tools
       .find((t) => t.name === 'get_entity_risk')
       ?.run({ type: 'user', value: 'ana@b89.io' });
-    expect(urls[0]).toBe('/api/risk/entities/user/ana%40b89.io');
+    expect(urls[0]).toBe('/api/risk/entities?top=100&type=user');
     expect(result).toMatchObject({ ok: true, data: { available: false } });
+  });
+
+  it('el riesgo de entidad resuelve UPN/IP a la referencia opaca: nunca van en la URL', async () => {
+    const ref = 'ent_abcdefghijklmnopqrstuv';
+    const urls: string[] = [];
+    const tools = buildSocTools(async (url) => {
+      urls.push(url);
+      if (url.startsWith('/api/risk/entities?')) {
+        return { status: 200, body: { items: [{ ref, kind: 'ip', label: '10.0.0.9', score: 71 }] } };
+      }
+      return {
+        status: 200,
+        body: {
+          entity: { ref, kind: 'ip', label: '10.0.0.9', score: 71, lastSeen: '2026-11-05T14:12:00Z' },
+          candidates: [{ id: 'c1', b89AlertIds: ['a-3'] }],
+        },
+      };
+    }, analyst);
+    const result = await tools
+      .find((t) => t.name === 'get_entity_risk')
+      ?.run({ type: 'ip', value: '10.0.0.9' });
+    expect(urls).toEqual(['/api/risk/entities?top=100&type=ip', `/api/risk/entities/ip/${ref}`]);
+    expect(urls.join(' ')).not.toContain('10.0.0.9');
+    expect(result).toMatchObject({
+      ok: true,
+      data: { available: true, entity: { score: 71, lastSeenLima: '2026-11-05 09:12 Lima (14:12 UTC)' } },
+      citations: [{ kind: 'alert', id: 'a-3' }],
+    });
   });
 
   it('el conocimiento de docs/17 responde mapeo MITRE y runbooks', async () => {
