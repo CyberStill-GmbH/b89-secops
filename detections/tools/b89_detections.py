@@ -440,7 +440,11 @@ def cmd_bundle(args) -> int:
 
 
 def cmd_cases(_args) -> int:
+    import os
+    include = os.environ.get("B89_DETECTIONS_INCLUDE", "").split()
     for uc in use_case_dirs():
+        if include and (uc / "rule.xml").exists() and uc.relative_to(DET).as_posix() not in include:
+            continue
         meta = load_yaml(uc / "metadata.yaml")
         t = meta.get("tests", {})
         if "fixtures" in t and "expected" in t and t.get("runner", "logtest") == "logtest":

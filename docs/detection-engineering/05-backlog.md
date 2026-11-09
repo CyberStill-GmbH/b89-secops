@@ -11,9 +11,12 @@ agentes Wazuh en endpoints/servidores; `Presupuesto` = licencia o gasto; `—` =
 | BL-I01 | Conceder **`ActivityFeed.Read`** (Office 365 Management APIs) a la app de Wazuh | Hoy el módulo devuelve `AF10001`: las 27 reglas M365/Entra y la cadena 101700–101704 están cargadas pero ciegas | **Entra** | Platform + admin de Entra |
 | BL-I04 | Poblar `b89-break-glass` con las cuentas de emergencia reales | 100530 (P1 no suprimible) no puede disparar con el centinela | — | Identidad |
 | BL-S01 | Poblar `b89-internet-facing-projects` (proyecto Snyk → zona Cloudflare); luego automatizarlo desde la API de zonas | Sin lista, 101730/101731 no disparan | — | Security Engineering |
-| BL-Q01 | Afinar 521 (rootcheck, nivel 11): ~10 % del volumen sin incidentes | Ruido que tapa P2 en el correo de nivel ≥ 8 | — | Ingeniería de detección |
+| BL-Q01 | ~~Afinar 521 (rootcheck, nivel 11)~~ **Hecho 2026-11-09**: exclusión de overlay en el agente, regla 101765 y 328 FP cerrados con auditoría ([07](07-ajuste-falsos-positivos.md)) | Ruido que tapaba P2 en el correo de nivel ≥ 8 | — | Ingeniería de detección |
 | BL-R03 | Usuario de la API de Wazuh con solo `active-response:command` | Prerrequisito del playbook de contención de endpoint | — | Platform |
 | BL-M01 | MTTD/MTTA/MTTR medidos desde B89 (vista o informe) | Sin medición no hay SLO publicable (N8) | — | Backend B89 |
+
+| BL-Q02 | Bucle de retroalimentación: el motor de correlación y riesgo propone altas a `detections/lists/` por PR desde los veredictos `false_positive` | Afinamiento continuo sin editar reglas | — | Correlación + Ingeniería de detección |
+| BL-Q03 | Decoder B89 para `usermod`/sesiones SSH con IP en PAM; allowlist de `srcuser` por lista cuando Wazuh lo admita | Hoy 101766 compara el usuario origen por texto | — | Ingeniería de detección |
 
 ## Siguiente (30–90 días)
 
