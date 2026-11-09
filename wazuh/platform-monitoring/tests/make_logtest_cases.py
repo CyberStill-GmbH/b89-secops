@@ -25,13 +25,13 @@ def canary(vendor, source="b89-canary"):
                                "label": "sintético/canary · no requiere acción", "injected_at": T}}}
 
 
-def snyk(severity, priority=None, mature=False, status="open"):
+def snyk(severity, priority=None, mature=False, status="open", project="demo/app.example"):
     event = {"b89": {"vendor": "snyk", "source": "issues", "event_type": "issue", "collected_at": T},
              "snyk": {"issue": {"id": "00000000-0000-4000-8000-000000000001", "title": "Synthetic issue",
                                 "status": status, "severity": severity, "ignored": "false",
                                 "exploit_maturity": "Mature" if mature else "No Known Exploit",
                                 "fixable": "false", "problems": ["CVE-2021-44228", "SNYK-JAVA-0000"]},
-                      "org_id": "org", "project": {"id": "p1", "name": "demo/app.example"}}}
+                      "org_id": "org", "project": {"id": "p1", "name": project}}}
     if priority:
         event["b89"]["vuln"] = {"priority": priority, "reason": "caso", "cve": "CVE-2021-44228", "kev": "true",
                                 "epss": 0.97, "exposed": "false", "fix": "false", "epss_band": "high"}
@@ -94,9 +94,15 @@ CASES = [
     (snyk("medium", "P2"), "101857:10"),
     (snyk("critical", "P4"), "101858:6"),
     (snyk("high", "P4"), "101859:6"),
-    (snyk("high", "P3"), "101455:10"),
-    (snyk("critical"), "101456:12"),
-    (snyk("critical", "P2"), "101456:12"),
+    # Con la calibración de detección cargada (101732-101734): sin KEV/EPSS manda la calibración.
+    (snyk("high", "P3"), "101733:7"),
+    (snyk("critical"), "101734:10"),
+    (snyk("low"), "101732:2"),
+    (snyk("critical", "P2"), "101867:12"),
+    # Proyecto expuesto (lista b89-internet-facing-projects): la calibración no aplica.
+    (snyk("critical", "P3", project="web/portal.example"), "101456:12"),
+    (snyk("high", "P1", project="web/portal.example"), "101852:13"),
+    (snyk("critical", "P1", mature=True, project="web/portal.example"), "101730:14"),
     (finding("P1", "true"), "101861:14"),
     (finding("P1"), "101862:13"),
     (finding("P2"), "101863:10"),

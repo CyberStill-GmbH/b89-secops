@@ -57,7 +57,7 @@ def test_load_intel_rejects_stale_cache(cache_dir):
         (["CVE-2020-0003"], "critical", False, True, False, "P3"),      # has a fix → keep
         (["CVE-2020-0003"], "high", True, False, False, "P3"),          # exposed → keep
         (["CVE-2020-0003"], "critical", False, False, True, "P3"),      # mature exploit → keep
-        (["CVE-2020-0003"], "high", False, None, False, "P4"),          # fix unknown counts as no fix
+        (["CVE-2020-0003"], "high", False, None, False, "P3"),          # fix unknown never demotes
         ([], "critical", False, False, False, "P3"),                    # no CVE → never lowered
         (["CVE-2099-9999"], "critical", False, False, False, "P3"),     # CVE without EPSS → keep
         (["CVE-2023-0002"], "high", False, False, False, "P3"),         # medium EPSS
@@ -97,9 +97,14 @@ def test_level_mirror_matches_logtest_expectations():
     assert "101852:13" in expected and vp.snyk_level_after("high", False, "P1") == 13
     assert "101856:11" in expected and vp.snyk_level_after("high", False, "P2") == 11
     assert "101858:6" in expected and vp.snyk_level_after("critical", False, "P4") == 6
+    assert "101867:12" in expected and vp.snyk_level_after("critical", False, "P2") == 12
+    assert "101733:7" in expected and vp.snyk_level_before("high", False) == 7
+    assert "101734:10" in expected and vp.snyk_level_before("critical", False) == 10
+    assert "101732:2" in expected and vp.snyk_level_before("low", False) == 2
+    assert "101456:12" in expected and vp.snyk_level_before("critical", False, exposed=True) == 12
+    assert "101730:14" in expected and vp.snyk_level_before("critical", True, exposed=True) == 14
     assert vp.snyk_level_after("critical", True, "P4") == 13  # mature is never lowered
-    assert vp.snyk_level_after("critical", False, "P2") == 12
-    assert vp.vd_level_after("High", "P4", False) == 3 and vp.vd_level_after("Medium", "P1", True) == 14
+    assert vp.vd_level_after("High", "P4", False) == 5 and vp.vd_level_after("Medium", "P1", True) == 14
 
 
 def test_rule_file_ids_are_in_reserved_range():
@@ -239,16 +244,19 @@ def test_run_end_to_end(tmp_path, cache_dir):
               "exposure": {"cdb_list": "b89-internet-facing-projects", "agents": ["b89-soc-dev-node"]}}
     indexer = FakeIndexer([
         vd_hit("b89-soc-dev-node", "CVE-2021-44228", "Critical", 1),   # KEV + exposed → P1
-        vd_hit("internal-node", "CVE-2020-0003", "High", 2),           # low EPSS, fix unknown, internal → P4
+        vd_hit("internal-node", "CVE-2020-0003", "High", 2),           # low EPSS, fix UNKNOWN → stays P3
         vd_hit("internal-node", "CVE-2023-0002", "High", 3),           # P3
         vd_hit("b89-soc-dev-node", "CVE-2020-0004", "High", 4),        # exposed host → never P4
     ])
     result = job.cmd_run(config, NOW, indexer=indexer, getter=None, list_reader=lambda c, n: ["web/portal.example", "x.invalid"],
                          do_sync=False)
     report = result["report"]
-    assert report["snyk"]["before"]["high_or_critical"] == 2 and report["snyk"]["after"]["high_or_critical"] == 1
-    assert report["wazuh-vd"]["before"]["high_or_critical"] == 4 and report["wazuh-vd"]["after"]["high_or_critical"] == 3
-    assert report["total"]["before_high_or_critical"] == 6 and report["total"]["after_high_or_critical"] == 4
+    # Snyk a: critical, explicit no-fix, low EPSS, internal → P4 (10 → 6); b: high in KEV → P1 (7 → 13)
+    assert report["snyk"]["before"]["high_or_critical"] == 1 and report["snyk"]["after"]["high_or_critical"] == 1
+    assert report["snyk"]["priority"] == {"P1": 1, "P4": 1} and report["snyk"]["raised"] == 1
+    # VD: fix status unknown → nothing demoted; KEV still raises
+    assert report["wazuh-vd"]["before"]["high_or_critical"] == 4 and report["wazuh-vd"]["after"]["high_or_critical"] == 4
+    assert report["wazuh-vd"]["priority"].get("P4", 0) == 0
     events = [json.loads(l) for l in (tmp_path / "out.jsonl").read_text(encoding="utf-8").splitlines()]
     findings = [e for e in events if e["b89"]["event_type"] == "finding"]
     # P1 Snyk issue b (inline P3 → P1) and the VD P1; P4/P3 are not emitted one by one
@@ -262,7 +270,7 @@ def test_run_end_to_end(tmp_path, cache_dir):
     assert again["events"] == 0
 
 
-def test_cdb_lists_never_mark_exposed_cves_as_noise(cache_dir):
+def test_cdb_lists_never_demote_on_unknown_fix(cache_dir):
     intel = vp.load_intel(cache_dir, now=NOW)
     findings = job.evaluate([
         {"kind": "wazuh-vd", "id": "1", "asset": "internal", "cves": ["CVE-2020-0003"], "severity": "High", "fixable": None,
@@ -273,5 +281,5 @@ def test_cdb_lists_never_mark_exposed_cves_as_noise(cache_dir):
          "fixable": None, "mature": False, "package": "", "package_version": "", "title": ""},
     ], intel)
     lists = job.cdb_lists(findings, intel)
-    assert lists["b89-vuln-noise"] == "CVE-2020-0003:p4\n"
+    assert lists["b89-vuln-noise"].startswith("CVE-0000-0000.invalid")  # fix unknown → never noise
     assert lists["b89-vuln-kev"] == "CVE-2021-44228:kev\n"

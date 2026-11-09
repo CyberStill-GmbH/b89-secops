@@ -269,8 +269,8 @@ def evaluate(findings: list[dict], intel: vp.Intel) -> list[dict]:
                                         fixable=finding["fixable"], exploit_mature=finding["mature"])
         prio = finding["vuln"]["priority"]
         if finding["kind"] == "snyk":
-            finding["level_before"] = vp.snyk_level_before(finding["severity"], finding["mature"])
-            finding["level_after"] = vp.snyk_level_after(finding["severity"], finding["mature"], prio)
+            finding["level_before"] = vp.snyk_level_before(finding["severity"], finding["mature"], exposed)
+            finding["level_after"] = vp.snyk_level_after(finding["severity"], finding["mature"], prio, exposed)
         else:
             finding["level_before"] = vp.vd_level_before(finding["severity"])
             finding["level_after"] = vp.vd_level_after(finding["severity"], prio, exposed)

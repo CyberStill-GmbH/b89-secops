@@ -17,8 +17,10 @@ that the rules ``b89_watch_vulnprio_rules.xml`` turn into a level:
 
 - **P1** CVE in KEV, or EPSS >= ``epss_high`` on an Internet-exposed asset.
 - **P2** EPSS >= ``epss_high`` (not exposed), or severity critical on an exposed asset.
-- **P4** (noise) not in KEV, EPSS known and < ``epss_low``, no fix available, not exposed and no
-  mature exploit: the finding stays visible but stops paging (level below 7).
+- **P4** (noise) only with positive evidence: not in KEV, EPSS known and < ``epss_low``, the source
+  says explicitly that no fix exists (``fixable is False``), not exposed and no mature exploit. The
+  finding stays visible but stops paging. An *unknown* fix status (Wazuh vulnerability detection does
+  not report fixes) never demotes: the original severity is kept.
 - **P3** everything else: the original source level is kept.
 
 A finding without CVE (license, code or CWE-only issues) or without intel (cache missing) is
@@ -192,13 +194,20 @@ def prioritize(
         and epss < low
         and not exposed
         and not exploit_mature
-        and (fixable is not True or not policy.get("p4_requires_no_fix", True))
+        and (fixable is False or not policy.get("p4_requires_no_fix", True))
     ):
         priority = "P4"
-        reasons = ["epss_bajo", "no_expuesta"] + (["sin_fix"] if fixable is not True else [])
+        reasons = ["epss_bajo", "no_expuesta"] + (["sin_fix"] if fixable is False else [])
     else:
         priority = "P3"
-        reasons = ["sin_cve"] if not cves else (["sin_epss"] if epss is None else ["sin_cambio"])
+        if not cves:
+            reasons = ["sin_cve"]
+        elif epss is None:
+            reasons = ["sin_epss"]
+        elif epss < low and fixable is None and not exposed:
+            reasons = ["fix_desconocido"]
+        else:
+            reasons = ["sin_cambio"]
     main_cve = kev_hits[0] if kev_hits else (best[2] if best else (cves[0] if cves else ""))
     block = {
         "priority": priority,
@@ -222,32 +231,40 @@ def prioritize(
 
 
 # --------------------------------------------------------------------------- levels
-# Mirror of the rule chain (b89_snyk_rules.xml + b89_watch_vulnprio_rules.xml) so the report and the
-# tests can compute "before" and "after" without a manager. Kept in sync by tests/run-logtest.sh.
+# Mirror of the production rule chain so the report and the tests can compute "before" and "after"
+# without a manager: b89_snyk_rules.xml, the detection team's calibration
+# (detections/snyk/severity-calibration 101732-101734, exposed-critical-exploit 101730-101731) and
+# b89_watch_vulnprio_rules.xml. "before" = what production does today without KEV/EPSS.
 
-SNYK_BASE_LEVEL = {"low": 3, "medium": 5, "high": 10, "critical": 12}
-SNYK_MATURE_LEVEL = {"high": 11, "critical": 13}
 SNYK_P1_LEVEL = {"low": 12, "medium": 12, "high": 13, "critical": 14}
 SNYK_P2_LEVEL = {"medium": 10, "high": 11, "critical": 12}
 SNYK_P4_LEVEL = {"high": 6, "critical": 6}
 
 
-def snyk_level_before(severity: str, mature: bool) -> int:
+def snyk_level_before(severity: str, mature: bool, exposed: bool = False) -> int:
     sev = (severity or "").lower()
-    if mature and sev in SNYK_MATURE_LEVEL:
-        return SNYK_MATURE_LEVEL[sev]
-    return SNYK_BASE_LEVEL.get(sev, 0)
+    if mature:
+        if sev == "critical":
+            return 14 if exposed else 13
+        if sev == "high":
+            return 12 if exposed else 11
+    return {
+        "low": 3 if mature else 2,
+        "medium": 5,
+        "high": 10 if exposed else 7,
+        "critical": 12 if exposed else 10,
+    }.get(sev, 0)
 
 
-def snyk_level_after(severity: str, mature: bool, priority: str) -> int:
+def snyk_level_after(severity: str, mature: bool, priority: str, exposed: bool = False) -> int:
     sev = (severity or "").lower()
-    before = snyk_level_before(sev, mature)
+    before = snyk_level_before(sev, mature, exposed)
     if priority == "P1" and sev in SNYK_P1_LEVEL:
         return max(before, SNYK_P1_LEVEL[sev])
     if priority == "P2" and sev in SNYK_P2_LEVEL:
         return max(before, SNYK_P2_LEVEL[sev])
     if priority == "P4" and sev in SNYK_P4_LEVEL and not mature:
-        return SNYK_P4_LEVEL[sev]
+        return min(before, SNYK_P4_LEVEL[sev])
     return before
 
 
@@ -268,5 +285,5 @@ def vd_level_after(severity: str, priority: str, exposed: bool) -> int:
     if priority == "P2":
         return max(10, vd_level_before(severity)) if (severity or "").lower() in ("high", "critical") else 10
     if priority == "P4":
-        return 3
+        return {"critical": 6, "high": 5}.get((severity or "").lower(), vd_level_before(severity))
     return vd_level_before(severity)

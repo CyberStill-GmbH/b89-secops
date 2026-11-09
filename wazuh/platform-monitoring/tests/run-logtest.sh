@@ -26,6 +26,11 @@ if [[ -z $container ]]; then
   stage="$(mktemp -d)"
   cp "${repo}"/wazuh/provider-ingestion/rules/*.xml "${repo}"/wazuh/aws-events/rules/b89_aws_rules.xml \
      "${repo}"/wazuh/platform-monitoring/rules/*.xml "$stage/"
+  # Reglas Snyk del equipo de detección (cargan antes, b89_soc_*), como en producción.
+  for d in "${repo}"/detections/snyk/*/; do
+    [[ -f $d/rule.xml ]] && cp "$d/rule.xml" "$stage/b89_soc_snyk_$(basename "$d" | tr - _).xml"
+  done
+  printf 'web/portal.example:portal.example\n' >"$stage/b89-internet-facing-projects"
   printf 'CVE-2021-44228:kev\n' >"$stage/b89-vuln-kev"
   printf 'CVE-2020-0001:p4\n' >"$stage/b89-vuln-noise"
   # Git Bash en Windows: docker.exe necesita la ruta nativa del directorio temporal.
@@ -35,8 +40,8 @@ if [[ -z $container ]]; then
     O=/var/ossec
     sed -i "s/\r$//" /tmp/b89-rules/*
     install -o wazuh -g wazuh -m 0660 /tmp/b89-rules/*.xml $O/etc/rules/
-    install -o wazuh -g wazuh -m 0660 /tmp/b89-rules/b89-vuln-kev /tmp/b89-rules/b89-vuln-noise $O/etc/lists/
-    sed -i "0,/<ruleset>/s||<ruleset><list>etc/lists/b89-vuln-kev</list><list>etc/lists/b89-vuln-noise</list>|" $O/etc/ossec.conf
+    install -o wazuh -g wazuh -m 0660 /tmp/b89-rules/b89-vuln-kev /tmp/b89-rules/b89-vuln-noise /tmp/b89-rules/b89-internet-facing-projects $O/etc/lists/
+    sed -i "0,/<ruleset>/s||<ruleset><list>etc/lists/b89-internet-facing-projects</list><list>etc/lists/b89-vuln-kev</list><list>etc/lists/b89-vuln-noise</list>|" $O/etc/ossec.conf
     $O/bin/wazuh-analysisd -t
     $O/bin/wazuh-control restart >/dev/null 2>&1
   '

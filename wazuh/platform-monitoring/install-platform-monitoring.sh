@@ -190,6 +190,9 @@ write("monitor.json", {
         "bitdefender": {"unit": "b89-collector-bitdefender", "state_file": f"{coll}/bitdefender.json", "interval_minutes": 10, "fail_after_intervals": 3},
         "vulnprio": {"unit": "b89-vulnprio", "state_file": f"{state}/vulnprio.json", "interval_minutes": 60, "fail_after_intervals": 3},
         "canary": {"unit": "b89-canary-verify", "state_file": f"{state}/canary.json", "interval_minutes": 10, "fail_after_intervals": 6},
+        # SharePoint/OneDrive (docs/23): opcionales hasta que install-sharepoint.sh los instale.
+        "sharepoint-audit": {"unit": "b89-collector-sharepoint-audit", "state_file": f"{coll}/sharepoint-audit.json", "interval_minutes": 10, "fail_after_intervals": 3, "required": False},
+        "sharepoint-posture": {"unit": "b89-collector-sharepoint-posture", "state_file": f"{coll}/sharepoint-posture.json", "interval_minutes": 360, "fail_after_intervals": 2, "required": False},
     },
     # Cadencia esperada por fuente. heartbeat = fuente de bajo volumen: se exige el latido del pipeline
     # (éxito del collector o receptor sano) y solo se esperan eventos dentro de event_window_hours.
@@ -206,6 +209,9 @@ write("monitor.json", {
                          "query": {"bool": {"must_not": [{"terms": {"rule.groups": ["b89_provider", "office365", "aws", "b89_platform"]}}]}}},
         "office365": {"enabled": False, "mode": "events", "max_silence_minutes": 360, "query": {"term": {"rule.groups": "office365"}},
                       "disabled_reason": "Office 365 bloqueado: falta ActivityFeed.Read (docs/20)."},
+        "sharepoint": {"enabled": False, "mode": "heartbeat", "heartbeat": {"collector": "sharepoint-audit"}, "max_silence_minutes": 40,
+                       "event_window_hours": 72, "query": {"term": {"rule.groups": "b89_sharepoint"}},
+                       "disabled_reason": "SharePoint/OneDrive bloqueado: faltan ActivityFeed.Read o AuditLogsQuery-SharePoint.Read.All (docs/23)."},
     },
     "containers": {
         "required": ["b89-wazuh.manager-1", "b89-wazuh.indexer-1", "b89-wazuh.dashboard-1", "b89-api-1", "b89-edge-1",

@@ -128,10 +128,11 @@ host. Las descargas son atómicas; si fallan se conserva la caché anterior y a 
 | **P1** | CVE en KEV, o EPSS ≥ 0,5 en un activo expuesto a Internet | Sube el nivel (Snyk crítica 14, alta 13, media/baja 12; hallazgo VD 13, 14 si expuesto) |
 | **P2** | EPSS ≥ 0,5, o severidad crítica en un activo expuesto | Alta → 11, media → 10; hallazgo VD 10 |
 | **P3** | Resto | Sin cambio |
-| **P4** (ruido) | No KEV, EPSS conocido < 0,1, sin fix, no expuesto, sin exploit maduro | Alta/crítica bajan a 6 (Snyk) / 5–6 (alertas VD nativas): siguen visibles, no avisan |
+| **P4** (ruido) | Solo con evidencia positiva: no KEV, EPSS conocido < 0,1, la fuente dice **explícitamente** que no hay fix, no expuesto, sin exploit maduro | Alta/crítica bajan a 6 (Snyk) / 5–6 (alertas VD nativas): siguen visibles, no avisan |
 
-Falla segura: sin CVE (issues de licencia o código), sin EPSS para ese CVE o sin caché, el nivel original no
-cambia. Un exploit maduro nunca baja. **Exposición:** proyectos Snyk de la lista CDB
+Falla segura: sin CVE (issues de licencia o código), sin EPSS para ese CVE, **con estado de fix desconocido**
+o sin caché, el nivel original no cambia. Un SOC no degrada lo que no puede demostrar que es ruido: la detección
+de vulnerabilidades de Wazuh no informa si existe fix, así que sus hallazgos nunca bajan (solo suben por KEV/EPSS). Un exploit maduro nunca baja. **Exposición:** proyectos Snyk de la lista CDB
 `b89-internet-facing-projects` (la misma que usan las reglas 101730–101731) más patrones configurables, y
 agentes declarados en `B89_EXPOSED_AGENTS`. El nodo SOC **no** se declara expuesto: su security group solo
 admite el ALB (80/443), SSH desde la IP de administración y los puertos de agentes, y el edge corre en un
@@ -148,35 +149,52 @@ contenedor cuyo software no está en el inventario de paquetes del host.
   genera el manager: no hay un collector donde enriquecerlas, pero su CVE es un campo único, así que una lista
   CDB por CVE es lo nativo. `b89_vulnprio.py run` regenera `etc/lists/b89-vuln-kev` (todo KEV) y
   `b89-vuln-noise` (CVE que son P4 en **todos** los activos donde aparecen) y las reglas 101870–101875 las usan.
-  Límite: las listas CDB se cargan al arrancar analysisd, así que un cambio rige desde el siguiente reinicio
+  Como Wazuh VD no informa fix, `b89-vuln-noise` queda con el centinela `.invalid` (vacía en la práctica) hasta que
+  una fuente aporte ese dato; `b89-vuln-kev` sí rige. Límite: las listas CDB se cargan al arrancar analysisd, así que un cambio rige desde el siguiente reinicio
   del manager (el instalador reinicia una vez tras `analysisd -t`). Por eso los cambios a P1/P2 no esperan:
   salen al momento como eventos `b89-vulnprio` (101861–101863).
+- **Convivencia con la calibración de detección.** `detections/snyk/severity-calibration` (101732–101734) baja
+  las altas/críticas no expuestas y sin exploit (7/10) y carga antes (`b89_soc_*`), así que gana el primer match
+  bajo 101453/101455/101456. Las hijas KEV/EPSS declaran **ambos padres** (`<if_sid>101455, 101733</if_sid>`,
+  etc.; 101867 eleva la crítica P2 desde 101734): una CVE en KEV sube aunque la calibración la haya bajado. Si el
+  archivo de calibración no está instalado, Wazuh ignora ese padre con un aviso y la regla sigue valiendo. Probado
+  con las reglas de detección cargadas (62 casos de logtest).
 - **Re-priorización.** Si un CVE entra en KEV después de ingerido el issue, el job horario lo detecta y emite
   un evento `b89-vulnprio` (solo P1/P2, solo cuando la prioridad cambia). Un resumen diario (101865) registra
   los conteos antes/después.
 
-### Impacto medido en AWS (2026-11-09) **[verificado]**
+### Impacto en AWS
 
-Hallazgos abiertos: 383 issues Snyk y 3.210 hallazgos de detección de vulnerabilidades de Wazuh (agente
-`b89-soc-dev-node`). KEV y EPSS al día (1.769 CVE en KEV; 401.956 puntajes, modelo `v2026.06.15`).
+**Corrección (2026-11-09).** La primera medición (1.112 → 78, −93 %) trataba «fix desconocido» como «sin fix» y
+degradaba a P4 los 1.012 hallazgos altos/críticos de Wazuh VD. Eso escondía riesgo potencialmente real y se
+retiró: P4 exige ahora que la fuente diga explícitamente que no hay fix. Además, la línea base «antes» refleja
+los niveles vigentes en producción, que ya incluyen la calibración de detección (101732–101734).
 
-| Origen | Altas + críticas antes | Después | Cambio | P1 | P4 |
-| --- | --- | --- | --- | --- | --- |
-| Snyk | 100 (1 crítica, 99 altas) | 78 | −22 % | 0 | 93 |
-| Wazuh VD | 1.012 (105 críticas, 907 altas) | 0 | −100 % | 0 | 3.205 |
-| **Total** | **1.112** | **78** | **−93 %** | 0 | 3.298 |
+Datos del 2026-11-09 (383 issues Snyk abiertos; 3.210 hallazgos VD del agente `b89-soc-dev-node`; 1.769 CVE en
+KEV; 401.956 puntajes EPSS, modelo `v2026.06.15`):
 
-Lectura honesta de los números:
-- Ningún hallazgo actual está en KEV ni tiene EPSS ≥ 0,5. Son CVE recientes de librerías base (gcc, zlib…)
-  sin explotación conocida. No se elevó nada porque no había nada que elevar.
-- Wazuh VD no informa si existe fix. Este despliegue trata «fix desconocido» como «sin fix», así que la caída de VD
-  depende de esa lectura. Con la lectura estricta (solo «sin fix» explícito), VD queda igual y la reducción total
-  es de 1.112 a 1.090 (−2 %). Snyk sí trae `fixable`: sus −22 % no dependen de esa suposición.
-- Las alertas VD nativas casi no disparan en este nodo (0 en 7 días): el beneficio inmediato es la vista
-  priorizada (`report.json`, evento resumen) y el día en que un CVE entre en KEV, la alerta P1.
-- En la primera instalación el nodo SOC se marcó por error como expuesto. Durante unos minutos eso generó 105
-  eventos `b89-vulnprio` P2 de nivel 10 (críticas VD «expuestas»). Se corrigió: no hay agentes expuestos por
-  defecto. Esos eventos se pueden cerrar como falso positivo.
+| Origen | Antes (altas+críticas, nivel ≥ 10) | Después | Qué cambia |
+| --- | --- | --- | --- |
+| Wazuh VD | 1.012 (105 críticas, 907 altas) | **1.012** | Nada: fix desconocido → sin degradación; ninguna CVE en KEV ni con EPSS ≥ 0,5 |
+| Snyk | **pendiente de re-medir** con la línea base calibrada | **pendiente** | 93 issues son P4 con evidencia (Snyk informa `fixable=false`, EPSS < 0,1, no expuestos) |
+
+Lectura honesta: hoy KEV/EPSS **no reduce** el volumen de VD y no eleva nada, porque ninguna CVE abierta está
+en KEV ni tiene EPSS ≥ 0,5. Su valor es el día en que una entre en KEV (alerta P1 en menos de 1 h, aunque la
+calibración la haya bajado) y la vista priorizada (`report.json`). La reducción de ruido de Snyk ya la hace en
+buena parte la calibración de detección; P4 agrega la degradación de las críticas internas sin fix (10 → 6).
+
+**Falsos positivos de la primera instalación.** El nodo SOC se marcó por error como expuesto y se emitieron 105
+eventos `b89-vulnprio` P2 (regla 101863, nivel 10). Se cierran con el mismo mecanismo auditado que la regla 521
+(`detections/tools/close-false-positives.mjs`: principal `svc:b89-detection-engineering`,
+assign → triage `false_positive` → close, auditoría con cadena hash). Hoy no puede haber otra 101863 legítima
+(ningún hallazgo tiene EPSS ≥ 0,5 y no hay activos expuestos), pero la pasada en seco debe mostrar `matching: 105`
+antes de aplicar:
+
+```bash
+cd /opt/b89/src
+docker run --rm --network b89_default --env-file /opt/b89/config/api.env --env-file /opt/b89/secrets/api.env   -v "$PWD/detections/tools/close-false-positives.mjs:/app/dist/b89-close-fp.mjs:ro"   b89/api:local dist/b89-close-fp.mjs --rule 101863   --reason "falso positivo: P2 por exposición mal declarada del nodo SOC en la primera instalación de b89-vulnprio (docs/20)"
+# si matching = 105: repetir con --apply
+```
 
 ```bash
 sudo /usr/bin/python3 -I /opt/b89/platform-monitoring/bin/b89_vulnprio.py report --config /opt/b89/platform-monitoring/etc/vulnprio.json
@@ -214,7 +232,7 @@ sudo /usr/bin/python3 -I /opt/b89/platform-monitoring/bin/b89_canary.py status -
 
 ```bash
 python -m pytest -q wazuh/platform-monitoring/tests        # 53 pruebas, sin red ni docker
-bash wazuh/platform-monitoring/tests/run-logtest.sh        # 58 casos wazuh-logtest en un manager 4.14.8 desechable
+bash wazuh/platform-monitoring/tests/run-logtest.sh        # 62 casos wazuh-logtest en un manager 4.14.8 desechable (con la calibración Snyk de detections/)
 python wazuh/manager/policy/check_rule_ids.py <todas las reglas B89>   # 101800-101879 sin colisiones
 ```
 

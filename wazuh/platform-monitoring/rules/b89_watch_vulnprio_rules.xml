@@ -8,12 +8,15 @@
   - 101870-101875: alertas nativas de detección de vulnerabilidades de Wazuh (0520, 23503-23506)
     re-niveladas con las listas CDB etc/lists/b89-vuln-kev y b89-vuln-noise (se cargan al iniciar
     analysisd; las regenera b89_vulnprio.py run).
-  P4 = EPSS < 0.1, sin fix, no expuesta, sin KEV ni exploit maduro: queda visible en nivel 5-6 (no
-  llega al correo, que es desde 8) en vez de alta/crítica.
+  P4 = EPSS < 0.1, sin fix CONFIRMADO por la fuente, no expuesta, sin KEV ni exploit maduro: queda
+  visible en nivel 5-6 (no llega al correo, que es desde 8). Fix desconocido = no se degrada.
+  Las reglas de calibración de detección (b89_soc_snyk_severity_calibration.xml, 101732-101734) cargan
+  antes y ganan el primer match bajo 101453/101455/101456: por eso las hijas KEV/EPSS declaran ambos
+  padres (if_sid múltiple) y la priorización KEV/EPSS se aplica en cualquiera de las dos ramas.
 -->
 <group name="b89_provider,snyk,b89_vulnerability,b89_vulnprio,">
   <rule id="101850" level="14">
-    <if_sid>101456</if_sid>
+    <if_sid>101456, 101734</if_sid>
     <field name="b89.vuln.priority">^P1$</field>
     <!-- Con exploit maduro sigue la cadena 101457/101458 (y 101730/101731 de exposición). -->
     <field name="snyk.issue.exploit_maturity" negate="yes">^Mature$</field>
@@ -31,7 +34,7 @@
   </rule>
 
   <rule id="101852" level="13">
-    <if_sid>101455</if_sid>
+    <if_sid>101455, 101733</if_sid>
     <field name="b89.vuln.priority">^P1$</field>
     <!-- Con exploit maduro sigue la cadena 101457/101458 (y 101730/101731 de exposición). -->
     <field name="snyk.issue.exploit_maturity" negate="yes">^Mature$</field>
@@ -41,7 +44,7 @@
   </rule>
 
   <rule id="101853" level="13">
-    <if_sid>101458</if_sid>
+    <if_sid>101458, 101731</if_sid>
     <field name="b89.vuln.priority">^P1$</field>
     <description>B89 Snyk: vulnerabilidad ALTA con exploit maduro priorizada P1 ($(b89.vuln.reason)) $(b89.vuln.cve) en $(snyk.project.name).</description>
     <options>no_full_log</options>
@@ -57,7 +60,7 @@
   </rule>
 
   <rule id="101855" level="12">
-    <if_sid>101453</if_sid>
+    <if_sid>101453, 101732</if_sid>
     <field name="b89.vuln.priority">^P1$</field>
     <description>B89 Snyk: vulnerabilidad baja elevada a P1 ($(b89.vuln.reason); KEV=$(b89.vuln.kev), EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).</description>
     <options>no_full_log</options>
@@ -65,7 +68,7 @@
   </rule>
 
   <rule id="101856" level="11">
-    <if_sid>101455</if_sid>
+    <if_sid>101455, 101733</if_sid>
     <field name="b89.vuln.priority">^P2$</field>
     <description>B89 Snyk: vulnerabilidad ALTA priorizada P2 ($(b89.vuln.reason); EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).</description>
     <options>no_full_log</options>
@@ -78,8 +81,15 @@
     <options>no_full_log</options>
   </rule>
 
+  <rule id="101867" level="12">
+    <if_sid>101734</if_sid>
+    <field name="b89.vuln.priority">^P2$</field>
+    <description>B89 Snyk: vulnerabilidad CRÍTICA priorizada P2 ($(b89.vuln.reason); EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).</description>
+    <options>no_full_log</options>
+  </rule>
+
   <rule id="101858" level="6">
-    <if_sid>101456</if_sid>
+    <if_sid>101456, 101734</if_sid>
     <field name="b89.vuln.priority">^P4$</field>
     <description>B89 Snyk: vulnerabilidad crítica de baja prioridad P4 ($(b89.vuln.reason); EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).</description>
     <options>no_full_log</options>
@@ -87,7 +97,7 @@
   </rule>
 
   <rule id="101859" level="6">
-    <if_sid>101455</if_sid>
+    <if_sid>101455, 101733</if_sid>
     <field name="b89.vuln.priority">^P4$</field>
     <description>B89 Snyk: vulnerabilidad alta de baja prioridad P4 ($(b89.vuln.reason); EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).</description>
     <options>no_full_log</options>
