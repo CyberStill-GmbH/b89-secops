@@ -12,20 +12,21 @@ import (
 
 // Report is the replay / stats summary.
 type Report struct {
-	GeneratedAt  time.Time               `json:"generatedAt"`
-	Window       map[string]time.Time    `json:"window"`
-	Observations map[string]any          `json:"observations"`
-	Entities     map[string]int          `json:"entities"`
-	Candidates   map[string]any          `json:"candidates"`
-	Reduction    map[string]any          `json:"reduction"`
-	TopEntities  []risk.EntitySummary    `json:"topEntities"`
-	Feedback     map[string]any          `json:"feedback"`
-	CDB          string                  `json:"cdbAllowlistProposal"`
+	GeneratedAt  time.Time            `json:"generatedAt"`
+	Window       map[string]time.Time `json:"window"`
+	Observations map[string]any       `json:"observations"`
+	Entities     map[string]int       `json:"entities"`
+	Candidates   map[string]any       `json:"candidates"`
+	Reduction    map[string]any       `json:"reduction"`
+	TopEntities  []risk.EntitySummary `json:"topEntities"`
+	Feedback     map[string]any       `json:"feedback"`
+	CDB          string               `json:"cdbAllowlistProposal"`
 }
 
 // BuildReport summarizes the runner state over its window.
 func (r *Runner) BuildReport(from, to time.Time, top int, redact bool) Report {
 	snap := r.Snapshot()
+	stats := r.Eng.Stats()
 	cands := r.Eng.Candidates("", 0)
 	byKind, byPattern, byPriority, byStatus := map[string]int{}, map[string]int{}, map[string]int{}, map[string]int{}
 	covered := map[string]bool{}
@@ -100,8 +101,8 @@ func (r *Runner) BuildReport(from, to time.Time, top int, redact bool) Report {
 		GeneratedAt: r.Now().UTC(),
 		Window:      map[string]time.Time{"from": from, "to": to},
 		Observations: map[string]any{
-			"total": r.Eng.Observations, "duplicates": r.Eng.Duplicates,
-			"suppressed": r.Eng.SuppressedObs, "bySource": r.Eng.BySource, "byStage": r.Eng.ByStage,
+			"total": stats.Observations, "duplicates": stats.Duplicates,
+			"suppressed": stats.Suppressed, "bySource": stats.BySource, "byStage": stats.ByStage,
 			"unparseable": r.C.Unparseable.Load(), "pages": r.C.Pages.Load(),
 		},
 		Entities: r.Eng.EntityCounts(),
@@ -115,7 +116,7 @@ func (r *Runner) BuildReport(from, to time.Time, top int, redact bool) Report {
 				"minLevel": r.Eng.GroupMinLevel, "alerts": wItems, "groups": wGroups, "reductionFactor": wRed,
 				"note": "Wazuh alerts at or above minLevel grouped by pivot entity (user > host > ip > cloud) and stage window (gap " + r.Eng.P.GroupGap.String() + ", max span " + r.Eng.P.GroupMaxSpan.String() + ")",
 			},
-			"b89Alerts":         dedup,
+			"b89Alerts":          dedup,
 			"b89AlertsTruncated": snap.AlertsTrunc,
 			"candidatesVsCoveredB89Alerts": map[string]any{
 				"candidates": len(cands), "coveredB89Alerts": len(covered), "alertsPerCandidate": round(candReduction),

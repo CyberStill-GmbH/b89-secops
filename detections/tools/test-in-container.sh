@@ -14,6 +14,8 @@
 #      declarados en detections/catalog.yaml) y de cada caso de uso nuevo del programa.
 # Sale 1 si algo falla. Requiere docker y Python 3 con PyYAML.
 set -Eeuo pipefail
+# Solo contenido versionado en git: el trabajo en curso de otros agentes en detections/ no se prueba ni se instala.
+export B89_DETECTIONS_TRACKED_ONLY="${B89_DETECTIONS_TRACKED_ONLY:-1}"
 export MSYS_NO_PATHCONV=1
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"

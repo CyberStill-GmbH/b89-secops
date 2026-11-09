@@ -27,6 +27,8 @@ sources:
   cato:        {name: "Cato Networks (normalizado)", prefix: "B89 Cato:"}
   platform:    {name: "Salud de integraciones B89", prefix: "B89 Integración:"}
   launch:      {name: "Paquete de lanzamiento (proveedores normalizados)", prefix: "B89 <Fuente>:"}
+  edge:        {name: "Edge nginx de la consola del SOC", prefix: "B89 Edge:"}
+  network:     {name: "Red: reputación de IP y correlación entre fuentes", prefix: "B89 Red:"}
 
 # Rangos reservados. Un ID no se reutiliza: una regla retirada deja su ID documentado en su metadata.
 id_ranges:
@@ -47,6 +49,7 @@ id_ranges:
   - {from: 101740, to: 101749, source: cloudflare,  owner: soc-detection-engineering, note: "Programa: oleadas WAF"}
   - {from: 101750, to: 101769, source: linux,       owner: soc-detection-engineering, note: "Programa: servidores Linux"}
   - {from: 101770, to: 101799, source: reserved,    owner: soc-detection-engineering, note: "Reservado: correlación Windows/AD cuando haya agentes"}
+  - {from: 101800, to: 101899, source: network,     owner: network-visibility,        note: "Visibilidad de red (docs/18): conexiones Linux, auditd, SSH, Docker, edge, reputación, correlación y red Windows"}
 
 # Archivos de reglas B89 existentes (ruta canónica, no se mueven) y su suite de wazuh-logtest.
 rule_files:
@@ -99,6 +102,32 @@ rule_files:
 #    con un centinela .invalid si faltan y nunca pisa una con contenido.
 # Formato CDB: `clave:valor` (valor = motivo); claves IP admiten prefijo de octetos (`38.250.148.:`).
 lists:
+  # Visibilidad de red (docs/18). Las de reputación las regenera a diario b89-threat-intel.timer en el host.
+  - name: b89-ti-blocklist
+    path: etc/lists/b89-ti-blocklist
+    example: infra/wazuh/network/lists/b89-ti-blocklist.example
+    used_by: [101860, 101862, 101864, 101865, 101866, 101867, 101883, 101884, 101885, 101890]
+    purpose: "IPs/prefijos de Spamhaus DROP y abuse.ch Feodo Tracker (FireHOL level1 opcional); timer diario"
+  - name: b89-ti-tor
+    path: etc/lists/b89-ti-tor
+    example: infra/wazuh/network/lists/b89-ti-tor.example
+    used_by: [101861, 101863, 101868]
+    purpose: "Nodos de salida de Tor (Tor Project); timer diario"
+  - name: b89-cf-waf-attackers
+    path: etc/lists/b89-cf-waf-attackers
+    example: infra/wazuh/network/lists/b89-cf-waf-attackers.example
+    used_by: [101870, 101871, 101872]
+    purpose: "IPs con 5+ bloqueos/desafíos del WAF de Cloudflare en 7 días (consulta al indexer); timer diario"
+  - name: b89-egress-known
+    path: etc/lists/b89-egress-known
+    example: infra/wazuh/network/lists/b89-egress-known.example
+    used_by: [101808]
+    purpose: "Destinos de salida conocidos (rangos AWS de la región + infra/wazuh/network/lists/b89-egress-static); timer diario"
+  - name: b89-expected-listeners
+    path: etc/lists/b89-expected-listeners
+    source: infra/wazuh/network/lists/b89-expected-listeners
+    used_by: [101804]
+    purpose: "Puertos en escucha esperados en los servidores Linux (puerto:servicio)"
   - name: b89-admin-ips
     path: etc/lists/b89-admin-ips
     source: detections/lists/b89-admin-ips
@@ -127,7 +156,7 @@ lists:
   - name: b89-aws-trusted-principals
     path: etc/lists/b89-aws-trusted-principals
     source: detections/lists/b89-aws-trusted-principals
-    used_by: [101714, 101715]
+    used_by: [101714, 101715, 101716]
     purpose: "Principales AWS del SOC y automatización (degradación de 101616/101615, nunca supresión)"
   - name: b89-break-glass
     path: etc/lists/b89-break-glass

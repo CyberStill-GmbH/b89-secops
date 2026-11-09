@@ -20,6 +20,7 @@ rules:
   ids:
   - 101714
   - 101715
+  - 101716
   installed_as: etc/rules/b89_soc_aws_trusted_principals.xml
 mitre:
 - technique: T1562.008
@@ -35,7 +36,8 @@ tuning:
 measurement:
   window: desde la activación del trail (598294a)
   before:
-    '101616': nivel 6 por soc@b89.io (TagResource)
+    '101616': 2 (nivel 6, soc@b89.io)
+    '101640': 3 (nivel 8, soc@b89.io)
   expected_after:
     '101616': solo principales no confiables
     '101714': cambios del SOC, nivel 3

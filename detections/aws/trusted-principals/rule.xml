@@ -27,4 +27,14 @@
     </mitre>
     <group>b89_audit,b89_trusted_principal,</group>
   </rule>
+
+  <!-- Security groups (101640, nivel 8) cambiados por el SOC: 5, visible en el índice. Abrir a Internet
+       (101641, nivel 10) es hermana de mayor nivel y NO se degrada. -->
+  <rule id="101716" level="5">
+    <if_sid>101640</if_sid>
+    <list field="aws.principal" lookup="match_key">etc/lists/b89-aws-trusted-principals</list>
+    <description>B89 AWS: security group modificado ($(aws.event_name)) por principal de confianza $(aws.principal) en $(aws.region).</description>
+    <options>no_full_log</options>
+    <group>b89_aws_network,b89_audit,b89_trusted_principal,</group>
+  </rule>
 </group>

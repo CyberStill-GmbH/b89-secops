@@ -10,11 +10,11 @@ import {
   integrationLinks,
   LastEvent,
   MetricList,
-  Monogram,
   SkeletonCard,
   StatusPill,
   usePlatformData,
 } from './overview_parts';
+import { ServiceMark } from './vendor_logo';
 import { ErrorCallout } from './primitives';
 import { ProviderSeverity, ServiceModel, serviceModels } from './service_cards';
 
@@ -104,7 +104,7 @@ function IntegrationRow({
   return (
     <article className="b89Integration" data-tone={status.tone} aria-labelledby={id}>
       <div className="b89Integration__lead">
-        <Monogram text={spec.monogram} />
+        <ServiceMark spec={spec} basePath={basePath} />
         <div>
           <h2 id={id}>{spec.name}</h2>
           <p className="b89Integration__summary">{spec.summary}</p>

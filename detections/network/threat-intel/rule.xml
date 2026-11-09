@@ -1,0 +1,115 @@
+<!--
+  B89 SOC · detección como código · detections/network/threat-intel (metadata.yaml).
+  Reputación de IP sin servicios pagos: listas CDB que refresca a diario el timer del host
+  (infra/wazuh/network/threat-intel/): b89-ti-blocklist (Spamhaus DROP + abuse.ch Feodo Tracker; FireHOL
+  level1 opcional) y b89-ti-tor (nodos de salida de Tor). Claves por prefijo de octetos (`198.51.100.`).
+  Una regla hija solo se evalúa si su padre es la regla que ganó: por eso cada regla de reputación cuelga
+  de TODAS las hojas posibles de su fuente (base y reglas B89 de nivel > 0), y sube el nivel.
+  Carga después de b89_soc_edge_* y b89_soc_linux_* (dependencias). Se instala como
+  b89_soc_network_threat_intel.xml.
+-->
+<group name="b89_network,b89_threat_intel,">
+
+  <!-- Inicios de sesión exitosos (cualquier fuente con grupo authentication_success: O365, consola B89...) -->
+  <rule id="101860" level="12">
+    <if_group>authentication_success</if_group>
+    <list field="srcip" lookup="address_match_key">etc/lists/b89-ti-blocklist</list>
+    <description>B89 Red: inicio de sesión exitoso desde $(srcip), IP en listas de reputación (Spamhaus DROP / abuse.ch).</description>
+    <mitre>
+      <id>T1078</id>
+    </mitre>
+    <group>b89_ti_hit,</group>
+  </rule>
+
+  <rule id="101861" level="12">
+    <if_group>authentication_success</if_group>
+    <list field="srcip" lookup="address_match_key">etc/lists/b89-ti-tor</list>
+    <description>B89 Red: inicio de sesión exitoso desde $(srcip), nodo de salida de Tor.</description>
+    <mitre>
+      <id>T1090.003</id>
+      <id>T1078</id>
+    </mitre>
+    <group>b89_ti_hit,</group>
+  </rule>
+
+  <!-- SSH: 5715 y sus hijas B89 (101750 fuerza bruta; 101761-101763 IP no administrativa; 101820-101821) -->
+  <rule id="101865" level="13">
+    <if_sid>5715, 101750, 101761, 101762, 101763, 101820, 101821</if_sid>
+    <list field="srcip" lookup="address_match_key">etc/lists/b89-ti-blocklist</list>
+    <description>B89 Red: acceso SSH exitoso de $(dstuser) desde $(srcip), IP en listas de reputación.</description>
+    <mitre>
+      <id>T1078.003</id>
+      <id>T1021.004</id>
+    </mitre>
+    <group>b89_ti_hit,</group>
+  </rule>
+
+  <rule id="101868" level="13">
+    <if_sid>5715, 101750, 101761, 101762, 101763, 101820, 101821</if_sid>
+    <list field="srcip" lookup="address_match_key">etc/lists/b89-ti-tor</list>
+    <description>B89 Red: acceso SSH exitoso de $(dstuser) desde $(srcip), nodo de salida de Tor.</description>
+    <mitre>
+      <id>T1090.003</id>
+      <id>T1021.004</id>
+    </mitre>
+    <group>b89_ti_hit,</group>
+  </rule>
+
+  <!-- Edge: cualquier petición a la consola del SOC -->
+  <rule id="101862" level="8" ignore="120">
+    <if_sid>101830, 101831, 101832, 101833, 101834, 101835, 101836, 101838, 101839, 101842, 101843</if_sid>
+    <list field="srcip" lookup="address_match_key">etc/lists/b89-ti-blocklist</list>
+    <description>B89 Red: petición a la consola del SOC desde $(srcip), IP en listas de reputación: $(method) $(url) → $(http_status).</description>
+    <options>no_full_log</options>
+    <mitre>
+      <id>T1595</id>
+    </mitre>
+    <group>b89_ti_hit,</group>
+  </rule>
+
+  <rule id="101863" level="6" ignore="120">
+    <if_sid>101830, 101831, 101832, 101833, 101834, 101835, 101836, 101838, 101839, 101842, 101843</if_sid>
+    <list field="srcip" lookup="address_match_key">etc/lists/b89-ti-tor</list>
+    <description>B89 Red: petición a la consola del SOC desde un nodo de salida de Tor ($(srcip)): $(method) $(url).</description>
+    <options>no_full_log</options>
+    <mitre>
+      <id>T1090.003</id>
+    </mitre>
+    <group>b89_ti_hit,</group>
+  </rule>
+
+  <!-- Conexiones del host (command monitoring) -->
+  <rule id="101864" level="12">
+    <if_sid>101801, 101807, 101808</if_sid>
+    <field name="b89.net.direction">^out$</field>
+    <list field="dstip" lookup="address_match_key">etc/lists/b89-ti-blocklist</list>
+    <description>B89 Red: el host abrió una conexión a $(dstip):$(dstport) ($(b89.net.process)), IP en listas de reputación (posible C2).</description>
+    <mitre>
+      <id>T1071</id>
+    </mitre>
+    <group>b89_ti_hit,</group>
+  </rule>
+
+  <rule id="101867" level="10">
+    <if_sid>101801, 101809</if_sid>
+    <field name="b89.net.direction">^in$</field>
+    <list field="srcip" lookup="address_match_key">etc/lists/b89-ti-blocklist</list>
+    <description>B89 Red: conexión TCP establecida desde $(srcip) (listas de reputación) al puerto $(dstport) del host.</description>
+    <mitre>
+      <id>T1133</id>
+    </mitre>
+    <group>b89_ti_hit,</group>
+  </rule>
+
+  <!-- auditd -->
+  <rule id="101866" level="12">
+    <if_sid>101810, 101814, 101815, 101816, 101817</if_sid>
+    <list field="dstip" lookup="address_match_key">etc/lists/b89-ti-blocklist</list>
+    <description>B89 Red: $(audit.exe) (auid $(audit.auid)) se conectó a $(dstip):$(dstport), IP en listas de reputación.</description>
+    <mitre>
+      <id>T1071</id>
+    </mitre>
+    <group>b89_ti_hit,</group>
+  </rule>
+
+</group>

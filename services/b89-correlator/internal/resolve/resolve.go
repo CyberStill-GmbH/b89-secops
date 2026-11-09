@@ -199,11 +199,11 @@ func truthy(doc Doc, path string) bool {
 // Normalizers
 
 var (
-	emailRe      = regexp.MustCompile(`^[a-z0-9._%+\-']+@[a-z0-9.\-]+\.[a-z]{2,}$`)
-	instanceRe   = regexp.MustCompile(`\bi-[0-9a-f]{8,17}\b`)
-	ec2HostRe    = regexp.MustCompile(`^ip-(\d{1,3})-(\d{1,3})-(\d{1,3})-(\d{1,3})$`)
-	junkUsers    = map[string]bool{"": true, "-": true, "n/a": true, "unknown": true, "system": true, "local service": true, "network service": true, "anonymous logon": true, "(unknown user)": true}
-	cgnat        = netip.MustParsePrefix("100.64.0.0/10")
+	emailRe       = regexp.MustCompile(`^[a-z0-9._%+\-']+@[a-z0-9.\-]+\.[a-z]{2,}$`)
+	instanceRe    = regexp.MustCompile(`\bi-[0-9a-f]{8,17}\b`)
+	ec2HostRe     = regexp.MustCompile(`^ip-(\d{1,3})-(\d{1,3})-(\d{1,3})-(\d{1,3})$`)
+	junkUsers     = map[string]bool{"": true, "-": true, "n/a": true, "unknown": true, "system": true, "local service": true, "network service": true, "anonymous logon": true, "(unknown user)": true}
+	cgnat         = netip.MustParsePrefix("100.64.0.0/10")
 	privilegedAWS = map[string]bool{
 		"AttachUserPolicy": true, "AttachRolePolicy": true, "AttachGroupPolicy": true,
 		"PutUserPolicy": true, "PutRolePolicy": true, "PutGroupPolicy": true,

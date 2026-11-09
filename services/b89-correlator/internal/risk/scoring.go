@@ -14,24 +14,24 @@ import (
 
 // Policy holds every tunable of the scoring model.
 type Policy struct {
-	HalfLife          time.Duration // exponential decay half-life of the risk score
-	Window            time.Duration // window for source diversity and tactic progression
-	RepeatWindow      time.Duration // same rule+entity within this window is dampened
-	RepeatDamping     float64       // multiplier applied per prior repeat (0.5 => 1, .5, .25 ...)
-	RulePointCap      float64       // max points one rule may add to one entity per Window
-	DiversityStep     float64       // +x per extra distinct source
-	DiversityCap      float64       // multiplier cap
-	TacticStepBonus   float64       // per extra distinct tactic in Window
-	ProgressionBonus  float64       // per forward kill-chain transition in Window
-	ProgressionCap    float64
-	Threshold         float64 // effective score that makes a threshold candidate
-	GroupGap          time.Duration
-	GroupMaxSpan      time.Duration
-	ContributorsKept  int
-	TimelineBucket    time.Duration
-	TimelineKept      int
-	PruneAfter        time.Duration
-	MinLevel          int // observations below this level do not contribute
+	HalfLife         time.Duration // exponential decay half-life of the risk score
+	Window           time.Duration // window for source diversity and tactic progression
+	RepeatWindow     time.Duration // same rule+entity within this window is dampened
+	RepeatDamping    float64       // multiplier applied per prior repeat (0.5 => 1, .5, .25 ...)
+	RulePointCap     float64       // max points one rule may add to one entity per Window
+	DiversityStep    float64       // +x per extra distinct source
+	DiversityCap     float64       // multiplier cap
+	TacticStepBonus  float64       // per extra distinct tactic in Window
+	ProgressionBonus float64       // per forward kill-chain transition in Window
+	ProgressionCap   float64
+	Threshold        float64 // effective score that makes a threshold candidate
+	GroupGap         time.Duration
+	GroupMaxSpan     time.Duration
+	ContributorsKept int
+	TimelineBucket   time.Duration
+	TimelineKept     int
+	PruneAfter       time.Duration
+	MinLevel         int // observations below this level do not contribute
 }
 
 // DefaultPolicy is the documented default (see README of the service).

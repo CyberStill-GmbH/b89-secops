@@ -1,5 +1,6 @@
 <!--
   B89 SOC · reducción de falsos positivos · detections/linux/noise-tuning (metadata.yaml, docs/17 §Ajuste).
+  Nota: en <list> el usuario destino (dstuser, campo estático) se consulta como field="user".
   Medido en AWS (7 días, agente 001): 5501/5502 sesiones PAM de la cuenta admin = 2165/día; 5715 SSH = 350/día
   desde la IP del operador; 521 rootcheck sobre overlay de Docker = 328 en una pasada.
   Técnicas: allowlist CDB (detections/lists/b89-admin-accounts, b89-admin-ips), contexto de horario B89
@@ -11,15 +12,16 @@
   <!-- Sesión PAM abierta por y para cuentas administrativas (sudo de ubuntu a root): duplica 5402. -->
   <rule id="101766" level="0">
     <if_sid>5501</if_sid>
-    <list field="dstuser" lookup="match_key">etc/lists/b89-admin-accounts</list>
-    <list field="srcuser" lookup="match_key">etc/lists/b89-admin-accounts</list>
+    <list field="user" lookup="match_key">etc/lists/b89-admin-accounts</list>
+    <!-- <list> no admite srcuser (no es campo estático de lista): mismo conjunto que b89-admin-accounts. -->
+    <srcuser type="pcre2">^(ubuntu|root)$</srcuser>
     <description>B89 Linux: sesión PAM de cuenta administrativa ($(srcuser) a $(dstuser)); ya auditada por sudo/SSH.</description>
   </rule>
 
   <!-- Cierre de sesión PAM de cuenta administrativa: sin valor de detección. -->
   <rule id="101767" level="0">
     <if_sid>5502</if_sid>
-    <list field="dstuser" lookup="match_key">etc/lists/b89-admin-accounts</list>
+    <list field="user" lookup="match_key">etc/lists/b89-admin-accounts</list>
     <description>B89 Linux: cierre de sesión PAM de cuenta administrativa $(dstuser).</description>
   </rule>
 

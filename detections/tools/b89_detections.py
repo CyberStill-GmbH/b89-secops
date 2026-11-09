@@ -71,8 +71,24 @@ def parse_rules(path: Path, origin: str) -> list[dict]:
     return out
 
 
+def _tracked(paths):
+    """Con B89_DETECTIONS_TRACKED_ONLY=1 ignora lo que no está en git (trabajo en curso de otros agentes)."""
+    import os
+    import subprocess
+    if os.environ.get("B89_DETECTIONS_TRACKED_ONLY") != "1":
+        return sorted(paths)
+    listed = subprocess.run(["git", "-C", str(ROOT), "ls-files", "detections"], capture_output=True, text=True,
+                            check=True).stdout.split()
+    tracked = {ROOT / Path(x) for x in listed}
+    return sorted(p for p in paths if p in tracked)
+
+
 def use_case_dirs() -> list[Path]:
-    return sorted(p.parent for p in DET.glob("*/*/metadata.yaml"))
+    return [p.parent for p in _tracked(DET.glob("*/*/metadata.yaml"))]
+
+
+def program_rule_files() -> list[Path]:
+    return _tracked(DET.glob("*/*/rule.xml"))
 
 
 def bundle_name(rule_xml: Path) -> str:
@@ -90,8 +106,11 @@ def all_rules(include_program: bool = True) -> list[dict]:
             continue
         rules += parse_rules(p, "existing" if entry.get("owner") == "soc-detection-engineering" else f"owner:{entry.get('owner')}")
     if include_program:
-        for rule_xml in sorted(DET.glob("*/*/rule.xml")):
-            rules += parse_rules(rule_xml, "program")
+        for rule_xml in program_rule_files():
+            try:
+                rules += parse_rules(rule_xml, "program")
+            except ET.ParseError as error:
+                raise SystemExit(f"{rule_xml.relative_to(ROOT).as_posix()}: XML inválido ({error})")
     return rules
 
 
@@ -386,7 +405,7 @@ def cmd_check_logtest(args) -> int:
 def cmd_bundle(args) -> int:
     out = Path(args.dir)
     (out / "rules").mkdir(parents=True, exist_ok=True)
-    for rule_xml in sorted(DET.glob("*/*/rule.xml")):
+    for rule_xml in program_rule_files():
         target = out / "rules" / bundle_name(rule_xml)
         target.write_bytes(rule_xml.read_bytes().replace(b"\r\n", b"\n"))
         print(f"rules/{target.name}")

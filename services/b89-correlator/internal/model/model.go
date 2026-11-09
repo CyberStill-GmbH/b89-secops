@@ -54,16 +54,16 @@ func ParseKey(key string) (Entity, bool) {
 type Stage string
 
 const (
-	StageEdgeWAFBlock      Stage = "edge.waf_block"
-	StageEdgeScan          Stage = "edge.scan"
-	StageSSHBruteForce     Stage = "ssh.bruteforce"
-	StageSSHSuccess        Stage = "ssh.success"
-	StageAuthFailure       Stage = "auth.failure"
-	StageAuthSuccess       Stage = "auth.success"
-	StagePrivilegedChange  Stage = "priv.change"
-	StageProtectionOff     Stage = "endpoint.protection_off"
-	StageEndpointMalware   Stage = "endpoint.malware"
-	StageCloudTamper       Stage = "cloud.audit_tamper"
+	StageEdgeWAFBlock     Stage = "edge.waf_block"
+	StageEdgeScan         Stage = "edge.scan"
+	StageSSHBruteForce    Stage = "ssh.bruteforce"
+	StageSSHSuccess       Stage = "ssh.success"
+	StageAuthFailure      Stage = "auth.failure"
+	StageAuthSuccess      Stage = "auth.success"
+	StagePrivilegedChange Stage = "priv.change"
+	StageProtectionOff    Stage = "endpoint.protection_off"
+	StageEndpointMalware  Stage = "endpoint.malware"
+	StageCloudTamper      Stage = "cloud.audit_tamper"
 )
 
 // Observation is one Wazuh alert after entity resolution and stage classification.

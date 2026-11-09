@@ -23,6 +23,7 @@ declare module '@osd/config-schema' {
       maxLength?: number;
       validate?: (value: string) => string | void | undefined;
     }): Type<string>;
+    maybe<V>(type: Type<V>): Type<V | undefined>;
     literal<V extends string | number | boolean>(value: V): Type<V>;
     oneOf<A extends readonly Type<unknown>[]>(
       types: A,

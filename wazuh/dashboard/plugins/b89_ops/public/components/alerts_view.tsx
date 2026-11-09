@@ -43,8 +43,11 @@ import {
   Priority,
   SEVERITY_LABEL,
   VERDICT_LABEL,
+  vendorOfTitle,
 } from '../../common';
 import { B89ApiError } from '../api/client';
+import { alertInvestigationHref } from './investigation_links';
+import { VendorLogo } from './vendor_logo';
 import { B89Page, useChanges, useConsole } from './console_context';
 import {
   DataZone,
@@ -86,19 +89,22 @@ export function AlertsView({
   onSelect,
   basePath,
   initialPriority = null,
+  initialQuery = null,
 }: {
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   basePath: string;
   initialPriority?: string | null;
+  /** `?q=` (pivote desde una entidad de la investigación). */
+  initialQuery?: string | null;
 }) {
   const { api } = useConsole();
   const [status, setStatus] = useState<StatusFilter>('open');
   const [priority, setPriority] = useState<Priority | ''>(
     isPriority(initialPriority) ? initialPriority : '',
   );
-  const [search, setSearch] = useState('');
-  const [query, setQuery] = useState('');
+  const [search, setSearch] = useState((initialQuery ?? '').slice(0, 120));
+  const [query, setQuery] = useState((initialQuery ?? '').trim().slice(0, 120));
   const [items, setItems] = useState<readonly Alert[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [extraPages, setExtraPages] = useState(0);
@@ -153,7 +159,10 @@ export function AlertsView({
       truncateText: false,
       render: (value: string, alert: Alert) => (
         <span className="b89CellTitle">
-          <span>{value}</span>
+          <span className="b89CellTitle__main">
+            <VendorLogo id={vendorOfTitle(value)} basePath={basePath} size="s" />
+            <span>{value}</span>
+          </span>
           {alert.entities.length > 0 && (
             <span className="b89CellMeta">
               {alert.entities
@@ -365,6 +374,20 @@ function AlertFlyout({
               <span className="b89Tabular">{alert.score}</span>
             </p>
           </EuiText>
+        )}
+        {alert && (
+          <>
+            <EuiSpacer size="s" />
+            <EuiButton
+              size="s"
+              fill
+              iconType="inspect"
+              href={alertInvestigationHref(basePath, alert.id)}
+              data-test-subj="b89InvestigateAlert"
+            >
+              Investigar: línea de tiempo, entidades y evento
+            </EuiButton>
+          </>
         )}
       </EuiFlyoutHeader>
       <EuiFlyoutBody>
@@ -619,7 +642,7 @@ function NoteField({
   );
 }
 
-function OpenIncidentForm({
+export function OpenIncidentForm({
   alert,
   onCancel,
   onOpened,

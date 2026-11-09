@@ -15,6 +15,7 @@ import { AuditView } from './components/audit_view';
 import { ConsoleProvider } from './components/console_context';
 import { IncidentsView } from './components/incidents_view';
 import { IntegrationsView } from './components/integrations_view';
+import { InvestigationView } from './components/investigation_view';
 import { OverviewView } from './components/overview_view';
 import { PoliciesView } from './components/policies_view';
 import { NotificationsView } from './components/notifications_view';
@@ -49,7 +50,10 @@ function Console({
   basePath: string;
 }) {
   const [selected, select] = useSelection(history);
-  const params = new URLSearchParams(history.location.search);
+  // Cualquier cambio de query (p. ej. investigación ⇄ cola) vuelve a renderizar la vista.
+  const [search, setSearch] = useState(history.location.search);
+  useEffect(() => history.listen((location) => setSearch(location.search)), [history]);
+  const params = new URLSearchParams(search);
   switch (view) {
     case 'overview':
       return <OverviewView basePath={basePath} />;
@@ -58,12 +62,26 @@ function Console({
     case 'policies':
       return <PoliciesView basePath={basePath} />;
     case 'alerts':
+      // `?investigate=1` abre la investigación (alerta `id` o entidad `entity` + `at`).
+      if (params.get('investigate') === '1') {
+        return (
+          <InvestigationView
+            key={`${selected ?? ''}|${params.get('entity') ?? ''}|${params.get('at') ?? ''}`}
+            alertId={selected}
+            entity={params.get('entity')}
+            at={params.get('at')}
+            basePath={basePath}
+            onOpenTriage={(id) => history.push({ pathname: '/', search: `?id=${encodeURIComponent(id)}` })}
+          />
+        );
+      }
       return (
         <AlertsView
           selectedId={selected}
           onSelect={select}
           basePath={basePath}
           initialPriority={params.get('priority')}
+          initialQuery={params.get('q')}
         />
       );
     case 'incidents':

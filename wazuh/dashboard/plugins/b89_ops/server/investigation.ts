@@ -219,7 +219,7 @@ export function findSource(
     const result = await client.search({ index: ALERTS_INDEX, body });
     return nearest(hitsOf(result.body), query.at);
   };
-  return guarded(
+  return guarded<SourceResponse>(
     async () => {
       // Con descripción (título de la alerta B89) primero: varias alertas comparten regla y hora.
       let hit = await attempt(params);
@@ -235,7 +235,7 @@ export function findSource(
 }
 
 export function findEvent(client: SearchClient, id: string): Promise<EventResponse> {
-  return guarded(
+  return guarded<EventResponse>(
     async () => {
       const result = await client.search({
         index: ALERTS_INDEX,
@@ -264,7 +264,7 @@ export function findRelated(
   if (entities.length === 0) {
     return Promise.resolve({ access: 'ok', from, to, total: 0, events: [], perEntity: {} });
   }
-  return guarded(
+  return guarded<RelatedResponse>(
     async () => {
       const result = await client.search({
         index: ALERTS_INDEX,

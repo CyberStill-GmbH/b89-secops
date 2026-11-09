@@ -19,12 +19,12 @@ import {
   LastEvent,
   Metric,
   MetricList,
-  Monogram,
   PlatformData,
   SeverityBar,
   SkeletonCard,
   StatusPill,
 } from './overview_parts';
+import { ServiceMark } from './vendor_logo';
 import { declaredStatus, providerStatus, ServiceStatus, wazuhStatus } from './service_status';
 
 export interface ServiceModel {
@@ -242,7 +242,7 @@ export function ServiceCard({
   return (
     <article className="b89Service" data-tone={status.tone} aria-label={spec.name}>
       <header className="b89Service__header">
-        <Monogram text={spec.monogram} />
+        <ServiceMark spec={spec} basePath={basePath} />
         <div className="b89Service__title">
           <h3>{spec.name}</h3>
           <span className="b89Service__vendor">{spec.summary}</span>

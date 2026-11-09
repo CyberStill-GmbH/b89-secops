@@ -27,6 +27,23 @@ OSD_VERSION = "2.19.6"
 # los rangos tal cual al Indexer y `label` no es un campo de la agregación range de OpenSearch
 # (x_content_parse_exception «[range] failed to parse field [ranges]» y el panel queda en error).
 
+# Logotipo oficial del proveedor en la nota de cada panel (uso nominativo; fuentes y titulares en
+# wazuh/dashboard/assets/svg/vendors/NOTICE.md). El tema del dashboard es oscuro: Snyk usa su
+# variante monocroma clara para tener contraste.
+LOGO_PATH = "/ui/b89/vendors"
+LOGOS = {
+    "bitdefender": "bitdefender.svg",
+    "snyk": "snyk-on-dark.svg",
+    "cloudflare": "cloudflare.svg",
+    "microsoft-365": "microsoft-entra-id.svg",
+}
+LOGO_ALT = {
+    "bitdefender": "Bitdefender",
+    "snyk": "Snyk",
+    "cloudflare": "Cloudflare",
+    "microsoft-365": "Microsoft Entra ID",
+}
+
 PROVIDERS = [
     {
         "id": "bitdefender",

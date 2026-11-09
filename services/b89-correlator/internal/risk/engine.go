@@ -57,13 +57,13 @@ type Engine struct {
 	grouper     *Grouper
 	seen        map[string]time.Time // observation ids (dedup of overlapping reads)
 
-	Clock          time.Time
-	Observations   int
-	Duplicates     int
-	SuppressedObs  int
-	BySource       map[string]int
-	ByStage        map[string]int
-	horizon        time.Duration
+	Clock         time.Time
+	Observations  int
+	Duplicates    int
+	SuppressedObs int
+	BySource      map[string]int
+	ByStage       map[string]int
+	horizon       time.Duration
 }
 
 // NewEngine builds an engine. crit may be nil (every entity is "medium").
@@ -606,6 +606,29 @@ func (e *Engine) Detail(key string, at time.Time) (EntityDetail, bool) {
 		Aliases:       aliases,
 		Related:       related,
 	}, true
+}
+
+// Stats is a consistent copy of the engine counters.
+type Stats struct {
+	Observations int
+	Duplicates   int
+	Suppressed   int
+	BySource     map[string]int
+	ByStage      map[string]int
+}
+
+// Stats copies the counters under the lock.
+func (e *Engine) Stats() Stats {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	st := Stats{Observations: e.Observations, Duplicates: e.Duplicates, Suppressed: e.SuppressedObs, BySource: map[string]int{}, ByStage: map[string]int{}}
+	for k, v := range e.BySource {
+		st.BySource[k] = v
+	}
+	for k, v := range e.ByStage {
+		st.ByStage[k] = v
+	}
+	return st
 }
 
 // GroupStats reports the grouping of Wazuh alerts at or above GroupMinLevel.

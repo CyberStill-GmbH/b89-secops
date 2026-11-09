@@ -15,34 +15,34 @@ import (
 
 // Config is the full runtime configuration.
 type Config struct {
-	Listen            string
-	GatewayURL        string
-	GatewayTokenFile  string
-	CAFile            string
-	APIURL            string
-	ServiceTokenFile  string // correlator -> API (/internal/correlator/*)
-	ReadTokenFile     string // API -> correlator (/v1/*)
-	Backfill          time.Duration
-	PollInterval      time.Duration
-	FeedbackInterval  time.Duration
-	Lag               time.Duration
-	Overlap           time.Duration
-	MinLevel          int
-	GroupMinLevel     int
-	Threshold         float64
-	HalfLife          time.Duration
-	Emit              bool
-	EmitMaxAge        time.Duration
-	EmitMaxPerHour    int
-	AutoSuppress      bool
-	SuppressionTTL    time.Duration
-	FPMin             int
-	CriticalityFile   string
-	AliasesFile       string
-	UserDomain        string
-	ProtectedRules    []string
-	PageSize          int
-	FeedbackLookback  time.Duration
+	Listen           string
+	GatewayURL       string
+	GatewayTokenFile string
+	CAFile           string
+	APIURL           string
+	ServiceTokenFile string // correlator -> API (/internal/correlator/*)
+	ReadTokenFile    string // API -> correlator (/v1/*)
+	Backfill         time.Duration
+	PollInterval     time.Duration
+	FeedbackInterval time.Duration
+	Lag              time.Duration
+	Overlap          time.Duration
+	MinLevel         int
+	GroupMinLevel    int
+	Threshold        float64
+	HalfLife         time.Duration
+	Emit             bool
+	EmitMaxAge       time.Duration
+	EmitMaxPerHour   int
+	AutoSuppress     bool
+	SuppressionTTL   time.Duration
+	FPMin            int
+	CriticalityFile  string
+	AliasesFile      string
+	UserDomain       string
+	ProtectedRules   []string
+	PageSize         int
+	FeedbackLookback time.Duration
 }
 
 func env(name, def string) string {

@@ -13,7 +13,6 @@ import {
   BRAND_ASSETS_PATH,
   MONITORING_CATEGORY_NAME,
   NAV_CATEGORY_NAME,
-  PLUGIN_NAME,
   B89_APPS,
   RESPOND_APP,
 } from '../common';
@@ -21,6 +20,7 @@ import type { PublicConfigSchema } from '../config';
 import { ChangeFeed } from './api/change_feed';
 import { B89ApiClient } from './api/client';
 import { mountP1Watch } from './p1_watch';
+import { registerNavigation } from './navigation';
 import { renderMountFailure } from './render_failure';
 import { BunnyState, mountBunnyPanel, registerBunnyLauncher } from './bunny/bunny_panel';
 
@@ -85,7 +85,9 @@ export class B89OpsPublicPlugin implements Plugin<void, void> {
               import('./application'),
               core.getStartServices(),
             ]);
-            coreStart.chrome.docTitle.change([app.title, PLUGIN_NAME]);
+            // OSD ya añade el título de la aplicación («B89 SecOps») al final del documento.
+            coreStart.chrome.docTitle.change(app.title);
+            coreStart.chrome.setBreadcrumbs([{ text: app.title }]);
             const { api, feed } = this.shared(coreStart.http.basePath.get());
             const unmount = renderApp(coreStart, params, app.view, api, feed);
             return () => {
@@ -98,6 +100,8 @@ export class B89OpsPublicPlugin implements Plugin<void, void> {
         },
       });
     }
+    // Menú del SIEM en categorías en español, apps sin servicio ocultas y accesos por proveedor.
+    registerNavigation(core);
     // B89 Respond (SOAR) embebido: iframe del mismo origen dentro del chrome del dashboard.
     core.application.register({
       id: RESPOND_APP.id,
@@ -111,7 +115,8 @@ export class B89OpsPublicPlugin implements Plugin<void, void> {
             import('./respond_app'),
             core.getStartServices(),
           ]);
-          coreStart.chrome.docTitle.change([RESPOND_APP.title, PLUGIN_NAME]);
+          coreStart.chrome.docTitle.change(RESPOND_APP.title);
+          coreStart.chrome.setBreadcrumbs([{ text: RESPOND_APP.title }]);
           const { api } = this.shared(coreStart.http.basePath.get());
           const unmount = renderRespondApp(coreStart, params, api);
           return () => {

@@ -51,27 +51,27 @@ type Options struct {
 
 // Counters are monotonic metrics.
 type Counters struct {
-	GatewayErrors  atomic.Int64
-	APIErrors      atomic.Int64
-	Emitted        atomic.Int64
-	EmitErrors     atomic.Int64
-	EmitSkipped    atomic.Int64
-	AuditRecorded  atomic.Int64
-	Polls          atomic.Int64
-	Pages          atomic.Int64
-	Unparseable    atomic.Int64
+	GatewayErrors atomic.Int64
+	APIErrors     atomic.Int64
+	Emitted       atomic.Int64
+	EmitErrors    atomic.Int64
+	EmitSkipped   atomic.Int64
+	AuditRecorded atomic.Int64
+	Polls         atomic.Int64
+	Pages         atomic.Int64
+	Unparseable   atomic.Int64
 }
 
 // Runner owns the loops and the derived views.
 type Runner struct {
-	Opt      Options
-	Eng      *risk.Engine
-	Res      *resolve.Resolver
-	Gateway  Gateway
-	API      API
-	Log      *slog.Logger
-	Now      func() time.Time
-	C        Counters
+	Opt     Options
+	Eng     *risk.Engine
+	Res     *resolve.Resolver
+	Gateway Gateway
+	API     API
+	Log     *slog.Logger
+	Now     func() time.Time
+	C       Counters
 
 	mu           sync.RWMutex
 	fb           feedback.Result
@@ -217,7 +217,7 @@ func (r *Runner) Backfill(ctx context.Context) ([]*model.Candidate, error) {
 	r.lastPoll, r.lastPollErr = r.Now().UTC(), ""
 	r.mu.Unlock()
 	r.attachAlerts()
-	r.Log.Info("backfill.completed", "from", from, "to", to, "observations", r.Eng.Observations,
+	r.Log.Info("backfill.completed", "from", from, "to", to, "observations", r.Eng.Stats().Observations,
 		"candidates", len(created), "duration_ms", time.Since(start).Milliseconds())
 	return created, nil
 }
@@ -470,16 +470,16 @@ func (r *Runner) retryable() []*model.Candidate {
 
 // Snapshot is the read model served by the HTTP layer and the replay report.
 type Snapshot struct {
-	Ready          bool
-	Backfilled     bool
-	LastTo         time.Time
-	CursorAt       time.Time
-	LastPoll       time.Time
-	LastFeedback   time.Time
-	Feedback       feedback.Result
-	Dedup          risk.DedupResult
-	AlertsTotal    int
-	AlertsTrunc    bool
+	Ready        bool
+	Backfilled   bool
+	LastTo       time.Time
+	CursorAt     time.Time
+	LastPoll     time.Time
+	LastFeedback time.Time
+	Feedback     feedback.Result
+	Dedup        risk.DedupResult
+	AlertsTotal  int
+	AlertsTrunc  bool
 }
 
 // Snapshot copies the runner's derived state.

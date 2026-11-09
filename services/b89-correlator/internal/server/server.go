@@ -160,7 +160,7 @@ func (s *Server) feedback(w http.ResponseWriter, r *http.Request) {
 		"evaluatedAt": snap.Feedback.EvaluatedAt, "verdicts": snap.Feedback.Verdicts,
 		"falsePositiveVerdicts": snap.Feedback.FalsePos, "truePositiveVerdicts": snap.Feedback.TruePos,
 		"activeSuppressions": snap.Feedback.ActiveCount(s.Now().UTC()),
-		"proposals": snap.Feedback.Proposals, "cdbListName": "b89-correlator-fp-allowlist",
+		"proposals":          snap.Feedback.Proposals, "cdbListName": "b89-correlator-fp-allowlist",
 	})
 }
 
@@ -178,6 +178,7 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 // metrics renders Prometheus text exposition (no entity values in labels).
 func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 	eng := s.Runner.Eng
+	stats := eng.Stats()
 	snap := s.Runner.Snapshot()
 	now := s.Now().UTC()
 	var b strings.Builder
@@ -198,16 +199,16 @@ func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 	}
 	gauge("b89_correlator_ready", "1 when backfill completed and upstream polling is fresh", ready)
 	fmt.Fprintf(&b, "# HELP b89_correlator_observations_total Wazuh alerts processed\n# TYPE b89_correlator_observations_total counter\n")
-	srcs := make([]string, 0, len(eng.BySource))
-	for k := range eng.BySource {
+	srcs := make([]string, 0, len(stats.BySource))
+	for k := range stats.BySource {
 		srcs = append(srcs, k)
 	}
 	sort.Strings(srcs)
 	for _, k := range srcs {
-		fmt.Fprintf(&b, "b89_correlator_observations_total{source=%q} %d\n", k, eng.BySource[k])
+		fmt.Fprintf(&b, "b89_correlator_observations_total{source=%q} %d\n", k, stats.BySource[k])
 	}
-	counter("b89_correlator_observations_duplicate_total", "Overlapping reads skipped by id", int64(eng.Duplicates))
-	counter("b89_correlator_observations_suppressed_total", "Contributions zeroed by an active feedback suppression", int64(eng.SuppressedObs))
+	counter("b89_correlator_observations_duplicate_total", "Overlapping reads skipped by id", int64(stats.Duplicates))
+	counter("b89_correlator_observations_suppressed_total", "Contributions zeroed by an active feedback suppression", int64(stats.Suppressed))
 	counter("b89_correlator_gateway_errors_total", "Failed wazuh-gateway reads", s.Runner.C.GatewayErrors.Load())
 	counter("b89_correlator_api_errors_total", "Failed B89 API calls", s.Runner.C.APIErrors.Load())
 	counter("b89_correlator_candidates_emitted_total", "Candidates materialized as B89 alerts", s.Runner.C.Emitted.Load())

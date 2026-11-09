@@ -91,14 +91,42 @@ export function fetchRelated(
 /** Riesgo de entidad del motor de correlación (opcional). */
 export interface EntityRisk {
   readonly score: number;
-  readonly level?: string;
-  readonly updatedAt?: string;
+  /** Referencia opaca `ent_…` para `GET {apiPrefix}/risk/entities/{type}/{ref}`. */
+  readonly ref: string | null;
+  readonly lastSeen?: string;
+}
+
+/** Tipos de entidad del correlador B89 (`apps/api/src/soc/risk.controller.ts`). */
+const RISK_TYPES: Partial<Record<EntityKind, string>> = { user: 'user', host: 'host', ip: 'ip' };
+const riskLists = new Map<string, { at: number; items: Promise<ReadonlyArray<Record<string, unknown>>> }>();
+const RISK_TTL_MS = 60000;
+
+async function riskList(
+  apiPrefix: string,
+  type: string,
+  fetchImpl: typeof fetch,
+): Promise<ReadonlyArray<Record<string, unknown>>> {
+  const cached = riskLists.get(type);
+  if (cached && Date.now() - cached.at < RISK_TTL_MS) return cached.items;
+  const items = (async () => {
+    const response = await fetchImpl(`${apiPrefix}/risk/entities?top=100&type=${type}`, {
+      credentials: 'same-origin',
+      headers: { accept: 'application/json' },
+      cache: 'no-store',
+    });
+    if (!response.ok || !(response.headers.get('content-type') ?? '').includes('json')) return [];
+    const body = (await response.json()) as { items?: unknown };
+    return Array.isArray(body.items) ? (body.items as Array<Record<string, unknown>>) : [];
+  })().catch(() => []);
+  riskLists.set(type, { at: Date.now(), items });
+  return items;
 }
 
 /**
- * `GET {apiPrefix}/risk/entities/{type}/{value}` del motor de riesgo. Es opcional: si la ruta no
- * existe, no responde JSON o falla, devuelve `null` y la UI no muestra el chip (sin redirigir
- * al login ni mostrar errores).
+ * Riesgo de una entidad según el motor de correlación (`/api/risk/entities`). La API solo acepta
+ * referencias opacas en la URL (D-10b), así que se busca la entidad por su `label` en el top 100
+ * de su tipo (el valor viaja en el cuerpo, nunca en la URL). Si el motor no está desplegado, la
+ * ruta falla o la entidad no tiene puntuación, devuelve `null` y la UI no muestra el chip.
  */
 export async function fetchEntityRisk(
   apiPrefix: string,
@@ -106,21 +134,18 @@ export async function fetchEntityRisk(
   value: string,
   fetchImpl: typeof fetch = defaultFetch,
 ): Promise<EntityRisk | null> {
+  const type = RISK_TYPES[kind];
+  if (!type) return null;
   try {
-    const response = await fetchImpl(
-      `${apiPrefix}/risk/entities/${encodeURIComponent(kind)}/${encodeURIComponent(value)}`,
-      { credentials: 'same-origin', headers: { accept: 'application/json' }, cache: 'no-store' },
-    );
-    if (!response.ok) return null;
-    if (!(response.headers.get('content-type') ?? '').includes('json')) return null;
-    const body = (await response.json()) as Record<string, unknown>;
-    const nested = (body.risk ?? body) as Record<string, unknown>;
-    const score = Number(nested.score ?? nested.riskScore);
-    if (!Number.isFinite(score)) return null;
+    const items = await riskList(apiPrefix, type, fetchImpl);
+    const wanted = value.toLowerCase();
+    const item = items.find((entry) => String(entry.label ?? '').toLowerCase() === wanted);
+    const score = Number(item?.score);
+    if (!item || !Number.isFinite(score)) return null;
     return {
       score,
-      level: typeof nested.level === 'string' ? nested.level : undefined,
-      updatedAt: typeof nested.updatedAt === 'string' ? nested.updatedAt : undefined,
+      ref: typeof item.ref === 'string' ? item.ref : null,
+      lastSeen: typeof item.lastSeen === 'string' ? item.lastSeen : undefined,
     };
   } catch {
     return null;

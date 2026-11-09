@@ -41,6 +41,20 @@ const NO_STORE_HEADERS = {
   'x-frame-options': 'DENY',
 };
 
+interface SourceQuery {
+  id?: string;
+  ruleId?: string;
+  at?: string;
+  description?: string;
+}
+
+interface RelatedQuery {
+  e: string | string[];
+  at: string;
+  window: string;
+  exclude?: string;
+}
+
 const idValidator = (value: string) =>
   /^[A-Za-z0-9_-]{1,128}$/u.test(value) ? undefined : 'identificador no válido';
 const digitsValidator = (value: string) =>
@@ -96,7 +110,10 @@ export class B89OpsServerPlugin implements Plugin<void, void> {
         },
       },
       async (context, request, response) =>
-        response.ok({ body: await findSource(currentUser(context), request.query), headers: json }),
+        response.ok({
+          body: await findSource(currentUser(context), request.query as SourceQuery),
+          headers: json,
+        }),
     );
     router.get(
       {
@@ -105,7 +122,7 @@ export class B89OpsServerPlugin implements Plugin<void, void> {
       },
       async (context, request, response) =>
         response.ok({
-          body: await findEvent(currentUser(context), request.query.id),
+          body: await findEvent(currentUser(context), (request.query as { id: string }).id),
           headers: json,
         }),
     );
@@ -125,13 +142,14 @@ export class B89OpsServerPlugin implements Plugin<void, void> {
         },
       },
       async (context, request, response) => {
-        const keys = Array.isArray(request.query.e) ? request.query.e : [request.query.e];
+        const query = request.query as RelatedQuery;
+        const keys = Array.isArray(query.e) ? query.e : [query.e];
         const entities = keys
           .map(parseEntityKey)
           .filter((entity): entity is NonNullable<typeof entity> => entity !== null);
-        const at = Date.parse(request.query.at);
-        const window = (RELATED_WINDOWS as readonly string[]).includes(request.query.window)
-          ? (request.query.window as RelatedWindow)
+        const at = Date.parse(query.at);
+        const window = (RELATED_WINDOWS as readonly string[]).includes(query.window)
+          ? (query.window as RelatedWindow)
           : '24h';
         if (!Number.isFinite(at) || entities.length === 0) {
           return response.badRequest({ body: 'Entidad u hora no válidas.' });
@@ -141,7 +159,7 @@ export class B89OpsServerPlugin implements Plugin<void, void> {
             entities,
             at,
             window,
-            excludeId: request.query.exclude,
+            excludeId: query.exclude,
           }),
           headers: json,
         });

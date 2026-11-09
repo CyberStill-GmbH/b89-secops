@@ -1,0 +1,82 @@
+<!--
+  B89 SOC · detección como código · detections/network/cross-source-correlation (metadata.yaml).
+  La misma IP atacante en el WAF de Cloudflare, el edge del SOC y SSH.
+  - Edge ↔ SSH: en tiempo real (srcip en ambos; if_matched_group + same_source_ip).
+  - Cloudflare → edge/SSH: Cloudflare guarda la IP en cloudflare.firewall.client_ip (no en srcip) y
+    analysisd no correlaciona campos de nombre distinto. El timer de reputación arma cada día la lista
+    b89-cf-waf-attackers con las IPs que el WAF bloqueó o desafió 5+ veces en 7 días (consulta al indexer,
+    infra/wazuh/network/threat-intel/) y estas reglas la cruzan con el edge y SSH.
+  Se instala como b89_soc_network_cross_source_correlation.xml.
+-->
+<group name="b89_network,b89_correlation,">
+
+  <rule id="101870" level="12">
+    <if_group>b89_edge_attack</if_group>
+    <list field="srcip" lookup="address_match_key">etc/lists/b89-cf-waf-attackers</list>
+    <description>B89 Red: $(srcip), ya bloqueada por el WAF de Cloudflare, ataca ahora la consola del SOC: $(url).</description>
+    <options>no_full_log</options>
+    <mitre>
+      <id>T1190</id>
+      <id>T1595</id>
+    </mitre>
+    <group>b89_attack_chain,</group>
+  </rule>
+
+  <rule id="101871" level="13">
+    <if_sid>5715, 101750, 101761, 101762, 101763, 101820, 101821, 101843</if_sid>
+    <list field="srcip" lookup="address_match_key">etc/lists/b89-cf-waf-attackers</list>
+    <description>B89 Red: inicio de sesión exitoso desde $(srcip), IP que el WAF de Cloudflare bloqueó en los últimos 7 días.</description>
+    <mitre>
+      <id>T1078</id>
+      <id>T1190</id>
+    </mitre>
+    <group>b89_attack_chain,</group>
+  </rule>
+
+  <rule id="101872" level="8">
+    <if_group>authentication_failed</if_group>
+    <list field="srcip" lookup="address_match_key">etc/lists/b89-cf-waf-attackers</list>
+    <description>B89 Red: $(srcip), bloqueada por el WAF de Cloudflare, intenta autenticarse en el SOC (SSH).</description>
+    <mitre>
+      <id>T1110</id>
+    </mitre>
+    <group>b89_attack_chain,</group>
+  </rule>
+
+  <rule id="101873" level="10" timeframe="3600">
+    <if_group>authentication_failed</if_group>
+    <if_matched_group>b89_edge_attack</if_matched_group>
+    <same_source_ip />
+    <description>B89 Red: $(srcip) atacó la consola web del SOC y ahora intenta SSH al mismo nodo (1 h).</description>
+    <mitre>
+      <id>T1110</id>
+      <id>T1190</id>
+    </mitre>
+    <group>b89_attack_chain,</group>
+  </rule>
+
+  <rule id="101874" level="14" timeframe="3600">
+    <if_sid>5715, 101750, 101761, 101762, 101763, 101820, 101821</if_sid>
+    <if_matched_group>b89_edge_attack</if_matched_group>
+    <same_source_ip />
+    <description>B89 Red: acceso SSH exitoso de $(dstuser) desde $(srcip), que atacó la consola web del SOC en la última hora.</description>
+    <mitre>
+      <id>T1078.003</id>
+      <id>T1190</id>
+    </mitre>
+    <group>b89_attack_chain,</group>
+  </rule>
+
+  <rule id="101875" level="12" timeframe="3600">
+    <if_sid>101843</if_sid>
+    <if_matched_group>authentication_failed</if_matched_group>
+    <same_source_ip />
+    <description>B89 Red: inicio de sesión en la consola del SOC desde $(srcip), que falló autenticaciones SSH en la última hora.</description>
+    <mitre>
+      <id>T1110</id>
+      <id>T1078</id>
+    </mitre>
+    <group>b89_attack_chain,</group>
+  </rule>
+
+</group>

@@ -17,6 +17,8 @@
 # Persistencia: aplica la misma <list> al ossec.conf montado de wazuh-docker si es escribible.
 # No usar deploy-host.sh ni ship.sh para esto.
 set -Eeuo pipefail
+# En el host no hay checkout git: se instala lo que trae la copia (armarla con git ls-files). 1 = solo lo versionado.
+export B89_DETECTIONS_TRACKED_ONLY="${B89_DETECTIONS_TRACKED_ONLY:-0}"
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
 # shellcheck source=../../wazuh/manager/policy/lib.sh

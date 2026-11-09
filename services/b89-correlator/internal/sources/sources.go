@@ -112,7 +112,7 @@ func (g *WazuhGateway) Page(ctx context.Context, from, to time.Time, after *Curs
 	var parsed struct {
 		Hits struct {
 			Hits []struct {
-				Source map[string]any `json:"_source"`
+				Source map[string]any    `json:"_source"`
 				Sort   []json.RawMessage `json:"sort"`
 			} `json:"hits"`
 		} `json:"hits"`

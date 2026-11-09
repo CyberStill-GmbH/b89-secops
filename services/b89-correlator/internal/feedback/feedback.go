@@ -53,31 +53,31 @@ const (
 
 // Proposal is one learned suggestion with its evidence.
 type Proposal struct {
-	ID           string    `json:"id"`
-	Kind         string    `json:"kind"`
-	RuleID       string    `json:"ruleId"`
-	EntityKey    string    `json:"entityKey"`
-	FalsePos     int       `json:"falsePositives"`
-	TruePos      int       `json:"truePositives"`
-	Ratio        float64   `json:"ratio"`
-	Entities     int       `json:"entities,omitempty"`
-	ThresholdAt  time.Time `json:"thresholdAt"`
-	ExpiresAt    time.Time `json:"expiresAt,omitempty"`
-	Suppression  string    `json:"suppression"`
-	Protected    bool      `json:"protected"`
-	Reason       string    `json:"reason"`
-	EvidenceIDs  []string  `json:"evidenceAlertIds"`
-	HighestPrio  string    `json:"highestPriority"`
+	ID          string    `json:"id"`
+	Kind        string    `json:"kind"`
+	RuleID      string    `json:"ruleId"`
+	EntityKey   string    `json:"entityKey"`
+	FalsePos    int       `json:"falsePositives"`
+	TruePos     int       `json:"truePositives"`
+	Ratio       float64   `json:"ratio"`
+	Entities    int       `json:"entities,omitempty"`
+	ThresholdAt time.Time `json:"thresholdAt"`
+	ExpiresAt   time.Time `json:"expiresAt,omitempty"`
+	Suppression string    `json:"suppression"`
+	Protected   bool      `json:"protected"`
+	Reason      string    `json:"reason"`
+	EvidenceIDs []string  `json:"evidenceAlertIds"`
+	HighestPrio string    `json:"highestPriority"`
 }
 
 // Result is the evaluated feedback state.
 type Result struct {
-	EvaluatedAt  time.Time  `json:"evaluatedAt"`
-	Verdicts     int        `json:"verdicts"`
-	FalsePos     int        `json:"falsePositiveVerdicts"`
-	TruePos      int        `json:"truePositiveVerdicts"`
-	Proposals    []Proposal `json:"proposals"`
-	active       map[string]Proposal
+	EvaluatedAt time.Time  `json:"evaluatedAt"`
+	Verdicts    int        `json:"verdicts"`
+	FalsePos    int        `json:"falsePositiveVerdicts"`
+	TruePos     int        `json:"truePositiveVerdicts"`
+	Proposals   []Proposal `json:"proposals"`
+	active      map[string]Proposal
 }
 
 type pair struct {
