@@ -4,7 +4,8 @@ FROM golang:1.23.12-bookworm AS build
 WORKDIR /src/services/b89-correlator
 COPY services/b89-correlator/go.mod ./
 COPY services/b89-correlator/ ./
-RUN CGO_ENABLED=0 GOOS=linux go test ./... \
+RUN mkdir -p /out \
+ && CGO_ENABLED=0 GOOS=linux go test ./... \
  && CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags='-s -w -buildid=' \
     -o /out/b89-correlator ./cmd/b89-correlator
 
