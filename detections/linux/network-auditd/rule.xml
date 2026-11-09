@@ -43,7 +43,7 @@
     <if_sid>101810</if_sid>
     <field name="audit.key">^b89_net_connect$</field>
     <field name="audit.exe" type="pcre2">/(bash|sh|dash|zsh|ksh|nc|ncat|netcat|nc\.openbsd|nc\.traditional|socat|perl|php[0-9.-]*|ruby|telnet\.netkit|telnet)$</field>
-    <dstip negate="yes" type="pcre2">^127\.|^::1$</dstip>
+    <regex type="pcre2">SADDR=\{[^}]* laddr=(?!127\.|::1(?:\s|\}))</regex>
     <description>B89 Linux: $(audit.exe) (auid $(audit.auid)) se conectó a $(dstip):$(dstport); patrón de reverse shell.</description>
     <mitre>
       <id>T1059.004</id>
@@ -66,7 +66,7 @@
   <rule id="101816" level="10">
     <if_sid>101810</if_sid>
     <field name="audit.key">^b89_net_svc$</field>
-    <dstip negate="yes" type="pcre2">^(10\.|127\.|169\.254\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)|^::1$</dstip>
+    <regex type="pcre2">SADDR=\{[^}]* laddr=(?!(?:10\.|127\.|0\.|169\.254\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.|100\.(?:6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.|::1(?:\s|\})|fe80:|f[cd][0-9a-f]{2}:))</regex>
     <description>B89 Linux: la cuenta de servicio web (uid $(audit.uid), $(audit.exe)) abrió conexión a $(dstip):$(dstport) (posible webshell o C2).</description>
     <mitre>
       <id>T1505.003</id>
@@ -78,7 +78,7 @@
   <rule id="101818" level="5">
     <if_sid>101810</if_sid>
     <field name="audit.key">^b89_net_accept$|^b89_net_bind$</field>
-    <dstip negate="yes" type="pcre2">^127\.|^::1$</dstip>
+    <regex type="pcre2">SADDR=\{[^}]* laddr=(?!127\.|::1(?:\s|\}))</regex>
     <description>B89 Linux: proceso de sesión interactiva $(audit.exe) (auid $(audit.auid)) abrió o aceptó una escucha de red en $(dstip):$(dstport).</description>
     <mitre>
       <id>T1571</id>
@@ -88,7 +88,7 @@
 
   <rule id="101811" level="0">
     <if_sid>101810</if_sid>
-    <dstip type="pcre2">^(10\.|127\.|0\.|169\.254\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.)|^::1$|^fe80:|^f[cd][0-9a-f]{2}:</dstip>
+    <regex type="pcre2">SADDR=\{[^}]* laddr=(?:10\.|127\.|0\.|169\.254\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.|100\.(?:6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.|::1(?:\s|\})|fe80:|f[cd][0-9a-f]{2}:)</regex>
     <description>B89 Linux: llamada de red de sesión interactiva a destino interno $(dstip):$(dstport) ($(audit.exe)).</description>
     <group>b89_audit_net,</group>
   </rule>
@@ -96,7 +96,7 @@
   <rule id="101817" level="3">
     <if_sid>101810</if_sid>
     <field name="audit.key">^b89_net_connect$</field>
-    <dstip>\.|:</dstip>
+    <regex type="pcre2">SADDR=\{[^}]* laddr=[0-9a-fA-F:.]+</regex>
     <description>B89 Linux: $(audit.exe) de una sesión interactiva (auid $(audit.auid)) se conectó a $(dstip):$(dstport).</description>
     <group>b89_audit_net,</group>
   </rule>
