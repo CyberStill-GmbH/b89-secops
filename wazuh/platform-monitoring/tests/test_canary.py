@@ -106,3 +106,8 @@ def test_monitor_watchdog(tmp_path):
     assert not canary.watch_monitor(watch, NOW)
     event = json.loads(out.read_text(encoding="utf-8"))
     assert event["b89"]["health"]["check"] == "monitor_error" and event["b89"]["health"]["severity"] == "critical"
+    assert not canary.watch_monitor(watch, NOW) and len(out.read_text(encoding="utf-8").splitlines()) == 1  # no repeat
+    state.write_text(json.dumps({"last_run": iso(NOW)}))
+    assert canary.watch_monitor(watch, NOW)
+    recovered = json.loads(out.read_text(encoding="utf-8").splitlines()[-1])
+    assert recovered["b89"]["health"]["status"] == "ok"

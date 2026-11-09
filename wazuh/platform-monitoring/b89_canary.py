@@ -200,14 +200,24 @@ def watch_monitor(config: dict, now: datetime) -> bool:
     except (OSError, ValueError, TypeError, AttributeError):
         last = None
     limit = timedelta(minutes=float(spec.get("stale_minutes", 30)))
+    flag = pathlib.Path(spec["output_file"]).with_name(".b89-monitor-down")
     if last is not None and now - last <= limit:
+        if flag.exists():
+            flag.unlink()
+            emit(spec["output_file"], [{"b89": {"vendor": "b89-platform", "source": "canary", "event_type": "health",
+                 "collected_at": iso(now), "health": {"check": "monitor_error", "status": "ok", "severity": "info",
+                 "source": "monitor", "key": "monitor_error:monitor:heartbeat", "component": "heartbeat",
+                 "summary": "Recuperado: el monitor de plataforma B89 vuelve a correr.", "last_seen": iso(last)}}}])
         return True
+    if flag.exists():
+        return False
     event = {"b89": {"vendor": "b89-platform", "source": "canary", "event_type": "health", "collected_at": iso(now),
                      "health": {"check": "monitor_error", "status": "problem", "severity": "critical", "source": "monitor",
                                 "key": "monitor_error:monitor:heartbeat", "component": "heartbeat",
                                 "summary": "El monitor de plataforma B89 no corre (sin ejecución reciente).",
                                 "last_seen": iso(last) if last else "nunca"}}}
     emit(spec["output_file"], [event])
+    flag.touch()
     return False
 
 

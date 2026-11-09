@@ -279,7 +279,7 @@ def check_agents(config: dict, api: WazuhApi, now: datetime) -> list[Finding]:
     spec = config.get("agents") or {}
     limit = float(spec.get("max_disconnected_minutes", 15))
     ignore = {str(x).lower() for x in spec.get("ignore") or []}
-    data = api.get("/agents?select=id,name,status,lastKeepAlive,ip,group&limit=500&sort=+id") or {}
+    data = api.get("/agents?select=id,name,status,lastKeepAlive&limit=500") or {}
     findings = []
     for agent in ((data.get("data") or {}).get("affected_items") or []):
         if str(agent.get("id")) == "000" or str(agent.get("name", "")).lower() in ignore:

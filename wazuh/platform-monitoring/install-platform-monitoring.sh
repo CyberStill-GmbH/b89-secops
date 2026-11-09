@@ -19,6 +19,9 @@
 #      del manager (salvo --no-restart).
 #   5. Units systemd: b89-platform-monitor (5 min), b89-vulnprio (1 h), b89-canary-inject (diario 06:10
 #      UTC), b89-canary-verify (10 min). Ejecuta una vez cada uno y muestra el resultado.
+#
+# Variables: B89_EXPOSED_AGENTS=agente1,agente2 (agentes Wazuh con servicios publicados directamente a
+#   Internet; por defecto ninguno: el nodo SOC solo publica vía ALB → edge en contenedor), SOC_HOSTNAME.
 set -Eeuo pipefail
 umask 077
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -110,14 +113,15 @@ else:
     uid = d["data"]["affected_items"][0]["id"]
 st, d = call("GET", "/security/roles?search=readonly", tok)
 rid = [r["id"] for r in d["data"]["affected_items"] if r["name"] == "readonly"][0]
-st, d = call("GET", f"/security/users/{uid}", tok)
+st, d = call("GET", f"/security/users?user_ids={uid}", tok)
 if rid not in d["data"]["affected_items"][0].get("roles", []):
     st, _ = call("POST", f"/security/users/{uid}/roles?role_ids={rid}", tok)
     assert st == 200, f"rol readonly HTTP {st}"
+import time; time.sleep(3)  # Wazuh revoca los tokens emitidos en el mismo segundo de un cambio RBAC
 st, d = call("POST", "/security/user/authenticate", basic="b89-monitor:" + pw)
 mt = d["data"]["token"]
 r, _ = call("GET", "/agents?limit=1", mt)
-st, d = call("GET", f"/security/users/{uid}", tok)
+st, d = call("GET", f"/security/users?user_ids={uid}", tok)
 roles = d["data"]["affected_items"][0].get("roles", [])
 assert r == 200 and roles == [rid], f"autoprueba API: lectura {r}, roles {roles}"
 print(f"[b89-platform] API Wazuh: b89-monitor lee agentes (HTTP {r}) con un único rol RBAC: readonly")
@@ -163,7 +167,7 @@ fi
 find "$BIN" "$CI" -name '*.py' -exec sed -i 's/\r$//' {} + 2>/dev/null || true
 for f in platform-health vulnprio; do [[ -e $OUT/$f.jsonl ]] || install -m 0640 /dev/null "$OUT/$f.jsonl"; done
 
-python3 - "$ETC" "$STATE" "$OUT" "$PMS" "$CERTS" "$SOC_HOSTNAME" "${B89_EXPOSED_AGENTS:-$(hostname)}" <<'PY'
+python3 - "$ETC" "$STATE" "$OUT" "$PMS" "$CERTS" "$SOC_HOSTNAME" "${B89_EXPOSED_AGENTS:-}" <<'PY'
 import json, os, sys
 etc, state, out, pms, certs, host, agents = sys.argv[1:8]
 indexer = {"url": "https://127.0.0.1:9200", "server_hostname": "wazuh.indexer", "ca_file": f"{certs}/root-ca.pem",
@@ -251,7 +255,7 @@ write("canary.json", {
     },
 })
 PY
-log "configs en $ETC (agentes expuestos: ${B89_EXPOSED_AGENTS:-$(hostname)})"
+log "configs en $ETC (agentes expuestos a Internet: ${B89_EXPOSED_AGENTS:-ninguno})"
 
 # ------------------------------------------------------------------ 3. feeds + listas antes del reinicio
 /usr/bin/python3 -I "$BIN/b89_vulnprio.py" run --config "$ETC/vulnprio.json" || log 'AVISO: primera pasada de vulnprio con errores (ver arriba)'
@@ -314,8 +318,10 @@ if [[ $RESTART == true ]]; then
 fi
 
 # ------------------------------------------------------------------ 5. systemd
+# Solo reescribe una unit si cambió: cada escritura en /etc/systemd/system dispara FIM (101756, persistencia).
+put() { if ! cmp -s "$1.new" "$1"; then mv "$1.new" "$1"; chmod 0644 "$1"; else rm -f "$1.new"; fi; }
 unit() { # nombre descripción comando calendario-o-intervalo
-  cat >"/etc/systemd/system/$1.service" <<EOF
+  cat >"/etc/systemd/system/$1.service.new" <<EOF
 [Unit]
 Description=$2
 Wants=network-online.target
@@ -336,7 +342,7 @@ TimeoutStartSec=600
 EOF
   if [[ $4 == *:* ]]; then sched="OnCalendar=$4"; else sched="OnBootSec=3min
 OnUnitActiveSec=$4"; fi
-  cat >"/etc/systemd/system/$1.timer" <<EOF
+  cat >"/etc/systemd/system/$1.timer.new" <<EOF
 [Unit]
 Description=Programa $2
 
@@ -349,7 +355,7 @@ Unit=$1.service
 [Install]
 WantedBy=timers.target
 EOF
-  chmod 0644 "/etc/systemd/system/$1.service" "/etc/systemd/system/$1.timer"
+  put "/etc/systemd/system/$1.service"; put "/etc/systemd/system/$1.timer"
 }
 PY3="/usr/bin/python3 -I"
 unit b89-platform-monitor 'B89 platform health monitor' "$PY3 $BIN/b89_platform_monitor.py --config $ETC/monitor.json" 5min
@@ -358,7 +364,8 @@ unit b89-canary-inject 'B89 synthetic canaries (inject)' "$PY3 $BIN/b89_canary.p
 unit b89-canary-verify 'B89 synthetic canaries (verify)' "$PY3 $BIN/b89_canary.py verify --config $ETC/canary.json" 10min
 systemctl daemon-reload
 for t in b89-platform-monitor b89-vulnprio b89-canary-inject b89-canary-verify; do systemctl enable --now "$t.timer" >/dev/null; done
-sleep 20
+# Orden: verify (deja su latido) → monitor (lo ve sano) para no abrir falsos problemas al instalar.
+systemctl start b89-canary-verify.service || true
 systemctl start b89-platform-monitor.service || true
 journalctl -u b89-platform-monitor.service --no-pager -o cat -n 3 | grep -E '^b89-platform-monitor' | tail -1 || true
 log "eventos de salud: $(wc -l <"$OUT/platform-health.jsonl") · vulnprio: $(wc -l <"$OUT/vulnprio.jsonl")"
