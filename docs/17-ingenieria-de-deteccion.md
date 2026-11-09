@@ -20,6 +20,7 @@ detección, quién opera las alertas y con qué tiempos, y qué falta para cerra
 | Modelo operativo del Blue Team (turnos, SLA, escalamiento, métricas) | [detection-engineering/03](detection-engineering/03-modelo-operativo.md) | Propuesto; objetivos sin publicar hasta medir (N8) |
 | Playbooks de B89 Respond (triage, contención con aprobación) | [detection-engineering/04](detection-engineering/04-playbooks-b89-respond.md), [`b89-respond/playbooks/`](../b89-respond/playbooks/) | Exportables, **no importados**; contención apagada |
 | Backlog y hoja de ruta de ingeniería de seguridad | [detection-engineering/05](detection-engineering/05-backlog.md) | Priorizado |
+| Ajuste y reducción de falsos positivos (allowlists CDB, contexto, corroboración, anomalías, registro) | [detection-engineering/07](detection-engineering/07-ajuste-falsos-positivos.md), [`detections/lists/`](../detections/lists/) | 16 reglas de ajuste, 6 listas versionadas; 328 FP de 521 cerrados con auditoría **[verificado]** |
 | Vistas de análisis (OSD) | [detection-engineering/06](detection-engineering/06-vistas-de-analisis.md), `wazuh/dashboard/saved-objects/detection/` | 6 dashboards importados en AWS **[verificado]** |
 
 ## Qué quedó desplegado en AWS (dev.security.b89.io, 2026-11-04)
@@ -48,3 +49,19 @@ detección, quién opera las alertas y con qué tiempos, y qué falta para cerra
 4. **Los IDs no se reutilizan** y cada fuente tiene un rango (`detections/catalog.yaml`).
 5. **Toda descripción empieza por `B89 <Fuente>:`** (M365, Entra, AWS, Linux, Windows, AD, Bitdefender, Snyk,
    Cloudflare, Sophos, Cato). El lint lo exige en las reglas del SOC.
+
+## Ajuste y reducción de falsos positivos
+
+Resumen (detalle, técnicas y registro con fixtures en [detection-engineering/07](detection-engineering/07-ajuste-falsos-positivos.md)):
+
+- **Degradar, no silenciar:** nivel 0 solo para ruido redundante (sesiones PAM de cuentas admin, que ya
+  auditan 5402/5715) o FP técnicos probados (rootcheck sobre overlay de Docker). Los principales de confianza
+  (rol SSO del SOC, `b89service@b89.io`) bajan de nivel pero siguen indexados; lo destructivo sigue alertando.
+- **Allowlists en `detections/lists/`** (CDB versionadas, cambio por PR). El motor de correlación y riesgo propone
+  altas desde los veredictos `false_positive`; un humano aprueba.
+- **Severidad con corroboración:** correo (≥ 8) y B89 Respond (≥ 12) solo con activo crítico, exposición, exploit
+  maduro, horario o segunda señal.
+- **Anomalías:** detectores RCF `b89-logins-per-user` y `b89-waf-blocks-per-zone` con monitores de Alerting
+  (`detections/tools/apply-anomaly-monitors.sh`).
+- **Histórico:** las 328 alertas B89 de la regla 521 se cerraron como `false_positive` con el script de servicio
+  `detections/tools/close-false-positives.mjs` (984 eventos de auditoría con cadena hash, correlación `close-fp-521-*`).

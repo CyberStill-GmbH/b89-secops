@@ -88,7 +88,14 @@ def use_case_dirs() -> list[Path]:
 
 
 def program_rule_files() -> list[Path]:
-    return _tracked(DET.glob("*/*/rule.xml"))
+    """B89_DETECTIONS_INCLUDE="aws/trusted-principals linux/noise-tuning" limita el bundle a esos casos de uso
+    (despliegue coordinado: cada owner instala lo suyo; lo ya instalado de otros no se toca)."""
+    import os
+    files = _tracked(DET.glob("*/*/rule.xml"))
+    include = os.environ.get("B89_DETECTIONS_INCLUDE", "").split()
+    if include:
+        files = [f for f in files if f.parent.relative_to(DET).as_posix() in include]
+    return files
 
 
 def bundle_name(rule_xml: Path) -> str:

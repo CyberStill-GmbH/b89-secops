@@ -50,6 +50,7 @@ nodo), [AGENTS.md](../infra/aws-poweruser/AGENTS.md) (enrolar agentes), [infra/l
 - [Ciclo de vida, ramas/PR y estándar de metadatos](detection-engineering/01-ciclo-de-vida.md) · contenido en [`detections/`](../detections/README.md)
 - [Cobertura MITRE ATT&CK y brechas](detection-engineering/02-cobertura-mitre.md) · [informe generado](../detections/reports/mitre-coverage.md)
 - [Modelo operativo: turnos, SLA P1–P4, escalamiento y métricas](detection-engineering/03-modelo-operativo.md)
+- [Ajuste y reducción de falsos positivos (registro)](detection-engineering/07-ajuste-falsos-positivos.md) · allowlists en [`detections/lists/`](../detections/lists/)
 - [Playbooks de B89 Respond](detection-engineering/04-playbooks-b89-respond.md) · [Backlog y hoja de ruta](detection-engineering/05-backlog.md) · [Vistas de análisis](detection-engineering/06-vistas-de-analisis.md)
 - [Runbooks](detection-engineering/runbooks/README.md): credenciales, escalada de privilegios, malware/EDR, vulnerabilidad expuesta, oleada WAF, CloudTrail y auditoría
 
