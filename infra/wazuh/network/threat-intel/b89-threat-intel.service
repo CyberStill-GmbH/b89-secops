@@ -1,0 +1,12 @@
+# B89 SOC · refresco diario de las listas de reputación de IP en Wazuh (docs/18).
+# Instalar: install -m 0644 este archivo y el .timer en /etc/systemd/system; systemctl enable --now b89-threat-intel.timer
+[Unit]
+Description=B89 SOC: listas CDB de reputacion de IP (Spamhaus DROP, abuse.ch Feodo, Tor, Cloudflare WAF)
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/bash /opt/b89/src/infra/wazuh/network/deploy-network.sh lists
+Nice=10
+TimeoutStartSec=900

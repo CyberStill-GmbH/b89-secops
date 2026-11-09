@@ -90,7 +90,7 @@ export function vendorLogoUrl(basePath: string, id: VendorId, onDark = false): s
 export function vendorOfGroups(groups: readonly unknown[], b89Vendor?: unknown): VendorId {
   if (isVendorId(b89Vendor)) return b89Vendor;
   const values = groups.map(String);
-  if (values.includes('office365') || values.includes('ms-graph')) return 'office365';
+  if (values.includes('office365') || values.includes('ms-graph') || values.includes('b89_sharepoint')) return 'office365';
   for (const id of ['bitdefender', 'snyk', 'cloudflare', 'aws'] as const) {
     if (values.includes(id)) return id;
   }

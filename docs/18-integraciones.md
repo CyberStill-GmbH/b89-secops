@@ -74,6 +74,10 @@ reinicia solo el manager. Estado: `systemctl list-timers 'b89-*'`.
   las suscripciones; en el host `sudo bash wazuh/office365/apply-office365-docker.sh`; cambiar
   `b89_ops.integrations.office365.state` a `auto` y redesplegar el dashboard.
 
+SharePoint y OneDrive tienen collector, reglas y dashboard separados; su estado se muestra en la tarjeta
+propia de Integraciones. El collector queda apagado hasta que el chequeo de acceso confirme HTTP 200.
+Permisos, operación, activación y falsos positivos: [23](23-sharepoint-onedrive.md).
+
 ## Bitdefender GravityZone
 
 - **Recoge:** estado de endpoints administrados (infección, aislamiento, módulos apagados, firmas o

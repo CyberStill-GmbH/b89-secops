@@ -30,12 +30,12 @@ interface Route {
 export const NOTIFICATION_ROUTES: readonly Route[] = Object.freeze([
   {
     messageType: 'soc.alert.created',
-    matches: (payload) => payload['priority'] === 'P1',
+    matches: (payload) => payload['priority'] === 'P1' || payload['priority'] === 'P2',
     roles: ['b89.soc.analyst', 'b89.soc.lead'],
   },
   {
     messageType: 'soc.alert.escalated',
-    matches: (payload) => payload['priority'] === 'P1',
+    matches: (payload) => payload['priority'] === 'P1' || payload['priority'] === 'P2',
     roles: ['b89.soc.lead', 'b89.platform.admin'],
   },
   {

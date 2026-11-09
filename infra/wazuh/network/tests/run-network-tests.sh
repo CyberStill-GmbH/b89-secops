@@ -64,6 +64,9 @@ if [[ -z "$manager" ]]; then
   done
   for f in "$work"/bundle/lists/*; do docker cp "$(hp "$f")" "$name:/var/ossec/etc/lists/$(basename "$f")"; done
   docker cp "$(hp "$repo/infra/wazuh/network/decoders/b89_network_decoders.xml")" "$name:/var/ossec/etc/decoders/b89_network_decoders.xml"
+  docker cp "$name:/var/ossec/ruleset/decoders/0040-auditd_decoders.xml" "$(hp "$work/0040-auditd_decoders.xml")"
+  "$py" "$(hp "$repo/infra/wazuh/network/decoders/build_auditd_override.py")" "$(hp "$work/0040-auditd_decoders.xml")" "$(hp "$work/b89_auditd_decoders.xml")" >/dev/null
+  docker cp "$(hp "$work/b89_auditd_decoders.xml")" "$name:/var/ossec/etc/decoders/b89_auditd_decoders.xml"
   docker exec -u 0 "$name" sh -c '
     chown wazuh:wazuh /var/ossec/etc/rules/*.xml /var/ossec/etc/decoders/*.xml /var/ossec/etc/lists/b89-*
     chmod 660 /var/ossec/etc/rules/*.xml /var/ossec/etc/decoders/*.xml
@@ -72,6 +75,7 @@ if [[ -z "$manager" ]]; then
       n="etc/lists/$(basename "$l")"
       grep -q "<list>$n</list>" /var/ossec/etc/ossec.conf || sed -i "0,/<\/ruleset>/s##  <list>$n</list>\n  </ruleset>#" /var/ossec/etc/ossec.conf
     done
+    grep -q "<decoder_exclude>ruleset/decoders/0040-auditd_decoders.xml" /var/ossec/etc/ossec.conf || sed -i "0,/<\/ruleset>/s##  <decoder_exclude>ruleset/decoders/0040-auditd_decoders.xml</decoder_exclude>\n  </ruleset>#" /var/ossec/etc/ossec.conf
     sed -i -e "/<category>ossec<\/category>/d" -e "s|<decoded_as>windows_eventchannel</decoded_as>|<decoded_as>json</decoded_as>|" /var/ossec/ruleset/rules/0575-win-base_rules.xml'
   sleep 15
   docker exec "$name" /var/ossec/bin/wazuh-control restart >/dev/null 2>&1 || true

@@ -18,6 +18,7 @@ const AUTO = { state: 'auto' as const, missingPermissions: [], note: '' };
 const INTEGRATIONS: IntegrationsConfig = {
   wazuh: AUTO,
   office365: { state: 'blocked', missingPermissions: ['ActivityFeed.Read'], note: '' },
+  sharepoint: { state: 'disabled', missingPermissions: [], note: 'Permisos pendientes de validar.' },
   bitdefender: AUTO,
   snyk: AUTO,
   cloudflare: AUTO,

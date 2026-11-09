@@ -5,12 +5,15 @@
   herramientas de red. La IP sale del registro SOCKADDR enriquecido (decoder hermano auditd-syscall en
   infra/wazuh/network/decoders/b89_network_decoders.xml → dstip/dstport). Las claves b89_net_* no están en
   la lista audit-keys oficial: ninguna regla 807xx las captura antes.
-  Orden de hermanos = prioridad. Se instala como b89_soc_linux_network_auditd.xml.
+  101811 (destino interno) es nivel 1 y no 0: analysisd evalúa antes las hijas de nivel 0 y taparía a
+  101812/101818 (bind en 0.0.0.0).
+  92600 (oficial, nivel 0, «Executed python script») captura todo evento de auditd con exe python antes que
+  las hijas de 80700: 101810 cuelga también de ella. Orden de hermanos = prioridad. Se instala como b89_soc_linux_network_auditd.xml.
 -->
 <group name="audit,b89_network,b89_linux,">
 
   <rule id="101810" level="0">
-    <if_sid>80700</if_sid>
+    <if_sid>80700, 92600</if_sid>
     <field name="audit.key">^b89_net_</field>
     <description>B89 Linux: llamada de red auditada ($(audit.key)) de $(audit.exe).</description>
     <group>b89_audit_net,</group>
@@ -86,7 +89,7 @@
     <group>b89_audit_net,</group>
   </rule>
 
-  <rule id="101811" level="0">
+  <rule id="101811" level="1">
     <if_sid>101810</if_sid>
     <regex type="pcre2">SADDR=\{[^}]* laddr=(?:10\.|127\.|0\.|169\.254\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.|100\.(?:6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.|::1(?:\s|\})|fe80:|f[cd][0-9a-f]{2}:)</regex>
     <description>B89 Linux: llamada de red de sesión interactiva a destino interno $(dstip):$(dstport) ($(audit.exe)).</description>

@@ -20,6 +20,7 @@ function overview(patch: Partial<OverviewResponse> = {}): OverviewResponse {
       missingPermissions: ['ActivityFeed.Read'],
       note: 'Pedir consentimiento',
     },
+    sharepoint: { state: 'disabled', missingPermissions: [], note: 'Permisos pendientes de validar.' },
     bitdefender: AUTO,
     snyk: AUTO,
     cloudflare: AUTO,
@@ -35,6 +36,7 @@ function overview(patch: Partial<OverviewResponse> = {}): OverviewResponse {
     siem: null,
     providers: {
       office365: stats(null),
+      sharepoint: stats(null),
       bitdefender: stats('2026-11-04T15:50:00Z'),
       snyk: stats('2026-10-30T10:00:00Z'),
       cloudflare: stats('2026-11-02T10:00:00Z'),

@@ -10,25 +10,6 @@
 2026-11-08 10:00:00 ALLOW TCP 10.0.0.5 198.51.100.9 50000 443 52 S 1 0 0 - - - SEND
 2026-11-08 10:00:00 DROP TCP 203.0.113.211 10.0.0.5 50001 3389 52 S 1 0 0 - - - RECEIVE
 2026-11-08 10:00:00 DROP TCP 198.51.100.44 10.0.0.5 51000 1000 52 S 1 0 0 - - - RECEIVE
-2026-11-08 10:00:00 DROP TCP 198.51.100.44 10.0.0.5 51001 1001 52 S 1 0 0 - - - RECEIVE
-2026-11-08 10:00:00 DROP TCP 198.51.100.44 10.0.0.5 51002 1002 52 S 1 0 0 - - - RECEIVE
-2026-11-08 10:00:00 DROP TCP 198.51.100.44 10.0.0.5 51003 1003 52 S 1 0 0 - - - RECEIVE
-2026-11-08 10:00:00 DROP TCP 198.51.100.44 10.0.0.5 51004 1004 52 S 1 0 0 - - - RECEIVE
-2026-11-08 10:00:00 DROP TCP 198.51.100.44 10.0.0.5 51005 1005 52 S 1 0 0 - - - RECEIVE
-2026-11-08 10:00:00 DROP TCP 198.51.100.44 10.0.0.5 51006 1006 52 S 1 0 0 - - - RECEIVE
-2026-11-08 10:00:00 DROP TCP 198.51.100.44 10.0.0.5 51007 1007 52 S 1 0 0 - - - RECEIVE
-2026-11-08 10:00:00 DROP TCP 198.51.100.44 10.0.0.5 51008 1008 52 S 1 0 0 - - - RECEIVE
-2026-11-08 10:00:00 DROP TCP 198.51.100.44 10.0.0.5 51009 1009 52 S 1 0 0 - - - RECEIVE
-2026-11-08 10:00:00 DROP TCP 198.51.100.44 10.0.0.5 51010 1010 52 S 1 0 0 - - - RECEIVE
-2026-11-08 10:00:00 DROP TCP 198.51.100.44 10.0.0.5 51011 1011 52 S 1 0 0 - - - RECEIVE
-2026-11-08 10:00:00 DROP TCP 198.51.100.44 10.0.0.5 51012 1012 52 S 1 0 0 - - - RECEIVE
-2026-11-08 10:00:00 DROP TCP 198.51.100.44 10.0.0.5 51013 1013 52 S 1 0 0 - - - RECEIVE
-2026-11-08 10:00:00 DROP TCP 198.51.100.44 10.0.0.5 51014 1014 52 S 1 0 0 - - - RECEIVE
-2026-11-08 10:00:00 DROP TCP 198.51.100.44 10.0.0.5 51015 1015 52 S 1 0 0 - - - RECEIVE
-2026-11-08 10:00:00 DROP TCP 198.51.100.44 10.0.0.5 51016 1016 52 S 1 0 0 - - - RECEIVE
-2026-11-08 10:00:00 DROP TCP 198.51.100.44 10.0.0.5 51017 1017 52 S 1 0 0 - - - RECEIVE
-2026-11-08 10:00:00 DROP TCP 198.51.100.44 10.0.0.5 51018 1018 52 S 1 0 0 - - - RECEIVE
-2026-11-08 10:00:00 DROP TCP 198.51.100.44 10.0.0.5 51019 1019 52 S 1 0 0 - - - RECEIVE
 {"win":{"system":{"providerName":"Microsoft-Windows-Security-Auditing","eventID":"5157","severityValue":"AUDIT_FAILURE","channel":"Security","computer":"WS01.b89-lab.example"},"eventdata":{"application":"\\device\\harddiskvolume3\\windows\\system32\\svchost.exe","direction":"%%14593","sourceAddress":"198.51.100.45","sourcePort":"50000","destAddress":"10.0.0.5","destPort":"2000","protocol":"6"}}}
 {"win":{"system":{"providerName":"Microsoft-Windows-Security-Auditing","eventID":"5157","severityValue":"AUDIT_FAILURE","channel":"Security","computer":"WS01.b89-lab.example"},"eventdata":{"application":"\\device\\harddiskvolume3\\windows\\system32\\svchost.exe","direction":"%%14593","sourceAddress":"198.51.100.45","sourcePort":"50000","destAddress":"10.0.0.5","destPort":"2001","protocol":"6"}}}
 {"win":{"system":{"providerName":"Microsoft-Windows-Security-Auditing","eventID":"5157","severityValue":"AUDIT_FAILURE","channel":"Security","computer":"WS01.b89-lab.example"},"eventdata":{"application":"\\device\\harddiskvolume3\\windows\\system32\\svchost.exe","direction":"%%14593","sourceAddress":"198.51.100.45","sourcePort":"50000","destAddress":"10.0.0.5","destPort":"2002","protocol":"6"}}}

@@ -28,8 +28,6 @@ rules:
   - 101886
   - 101887
   - 101888
-  - 101889
-  - 101890
   installed_as: etc/rules/b89_soc_windows_network_connections.xml
 mitre:
 - technique: T1046

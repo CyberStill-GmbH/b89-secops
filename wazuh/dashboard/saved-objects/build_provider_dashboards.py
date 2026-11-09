@@ -36,12 +36,14 @@ LOGOS = {
     "snyk": "snyk-on-dark.svg",
     "cloudflare": "cloudflare.svg",
     "microsoft-365": "microsoft-entra-id.svg",
+    "sharepoint": "microsoft-entra-id.svg",
 }
 LOGO_ALT = {
     "bitdefender": "Bitdefender",
     "snyk": "Snyk",
     "cloudflare": "Cloudflare",
     "microsoft-365": "Microsoft Entra ID",
+    "sharepoint": "Microsoft 365",
 }
 
 PROVIDERS = [
@@ -97,6 +99,20 @@ PROVIDERS = [
         "extra": ("data.office365.Operation", "Operación"),
         "columns": ["rule.level", "rule.description", "data.office365.UserId",
                     "data.office365.Operation", "data.office365.ClientIP"],
+    },
+    {
+        "id": "sharepoint",
+        "dashboard_id": "b89-dashboard-sharepoint-onedrive",
+        "title": "B89 · SharePoint y OneDrive",
+        "query": "rule.groups:b89_sharepoint",
+        "rules": "101900–101979",
+        "about": "Auditoría de actividad de archivos y postura de uso compartido. La auditoría usa "
+        "el módulo office365 o Purview Audit Search; el collector queda apagado hasta validar permisos.",
+        "entity": ("data.office365.UserId", "Usuario"),
+        "unique": ("data.office365.UserId", "Usuarios distintos"),
+        "extra": ("data.b89.event_type", "Tipo de evento"),
+        "columns": ["rule.level", "rule.description", "data.office365.UserId",
+                    "data.office365.Operation", "data.sharepoint.site.url", "data.b89.event_type"],
     },
 ]
 
@@ -263,6 +279,57 @@ def saved_search(sid: str, title: str, query: str, columns: list[str]):
     }
 
 
+def verified_locations_map(mid: str, title: str, query: str):
+    """Map saved object using only verified GeoIP geopoints; empty until enrichment exists."""
+    layer = mid + "-layer"
+    index_ref = mid + "-index"
+    map_state = {
+        "zoom": 2,
+        "center": {"lon": 0, "lat": 20},
+        "timeFilters": {"from": "now-7d", "to": "now"},
+        "refreshConfig": {"isPaused": True, "interval": 0},
+        "query": {"query": "", "language": "kuery"},
+        "filters": [],
+        "settings": {"autoFitToDataBounds": True, "backgroundColor": "#ffffff",
+                     "disableInteractive": False, "hideLayerControl": False,
+                     "initialLocation": "AUTO_FIT_TO_BOUNDS", "maxZoom": 24, "minZoom": 0,
+                     "showScaleControl": False, "showSpatialFilters": True},
+    }
+    layers = [
+        {"sourceDescriptor": {"type": "EMS_TMS", "isAutoSelect": True},
+         "id": mid + "-basemap", "label": "Mapamundi", "minZoom": 0,
+         "maxZoom": 24, "alpha": 1, "visible": True,
+         "style": {"type": "TILE"}, "type": "VECTOR_TILE"},
+        {"sourceDescriptor": {"geoField": "data.office365.geoip.location", "scalingType": "CLUSTERS",
+                               "topHitsSplitField": "", "topHitsSize": 1,
+                               "id": mid + "-geopoints", "type": "ES_SEARCH",
+                               "applyGlobalQuery": True, "applyGlobalTime": True,
+                               "tooltipProperties": ["data.office365.Operation"],
+                               "sortField": "", "sortOrder": "desc",
+                               "indexPatternRefName": index_ref},
+         "id": layer, "label": "Ubicaciones GeoIP verificadas",
+         # GeoIP is not mapped in the current alerts index; keep the data layer disabled so
+         # the saved map remains importable without inventing coordinates or querying an
+         # unmapped field. Enable only after geoip.location is verified as geo_point.
+         "minZoom": 0, "maxZoom": 24, "alpha": 0.75, "visible": False,
+         "style": {"type": "VECTOR", "properties": {}}, "type": "VECTOR",
+         "joins": [], "query": {"query": f"({query}) and data.office365.geoip.location:*", "language": "kuery"}},
+    ]
+    return {
+        "id": mid, "type": "map",
+        "attributes": {"title": title,
+                       "description": "Mapamundi base. La capa de eventos queda desactivada hasta verificar "
+                                      "data.office365.geoip.location como geo_point en wazuh-alerts-*; no se derivan "
+                                      "ubicaciones de IP.",
+                       "layerListJSON": json.dumps(layers),
+                       "mapStateJSON": json.dumps(map_state),
+                       "uiStateJSON": json.dumps({"isLayerTOCOpen": True,
+                                                  "openTOCDetails": [layer]})},
+        "references": [{"id": INDEX_PATTERN, "name": index_ref,
+                         "type": "index-pattern"}],
+    }
+
+
 def dashboard(provider: dict, panels: list[tuple[dict, dict]]):
     panels_json, references = [], []
     for index, (obj, grid) in enumerate(panels):
@@ -276,7 +343,7 @@ def dashboard(provider: dict, panels: list[tuple[dict, dict]]):
         })
         references.append({"name": f"panel_{index}", "type": obj["type"], "id": obj["id"]})
     return {
-        "id": f"b89-dashboard-{provider['id']}",
+        "id": provider.get("dashboard_id", f"b89-dashboard-{provider['id']}"),
         "type": "dashboard",
         "attributes": {
             "title": provider["title"],
@@ -351,6 +418,30 @@ def build() -> list[dict]:
             panels.append((extra_table, {"x": 0, "y": y, "w": 48, "h": 12}))
             built.append(extra_table)
             y += 12
+        # No geolocation is inferred from a raw IP. Keep the map area visible until the
+        # alerts index has a verified GeoIP geo_point and the Maps plugin is confirmed.
+        if pid in {"microsoft-365", "sharepoint"}:
+            geo = verified_locations_map(
+                f"{prefix}-verified-map",
+                f"{name} · mapamundi de ubicaciones verificadas",
+                query,
+            )
+            panels.append((geo, {"x": 0, "y": y, "w": 48, "h": 16}))
+            built.append(geo)
+            empty_state = markdown(
+                f"{prefix}-verified-map-empty",
+                f"{name} · estado del mapamundi",
+                "### Estado del mapamundi\n\n"
+                "**Sin ubicaciones verificables por ahora.** `wazuh-alerts-*` no expone actualmente "
+                "`data.office365.geoip.location` como `geo_point` para estos eventos. El mapa solo muestra registros "
+                "con GeoIP confiable; nunca deriva coordenadas a partir de una IP.\n\n"
+                "Para habilitar datos: incorporar enriquecimiento GeoIP confiable y mapear el campo "
+                "`data.office365.geoip.location` como `geo_point`. Confirmar que Maps está disponible en la imagen "
+                "Wazuh Dashboard 4.14.8.",
+            )
+            panels.append((empty_state, {"x": 0, "y": y + 16, "w": 48, "h": 8}))
+            built.append(empty_state)
+            y += 24
         panels.append((latest, {"x": 0, "y": y, "w": 48, "h": 18}))
         built.append(latest)
         objects.extend(built)

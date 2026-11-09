@@ -14,7 +14,7 @@
 export const OVERVIEW_ROUTE = '/api/b89_ops/overview';
 
 /** Proveedores medidos en `wazuh-alerts-*` por su grupo de regla. */
-export const PROVIDER_IDS = ['office365', 'bitdefender', 'snyk', 'cloudflare', 'aws'] as const;
+export const PROVIDER_IDS = ['office365', 'sharepoint', 'bitdefender', 'snyk', 'cloudflare', 'aws'] as const;
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 
 /** Servicios de la plataforma que no son proveedores de eventos. */
@@ -63,6 +63,7 @@ export interface IntegrationSpec {
 /** Dashboards guardados B89 (wazuh/dashboard/saved-objects/b89-provider-dashboards.ndjson). */
 export const PROVIDER_DASHBOARDS: Readonly<Record<ProviderId, string>> = {
   office365: 'b89-dashboard-microsoft-365',
+  sharepoint: 'b89-dashboard-sharepoint-onedrive',
   bitdefender: 'b89-dashboard-bitdefender',
   snyk: 'b89-dashboard-snyk',
   cloudflare: 'b89-dashboard-cloudflare',
@@ -124,6 +125,31 @@ export const INTEGRATIONS: readonly IntegrationSpec[] = [
       'Conceder consentimiento de administrador y esperar hasta 12 h a que Microsoft active las suscripciones.',
     ],
     links: [{ label: 'Módulo Office 365', href: '/app/office365' }],
+  },
+  {
+    id: 'sharepoint',
+    name: 'SharePoint y OneDrive',
+    vendor: 'Microsoft 365',
+    monogram: 'SP',
+    summary: 'Auditoría de archivos y postura de uso compartido en SharePoint y OneDrive.',
+    collects: [
+      'Actividad por el módulo office365 o Purview Audit Search (Graph)',
+      'Postura del tenant, sitios nuevos y enlaces anónimos/externos',
+    ],
+    interval: 'Auditoría cada 5 min; postura cada 60 min',
+    ruleRange: '101900–101979',
+    ruleGroup: 'b89_sharepoint',
+    policy: 'Doble vía de auditoría sin duplicación, allowlist de cuentas de servicio/sincronización y collector apagado hasta validar permisos.',
+    permissions: [
+      'ActivityFeed.Read (Management APIs) o AuditLogsQuery-SharePoint.Read.All (Graph)',
+      'AuditLogsQuery-OneDrive.Read.All (Graph)',
+      'SharePointTenantSettings.Read.All y Sites.Read.All para postura',
+    ],
+    nextSteps: [
+      'Verificar permisos de aplicación y consentimiento de administrador en Entra ID.',
+      'Activar B89_ENABLE_SHAREPOINT solo después de que el chequeo de acceso confirme HTTP 200 para la vía elegida.',
+    ],
+    links: [{ label: 'Dashboard SharePoint y OneDrive', href: dashboardHref('b89-dashboard-sharepoint-onedrive') }],
   },
   {
     id: 'bitdefender',
@@ -256,11 +282,6 @@ export const INTEGRATIONS: readonly IntegrationSpec[] = [
     ],
     links: [{ label: 'Notificaciones', href: '/app/b89-notifications' }],
   },
-  // HUECO para una fuente nueva (p. ej. SharePoint Online, en preparación): añadir aquí su
-  // `IntegrationSpec` (tarjeta del «Resumen del SOC» y ficha de «Integraciones»), su id en
-  // `ServiceId`, su clave en `server/config.ts › integrations` y, si es un proveedor con logotipo
-  // propio, su marca en `common/vendors.ts` + `assets/svg/vendors/` (con NOTICE). Las tarjetas y
-  // la ficha se pintan solas a partir de este catálogo.
 ];
 
 export function integrationSpec(id: ServiceId): IntegrationSpec {

@@ -80,11 +80,13 @@ sudo bash wazuh/provider-ingestion/install-b89-collectors.sh
 ```
 
 Secretos: `/opt/b89/secrets/services.env` (`BITDEFENDER_API_KEY`, `BITDEFENDER_REGION`, `SNYK_TOKEN`,
-`SNYK_ORG_ID`, `SNYK_API_URL`, `CLOUDFLARE_API_TOKEN`, `TENANT_ID`, `CLIENT_ID`, `CLIENT_SECRET`,
+`SNYK_ORG_ID`, `SNYK_API_URL`, `CLOUDFLARE_API_TOKEN`, `TENANT_ID`, `ID_APP` o `CLIENT_ID`, `ID_OBJETO`, `CLIENT_SECRET`,
 `ALERT_EMAIL_TO`, `ALERT_EMAIL_FROM`, `ALERT_INTERVAL_MIN`) se separa en archivos 0600 de
 `/opt/b89/secrets/collectors/`: `bitdefender-api-key`, `bitdefender-region`, `snyk-token`,
 `snyk-org-id`, `snyk-api-url`, `cloudflare-api-token`, `entra-tenant-id`, `entra-client-id`,
-`entra-client-secret`, `alert-email-to`, `alert-email-from`, `alert-interval-min`. El instalador
+`entra-client-secret`, `entra-app-object-id`, `alert-email-to`, `alert-email-from`, `alert-interval-min`.
+`ID_APP` es el client ID de la app O365 y prevalece sobre el alias `CLIENT_ID`; `ID_OBJETO` se conserva
+como identificador del objeto de Entra, pero no interviene en OAuth client credentials. El instalador
 valida con `wazuh-analysisd -t` (revierte si falla), persiste `ossec.conf` en el montaje del host y
 reinicia solo el manager. Estado: `systemctl list-timers 'b89-*'`, `journalctl -u b89-collector-snyk`.
 

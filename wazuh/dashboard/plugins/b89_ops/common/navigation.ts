@@ -103,6 +103,7 @@ export const NAV_PLACEMENT: Readonly<Record<string, NavPlacement>> = {
   // Integraciones
   'b89-integrations': { category: 'integrations', order: 10, title: 'Integraciones' },
   office365: { category: 'integrations', order: 70, title: 'Office 365 (módulo Wazuh)' },
+  sharepoint: { category: 'integrations', order: 75, title: 'SharePoint y OneDrive' },
   docker: { category: 'integrations', order: 80, title: 'Docker' },
   // Respuesta
   'b89-respond': {

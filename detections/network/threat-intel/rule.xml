@@ -57,7 +57,7 @@
 
   <!-- Edge: cualquier petición a la consola del SOC -->
   <rule id="101862" level="8" ignore="120">
-    <if_sid>101830, 101831, 101832, 101833, 101834, 101835, 101836, 101838, 101839, 101842, 101843</if_sid>
+    <if_sid>101830, 101831, 101832, 101833, 101834, 101835, 101836, 101838, 101839, 101842</if_sid>
     <list field="srcip" lookup="address_match_key">etc/lists/b89-ti-blocklist</list>
     <description>B89 Red: petición a la consola del SOC desde $(srcip), IP en listas de reputación: $(method) $(url) → $(http_status).</description>
     <options>no_full_log</options>
@@ -68,7 +68,7 @@
   </rule>
 
   <rule id="101863" level="6" ignore="120">
-    <if_sid>101830, 101831, 101832, 101833, 101834, 101835, 101836, 101838, 101839, 101842, 101843</if_sid>
+    <if_sid>101830, 101831, 101832, 101833, 101834, 101835, 101836, 101838, 101839, 101842</if_sid>
     <list field="srcip" lookup="address_match_key">etc/lists/b89-ti-tor</list>
     <description>B89 Red: petición a la consola del SOC desde un nodo de salida de Tor ($(srcip)): $(method) $(url).</description>
     <options>no_full_log</options>

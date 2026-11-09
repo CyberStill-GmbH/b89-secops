@@ -191,6 +191,23 @@ else
 fi
 unset bunny_key
 
+# Teams Workflow: el webhook firmado es una credencial y solo vive en services.env (0600).
+# Se copia al env privado del API para activar el transporte SOC ya implementado; si no existe,
+# el canal queda apagado. Nunca mostrar ni pasar la URL por argumentos o logs.
+sed -i '/^B89_TEAMS_WORKFLOW_URL=/d' "$SECRETS/api.env"
+teams_workflow_url="$(grep -s '^B89_TEAMS_WORKFLOW_URL=.' "$SECRETS/services.env" | cut -d= -f2- || true)"
+if [[ -n $teams_workflow_url ]]; then
+  [[ $teams_workflow_url != *$'\n'* && $teams_workflow_url != *$'\r'* ]] || {
+    echo 'Teams Workflow URL inválida en secrets/services.env' >&2; exit 1;
+  }
+  printf 'B89_TEAMS_WORKFLOW_URL=%s\n' "$teams_workflow_url" >>"$SECRETS/api.env"
+  chmod 600 "$SECRETS/api.env"
+  log 'Teams: webhook de alertas de revisión configurado'
+else
+  log 'Teams: falta B89_TEAMS_WORKFLOW_URL en secrets/services.env; notificaciones apagadas'
+fi
+unset teams_workflow_url
+
 COMPOSE=(docker compose --env-file "$SECRETS/compose.env" -f "$WD/docker-compose.yml" -f "$HOST_DIR/compose.b89.yaml")
 # Con B89 Respond ya desplegado (deploy-respond.sh), el proyecto incluye sus servicios.
 [[ -d $ROOT/respond/frontend ]] && COMPOSE+=(-f "$HOST_DIR/compose.respond.yaml")
@@ -256,6 +273,9 @@ log 'agente Wazuh del propio nodo'
 bash "$SRC/infra/aws-poweruser/scripts/setup-host-agent.sh"
 
 log 'arrancando dashboard, API y edge'
+log 'preparando volumen compartido de logs del edge'
+"${COMPOSE[@]}" exec -T wazuh.manager sh -c \
+  'install -d -o wazuh -g wazuh -m 0750 /var/ossec/logs/b89-collectors/edge && touch /var/ossec/logs/b89-collectors/edge/access.json /var/ossec/logs/b89-collectors/edge/error.log && chown wazuh:wazuh /var/ossec/logs/b89-collectors/edge/access.json /var/ossec/logs/b89-collectors/edge/error.log'
 "${COMPOSE[@]}" up -d --force-recreate wazuh.dashboard api edge
 if [[ ${SKIP_API_BUILD:-0} != 1 ]]; then
   log 'arrancando correlador privado (emisión controlada por correlator.env)'

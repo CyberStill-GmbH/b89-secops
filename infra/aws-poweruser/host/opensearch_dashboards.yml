@@ -39,6 +39,8 @@ b89_ops.login.destinationLabel: 'B89'
 b89_ops.integrations.office365.state: 'blocked'
 b89_ops.integrations.office365.missingPermissions: ['ActivityFeed.Read']
 b89_ops.integrations.office365.note: 'La app de Entra no tiene Office 365 Management APIs › ActivityFeed.Read (aplicación) con consentimiento de administrador: el módulo office365 de Wazuh no puede leer las suscripciones.'
+b89_ops.integrations.sharepoint.state: 'disabled'
+b89_ops.integrations.sharepoint.note: 'Collector SharePoint/OneDrive instalado pero apagado; requiere validar vía de auditoría y permisos de postura con HTTP 200 antes de activar.'
 b89_ops.integrations.alertMail.state: 'blocked'
 b89_ops.integrations.alertMail.missingPermissions: ['Mail.Send']
 b89_ops.integrations.alertMail.note: 'Sin Microsoft Graph › Mail.Send (aplicación) el notificador no puede enviar el correo de alertas de nivel ≥ 8.'

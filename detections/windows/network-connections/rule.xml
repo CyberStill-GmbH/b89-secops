@@ -2,7 +2,7 @@
   B89 SOC · detección como código · detections/windows/network-connections (metadata.yaml).
   Telemetría de red de endpoints Windows del grupo opt-in windows-telemetry-extended (gate de privacidad):
   Sysmon 3 (conexión con proceso), Sysmon 22 (DNS), Windows Filtering Platform 5156/5157 y pfirewall.log
-  (decoder b89-winfw). Sin agentes Windows en el entorno: se prueba con fixtures en el manager desechable.
+  (decoder oficial windows-firewall). Sin agentes Windows en el entorno: se prueba con fixtures en el manager desechable.
   Se instala como b89_soc_windows_network_connections.xml (carga después de b89_soc_network_*).
 -->
 <group name="windows,b89_network,b89_windows_net,">
@@ -16,7 +16,7 @@
     <group>b89_wfp,</group>
   </rule>
 
-  <rule id="101881" level="0">
+  <rule id="101881" level="1">
     <if_sid>60104</if_sid>
     <field name="win.system.eventID">^5157$</field>
     <description>B89 Windows: WFP bloqueó $(win.eventdata.sourceAddress) → $(win.eventdata.destAddress):$(win.eventdata.destPort).</description>
@@ -95,36 +95,16 @@
     <group>b89_dns,</group>
   </rule>
 
-  <!-- pfirewall.log (decoder b89-winfw). Regla raíz: el decoder no tiene padre oficial. -->
-  <rule id="101888" level="0">
-    <field name="b89.winfw.path">^SEND$|^RECEIVE$|^FORWARD$</field>
-    <description>B89 Windows: firewall $(action) $(protocol) $(srcip):$(srcport) → $(dstip):$(dstport) ($(b89.winfw.path)).</description>
-    <options>no_full_log</options>
-    <group>firewall,b89_winfw,</group>
-  </rule>
-
-  <rule id="101889" level="8" frequency="20" timeframe="120" ignore="600">
-    <if_matched_sid>101888</if_matched_sid>
-    <action>DROP</action>
-    <same_source_ip />
-    <different_dstport />
-    <description>B89 Windows: firewall descartó 20+ paquetes de $(srcip) a puertos distintos en 2 min (escaneo de puertos).</description>
-    <options>no_full_log</options>
-    <mitre>
-      <id>T1046</id>
-    </mitre>
-    <group>b89_winfw,</group>
-  </rule>
-
-  <rule id="101890" level="10">
-    <if_sid>101888</if_sid>
+  <!-- pfirewall.log: el ruleset oficial ya lo decodifica (windows-firewall) y agrupa los descartes en 4101
+       (sin alerta propia: no_log) y 4151 (varios descartes del mismo origen). B89 solo suma la reputación. -->
+  <rule id="101888" level="10">
+    <if_sid>4101</if_sid>
     <list field="srcip" lookup="address_match_key">etc/lists/b89-ti-blocklist</list>
-    <description>B89 Windows: firewall registró tráfico $(action) desde $(srcip) (listas de reputación) al puerto $(dstport).</description>
-    <options>no_full_log</options>
+    <description>B89 Windows: el firewall descartó tráfico de $(srcip) (listas de reputación) hacia $(dstip):$(dstport).</description>
     <mitre>
       <id>T1595</id>
     </mitre>
-    <group>b89_ti_hit,</group>
+    <group>b89_ti_hit,firewall_drop,</group>
   </rule>
 
 </group>

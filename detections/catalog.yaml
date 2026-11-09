@@ -29,6 +29,7 @@ sources:
   launch:      {name: "Paquete de lanzamiento (proveedores normalizados)", prefix: "B89 <Fuente>:"}
   edge:        {name: "Edge nginx de la consola del SOC", prefix: "B89 Edge:"}
   network:     {name: "Red: reputación de IP y correlación entre fuentes", prefix: "B89 Red:"}
+  sharepoint:  {name: "SharePoint y OneDrive", prefix: "B89 SharePoint:"}
 
 # Rangos reservados. Un ID no se reutiliza: una regla retirada deja su ID documentado en su metadata.
 id_ranges:
@@ -50,6 +51,7 @@ id_ranges:
   - {from: 101750, to: 101769, source: linux,       owner: soc-detection-engineering, note: "Programa: servidores Linux"}
   - {from: 101770, to: 101799, source: reserved,    owner: soc-detection-engineering, note: "Reservado: correlación Windows/AD cuando haya agentes"}
   - {from: 101800, to: 101899, source: network,     owner: network-visibility,        note: "Visibilidad de red (docs/18): conexiones Linux, auditd, SSH, Docker, edge, reputación, correlación y red Windows"}
+  - {from: 101900, to: 101979, source: sharepoint, owner: provider-ingestion,        note: "SharePoint y OneDrive: auditoría, postura y exfiltración"}
 
 # Archivos de reglas B89 existentes (ruta canónica, no se mueven) y su suite de wazuh-logtest.
 rule_files:
@@ -106,7 +108,7 @@ lists:
   - name: b89-ti-blocklist
     path: etc/lists/b89-ti-blocklist
     example: infra/wazuh/network/lists/b89-ti-blocklist.example
-    used_by: [101860, 101862, 101864, 101865, 101866, 101867, 101883, 101884, 101885, 101890]
+    used_by: [101860, 101862, 101864, 101865, 101866, 101867, 101883, 101884, 101885, 101888]
     purpose: "IPs/prefijos de Spamhaus DROP y abuse.ch Feodo Tracker (FireHOL level1 opcional); timer diario"
   - name: b89-ti-tor
     path: etc/lists/b89-ti-tor

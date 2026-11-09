@@ -45,6 +45,7 @@ const WAF_BLOCK_ACTIONS = [
 
 const PROVIDER_GROUP: Readonly<Record<ProviderId, string>> = {
   office365: 'office365',
+  sharepoint: 'b89_sharepoint',
   bitdefender: 'bitdefender',
   snyk: 'snyk',
   cloudflare: 'cloudflare',

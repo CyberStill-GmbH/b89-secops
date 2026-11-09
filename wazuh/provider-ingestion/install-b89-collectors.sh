@@ -50,9 +50,11 @@ mapping = {
     "SNYK_TOKEN": "snyk-token", "SNYK_ORG_ID": "snyk-org-id", "SNYK_API_URL": "snyk-api-url",
     "CLOUDFLARE_API_TOKEN": "cloudflare-api-token",
     "TENANT_ID": "entra-tenant-id", "CLIENT_ID": "entra-client-id", "CLIENT_SECRET": "entra-client-secret",
+    "ID_APP": "entra-client-id", "ID_OBJETO": "entra-app-object-id",
     "ALERT_EMAIL_TO": "alert-email-to", "ALERT_EMAIL_FROM": "alert-email-from",
     "ALERT_INTERVAL_MIN": "alert-interval-min", "ALERT_MAIL_METHOD": "alert-mail-method",
 }
+values, source_keys = {}, {}
 for raw in src.read_text(encoding="utf-8").splitlines():
     line = raw.strip()
     if not line or line.startswith("#") or "=" not in line:
@@ -66,10 +68,22 @@ for raw in src.read_text(encoding="utf-8").splitlines():
     name = mapping.get(key)
     if not name or not value:
         continue
-    target = dest / name
-    if target.exists():
+    # ID_APP es el nombre explícito de la nueva app O365 y gana a CLIENT_ID si ambos aparecen.
+    if name == "entra-client-id" and source_keys.get(name) == "ID_APP":
         continue
-    fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    values[name], source_keys[name] = value, key
+for name, value in values.items():
+    target = dest / name
+    refresh = source_keys[name] in ("ID_APP", "ID_OBJETO") or (
+        source_keys.get("entra-client-id") == "ID_APP"
+        and name in ("entra-tenant-id", "entra-client-secret")
+    )
+    if target.is_symlink():
+        raise RuntimeError(f"credential target is a symlink: {target.name}")
+    if target.exists() and not refresh:
+        continue
+    fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.fchmod(fd, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as stream:
         stream.write(value + "\n")
 PY
@@ -82,6 +96,12 @@ want B89_ENABLE_SNYK snyk-token && SN=true
 want B89_ENABLE_CLOUDFLARE cloudflare-api-token && CF=true
 want B89_ENABLE_ALERT_MAIL entra-tenant-id entra-client-id entra-client-secret alert-email-to alert-email-from && AM=true
 log "habilitados: bitdefender=$BD snyk=$SN cloudflare=$CF alert-mail=$AM"
+SP=false
+if [[ ${B89_ENABLE_SHAREPOINT:-false} == true ]]; then
+  if has entra-tenant-id && has entra-client-id && has entra-client-secret; then SP=true
+  else log 'SharePoint: solicitado pero apagado; faltan credenciales M365'; fi
+fi
+log "sharepoint=$SP (apagado por defecto)"
 
 # ------------------------------------------------------------------ 2. código y configs
 LOGVOL="$(docker inspect "$M" --format '{{range .Mounts}}{{if eq .Destination "/var/ossec/logs"}}{{.Source}}{{end}}{{end}}')"
@@ -89,7 +109,7 @@ LOGVOL="$(docker inspect "$M" --format '{{range .Mounts}}{{if eq .Destination "/
 OUT="${LOGVOL}/b89-collectors"
 install -d -m 0750 "$ROOT" "$ROOT/provider-ingestion" "$ROOT/alert-mail" "$STATE" "$OUT"
 install -d -m 0700 "$ETC"
-for d in common bitdefender snyk cloudflare; do
+for d in common bitdefender snyk cloudflare sharepoint; do
   install -d -m 0750 "$ROOT/provider-ingestion/$d"
   install -m 0640 "${HERE}/$d"/*.py "$ROOT/provider-ingestion/$d/"
 done
@@ -98,7 +118,7 @@ find "$ROOT" -name '*.py' -exec sed -i 's/\r$//' {} +
 read_file() { if [[ -s ${CS}/$1 ]]; then tr -d '\r\n' <"${CS}/$1"; fi; }
 # Crear los JSONL antes de reiniciar el manager: si no existen al arrancar, logcollector los abre
 # más tarde desde el final y se pierde el primer lote.
-for f in bitdefender-gz snyk-issues cloudflare-security; do
+for f in bitdefender-gz snyk-issues cloudflare-security sharepoint-audit sharepoint-posture; do
   [[ -e $OUT/$f.jsonl ]] || install -m 0640 /dev/null "$OUT/$f.jsonl"
 done
 
@@ -122,6 +142,11 @@ if org:
 write("snyk.json", snyk)
 write("cloudflare.json", {"token_file": f"{cs}/cloudflare-api-token", "state_file": f"{state}/cloudflare.json",
     "output_file": f"{out}/cloudflare-security.jsonl", "initial_lookback_hours": 1, "max_lookback_hours": 24})
+write("sharepoint-audit.json", {"credentials_dir": cs, "mode": "auto",
+    "state_file": f"{state}/sharepoint-audit.json", "output_file": f"{out}/sharepoint-audit.jsonl",
+    "initial_lookback_hours": 24, "lag_minutes": 30, "overlap_minutes": 120})
+write("sharepoint-posture.json", {"credentials_dir": cs, "state_file": f"{state}/sharepoint-posture.json",
+    "output_file": f"{out}/sharepoint-posture.jsonl", "snapshot_hours": 24})
 write("alert-mail.json", {"tenant_id_file": f"{cs}/entra-tenant-id", "client_id_file": f"{cs}/entra-client-id",
     "client_secret_file": f"{cs}/entra-client-secret", "from": sender,
     "to": [a.strip() for a in to.replace(";", ",").split(",") if a.strip()],
@@ -136,10 +161,11 @@ cp "${HERE}"/rules/*.xml "$stage/"
 sed -i 's/\r$//' "$stage"/*.xml
 docker cp "$M:/var/ossec/etc/ossec.conf" "$stage/ossec.conf"
 cp "$stage/ossec.conf" "$stage/ossec.conf.orig"
-python3 - "$stage/ossec.conf" "$BEGIN" "$END" "$BD" "$SN" "$CF" <<'PY'
+python3 - "$stage/ossec.conf" "$BEGIN" "$END" "$BD" "$SN" "$CF" "$SP" <<'PY'
 import re, sys
-path, begin, end, bd, sn, cf = sys.argv[1:7]
-files = [("bitdefender-gz", "bitdefender", bd), ("snyk-issues", "snyk", sn), ("cloudflare-security", "cloudflare", cf)]
+path, begin, end, bd, sn, cf, sp = sys.argv[1:8]
+files = [("bitdefender-gz", "bitdefender", bd), ("snyk-issues", "snyk", sn), ("cloudflare-security", "cloudflare", cf),
+         ("sharepoint-audit", "sharepoint", sp), ("sharepoint-posture", "sharepoint", sp)]
 blocks = [
     "<ossec_config>\n  <localfile>\n"
     f"    <location>/var/ossec/logs/b89-collectors/{name}.jsonl</location>\n"
@@ -222,9 +248,26 @@ PI="$ROOT/provider-ingestion"
 unit b89-collector-bitdefender 'B89 Bitdefender GravityZone collector' "/usr/bin/python3 -I $PI/bitdefender/gravityzone.py --config $ETC/bitdefender.json" 10min
 unit b89-collector-snyk 'B89 Snyk issues collector' "/usr/bin/python3 -I $PI/snyk/issues.py --config $ETC/snyk.json" 15min
 unit b89-collector-cloudflare 'B89 Cloudflare security collector' "/usr/bin/python3 -I $PI/cloudflare/security.py --config $ETC/cloudflare.json" 5min
+unit b89-collector-sharepoint-audit 'B89 SharePoint audit collector' "/usr/bin/python3 -I $PI/sharepoint/sharepoint.py audit --config $ETC/sharepoint-audit.json" 5min
+unit b89-collector-sharepoint-posture 'B89 SharePoint posture collector' "/usr/bin/python3 -I $PI/sharepoint/sharepoint.py posture --config $ETC/sharepoint-posture.json" 60min
 INTERVAL="$(read_file alert-interval-min)"; [[ $INTERVAL =~ ^[0-9]{1,3}$ ]] || INTERVAL=5
 unit b89-alert-mail 'B89 alert mail (Graph sendMail)' "/usr/bin/python3 -I $ROOT/alert-mail/b89_alert_mail.py --config $ETC/alert-mail.json" "${INTERVAL}min"
 systemctl daemon-reload
+
+SP_OK=false
+if [[ $SP == true ]]; then
+  CHECK_JSON="$STATE/sharepoint-access.json"
+  if /usr/bin/python3 -I "$ROOT/provider-ingestion/sharepoint/check_sharepoint_access.py" --json >"$CHECK_JSON" && \
+     /usr/bin/python3 - "$CHECK_JSON" <<'PY'
+import json, sys
+report = json.load(open(sys.argv[1], encoding="utf-8"))
+denied = any(item.get("status") == 403 for item in report.get("probes", {}).values())
+if report.get("audit_path") == "blocked" or denied:
+    print("SharePoint bloqueado: auditoría no disponible o diagnóstico HTTP 403")
+    raise SystemExit(1)
+PY
+  then SP_OK=true; else SP=false; fi
+fi
 
 for p in bitdefender snyk cloudflare; do
   case $p in bitdefender) on=$BD ;; snyk) on=$SN ;; cloudflare) on=$CF ;; esac
@@ -238,6 +281,17 @@ for p in bitdefender snyk cloudflare; do
     systemctl disable --now "b89-collector-$p.timer" >/dev/null 2>&1 || true
   fi
 done
+
+if [[ $SP_OK == true ]]; then
+  for p in sharepoint-audit sharepoint-posture; do
+    systemctl start "b89-collector-$p.service" || true
+    systemctl enable --now "b89-collector-$p.timer" >/dev/null
+  done
+  log 'SharePoint: vía de auditoría disponible y checker sin HTTP 403; timers activados'
+else
+  systemctl disable --now b89-collector-sharepoint-audit.timer b89-collector-sharepoint-posture.timer >/dev/null 2>&1 || true
+  log 'SharePoint: timers instalados pero apagados; requiere B89_ENABLE_SHAREPOINT=true y permisos comprobados'
+fi
 
 if [[ $AM == true ]]; then
   if /usr/bin/python3 -I "$ROOT/alert-mail/b89_alert_mail.py" --config "$ETC/alert-mail.json" --check; then

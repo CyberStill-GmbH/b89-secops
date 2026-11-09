@@ -36,6 +36,7 @@ automatizadas), **sin verificar** (existe en el repositorio, no probado contra e
 | 16 | [Políticas de seguridad](16-politicas.md) | Políticas como código: agentes, manager, reglas, retención y roles |
 | 17 | [Ingeniería de detección](17-ingenieria-de-deteccion.md) | Cómo nace, se prueba, se despliega y se mide una detección; cobertura MITRE, runbooks, Blue Team, playbooks, backlog y vistas de análisis |
 | 18 | [Integraciones](18-integraciones.md) | Por fuente: qué recoge, intervalo, reglas, permisos, bloqueos y cómo habilitarla |
+| 18 | [Visibilidad de red y capacidades de Wazuh](18-visibilidad-de-red-y-capacidades-wazuh.md) | Conexiones y puertos del host, auditd, SSH, Docker, bitácora del edge, reputación de IP gratuita, correlación Cloudflare/edge/SSH y qué aporta cada módulo de Wazuh |
 | 19 | [Brechas y roadmap](19-brechas-y-roadmap.md) | Qué le falta al SOC y quién lo está construyendo |
 | 20 | [Guía de usuario](20-guia-de-usuario.md) | Entrar, páginas de la consola, Bunny, B89 Respond y módulos de Wazuh |
 | 21 | [Postura de seguridad](21-postura-de-seguridad.md) | Controles vigentes, límites sin IAM, servicios apagados y riesgos aceptados |

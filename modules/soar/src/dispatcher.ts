@@ -159,6 +159,16 @@ export async function dispatchMessage(
     aggregateId: message.aggregateId,
     title: String(message.payload.title ?? message.messageType),
     severity: String(message.payload.severity ?? message.payload.priority ?? 'critical'),
+    ...(message.payload.status == null ? {} : { status: String(message.payload.status) }),
+    score: typeof message.payload.score === 'number' ? message.payload.score : null,
+    ...(message.payload.signal == null ? {} : { signal: String(message.payload.signal) }),
+    ...(message.payload.ruleId == null ? {} : { ruleId: String(message.payload.ruleId) }),
+    ...(message.payload.reasonCodes == null
+      ? {}
+      : { reasonCodes: String(message.payload.reasonCodes) }),
+    ...(typeof message.payload.relatedAlertCount === 'number'
+      ? { relatedAlertCount: message.payload.relatedAlertCount }
+      : {}),
     occurredAt: message.availableAt,
     consoleBaseUrl: dependencies.consoleBaseUrl,
     clientRequestId: sending.clientRequestId,

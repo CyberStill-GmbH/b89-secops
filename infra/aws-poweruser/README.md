@@ -55,8 +55,19 @@ Credenciales generadas (en el host, solo root):
 - B89 Respond: `SHUFFLE_ADMIN_USERNAME` / `SHUFFLE_ADMIN_PASSWORD` de `/opt/b89/secrets/compose.env`.
 - Break-glass del indexer (solo por SSH, no por el dashboard): `admin` / `INDEXER_ADMIN_PASSWORD`.
 - Contraseña de enrolamiento de agentes: `/opt/b89/secrets/wazuh-authd.pass`.
-- Secretos de servicios (Anthropic, Entra, Bitdefender, Snyk, correo, Cloudflare):
+- Secretos de servicios (Anthropic, Entra, Bitdefender, Snyk, correo, Cloudflare y Teams):
   `/opt/b89/secrets/services.env`, copiado por SSH desde el `.env` local, nunca versionado.
+
+### Alertas de revisión en Teams
+
+El transporte del API publica alertas P1/P2 creadas o escaladas y la apertura de incidentes
+críticos. Para activarlo, guarda la URL firmada del Teams Workflow en
+`/opt/b89/secrets/services.env` como `B89_TEAMS_WORKFLOW_URL` (archivo root-only, modo `0600`) y
+vuelve a ejecutar `scripts/deploy-host.sh` por SSH para actualizar el entorno privado del API y
+recrear el servicio. La URL no debe aparecer en Terraform, argumentos, historial de shell, logs ni
+Git. Sin ese secreto el canal queda desactivado. Las tarjetas incluyen título, prioridad, estado,
+puntaje, señal, regla, motivos de prioridad, alertas relacionadas, fecha y enlace directo a B89;
+no incluyen el evento crudo ni datos de identidades o IP.
 
 ## Ingesta de alertas de Wazuh (sin Entra)
 

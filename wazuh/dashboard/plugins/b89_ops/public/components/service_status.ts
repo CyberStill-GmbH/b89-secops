@@ -25,6 +25,7 @@ export interface ServiceStatus {
 /** Horas sin eventos a partir de las cuales un proveedor se considera callado. */
 export const STALE_AFTER_HOURS: Readonly<Record<ProviderId, number>> = {
   office365: 2,
+  sharepoint: 24,
   bitdefender: 24,
   // Snyk emite un evento por cambio de issue: días sin cambios son normales.
   snyk: 24 * 7,

@@ -5,6 +5,8 @@
   srcip es la IP real del cliente (edge confía en X-Forwarded-For solo desde la VPC del ALB).
   Los patrones cubren la forma literal y la codificada en URL (%27, %3C, %2e%2e...). Orden de hermanos =
   prioridad: ataque > sondeo > estado HTTP. Rango 101830-101841.
+  101838/101839 son nivel 1 (no 0): analysisd evalúa primero las hijas de nivel 0 y entonces el 4xx/5xx
+  taparía a las reglas de ataque; además las reglas de frecuencia necesitan historial del padre.
   Se instala como b89_soc_edge_http_attacks.xml (carga antes que soc_authentication, que depende de 101830).
 -->
 <group name="web,accesslog,b89_edge,b89_network,">
@@ -94,7 +96,7 @@
     <group>b89_edge_campaign,attack,</group>
   </rule>
 
-  <rule id="101838" level="0">
+  <rule id="101838" level="1">
     <if_sid>101830</if_sid>
     <field name="http_status">^4\d\d$</field>
     <description>B89 Edge: respuesta $(http_status) a $(srcip) para $(url).</description>
@@ -102,7 +104,7 @@
     <group>b89_edge_4xx,</group>
   </rule>
 
-  <rule id="101839" level="0">
+  <rule id="101839" level="1">
     <if_sid>101830</if_sid>
     <field name="http_status">^5\d\d$</field>
     <description>B89 Edge: error $(http_status) del backend para $(url).</description>

@@ -8,7 +8,8 @@
 <group name="docker,b89_linux,">
 
   <rule id="101850" level="10">
-    <if_sid>87908</if_sid>
+    <if_sid>87907, 87908</if_sid>
+    <field name="docker.Action" type="pcre2">^exec_start: (/bin/|/usr/bin/)?(bash|sh|dash|zsh|ash) $</field>
     <field name="docker.Actor.Attributes.name" type="pcre2">(?i)(wazuh\.manager|wazuh\.indexer|wazuh\.dashboard|postgres|b89-api|b89-edge|shuffle-backend|shuffle-opensearch|respond-sso)</field>
     <description>B89 Linux: shell interactiva abierta dentro del contenedor crítico del SOC $(docker.Actor.Attributes.name).</description>
     <options>no_full_log</options>

@@ -52,6 +52,9 @@ export class TeamsWorkflowTransport implements NotificationTransport {
   public async send(message: TeamsMessage, clientRequestId: string): Promise<DeliveryOutcome> {
     const controller = new AbortController();
     const deadline = setTimeout(() => controller.abort(), this.timeoutMs);
+    // B89 metadata stays local to the outbox. Teams webhook schema accepts only the message
+    // envelope and card attachments; sending our extension caused Power Automate to reject it.
+    const { b89: _metadata, ...webhookPayload } = message;
     try {
       const response = await this.fetchImplementation(this.workflowUrl, {
         method: 'POST',
@@ -61,7 +64,7 @@ export class TeamsWorkflowTransport implements NotificationTransport {
           // intento ambiguo en lugar de publicar dos tarjetas iguales.
           'client-request-id': clientRequestId,
         },
-        body: JSON.stringify(message),
+        body: JSON.stringify(webhookPayload),
         signal: controller.signal,
       });
       if (response.ok) return { delivered: true, httpStatus: response.status };
