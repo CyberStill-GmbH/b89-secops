@@ -33,7 +33,7 @@ type Json = Record<string, unknown>;
 export const RAW_LIMIT_BYTES = 64 * 1024;
 const RELATED_SIZE = 100;
 /** Ventana para encontrar el documento de origen de una alerta B89 (regla + hora). */
-const SOURCE_MATCH_MS = 5 * 60_000;
+const SOURCE_MATCH_MS = 5 * 60000;
 
 function obj(value: unknown): Json {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Json) : {};

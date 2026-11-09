@@ -2,7 +2,7 @@
 # B89 SOC · visibilidad de conexiones de red para el command monitoring de Wazuh
 # (docs/18-visibilidad-de-red-y-capacidades-wazuh.md).
 #
-# Se distribuye con el grupo linux-servers (etc/shared/linux-servers/b89-netconn.sh) y lo ejecuta
+# Fuente: wazuh/manager/policy/shared/linux-servers/b89-netconn.sh; se distribuye con el grupo linux-servers y lo ejecuta
 # wazuh-logcollector como root desde el agent.conf del grupo:
 #
 #   sh etc/shared/b89-netconn.sh listen   → foto ordenada de los puertos en escucha (TCP/UDP) con el

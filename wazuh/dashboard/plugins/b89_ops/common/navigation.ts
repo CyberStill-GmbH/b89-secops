@@ -39,7 +39,7 @@ export const NAV_CATEGORIES = {
   },
   response: { id: 'b89-nav-response', label: 'Respuesta', order: -940, icon: 'b89-respond.svg' },
   admin: { id: 'b89-nav-admin', label: 'Administración', order: -930, icon: 'b89-access.svg' },
-} as const satisfies Record<string, NavCategory>;
+} as const;
 
 export type NavCategoryKey = keyof typeof NAV_CATEGORIES;
 

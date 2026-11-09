@@ -18,6 +18,7 @@ import { AuthController } from './auth.controller.js';
 import { AssistantController } from '../assistant/assistant.controller.js';
 import { AssistantMcpController } from '../assistant/mcp.controller.js';
 import { CorrelatorController } from './correlator.controller.js';
+import { RiskController } from './risk.controller.js';
 import { LocalAuthController } from './local-auth.controller.js';
 import { OperationsController } from './operations.controller.js';
 import { SocController } from './soc.controller.js';
@@ -45,6 +46,7 @@ export class SocModule {
         AssistantController,
         AssistantMcpController,
         CorrelatorController,
+        RiskController,
         // Las rutas del emisor local solo se registran cuando ese emisor existe.
         ...(runtime.isLocalIdentity ? [LocalAuthController] : []),
       ],

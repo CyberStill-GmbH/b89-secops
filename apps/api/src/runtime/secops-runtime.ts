@@ -189,6 +189,11 @@ export interface RuntimeOptions {
   readonly clientSecret?: string;
   /** Service credential for the private deterministic correlator; absent disables its API. */
   readonly correlatorServiceToken?: string;
+  /**
+   * Read link API → correlator (`/v1/*` on the private Docker network) for `/api/risk/*`.
+   * Absent: the risk endpoints answer DEPENDENCY_DEGRADED.
+   */
+  readonly correlatorRead?: { readonly baseUrl: string; readonly token: string };
   readonly teamsWorkflowUrl?: string;
   readonly transport?: NotificationTransport;
   readonly clock?: () => Date;
@@ -306,6 +311,7 @@ export class SecOpsRuntime {
   public readonly notifications: AttemptStore;
   public readonly dispatcher: NotificationDispatcher;
   public readonly correlatorServiceToken: string | undefined;
+  public readonly correlatorRead: { readonly baseUrl: string; readonly token: string } | undefined;
   /** Bandeja de la consola: último eslabón del respaldo, siempre presente. */
   public readonly consoleFallback = new ConsoleFallbackChannel();
 
@@ -343,6 +349,7 @@ export class SecOpsRuntime {
 
   public constructor(private readonly options: RuntimeOptions) {
     this.correlatorServiceToken = options.correlatorServiceToken;
+    this.correlatorRead = options.correlatorRead;
     this.clock = options.clock ?? (() => new Date());
     this.csrfKey = options.csrfKey ?? randomBytes(32);
     this.soc = options.soc ?? new InMemorySoc();

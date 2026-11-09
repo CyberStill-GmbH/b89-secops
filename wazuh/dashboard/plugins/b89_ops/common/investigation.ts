@@ -129,9 +129,9 @@ export interface EventResponse {
 export const RELATED_WINDOWS = ['1h', '24h', '7d'] as const;
 export type RelatedWindow = (typeof RELATED_WINDOWS)[number];
 export const RELATED_WINDOW_MS: Readonly<Record<RelatedWindow, number>> = {
-  '1h': 3_600_000,
-  '24h': 86_400_000,
-  '7d': 7 * 86_400_000,
+  '1h': 3600000,
+  '24h': 86400000,
+  '7d': 7 * 86400000,
 };
 export const RELATED_WINDOW_LABEL: Readonly<Record<RelatedWindow, string>> = {
   '1h': '±1 h',

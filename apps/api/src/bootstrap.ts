@@ -62,6 +62,7 @@ import {
   type RoleAdministration,
 } from '@b89/access';
 import { clearRemovedMembers } from './runtime/role-administration.js';
+import { correlatorUrl } from './runtime/correlator-link.js';
 import {
   measureSourceActivity,
   recordSourceHealth,
@@ -369,6 +370,14 @@ export async function buildApi(
     ...(clientSecret !== undefined ? { clientSecret } : {}),
     ...(environment['B89_CORRELATOR_SERVICE_TOKEN']
       ? { correlatorServiceToken: environment['B89_CORRELATOR_SERVICE_TOKEN'] }
+      : {}),
+    ...(environment['B89_CORRELATOR_URL'] && environment['B89_CORRELATOR_READ_TOKEN']
+      ? {
+          correlatorRead: {
+            baseUrl: correlatorUrl(environment['B89_CORRELATOR_URL']),
+            token: environment['B89_CORRELATOR_READ_TOKEN'],
+          },
+        }
       : {}),
     roleGrants:
       roleAdministration && rosterGroupId && directoryIntervalMs !== undefined

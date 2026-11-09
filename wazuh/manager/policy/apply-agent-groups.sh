@@ -3,7 +3,10 @@
 #
 #   1. Valida cada agent.conf con verify-agent-conf del propio manager antes de instalarlo.
 #   2. Crea el grupo si falta (agent_groups -a) e instala el agent.conf solo si cambió.
-#   3. No asigna agentes: la asignación es del enrolamiento (WAZUH_AGENT_GROUP) o del operador.
+#   3. Instala además los demás archivos de shared/<grupo>/ (scripts y reglas que el grupo distribuye,
+#      p. ej. b89-netconn.sh y b89-audit-network.rules de linux-servers; docs/18). El manager los empaqueta
+#      en merged.mg y el agente los deja en /var/ossec/etc/shared/.
+#   4. No asigna agentes: la asignación es del enrolamiento (WAZUH_AGENT_GROUP) o del operador.
 #
 # El grupo windows-telemetry-extended se crea vacío: asignarlo exige aprobación de privacidad.
 set -euo pipefail
@@ -35,5 +38,21 @@ for dir in "$here"/shared/*/; do
     rm -f "$new"' _ "$group")"
   [[ "$result" == updated ]] && changed=$((changed + 1))
   b89_log "grupo $group: $result"
+
+  # Archivos adicionales del grupo (todo lo que no es agent.conf), con LF y sin permisos de ejecución.
+  for extra in "$dir"*; do
+    name="$(basename "$extra")"
+    [[ -f "$extra" && "$name" != agent.conf ]] || continue
+    tr -d '' <"$extra" >"$B89_WORK/$group.$name"
+    docker cp "$(b89_hp "$B89_WORK/$group.$name")" "$M:/tmp/b89-$group.$name" >/dev/null
+    # shellcheck disable=SC2016
+    r="$(b89_mexec bash -euo pipefail -c '
+      g="$1"; n="$2"; new=/tmp/b89-$g.$n; dst=/var/ossec/etc/shared/$g/$n
+      if [ -f "$dst" ] && [ "$(sha256sum <"$new")" = "$(sha256sum <"$dst")" ]; then echo unchanged
+      else install -o wazuh -g wazuh -m 0660 "$new" "$dst"; echo updated; fi
+      rm -f "$new"' _ "$group" "$name")"
+    [[ "$r" == updated ]] && changed=$((changed + 1))
+    b89_log "grupo $group/$name: $r"
+  done
 done
 b89_log "agent.conf actualizados: $changed (los agentes los reciben en su próximo keepalive; sin reinicio del manager)"
