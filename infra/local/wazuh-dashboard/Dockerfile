@@ -33,7 +33,13 @@ RUN set -eu; \
       grep -q 'fill:#FFFFFF' "$f" && cp -f /tmp/b89/assets/svg/b89_wordmark_on_dark.svg "$f"; \
       rm -f "$f.br" "$f.gz"; \
     done; \
-    "$R/node/bin/node" /tmp/b89/patch-splash.cjs "$R/src/core/server/rendering/views";     chown -R wazuh-dashboard:wazuh-dashboard "$R/src/core/server/core_app/assets" "$R/plugins/wazuh/public/assets/images" "$R/plugins/securityDashboards/target/public"; \
+    "$R/node/bin/node" /tmp/b89/patch-splash.cjs "$R/src/core/server/rendering/views"; \
+    # Informes PDF de la app de Wazuh: color primario B89 (REPORTS_PRIMARY_COLOR no es configurable;
+    # cabecera, pie y logo sí: customization.* en wazuh.yml).
+    for f in "$R/plugins/wazuh/common/constants.js" "$R/plugins/wazuhCore/common/constants.js"; do \
+      if [ -f "$f" ]; then sed -i 's/#256BD1/#FF5841/g' "$f"; fi; \
+    done; \
+    chown -R wazuh-dashboard:wazuh-dashboard "$R/src/core/server/core_app/assets" "$R/plugins/wazuh/public/assets/images" "$R/plugins/securityDashboards/target/public"; \
     rm -rf /tmp/b89/assets;     chown -R wazuh-dashboard:wazuh-dashboard /tmp/b89
 USER wazuh-dashboard
 # Los plugins se instalan como el usuario del servicio (la imagen no trae `su`).

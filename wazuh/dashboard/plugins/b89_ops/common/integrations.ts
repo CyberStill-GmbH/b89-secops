@@ -256,6 +256,11 @@ export const INTEGRATIONS: readonly IntegrationSpec[] = [
     ],
     links: [{ label: 'Notificaciones', href: '/app/b89-notifications' }],
   },
+  // HUECO para una fuente nueva (p. ej. SharePoint Online, en preparación): añadir aquí su
+  // `IntegrationSpec` (tarjeta del «Resumen del SOC» y ficha de «Integraciones»), su id en
+  // `ServiceId`, su clave en `server/config.ts › integrations` y, si es un proveedor con logotipo
+  // propio, su marca en `common/vendors.ts` + `assets/svg/vendors/` (con NOTICE). Las tarjetas y
+  // la ficha se pintan solas a partir de este catálogo.
 ];
 
 export function integrationSpec(id: ServiceId): IntegrationSpec {

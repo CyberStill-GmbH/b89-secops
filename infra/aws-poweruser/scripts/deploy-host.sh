@@ -99,6 +99,11 @@ for host in data["hosts"]:
 # los módulos de la app (Office 365, vulnerabilidades, SCA, FIM...) vacíos: se vuelve al default.
 for key in ("pattern", "alerts.sample.prefix", "cron.prefix"):
     data.pop(key, None)
+# Informes PDF de la app de Wazuh con identidad B89 (claves customization.* de 4.14; cabecera
+# 3 líneas × 40, pie 2 × 50). El logo es el de assets/wazuh-app/logo_reports.png (targets.tsv).
+data["customization.enabled"] = True
+data["customization.reports.header"] = "B89 SOC · Operaciones de Seguridad\nsoc@b89.io\nhttps://dev.security.b89.io"
+data["customization.reports.footer"] = "B89 SOC · Informe confidencial\nGenerado por B89 SecOps (motor Wazuh)"
 yaml.safe_dump(data, open(path, "w"), sort_keys=False)
 PY
 chown 1000:1000 config/wazuh_dashboard/wazuh.yml; chmod 0600 config/wazuh_dashboard/wazuh.yml

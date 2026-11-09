@@ -29,7 +29,7 @@ AWS = {
     "query": "rule.groups:aws and data.b89.vendor:aws",
 }
 ABOUT = (
-    "### AWS (cuenta 061098277310)\n\n"
+    "### ![AWS](/ui/b89/vendors/aws.svg) AWS (cuenta 061098277310)\n\n"
     "CloudTrail (trail de organización) → EventBridge (reglas por categoría en us-east-1 y centinelas en las "
     "otras 16 regiones habilitadas) → SNS → `https://dev.security.b89.io/hooks/aws-sns` → receptor "
     "`aws-events` (firma SNS v2 verificada, TopicArn esperado, dedupe) → Wazuh. Sin IAM: el módulo AWS nativo "

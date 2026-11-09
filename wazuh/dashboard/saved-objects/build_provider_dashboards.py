@@ -308,7 +308,7 @@ def build() -> list[dict]:
         note = markdown(
             f"{prefix}-about",
             f"{name} · integración",
-            f"### {name[6:]}\n\n{provider['about']}\n\n"
+            f"### ![{LOGO_ALT[pid]}]({LOGO_PATH}/{LOGOS[pid]}) {name[6:]}\n\n{provider['about']}\n\n"
             f"**Reglas Wazuh:** {provider['rules']} · **Filtro:** `{query}` · "
             f"Estado y permisos en **B89 SOC → Integraciones**.",
         )
