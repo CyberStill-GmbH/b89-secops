@@ -14,6 +14,7 @@ import {
   ProviderId,
   VENDOR_ASSETS_PATH,
   VENDORS,
+  vendorOfProvider,
 } from '../common';
 
 /** Valores de `AppNavLinkStatus` de OSD 2.19 (enum del core; aquí solo se usan los números). */
@@ -80,7 +81,7 @@ export function registerNavigation(core: CoreSetup): void {
       title: app.title,
       order: app.order,
       euiIconType: core.http.basePath.prepend(
-        `${VENDOR_ASSETS_PATH}/${VENDORS[app.provider].file}`,
+        `${VENDOR_ASSETS_PATH}/${VENDORS[vendorOfProvider(app.provider)].file}`,
       ),
       mount: async (params: AppMountParameters) => {
         const [coreStart] = await core.getStartServices();

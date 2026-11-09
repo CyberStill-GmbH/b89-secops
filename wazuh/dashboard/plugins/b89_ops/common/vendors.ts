@@ -81,6 +81,16 @@ export function isVendorId(value: unknown): value is VendorId {
   return typeof value === 'string' && (VENDOR_IDS as readonly string[]).includes(value);
 }
 
+/**
+ * Logotipo para un proveedor del catálogo. SharePoint/OneDrive todavía no tiene marca propia en
+ * `assets/svg/vendors/` (familia Microsoft 365): usa la de Microsoft hasta añadirla.
+ */
+export function vendorOfProvider(provider: string | null | undefined): VendorId {
+  if (isVendorId(provider)) return provider;
+  if (provider === 'sharepoint') return 'office365';
+  return 'wazuh';
+}
+
 export function vendorLogoUrl(basePath: string, id: VendorId, onDark = false): string {
   const mark = VENDORS[id];
   return `${basePath}${VENDOR_ASSETS_PATH}/${onDark ? mark.fileOnDark : mark.file}`;

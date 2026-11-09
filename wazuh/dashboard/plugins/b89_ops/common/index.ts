@@ -144,3 +144,4 @@ export * from './vendors';
 export * from './investigation';
 export * from './bunny_bridge';
 export * from './navigation';
+export * from './platform_health';

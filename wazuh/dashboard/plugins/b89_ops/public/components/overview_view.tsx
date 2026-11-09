@@ -30,6 +30,7 @@ import {
 } from './overview_parts';
 import { DataZone, ErrorCallout, PriorityMark, Timestamp, useAsync } from './primitives';
 import { VendorLogo } from './vendor_logo';
+import { vendorOfProvider } from '../../common';
 import { ServiceCard, serviceModels } from './service_cards';
 
 const REFRESH_MS = 60_000;
@@ -242,7 +243,7 @@ function TopEventItem({ event, basePath }: { event: TopEvent; basePath: string }
         <span className="b89Feed__body">
           <DataZone className="b89Feed__title">{event.description}</DataZone>
           <span className="b89Feed__meta">
-            <VendorLogo id={event.provider ?? 'wazuh'} basePath={basePath} size="s" decorative />{' '}
+            <VendorLogo id={vendorOfProvider(event.provider)} basePath={basePath} size="s" decorative />{' '}
             {source} · regla {event.ruleId}
           </span>
         </span>

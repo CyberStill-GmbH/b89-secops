@@ -17,6 +17,7 @@ import { IncidentsView } from './components/incidents_view';
 import { IntegrationsView } from './components/integrations_view';
 import { InvestigationView } from './components/investigation_view';
 import { OverviewView } from './components/overview_view';
+import { PlatformHealthSection } from './components/platform_health_view';
 import { PoliciesView } from './components/policies_view';
 import { NotificationsView } from './components/notifications_view';
 import { OperationsView } from './components/operations_view';
@@ -93,6 +94,7 @@ function Console({
       return (
         <>
           <SourcesView />
+          <PlatformHealthSection basePath={basePath} />
           <OperationsView embedded />
         </>
       );

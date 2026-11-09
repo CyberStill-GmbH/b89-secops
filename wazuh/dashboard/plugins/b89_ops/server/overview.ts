@@ -18,6 +18,7 @@ import {
   TopEvent,
   TrendBucket,
 } from '../common/integrations';
+import { parsePlatformHealth, platformHealthQuery } from '../common/platform_health';
 
 /**
  * `GET /api/b89_ops/overview`: cifras del «Resumen del SOC» calculadas en el Indexer.
@@ -386,10 +387,11 @@ export async function buildOverview(
   integrations: IntegrationsConfig,
   now: Date = new Date(),
 ): Promise<OverviewResponse> {
-  const [alerts, top, agents] = await Promise.all([
+  const [alerts, top, agents, platform] = await Promise.all([
     settle(client.search({ index: ALERTS_INDEX, body: alertsAggregationQuery() })),
     settle(client.search({ index: ALERTS_INDEX, body: topEventsQuery() })),
     settle(client.search({ index: MONITORING_INDEX, body: agentsQuery() })),
+    settle(client.search({ index: ALERTS_INDEX, body: platformHealthQuery() })),
   ]);
   const parsed = alerts.status === 'fulfilled' ? parseAlertsAggregation(alerts.value.body) : null;
   return {
@@ -401,5 +403,13 @@ export async function buildOverview(
     topEvents: top.status === 'fulfilled' ? parseTopEvents(top.value.body) : [],
     agents: agents.status === 'fulfilled' ? parseAgents(agents.value.body) : null,
     integrations,
+    platformHealth:
+      platform.status === 'fulfilled'
+        ? parsePlatformHealth(platform.value.body)
+        : {
+            access: readabilityOf(platform.reason) === 'forbidden' ? 'forbidden' : 'error',
+            sources: {},
+            problems: [],
+          },
   };
 }

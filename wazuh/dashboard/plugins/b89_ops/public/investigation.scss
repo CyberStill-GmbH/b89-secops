@@ -481,3 +481,52 @@ $b89InvGradient: linear-gradient(110deg, #ff5899 0%, #ff5841 55%, #ffc136 100%);
     padding: $ouiSizeM;
   }
 }
+
+// Salud de la plataforma (monitor B89, docs/20).
+.b89PlatformSources {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: $ouiSizeS;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.b89PlatformSource {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px $ouiSizeS;
+  padding: $ouiSizeS $ouiSizeM;
+  border: 1px solid $ouiBorderColor;
+  border-left-width: 3px;
+  border-radius: 10px;
+
+  &[data-state='failing'] {
+    border-left-color: #ff5f57;
+  }
+
+  &[data-state='silent'] {
+    border-left-color: #d8c35c;
+  }
+
+  &[data-state='ok'] {
+    border-left-color: #5fb98a;
+  }
+}
+
+.b89PlatformSource__name {
+  font-weight: 700;
+}
+
+.b89PlatformSource__time {
+  grid-column: 1 / -1;
+  color: $ouiTextSubduedColor;
+  font-size: $ouiFontSizeXS;
+}
+
+.b89PlatformSource__summary {
+  grid-column: 1 / -1;
+  color: $ouiTextSubduedColor;
+  font-size: $ouiFontSizeXS;
+  overflow-wrap: anywhere;
+}

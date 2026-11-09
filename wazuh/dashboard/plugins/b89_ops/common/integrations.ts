@@ -11,6 +11,8 @@
  * en `opensearch_dashboards.yml`.
  */
 
+import type { PlatformHealth } from './platform_health';
+
 export const OVERVIEW_ROUTE = '/api/b89_ops/overview';
 
 /** Proveedores medidos en `wazuh-alerts-*` por su grupo de regla. */
@@ -458,6 +460,8 @@ export interface OverviewResponse {
   readonly topEvents: readonly TopEvent[];
   readonly agents: AgentsSummary | null;
   readonly integrations: IntegrationsConfig;
+  /** Monitor de plataforma (docs/20); ausente en respuestas de versiones anteriores. */
+  readonly platformHealth?: PlatformHealth | null;
 }
 
 export function emptyLevels(): Record<LevelBand, number> {

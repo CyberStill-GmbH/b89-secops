@@ -28,7 +28,8 @@ export function VendorLogo({
   size?: 's' | 'm' | 'l';
   decorative?: boolean;
 }) {
-  const mark = VENDORS[id];
+  // Un id fuera del catálogo (fuente nueva sin marca) cae en el motor del SIEM, nunca rompe la vista.
+  const mark = VENDORS[id] ?? VENDORS.wazuh;
   return (
     <span
       className={`b89Vendor b89Vendor--${size}`}
@@ -36,7 +37,7 @@ export function VendorLogo({
       data-vendor={id}
     >
       <img
-        src={vendorLogoUrl(basePath, id)}
+        src={vendorLogoUrl(basePath, mark.id)}
         alt={decorative ? '' : mark.name}
         loading="lazy"
         draggable={false}
@@ -56,9 +57,9 @@ export function SourceBadge({
   label?: string;
 }) {
   return (
-    <span className="b89SourceBadge" title={`Origen: ${label ?? VENDORS[id].name}`}>
+    <span className="b89SourceBadge" title={`Origen: ${label ?? (VENDORS[id] ?? VENDORS.wazuh).name}`}>
       <VendorLogo id={id} basePath={basePath} size="s" decorative />
-      <span className="b89SourceBadge__label">{label ?? VENDORS[id].name}</span>
+      <span className="b89SourceBadge__label">{label ?? (VENDORS[id] ?? VENDORS.wazuh).name}</span>
     </span>
   );
 }

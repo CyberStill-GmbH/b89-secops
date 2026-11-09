@@ -4,6 +4,9 @@
 
 import {
   HealthTone,
+  PLATFORM_SOURCE_LABEL,
+  PlatformSourceHealth,
+  serviceSourceState,
   IntegrationConfig,
   OverviewResponse,
   ProviderId,
@@ -32,6 +35,34 @@ export const STALE_AFTER_HOURS: Readonly<Record<ProviderId, number>> = {
   cloudflare: 24,
   aws: 24,
 };
+
+/**
+ * Estado que reporta el monitor de plataforma (docs/20) para un servicio. Solo cuenta si es
+ * reciente (≤ 2 h); «ok» o desconocido no cambian lo que dicen los datos.
+ */
+export function monitorStatus(
+  serviceId: string,
+  overview: OverviewResponse | null,
+  now: number = Date.now(),
+): ServiceStatus | null {
+  const item: PlatformSourceHealth | null = serviceSourceState(
+    overview?.platformHealth,
+    serviceId,
+    now,
+  );
+  if (!item) return null;
+  const who = PLATFORM_SOURCE_LABEL[item.source] ?? item.source;
+  if (item.state === 'failing') {
+    return { tone: 'fail', label: 'Collector con fallos', detail: item.summary || `${who}: el collector falla.` };
+  }
+  if (item.state === 'silent') {
+    return { tone: 'warn', label: 'Fuente en silencio', detail: item.summary || `${who} no envía eventos.` };
+  }
+  if (item.state === 'disabled') {
+    return { tone: 'neutral', label: 'Desactivada', detail: item.summary || null };
+  }
+  return null;
+}
 
 export function declaredStatus(config: IntegrationConfig | undefined): ServiceStatus | null {
   if (!config || config.state === 'auto') return null;
@@ -64,6 +95,8 @@ export function providerStatus(
       detail: 'Tu rol no puede leer wazuh-alerts-*.',
     };
   }
+  const monitored = monitorStatus(id, overview, now);
+  if (monitored) return monitored;
   const stats = overview.providers?.[id];
   if (!stats) {
     return { tone: 'fail', label: 'Sin respuesta del Indexer', detail: null };
@@ -95,6 +128,8 @@ export function wazuhStatus(
       detail: 'La lectura de alertas hacia la cola B89 tiene fallos.',
     };
   }
+  const monitored = monitorStatus('wazuh', overview);
+  if (monitored) return monitored;
   const agents = overview.agents;
   if (agents && agents.total > 0 && agents.disconnected > 0) {
     return {
