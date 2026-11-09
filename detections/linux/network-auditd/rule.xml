@@ -99,7 +99,7 @@
   <rule id="101817" level="3">
     <if_sid>101810</if_sid>
     <field name="audit.key">^b89_net_connect$</field>
-    <regex type="pcre2">SADDR=\{[^}]* laddr=[0-9a-fA-F:.]+</regex>
+    <regex type="pcre2">SADDR=\{[^}]* laddr=(?!(?:10\.|127\.|0\.|169\.254\.|192\.168\.|172\.(?:1[6-9]|2[0-9]|3[01])\.|100\.(?:6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.|::1(?:\s|\})|fe80:|f[cd][0-9a-f]{2}:))</regex>
     <description>B89 Linux: $(audit.exe) de una sesión interactiva (auid $(audit.auid)) se conectó a $(dstip):$(dstport).</description>
     <group>b89_audit_net,</group>
   </rule>

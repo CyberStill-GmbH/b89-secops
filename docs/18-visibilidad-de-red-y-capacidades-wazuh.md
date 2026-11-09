@@ -217,7 +217,7 @@ correlacionan en tiempo real.
 | 101872 | 8 | IP bloqueada por el WAF falla autenticación |
 | 101873 | 10 | Ataque web a la consola → intento SSH (1 h) |
 | 101874 | 14 | Ataque web a la consola → SSH exitoso (1 h) |
-| 101875 | 12 | Fallos SSH → login en la consola (1 h) |
+| 101875 / 101876 | 12 | SSH con usuario inexistente (5710) / contraseña fallida (5760) → login en la consola (1 h) |
 
 ## Windows
 

@@ -26,6 +26,7 @@ rules:
   - 101873
   - 101874
   - 101875
+  - 101876
   installed_as: etc/rules/b89_soc_network_cross_source_correlation.xml
 mitre:
 - technique: T1190

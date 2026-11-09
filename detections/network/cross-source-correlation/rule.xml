@@ -67,11 +67,26 @@
     <group>b89_attack_chain,</group>
   </rule>
 
+  <!-- 101875/101876: if_matched_group authentication_failed no correlaciona aquí (probado en wazuh-logtest
+       4.14.8: la historia de grupo no alcanza a una hija de 101843); se usa if_matched_sid sobre las dos
+       hojas de fallo SSH que produce sshd en Ubuntu: 5710 (usuario inexistente) y 5760 (contraseña). -->
   <rule id="101875" level="12" timeframe="3600">
     <if_sid>101843</if_sid>
-    <if_matched_group>authentication_failed</if_matched_group>
+    <if_matched_sid>5710</if_matched_sid>
     <same_source_ip />
-    <description>B89 Red: inicio de sesión en la consola del SOC desde $(srcip), que falló autenticaciones SSH en la última hora.</description>
+    <description>B89 Red: inicio de sesión en la consola del SOC desde $(srcip), que intentó SSH con usuarios inexistentes en la última hora.</description>
+    <mitre>
+      <id>T1110</id>
+      <id>T1078</id>
+    </mitre>
+    <group>b89_attack_chain,</group>
+  </rule>
+
+  <rule id="101876" level="12" timeframe="3600">
+    <if_sid>101843</if_sid>
+    <if_matched_sid>5760</if_matched_sid>
+    <same_source_ip />
+    <description>B89 Red: inicio de sesión en la consola del SOC desde $(srcip), que falló contraseñas SSH de una cuenta real en la última hora.</description>
     <mitre>
       <id>T1110</id>
       <id>T1078</id>
