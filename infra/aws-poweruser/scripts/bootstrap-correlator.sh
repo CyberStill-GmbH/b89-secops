@@ -69,11 +69,25 @@ write_secret() {
   mv -f "$tmp" "$target"
 }
 
-if [[ -s $CORRELATOR_SECRETS/read.token ]]; then
-  read_token=$(tr -d '\r\n' <"$CORRELATOR_SECRETS/read.token")
-  [[ $read_token =~ ^[A-Za-z0-9+/=_-]{32,}$ ]] || fail 'read.token existente no cumple el formato esperado'
-else
-  read_token=$(openssl rand -hex 32)
+# Token de lectura API → correlador (/v1/*, proxy de /api/risk/*). api.env es la fuente: si ya
+# lo tiene se reutiliza; si no, se reutiliza read.token o se genera y se agrega a api.env.
+if grep -q '^B89_CORRELATOR_READ_TOKEN_REF=' "$API_ENV"; then
+  fail 'B89_CORRELATOR_READ_TOKEN_REF no es compatible con el secreto local del correlador'
+fi
+read_token=$(read_single_env_value "$API_ENV" B89_CORRELATOR_READ_TOKEN)
+if [[ -z $read_token ]]; then
+  if [[ -s $CORRELATOR_SECRETS/read.token ]]; then
+    read_token=$(tr -d '\r\n' <"$CORRELATOR_SECRETS/read.token")
+    [[ $read_token =~ ^[A-Za-z0-9+/=_-]{32,}$ ]] || fail 'read.token existente no cumple el formato esperado'
+  else
+    read_token=$(openssl rand -hex 32)
+  fi
+  printf '\nB89_CORRELATOR_READ_TOKEN=%s\n' "$read_token" >>"$API_ENV"
+fi
+# URL interna del correlador (no secreta) en la configuración del API.
+API_CONFIG=$ROOT/config/api.env
+if [[ -f $API_CONFIG && ! -L $API_CONFIG ]] && ! grep -q '^B89_CORRELATOR_URL=' "$API_CONFIG"; then
+  printf '\nB89_CORRELATOR_URL=http://correlator:8080\n' >>"$API_CONFIG"
 fi
 write_secret "$CORRELATOR_SECRETS/gateway.token" "$gateway_token"
 write_secret "$CORRELATOR_SECRETS/service.token" "$service_token"
