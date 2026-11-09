@@ -32,7 +32,7 @@
   <rule id="101802" level="0">
     <if_sid>101801</if_sid>
     <field name="b89.net.type">^listen$</field>
-    <field name="dstip" type="pcre2">^127\.|^::1$</field>
+    <dstip type="pcre2">^127\.|^::1$</dstip>
     <description>B89 Linux: nueva escucha solo en loopback ($(dstip):$(dstport), $(b89.net.process)).</description>
     <group>b89_netconn,</group>
   </rule>
