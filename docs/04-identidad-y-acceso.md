@@ -1,10 +1,67 @@
 # 04 · Identidad y acceso
 
-> Estado: la lógica de `modules/access` (OIDC PKCE, sesión, roles, Graph delta) es **hecha y
-> probada con tests**, sin verificar contra Cognito ni AWS real. **Cognito federado con Entra, las
-> Lambdas de identidad y el borde CloudFront son propuestos** ([02](02-arquitectura.md)). Los
-> requisitos de la SBS (autenticación fuerte, separación de funciones, trazabilidad) se confirman
-> con B89.
+> Estado (2026-11-08): la sección **«Cómo funciona hoy en AWS»** describe el despliegue vigente
+> (nodo PowerUser, [02](02-arquitectura.md)). El resto del documento describe el **modelo con Entra
+> real**: la lógica de `modules/access` (OIDC PKCE, sesión, roles, Graph delta) está hecha y probada
+> con tests; Cognito federado con Entra y el borde CloudFront son el diseño objetivo, no desplegado.
+> Los requisitos de la SBS (autenticación fuerte, separación de funciones, trazabilidad) se
+> confirman con B89.
+
+## Cómo funciona hoy en AWS
+
+### Edge y proxy auth
+
+```
+navegador ─TLS─▶ ALB + WAF ─▶ edge nginx (172.30.89.11)
+                                ├─ auth_request /_b89/introspect ─▶ API /api/auth/introspect (caché ≤ 5 s)
+                                ├─ /            ─▶ dashboard (x-proxy-user, x-proxy-roles fijados por el edge)
+                                ├─ /api/...     ─▶ API B89 (allowlist de rutas)
+                                ├─ /b89-respond ─▶ B89 Respond (misma sesión; SSO por el puente)
+                                └─ /hooks/aws-sns ─▶ receptor aws-events (sin sesión; firma SNS)
+```
+
+- **Un solo login:** `/b89/login` (plugin `b89_ops`); `/app/login` y el formulario del Security
+  plugin redirigen o no son accesibles. Sin sesión válida, el edge manda a iniciar sesión; sin el rol
+  necesario, a «prohibido».
+- **Proxy auth del indexer:** `opensearch_security.auth.type: proxy`; el indexer solo acepta
+  `x-proxy-user`/`x-proxy-roles` desde la IP fija del dashboard `172.30.89.10`
+  (`xff.internalProxies`, `apply-indexer-security.sh`). Ningún otro contenedor puede afirmar
+  identidad. El edge borra lo que envíe el navegador y escribe lo que devuelve el introspect.
+- **Cabeceras:** HSTS, `nosniff`, `Referrer-Policy`; CSP propia en el login y en B89 Respond
+  (`frame-ancestors 'self'`). Plantilla: `infra/aws-poweruser/host/edge.conf.template`.
+- **Identidades de servicio:** `b89-bootstrap` (scripts de arranque, rol `b89.platform.admin`, solo
+  desde dentro del contenedor del dashboard), `b89_reader` (ingesta, solo lectura), `wazuh-wui` (app de
+  Wazuh hacia la API del manager, sin `run_as`), `kibanaserver` y el `admin` del indexer como
+  **break-glass solo por SSH**.
+
+### Cuentas demo y sus límites
+
+No hay Entra real: la API corre con `B89_PROFILE=production` y la **identidad fija de demo**
+(`DEMO_DEPLOYMENT_IDENTITY`, `infra/aws-poweruser/host/api.env.template`), la única combinación que
+admite la excepción de contraseña en producción.
+
+| Cuenta | Rol | Origen |
+| --- | --- | --- |
+| Administradora (`admin@b89.io`) | `b89.platform.admin` | `B89_DEMO_ADMIN_*`; contraseña en `/opt/b89/secrets/demo-admin-password.txt` |
+| Hasta 8 cuentas por rol | Exactamente uno de `b89.soc.analyst`, `b89.soc.lead`, `b89.auditor`, `b89.platform.admin` | `B89_DEMO_ACCOUNTS` (hashes scrypt), generado por `deploy-host.sh` desde `/opt/b89/secrets/demo-accounts.txt` |
+
+Las contraseñas no se documentan; las entrega el administrador de plataforma por canal seguro. La
+excepción vence a los 29 días de cada despliegue (`B89_DEMO_ADMIN_LOGIN_UNTIL`, máximo 30). Cada
+cuenta tiene su propio `sub`: la sesión única es **por cuenta**, de modo que usar cuentas distintas
+evita que una persona o un agente expulse a otro. Detalle de la excepción en
+[Excepción demo](#excepción-demo-contraseña-del-administrador).
+
+### Separación de funciones (SoD)
+
+- Capacidades por rol en `modules/access/src/capabilities.ts` (resumen en
+  [20](20-guia-de-usuario.md#qué-puede-hacer-cada-rol)): el analista no cierra incidentes ni lee
+  auditoría; el auditor lee y verifica la auditoría pero no ve la cola de alertas ni modifica nada; solo
+  el administrador gestiona usuarios y sesiones.
+- Cambiar un rol exige solicitante, objetivo y aprobador distintos; `b89.platform.admin` exige dos
+  aprobaciones. Los roles aprobadores (`b89.access.approver`, `b89.security.approver`) **no** se
+  pueden asignar a cuentas demo: en la demo nadie aprueba cambios de rol.
+- En el SIEM, cada rol B89 se mapea a un rol del indexer (ver [Mapeo de roles](#mapeo-de-roles)).
+- En B89 Respond: admin → admin, líder y analista → usuario, auditor → solo lectura ([14 §8.1](14-b89-respond-conexion-b89.md#81-sso-desde-b89-soc-decisión-b11)).
 
 ## Modelo
 
@@ -118,7 +175,7 @@ Pruebas: `apps/api/test/demo-admin-login.spec.ts`.
 | `B89_DEMO_ADMIN_LOGIN_ENABLED` | `true` para activarla; ausente o `false` = no existe |
 | `B89_DEMO_ADMIN_LOGIN_UNTIL` | Vencimiento obligatorio, ISO 8601 UTC (`…Z`), como máximo 30 días desde el arranque |
 | `B89_DEMO_ADMIN_USERNAME` | Usuario en minúsculas (`[a-z0-9._@+-]`, 3–64) |
-| `B89_DEMO_ADMIN_PASSWORD_HASH` | Hash scrypt; en AWS como secreto de ECS (`api_extra_secrets` → Secrets Manager). En Azure, `B89_DEMO_ADMIN_PASSWORD_HASH_REF` (Key Vault) |
+| `B89_DEMO_ADMIN_PASSWORD_HASH` | Hash scrypt; en el nodo AWS, en `/opt/b89/secrets/api.env` (0600), generado por `deploy-host.sh` |
 
 El hash se genera con `node scripts/dev/hash-demo-admin-password.mjs` (pide la contraseña dos
 veces sin eco, o la lee por stdin; exige ≥ 14 caracteres e imprime solo el hash
@@ -132,11 +189,35 @@ admite. Al arrancar con la excepción activa, el log emite
 `auth.demo_admin_password.active` con «excepción demo de contraseña ACTIVA hasta …».
 
 **Perfil.** `development` y `test` la admiten. **La demo de AWS corre con `B89_PROFILE=production`**
-(`infra/aws/modules/runtime/main.tf`); el código solo tiene tres perfiles. Por eso, en
+(`infra/aws-poweruser/host/api.env.template`); el código solo tiene tres perfiles. Por eso, en
 `production` la excepción se admite **solo** si la identidad configurada es exactamente la del
-despliegue demo (tenant, client y redirect de `infra/aws/environments/demo.tfvars`, la misma
+despliegue demo (tenant, client y redirect de `DEMO_DEPLOYMENT_IDENTITY` en `demo-admin-login.schema.ts`, la misma
 atadura que la antigua excepción de MFA). Cualquier otro despliegue de producción no arranca
 (`CONFIG_VALUE_INVALID` en `B89_DEMO_ADMIN_LOGIN_ENABLED`, `reason: DEMO_ADMIN_LOGIN_NOT_ALLOWED_IN_PROFILE`).
+
+### Cuentas demo adicionales por rol (opcional)
+
+Para probar separación de funciones y dar a agentes SOC y QA cuentas no administrativas (sin
+expulsar la sesión del administrador), `B89_DEMO_ACCOUNTS` (o `B89_DEMO_ACCOUNTS_REF` en Key
+Vault) admite un arreglo JSON secreto `[{"username","role","passwordHash"}]`:
+
+- Solo existe con la excepción del administrador habilitada (mismo interruptor, mismo
+  `B89_DEMO_ADMIN_LOGIN_UNTIL` ≤ 30 días, mismos perfiles: en `production` solo con
+  `DEMO_DEPLOYMENT_IDENTITY`). Definida con la excepción apagada, el arranque falla
+  (`reason: DEMO_ACCOUNTS_REQUIRE_DEMO_ADMIN_LOGIN`).
+- Como máximo 8 cuentas; usuarios con el mismo formato que el admin, únicos y distintos del admin;
+  cada cuenta con **exactamente uno** de los cuatro roles runtime (`b89.soc.analyst`,
+  `b89.soc.lead`, `b89.auditor`, `b89.platform.admin`). Los roles aprobadores
+  (`b89.access.approver`, `b89.security.approver`) se rechazan: ninguna cuenta demo resuelve
+  solicitudes de rol.
+- Mismo hash scrypt (mismo script), mismo tope de intentos por origen, verificación en tiempo
+  constante (un único scrypt por intento, exista o no el usuario), misma auditoría
+  (`demo_admin_password_login` / `demo_admin_denied`), misma cookie estricta y sesión ≤ 8 h.
+- `sub = demo-admin:<16 hex de sha256(rol + usuario)>`: la sesión única es **por cuenta** y cambiar
+  el rol de una cuenta invalida sus sesiones anteriores; una sesión cuyo rol no coincide con el de
+  su cuenta configurada se revoca en `resolveActor`.
+
+Pruebas: `apps/api/test/demo-accounts.spec.ts`, `platform/configuration/test/demo-accounts-config.spec.ts`.
 
 ### Qué concede y qué no
 
