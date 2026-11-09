@@ -29,7 +29,7 @@ RUN pnpm --filter '@b89/worker...' run build \
     && pnpm --filter @b89/worker deploy --prod --legacy /runtime \
     && node scripts/docker/prune-deploy.mjs /runtime
 
-FROM --platform=linux/amd64 gcr.io/distroless/nodejs24-debian13:nonroot@sha256:9eeb7f5887d0e239e78264b06f7f11d2e14be534050481803a9e4728fcdd278e AS runtime
+FROM --platform=linux/amd64 gcr.io/distroless/nodejs24-debian13:nonroot@sha256:088a01637f22908632ba09018be2e0b516f2fa6f7869c191d29491139db43c78 AS runtime
 
 ENV NODE_ENV=production \
     B89_PROFILE=production
