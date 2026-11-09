@@ -115,3 +115,48 @@ Wazuh, un *field formatter* del plugin abre `/app/b89-alerts?id=<id>`.
 - El plugin lo usaría para refrescar la cola y los casos, el contador del header y avisos
   `core.notifications.toasts` con las alertas P1 en cualquier pantalla (aún no lo consume).
 - OSD por sí mismo solo tiene *auto-refresh* por intervalo en Discover y en los dashboards.
+
+## Investigación de alertas
+
+`/app/b89-alerts?id=<alerta>&investigate=1` (botón «Investigar» del detalle y de las alertas
+vinculadas a un incidente) y `/app/b89-alerts?investigate=1&entity=<tipo>:<valor>&at=<ISO>` (pivote
+por entidad). Rutas del servidor del plugin, siempre `asCurrentUser` (proxy auth, nunca admin):
+
+| Ruta | Qué hace |
+| --- | --- |
+| `GET /api/b89_ops/investigation/source?ruleId&at&description` | Documento de origen en `wazuh-alerts-*` (regla + descripción ±5 min; la API de alertas no guarda el `_id`) |
+| `GET /api/b89_ops/investigation/related?e=<tipo:valor>&at&window=1h\|24h\|7d&exclude` | Línea de tiempo de la misma entidad (equipo, usuario, IP, proyecto Snyk, zona Cloudflare, cuenta) y conteo por entidad |
+| `GET /api/b89_ops/investigation/event?id` | JSON completo de un evento de la línea de tiempo (recortado a 64 KB) |
+
+La vista muestra el logotipo del origen, chips MITRE (enlazan a attack.mitre.org), entidades con
+pivotes (Threat Hunting, Discover, alertas B89, investigar la entidad), el chip **Riesgo** del
+correlador (`/api/risk/entities`, solo si responde), el JSON crudo plegable, el incidente vinculado
+con sus notas (API de incidentes) y «Preguntar a Bunny» (evento `b89:bunny:ask`, ver
+`common/bunny_bridge.ts`).
+
+## Navegación del SIEM (auditoría 2026-11-09)
+
+`common/navigation.ts` + `public/navigation.ts` (`application.registerAppUpdater`): categorías en
+español y apps sin servicio ocultas del menú (la URL sigue respondiendo; los permisos siguen en el
+Security plugin y la API B89). Recorrido con lider@b89.io en dev.security.b89.io:
+
+| Categoría | App (id) | Decisión | Motivo |
+| --- | --- | --- | --- |
+| Resumen | Resumen del SOC (`b89-overview`), Resumen del SIEM (`wz-home`), Paneles, Informes PDF del SIEM (`reporting`), Informes programados (`reports-dashboards`) | Se mantienen | Portada, paneles B89 por proveedor e informes |
+| Monitoreo | Cola de alertas, Notificaciones, Agentes (`endpoints-summary`), Salud de fuentes | Se mantienen | Vigilancia en vivo |
+| Investigación | Incidentes, Threat Hunting, Discover, MITRE ATT&CK | Se mantienen | Datos en `wazuh-alerts-*` |
+| Detección | Vulnerabilidades, Malware y rootcheck, FIM, SCA, Inventario, Reglas, Decodificadores, Listas CDB, Probar reglas | Se mantienen | SCA pide elegir agente (estado vacío propio de Wazuh) |
+| Cumplimiento | Políticas, Auditoría e integridad, PCI DSS, GDPR, HIPAA, NIST 800-53, TSC | Se mantienen | ~4 000 eventos etiquetados en 30 días |
+| Integraciones | Integraciones + accesos B89 por proveedor con su logotipo (Microsoft 365 / Entra ID, Bitdefender, Snyk, Cloudflare, AWS → paneles B89), Docker | Se mantienen / nuevos | Los accesos abren los paneles B89 |
+| Integraciones | Office 365 (módulo Wazuh) | Se mantiene, renombrada | Funciona en cuanto Entra conceda `ActivityFeed.Read` |
+| — | Módulo AWS de Wazuh (`amazon-web-services`) | Oculta; «AWS» abre el panel B89 | Filtra `rule.groups: amazon` y el receptor B89 usa `aws`: salía siempre vacío |
+| Respuesta | **B89 Respond** (`b89-respond`, antes «SOAR») | Renombrado | «SOAR» queda como descripción |
+| Administración | Usuarios y sesiones, Mi sesión, Grupos de agentes, Estado/Estadísticas/Logs/Configuración del manager, Ajustes de la app SIEM, APIs del manager, Consola API, Roles del manager, Índices, Instantáneas, Consola del Indexer, Editor de visualizaciones, Administración del dashboard | Se mantienen | Uso de administración; Índices/Instantáneas muestran «sin permisos» a roles sin ISM |
+| — | Google Cloud, GitHub, Microsoft Graph API | Ocultas | Sin integración (Graph mostraba «Please set up API credentials») |
+| — | Clúster | Oculta | Manager de un solo nodo |
+| — | Alertas y monitores (`alerting`), Detección de anomalías, Mapas, Notificaciones de OSD, Datos de ejemplo, Acerca de | Ocultas | Sin uso; `alerting` y los canales de OSD daban error de permisos al líder; duplicaban vistas B89 |
+
+Otros arreglos: el título de pestaña ya no repite «B89 SecOps», cada vista B89 fija su migaja de
+pan (antes quedaba «Resumen» de la app de Wazuh) y el informe PDF de la app de Wazuh lleva cabecera,
+pie y color B89 (`customization.*` en el `wazuh.yml` que escribe `deploy-host.sh` y
+`REPORTS_PRIMARY_COLOR` en la imagen).

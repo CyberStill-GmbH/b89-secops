@@ -102,9 +102,8 @@ export const NAV_PLACEMENT: Readonly<Record<string, NavPlacement>> = {
   tsc: { category: 'compliance', order: 70, title: 'TSC (SOC 2)' },
   // Integraciones
   'b89-integrations': { category: 'integrations', order: 10, title: 'Integraciones' },
-  'amazon-web-services': { category: 'integrations', order: 20, title: 'AWS' },
-  office365: { category: 'integrations', order: 30, title: 'Microsoft 365' },
-  docker: { category: 'integrations', order: 40, title: 'Docker' },
+  office365: { category: 'integrations', order: 70, title: 'Office 365 (módulo Wazuh)' },
+  docker: { category: 'integrations', order: 80, title: 'Docker' },
   // Respuesta
   'b89-respond': {
     category: 'response',
@@ -145,6 +144,8 @@ export const NAV_PLACEMENT: Readonly<Record<string, NavPlacement>> = {
  * servicios que este despliegue no tiene o duplicados de vistas B89.
  */
 export const NAV_HIDDEN: Readonly<Record<string, string>> = {
+  'amazon-web-services':
+    'El módulo filtra rule.groups: amazon y el receptor B89 usa aws (siempre vacío): el menú abre el panel B89 de AWS.',
   'google-cloud': 'Sin integración de Google Cloud en este despliegue.',
   github: 'Sin integración de GitHub (la de código es Snyk).',
   'microsoft-graph-api':
