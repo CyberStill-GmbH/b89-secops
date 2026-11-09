@@ -5,7 +5,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import type { CoreStart } from '../../../../src/core/public';
-import { BRAND_ASSETS_PATH, CAPABILITIES } from '../../common';
+import {
+  BRAND_ASSETS_PATH,
+  BUNNY_ASK_EVENT,
+  CAPABILITIES,
+  type BunnyAskDetail,
+} from '../../common';
 import { B89ApiError, type B89ApiClient } from '../api/client';
 import {
   askBunny,
@@ -17,9 +22,11 @@ import {
   formatWhen,
   getConversation,
   listConversations,
+  rateMessage,
   suggestionsFor,
   type BunnyCitation,
   type BunnyConfig,
+  type BunnyFeedback,
   type BunnyReasoning,
   type BunnyStep,
   type BunnyUsage,
@@ -47,6 +54,58 @@ interface Message {
   readonly steps?: readonly BunnyStep[];
   readonly citations?: readonly BunnyCitation[];
   readonly tone?: 'error' | 'notice';
+  /** Id del mensaje guardado en el historial (necesario para la valoración). */
+  readonly serverId?: string;
+  readonly feedback?: BunnyFeedback;
+}
+
+/** Página de contexto para una pregunta abierta desde una vista («Preguntar a Bunny»). */
+export function contextPage(context: BunnyAskDetail['context']): string | null {
+  const alertId = context?.['alertId'];
+  if (alertId && /^[A-Za-z0-9_-]{1,64}$/u.test(alertId)) {
+    return `/app/b89-alerts?id=${encodeURIComponent(alertId)}`;
+  }
+  const incidentId = context?.['incidentId'];
+  if (incidentId && /^[A-Za-z0-9_-]{1,64}$/u.test(incidentId)) {
+    return `/app/b89-incidents?id=${encodeURIComponent(incidentId)}`;
+  }
+  return null;
+}
+
+/** Valoración 👍/👎 de una respuesta guardada; se persiste con la conversación. */
+function Feedback({
+  value,
+  disabled,
+  onRate,
+}: {
+  value?: BunnyFeedback;
+  disabled: boolean;
+  onRate: (rating: BunnyFeedback | null) => void;
+}) {
+  return (
+    <span className="b89Bunny__feedback" role="group" aria-label="Valora esta respuesta">
+      <button
+        type="button"
+        className={value === 'up' ? 'is-active' : ''}
+        aria-pressed={value === 'up'}
+        title="Respuesta útil"
+        disabled={disabled}
+        onClick={() => onRate(value === 'up' ? null : 'up')}
+      >
+        👍
+      </button>
+      <button
+        type="button"
+        className={value === 'down' ? 'is-active' : ''}
+        aria-pressed={value === 'down'}
+        title="Respuesta incorrecta o poco útil"
+        disabled={disabled}
+        onClick={() => onRate(value === 'down' ? null : 'down')}
+      >
+        👎
+      </button>
+    </span>
+  );
 }
 
 type View = 'chat' | 'history' | 'usage';
@@ -507,6 +566,8 @@ export function BunnyPanel({
   const [selectedIncident, setSelectedIncident] = useState<{ messageId: number; incidentId: string } | null>(null);
   const [savingNoteId, setSavingNoteId] = useState<number | null>(null);
   const [noteStatus, setNoteStatus] = useState<{ id: number; text: string } | null>(null);
+  /** Contexto recibido de «Preguntar a Bunny» (alerta/incidente) para la siguiente pregunta. */
+  const [askContext, setAskContext] = useState<string | null>(null);
   const nextId = useRef(1);
   const listRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -573,6 +634,8 @@ export function BunnyPanel({
             ...(message.steps ? { steps: message.steps } : {}),
             ...(message.citations ? { citations: message.citations } : {}),
             ...(message.tone ? { tone: message.tone } : {}),
+            ...(message.role === 'assistant' ? { serverId: String(message.id) } : {}),
+            ...(message.feedback ? { feedback: message.feedback } : {}),
           })),
         );
         setConversationId(stored.id);
@@ -601,9 +664,10 @@ export function BunnyPanel({
           api,
           text,
           history,
-          `${window.location.pathname}${window.location.search}`,
+          askContext ?? `${window.location.pathname}${window.location.search}`,
           conversationId ?? undefined,
         );
+        setAskContext(null);
         if (reply.conversationId) setConversationId(reply.conversationId);
         setNotSaved(reply.saved === false);
         append({
@@ -612,6 +676,7 @@ export function BunnyPanel({
           ...(reply.reasoning ? { reasoning: reply.reasoning } : {}),
           steps: reply.steps,
           citations: reply.citations,
+          ...(reply.messageId ? { serverId: reply.messageId } : {}),
           ...(reply.outcome === 'refused' || reply.outcome === 'unverified'
             ? { tone: 'notice' as const }
             : {}),
@@ -623,7 +688,55 @@ export function BunnyPanel({
         inputRef.current?.focus();
       }
     },
-    [api, append, conversationId, messages, pending],
+    [api, append, askContext, conversationId, messages, pending],
+  );
+
+  // API pública del panel: `window.dispatchEvent(new CustomEvent(BUNNY_ASK_EVENT, …))` (ver
+  // `common/bunny_bridge.ts` y `public/bunny_bridge.ts#askBunny`). Abre el panel en el chat, deja
+  // la pregunta como borrador (o la envía con `autoSend`) y usa `context` como página de contexto.
+  const sendRef = useRef(send);
+  sendRef.current = send;
+  useEffect(() => {
+    const onAsk = (event: Event) => {
+      const detail = (event as CustomEvent<BunnyAskDetail>).detail;
+      if (!detail || typeof detail.prompt !== 'string' || detail.prompt.trim() === '') return;
+      event.preventDefault();
+      state.set(true);
+      setView('chat');
+      setAskContext(contextPage(detail.context));
+      const prompt = detail.prompt.slice(0, MAX_CHARS);
+      if (detail.autoSend) {
+        // El contexto se aplica en el siguiente render; se envía después.
+        window.setTimeout(() => void sendRef.current(prompt), 0);
+      } else {
+        setDraft(prompt);
+        window.setTimeout(() => inputRef.current?.focus(), 0);
+      }
+    };
+    window.addEventListener(BUNNY_ASK_EVENT, onAsk);
+    return () => window.removeEventListener(BUNNY_ASK_EVENT, onAsk);
+  }, [state]);
+
+  const rate = useCallback(
+    async (message: Message, rating: BunnyFeedback | null) => {
+      if (!conversationId || !message.serverId) return;
+      const previous = message.feedback;
+      const patch = (feedback: BunnyFeedback | undefined) =>
+        setMessages((current) =>
+          current.map((item) => {
+            if (item.id !== message.id) return item;
+            const { feedback: _old, ...rest } = item;
+            return feedback ? { ...rest, feedback } : rest;
+          }),
+        );
+      patch(rating ?? undefined);
+      try {
+        await rateMessage(api, conversationId, message.serverId, rating);
+      } catch {
+        patch(previous);
+      }
+    },
+    [api, conversationId],
   );
 
   const navigate = useCallback(
@@ -749,7 +862,11 @@ export function BunnyPanel({
                   <img src={imageUrl} alt="" width={24} height={24} />
                 )}
                 <div className="b89Bunny__bubble">
-                  {message.role === 'user' ? <p>{message.text}</p> : renderMarkdown(message.text)}
+                  {message.role === 'user' ? (
+                    <p>{message.text}</p>
+                  ) : (
+                    renderMarkdown(message.text, { citations: message.citations ?? [], onOpen: navigate })
+                  )}
                   {message.role === 'assistant' && (
                     <Reasoning reasoning={message.reasoning} steps={message.steps} />
                   )}
@@ -770,6 +887,13 @@ export function BunnyPanel({
                       >
                         {copied === message.id ? 'Copiado' : 'Copiar'}
                       </button>
+                      {conversationId && message.serverId && (
+                        <Feedback
+                          value={message.feedback}
+                          disabled={pending}
+                          onRate={(rating) => void rate(message, rating)}
+                        />
+                      )}
                       <button type="button" onClick={() => downloadReportDraft(message)}>
                         Descargar borrador
                       </button>
@@ -835,6 +959,15 @@ export function BunnyPanel({
             )}
           </div>
 
+          {askContext && (
+            <p className="b89Bunny__context" role="status">
+              Contexto: {askContext.includes('incidents') ? 'incidente' : 'alerta'}{' '}
+              <code>{decodeURIComponent(askContext.split('id=')[1] ?? '')}</code>
+              <button type="button" onClick={() => setAskContext(null)} aria-label="Quitar contexto">
+                ✕
+              </button>
+            </p>
+          )}
           {notSaved && (
             <p className="b89Bunny__notice" role="status">
               Esta conversación no se guardó en el historial.
@@ -869,8 +1002,10 @@ export function BunnyPanel({
         </>
       )}
       <p className="b89Bunny__disclaimer">
-        {NAME} usa IA generativa y puede equivocarse: verifica lo importante. Es de solo lectura y
-        no ejecuta acciones. Tus conversaciones se guardan en tu historial y solo tú puedes verlas.
+        <strong>IA generativa: verifica antes de actuar.</strong> {NAME} solo lee datos del SOC con
+        tus permisos; no ejecuta, aprueba ni solicita acciones (toda contención va por B89 Respond
+        con aprobación del Líder SOC). Horas en Lima (UTC−5). Tus conversaciones y valoraciones se
+        guardan en tu historial y solo tú puedes verlas.
         {config?.enabled && config.redactsPersonalData
           ? ' Correos e IP se seudonimizan antes de enviarse al modelo.'
           : ''}

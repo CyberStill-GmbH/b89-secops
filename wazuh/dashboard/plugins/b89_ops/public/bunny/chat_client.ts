@@ -69,6 +69,8 @@ export interface BunnyReply {
   readonly outcome: 'answered' | 'budget' | 'refused' | 'truncated' | 'unverified';
   readonly steps: readonly BunnyStep[];
   readonly citations: readonly BunnyCitation[];
+  /** Id del mensaje de Bunny guardado (para la valoración 👍/👎); `null` si no se guardó. */
+  readonly messageId?: string | null;
 }
 
 export interface BunnyTurn {
@@ -126,6 +128,7 @@ export interface StoredMessage {
   readonly steps?: readonly BunnyStep[];
   readonly citations?: readonly BunnyCitation[];
   readonly tone?: 'error' | 'notice';
+  readonly feedback?: BunnyFeedback;
   readonly createdAt?: string;
 }
 
@@ -157,6 +160,21 @@ export async function getConversation(api: B89ApiClient, id: string): Promise<St
 
 export async function deleteConversation(api: B89ApiClient, id: string): Promise<void> {
   return api.delete<void>(conversationPath(id));
+}
+
+export type BunnyFeedback = 'up' | 'down';
+
+/** Guarda (o quita, con `null`) la valoración 👍/👎 de una respuesta, con la conversación. */
+export function rateMessage(
+  api: B89ApiClient,
+  conversationId: string,
+  messageId: string,
+  rating: BunnyFeedback | null,
+): Promise<void> {
+  if (!ID.test(messageId)) return Promise.reject(new Error('Identificador de mensaje no válido'));
+  return api.put<void>(`${conversationPath(conversationId)}/messages/${messageId}/feedback`, {
+    rating,
+  });
 }
 
 export function deleteAllConversations(api: B89ApiClient): Promise<void> {
@@ -250,12 +268,23 @@ export function suggestionsFor(page: string): readonly Suggestion[] {
     ];
   }
   return [
-    { title: 'Alertas P1', prompt: '¿Cuáles son las alertas P1 abiertas ahora mismo?' },
-    { title: 'Resumen del día', prompt: 'Dame un resumen de lo más importante en el SOC hoy.' },
-    { title: 'Salud de fuentes', prompt: '¿Hay fuentes de datos con problemas?' },
     {
-      title: 'Inicios de sesión fallidos',
-      prompt: 'Busca inicios de sesión fallidos en las últimas 24 horas.',
+      title: 'Triage de la P1 más reciente',
+      prompt: 'Haz el triage de la alerta P1 abierta más reciente: evidencia, severidad, MITRE y acciones.',
+    },
+    {
+      title: 'Resumen semanal del SOC',
+      prompt:
+        'Prepara el resumen semanal del SOC: alertas por prioridad y proveedor, incidentes activos y salud de las fuentes.',
+    },
+    {
+      title: 'Alertas por proveedor',
+      prompt: '¿Qué alertas abiertas hay de Snyk, Bitdefender, Cloudflare y AWS, y cuál atiendo primero?',
+    },
+    { title: 'Salud de fuentes', prompt: '¿Qué fuentes de datos están degradadas o sin eventos recientes?' },
+    {
+      title: 'Runbook aplicable',
+      prompt: 'Bitdefender detectó malware en un equipo: ¿qué runbook sigo y qué reviso en los primeros 10 minutos?',
     },
   ];
 }

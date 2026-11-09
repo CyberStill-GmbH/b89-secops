@@ -17,8 +17,13 @@ export const BUNNY_ASK_EVENT = 'b89:bunny:ask';
 export interface BunnyAskDetail {
   /** Texto propuesto para el borrador; la persona lo revisa antes de enviarlo. */
   readonly prompt: string;
-  /** Contexto estructurado opcional (p. ej. `{ alertId }`) para quien lo quiera usar. */
+  /**
+   * Contexto estructurado opcional. El panel usa `alertId` o `incidentId` como página de contexto
+   * de la pregunta (Bunny la ve como «Página actual: /app/b89-alerts?id=…»).
+   */
   readonly context?: Readonly<Record<string, string>>;
+  /** `true` envía la pregunta directamente; por defecto queda como borrador para revisarla. */
+  readonly autoSend?: boolean;
 }
 
 /** Pregunta inicial sobre una alerta: lo justo para que Bunny busque el resto con sus herramientas. */
