@@ -74,7 +74,7 @@ def wait_writer_idle(unit: str | None, unit_reader=systemd_unit, attempts: int =
 def inject(config: dict, now: datetime, unit_reader=systemd_unit, runner=run) -> dict:
     state_path = pathlib.Path(config["state_file"])
     state = read_state(state_path)
-    pending = dict(state.get("pending") or {})
+    pending = dict(state.get("inflight") or {})
     injected = {}
     only = set(config.get("_only") or [])
     for pipeline, spec in (config.get("pipelines") or {}).items():
@@ -100,7 +100,7 @@ def inject(config: dict, now: datetime, unit_reader=systemd_unit, runner=run) ->
             continue
         pending[pipeline] = {"id": canary_id, "injected_at": iso(now)}
         injected[pipeline] = canary_id
-    state["pending"] = pending
+    state["inflight"] = pending
     save_state(state_path, state)
     return injected
 
@@ -138,7 +138,7 @@ def b89_has_read(config: dict, alert_time: datetime, rows_reader=psql_rows) -> b
 def verify(config: dict, now: datetime, indexer=None, rows_reader=psql_rows) -> dict:
     state_path = pathlib.Path(config["state_file"])
     state = read_state(state_path)
-    pending = dict(state.get("pending") or {})
+    pending = dict(state.get("inflight") or {})
     verdicts = dict(state.get("verdicts") or {})
     deadline = timedelta(minutes=float(config.get("deadline_minutes", 30)))
     check_b89 = config.get("check_b89", True)
@@ -181,7 +181,7 @@ def verify(config: dict, now: datetime, indexer=None, rows_reader=psql_rows) -> 
                                   + f" en {int(deadline.total_seconds() / 60)} min")
             verdicts[pipeline] = verdict
             pending.pop(pipeline)
-    state["pending"] = pending
+    state["inflight"] = pending
     state["verdicts"] = verdicts
     state["last_success"] = iso(now)
     save_state(state_path, state)

@@ -1,0 +1,365 @@
+#!/usr/bin/env bash
+# B89 SOC — monitoreo de plataforma, priorización KEV/EPSS y canarios (docs/20). EN el host, como root:
+#
+#   sudo bash /opt/b89/src/wazuh/platform-monitoring/install-platform-monitoring.sh [--no-restart]
+#
+# Idempotente. Nunca imprime secretos. Pasos:
+#   1. Identidades de SOLO LECTURA (las crea este instalador con la credencial admin de compose.env;
+#      el código del monitor nunca la lee):
+#        - indexer: rol b89_platform_monitor + usuario interno b89_monitor (autoprueba: lee, no escribe);
+#        - API Wazuh: usuario b89-monitor con el rol RBAC readonly;
+#        - Postgres: rol b89_monitor sin contraseña (solo socket local del contenedor), SELECT en las
+#          tablas de salud de ingesta.
+#   2. Código en /opt/b89/platform-monitoring/bin, configs en etc/ (0600), estado en state/.
+#      Actualiza el collector Snyk (enriquecimiento KEV/EPSS en línea) sin reinstalar los collectors.
+#   3. Descarga KEV/EPSS y genera las listas CDB antes del reinicio (así cargan ya).
+#   4. Reglas 101800-101879, listas b89-vuln-kev / b89-vuln-noise en <ruleset> y <localfile> de
+#      platform-health.jsonl y vulnprio.jsonl entre marcadores B89:platform-monitoring. Respaldo,
+#      wazuh-analysisd -t (revierte si falla), persistencia en el ossec.conf montado y reinicio SOLO
+#      del manager (salvo --no-restart).
+#   5. Units systemd: b89-platform-monitor (5 min), b89-vulnprio (1 h), b89-canary-inject (diario 06:10
+#      UTC), b89-canary-verify (10 min). Ejecuta una vez cada uno y muestra el resultado.
+set -Eeuo pipefail
+umask 077
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WAZUH_SRC="$(cd "${HERE}/.." && pwd)"
+M="${B89_WAZUH_CONTAINER:-b89-wazuh.manager-1}"
+PG="${B89_POSTGRES_CONTAINER:-b89-postgres-1}"
+SECRETS="${B89_SECRETS:-/opt/b89/secrets}"
+PMS="${SECRETS}/platform-monitoring"
+ROOT=/opt/b89/platform-monitoring
+BIN="$ROOT/bin"; ETC="$ROOT/etc"; STATE="$ROOT/state"
+CERTS=/opt/b89/wazuh-docker/single-node/config/wazuh_indexer_ssl_certs
+SOC_HOSTNAME="${SOC_HOSTNAME:-dev.security.b89.io}"
+TS="$(date -u +%Y%m%dT%H%M%SZ)"
+BACKUP="/opt/b89/backups/platform-monitoring-$TS"
+BEGIN='<!-- B89:platform-monitoring:begin -->'
+END='<!-- B89:platform-monitoring:end -->'
+RESTART=true
+[[ ${1:-} == --no-restart ]] && RESTART=false
+log() { printf '[b89-platform] %s\n' "$*"; }
+fail() { printf '[b89-platform] ERROR: %s\n' "$*" >&2; exit 1; }
+
+[[ $(id -u) -eq 0 ]] || fail 'ejecutar como root'
+docker inspect "$M" >/dev/null 2>&1 || fail "no existe el contenedor $M"
+[[ -s $SECRETS/compose.env ]] || fail 'falta compose.env'
+install -d -m 0700 "$PMS" "$BACKUP"
+install -d -m 0750 "$ROOT" "$BIN" "$STATE" "$STATE/vulnprio"
+install -d -m 0700 "$ETC"
+chmod 0755 "$ROOT" "$STATE" "$STATE/vulnprio"   # la caché KEV/EPSS la lee el collector Snyk
+
+admin_env() { # VAR → valor desde compose.env, sin exportarlo al entorno de los hijos
+  python3 - "$SECRETS/compose.env" "$1" <<'PY'
+import sys
+for line in open(sys.argv[1], encoding="utf-8"):
+    k, _, v = line.strip().partition("=")
+    if k == sys.argv[2]:
+        print(v.strip().strip('"').strip("'")); break
+PY
+}
+genpw() { python3 -c 'import secrets,string; a=string.ascii_letters+string.digits; print("".join(secrets.choice(a) for _ in range(28))+"Aa9.")'; }
+
+# ------------------------------------------------------------------ 1. identidades
+IDX_ADMIN="$(admin_env INDEXER_ADMIN_PASSWORD)"; [[ -n $IDX_ADMIN ]] || fail 'INDEXER_ADMIN_PASSWORD vacío'
+[[ -s $PMS/indexer-monitor-password ]] || { genpw >"$PMS/indexer-monitor-password"; chmod 600 "$PMS/indexer-monitor-password"; }
+idx() { # método ruta [json por stdin]
+  curl -sS -o /dev/null -w '%{http_code}' --cacert "$CERTS/root-ca.pem" --resolve wazuh.indexer:9200:127.0.0.1 \
+    -K <(printf 'user = "admin:%s"\n' "$IDX_ADMIN") -X "$1" -H 'Content-Type: application/json' \
+    "https://wazuh.indexer:9200$2" ${3:+--data-binary @-}
+}
+ok() { [[ $1 =~ ^(200|201)$ ]] || fail "$2 → HTTP $1"; }
+ok "$(printf '%s' '{"description":"B89: monitor de plataforma (solo lectura, docs/20)","cluster_permissions":["cluster_monitor","cluster:admin/opendistro/ism/managedindex/explain"],"index_permissions":[{"index_patterns":["wazuh-alerts-*","wazuh-states-vulnerabilities-*"],"allowed_actions":["read"]},{"index_patterns":["*"],"allowed_actions":["indices_monitor","indices:admin/opensearch/ism/managedindex/explain"]}]}' \
+  | idx PUT /_plugins/_security/api/roles/b89_platform_monitor x)" 'rol b89_platform_monitor'
+ok "$(python3 -c 'import json,sys;print(json.dumps({"password":open(sys.argv[1]).read().strip(),"description":"B89: monitor de plataforma (solo lectura)"}))' "$PMS/indexer-monitor-password" \
+  | idx PUT /_plugins/_security/api/internalusers/b89_monitor x)" 'usuario b89_monitor'
+ok "$(printf '%s' '{"users":["b89_monitor"]}' | idx PUT /_plugins/_security/api/rolesmapping/b89_platform_monitor x)" 'mapeo b89_platform_monitor'
+mon() { curl -sS -o /dev/null -w '%{http_code}' --cacert "$CERTS/root-ca.pem" --resolve wazuh.indexer:9200:127.0.0.1 \
+  -K <(printf 'user = "b89_monitor:%s"\n' "$(cat "$PMS/indexer-monitor-password")") -H 'Content-Type: application/json' "$@"; }
+r="$(mon --data '{"size":0}' 'https://wazuh.indexer:9200/wazuh-alerts-*/_search')"
+w="$(mon -X POST --data '{"x":1}' 'https://wazuh.indexer:9200/wazuh-alerts-4.x-b89selftest/_doc')"
+[[ $r == 200 && $w == 403 ]] || fail "autoprueba b89_monitor: search $r, write $w"
+log "indexer: b89_monitor lee (HTTP $r) y no escribe (HTTP $w)"
+
+API_ADMIN="$(admin_env WAZUH_API_PASSWORD)"; [[ -n $API_ADMIN ]] || fail 'WAZUH_API_PASSWORD vacío'
+[[ -s $PMS/wazuh-api-monitor-password ]] || { genpw >"$PMS/wazuh-api-monitor-password"; chmod 600 "$PMS/wazuh-api-monitor-password"; }
+docker cp "$M:/var/ossec/api/configuration/ssl/server.crt" "$PMS/wazuh-api-ca.pem"; chmod 0600 "$PMS/wazuh-api-ca.pem"
+API_ADMIN="$API_ADMIN" python3 - "$PMS/wazuh-api-monitor-password" "$PMS/wazuh-api-ca.pem" <<'PY'
+import base64, json, os, ssl, sys, urllib.request, urllib.error
+pw = open(sys.argv[1]).read().strip()
+ctx = ssl.create_default_context(cafile=sys.argv[2]); ctx.check_hostname = False
+base = "https://127.0.0.1:55000"
+def call(method, path, token=None, body=None, basic=None):
+    req = urllib.request.Request(base + path, method=method, data=None if body is None else json.dumps(body).encode())
+    req.add_header("Content-Type", "application/json")
+    if token: req.add_header("Authorization", "Bearer " + token)
+    if basic: req.add_header("Authorization", "Basic " + base64.b64encode(basic.encode()).decode())
+    try:
+        with urllib.request.urlopen(req, context=ctx, timeout=20) as r: return r.status, json.loads(r.read() or b"{}")
+    except urllib.error.HTTPError as e: return e.code, json.loads(e.read() or b"{}")
+st, d = call("POST", "/security/user/authenticate", basic="wazuh-wui:" + os.environ["API_ADMIN"])
+assert st == 200, f"auth admin API HTTP {st}"
+tok = d["data"]["token"]
+st, d = call("GET", "/security/users?search=b89-monitor", tok)
+users = [u for u in d["data"]["affected_items"] if u["username"] == "b89-monitor"]
+if users:
+    uid = users[0]["id"]
+    st, _ = call("PUT", f"/security/users/{uid}", tok, {"password": pw})
+else:
+    st, d = call("POST", "/security/users", tok, {"username": "b89-monitor", "password": pw})
+    assert st == 200, f"crear usuario API HTTP {st}"
+    uid = d["data"]["affected_items"][0]["id"]
+st, d = call("GET", "/security/roles?search=readonly", tok)
+rid = [r["id"] for r in d["data"]["affected_items"] if r["name"] == "readonly"][0]
+st, d = call("GET", f"/security/users/{uid}", tok)
+if rid not in d["data"]["affected_items"][0].get("roles", []):
+    st, _ = call("POST", f"/security/users/{uid}/roles?role_ids={rid}", tok)
+    assert st == 200, f"rol readonly HTTP {st}"
+st, d = call("POST", "/security/user/authenticate", basic="b89-monitor:" + pw)
+mt = d["data"]["token"]
+r, _ = call("GET", "/agents?limit=1", mt)
+st, d = call("GET", f"/security/users/{uid}", tok)
+roles = d["data"]["affected_items"][0].get("roles", [])
+assert r == 200 and roles == [rid], f"autoprueba API: lectura {r}, roles {roles}"
+print(f"[b89-platform] API Wazuh: b89-monitor lee agentes (HTTP {r}) con un único rol RBAC: readonly")
+PY
+
+docker exec -i "$PG" psql -X -q -v ON_ERROR_STOP=1 -U b89_admin -d b89_secops <<'SQL'
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'b89_monitor') THEN
+    CREATE ROLE b89_monitor LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION;
+  END IF;
+END $$;
+ALTER ROLE b89_monitor PASSWORD NULL;
+ALTER ROLE b89_monitor SET default_transaction_read_only = on;
+GRANT CONNECT ON DATABASE b89_secops TO b89_monitor;
+GRANT USAGE ON SCHEMA public TO b89_monitor;
+GRANT SELECT ON public.source_poll_observations, public.source_stream_activity, public.source_health_transitions TO b89_monitor;
+SQL
+docker exec "$PG" psql -X -At -U b89_monitor -d b89_secops -c 'select count(*) from source_poll_observations' >/dev/null \
+  || fail 'autoprueba Postgres b89_monitor'
+log 'Postgres: rol b89_monitor (sin contraseña, solo socket local, SELECT en salud de ingesta)'
+
+# ------------------------------------------------------------------ 2. código y configs
+LOGVOL="$(docker inspect "$M" --format '{{range .Mounts}}{{if eq .Destination "/var/ossec/logs"}}{{.Source}}{{end}}{{end}}')"
+[[ -d $LOGVOL ]] || fail 'no se encontró el volumen de /var/ossec/logs del manager'
+OUT="$LOGVOL/b89-collectors"
+install -d -m 0750 "$OUT"
+install -m 0640 "$HERE"/b89_*.py "$WAZUH_SRC/provider-ingestion/common/b89_collector.py" \
+  "$WAZUH_SRC/provider-ingestion/common/b89_vuln_priority.py" "$BIN/"
+# collector Snyk: enriquecimiento en línea (no reinstala los collectors ni reinicia nada)
+CI=/opt/b89/collectors/provider-ingestion
+if [[ -d $CI/snyk ]]; then
+  cp -a "$CI/snyk/issues.py" "$BACKUP/snyk-issues.py.orig" 2>/dev/null || true
+  install -m 0640 "$WAZUH_SRC/provider-ingestion/common/b89_vuln_priority.py" "$CI/common/"
+  install -m 0640 "$WAZUH_SRC/provider-ingestion/snyk/issues.py" "$CI/snyk/"
+  if [[ -f /opt/b89/collectors/etc/snyk.json ]]; then
+    python3 - /opt/b89/collectors/etc/snyk.json "$STATE/vulnprio" <<'PY'
+import json, sys
+p, d = sys.argv[1:3]; c = json.load(open(p)); c["vulnprio_dir"] = d
+json.dump(c, open(p, "w"), indent=1)
+PY
+  fi
+fi
+find "$BIN" "$CI" -name '*.py' -exec sed -i 's/\r$//' {} + 2>/dev/null || true
+for f in platform-health vulnprio; do [[ -e $OUT/$f.jsonl ]] || install -m 0640 /dev/null "$OUT/$f.jsonl"; done
+
+python3 - "$ETC" "$STATE" "$OUT" "$PMS" "$CERTS" "$SOC_HOSTNAME" "${B89_EXPOSED_AGENTS:-$(hostname)}" <<'PY'
+import json, os, sys
+etc, state, out, pms, certs, host, agents = sys.argv[1:8]
+indexer = {"url": "https://127.0.0.1:9200", "server_hostname": "wazuh.indexer", "ca_file": f"{certs}/root-ca.pem",
+           "user": "b89_monitor", "password_file": f"{pms}/indexer-monitor-password"}
+postgres = {"container": "b89-postgres-1", "role": "b89_monitor", "database": "b89_secops"}
+def write(name, data):
+    path = os.path.join(etc, name)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as s: json.dump(data, s, indent=1, ensure_ascii=False)
+coll = "/opt/b89/collectors/state"
+write("monitor.json", {
+    "output_file": f"{out}/platform-health.jsonl", "state_file": f"{state}/monitor.json",
+    "renotify_hours": 6, "snapshot_minutes": 60,
+    "indexer": indexer, "postgres": postgres,
+    "wazuh_api": {"url": "https://127.0.0.1:55000", "ca_file": f"{pms}/wazuh-api-ca.pem", "verify_hostname": False,
+                  "user": "b89-monitor", "password_file": f"{pms}/wazuh-api-monitor-password"},
+    "collectors": {
+        "snyk": {"unit": "b89-collector-snyk", "state_file": f"{coll}/snyk.json", "interval_minutes": 15, "fail_after_intervals": 3},
+        "cloudflare": {"unit": "b89-collector-cloudflare", "state_file": f"{coll}/cloudflare.json", "interval_minutes": 5, "fail_after_intervals": 4},
+        "bitdefender": {"unit": "b89-collector-bitdefender", "state_file": f"{coll}/bitdefender.json", "interval_minutes": 10, "fail_after_intervals": 3},
+        "vulnprio": {"unit": "b89-vulnprio", "state_file": f"{state}/vulnprio.json", "interval_minutes": 60, "fail_after_intervals": 3},
+        "canary": {"unit": "b89-canary-verify", "state_file": f"{state}/canary.json", "interval_minutes": 10, "fail_after_intervals": 6},
+    },
+    # Cadencia esperada por fuente. heartbeat = fuente de bajo volumen: se exige el latido del pipeline
+    # (éxito del collector o receptor sano) y solo se esperan eventos dentro de event_window_hours.
+    "sources": {
+        "snyk": {"mode": "heartbeat", "heartbeat": {"collector": "snyk"}, "max_silence_minutes": 45, "event_window_hours": 168,
+                 "query": {"term": {"rule.groups": "snyk"}}},
+        "cloudflare": {"mode": "heartbeat", "heartbeat": {"collector": "cloudflare"}, "max_silence_minutes": 20, "event_window_hours": 72,
+                       "query": {"term": {"rule.groups": "cloudflare"}}},
+        "bitdefender": {"mode": "heartbeat", "heartbeat": {"collector": "bitdefender"}, "max_silence_minutes": 30, "event_window_hours": 26,
+                        "query": {"term": {"rule.groups": "bitdefender"}}},
+        "aws": {"mode": "heartbeat", "heartbeat": {"container": "b89-aws-events-1"}, "max_silence_minutes": 15, "event_window_hours": 72,
+                "query": {"term": {"rule.groups": "aws"}}},
+        "wazuh-agents": {"mode": "events", "max_silence_minutes": 30,
+                         "query": {"bool": {"must_not": [{"terms": {"rule.groups": ["b89_provider", "office365", "aws", "b89_platform"]}}]}}},
+        "office365": {"enabled": False, "mode": "events", "max_silence_minutes": 360, "query": {"term": {"rule.groups": "office365"}},
+                      "disabled_reason": "Office 365 bloqueado: falta ActivityFeed.Read (docs/20)."},
+    },
+    "containers": {
+        "required": ["b89-wazuh.manager-1", "b89-wazuh.indexer-1", "b89-wazuh.dashboard-1", "b89-api-1", "b89-edge-1",
+                     "b89-postgres-1", "b89-wazuh-gateway-1", "b89-aws-events-1"],
+        "optional": ["b89-b89-respond-sso-1", "b89-b89-respond-frontend-1", "b89-shuffle-backend-1",
+                     "b89-shuffle-orborus-1", "b89-shuffle-opensearch-1", "tenzir-node"],
+        "watch_prefix": "b89-"},
+    "agents": {"max_disconnected_minutes": 15},
+    "indexer_checks": {"disk_low_pct": 85, "disk_high_pct": 90, "ism_pattern": "wazuh-*"},
+    "host": {"disk_paths": ["/", "/var/lib/docker"], "disk_warn_pct": 85, "disk_crit_pct": 95, "mem_warn_pct": 92, "load_per_cpu_warn": 2.0},
+    "certificates": {"warn_days": 30, "critical_days": 7, "files": [
+        {"name": "edge-letsencrypt", "path": f"/etc/letsencrypt/live/{host}/fullchain.pem"},
+        {"name": "indexer", "path": f"{certs}/wazuh.indexer.pem"},
+        {"name": "dashboard", "path": f"{certs}/wazuh.dashboard.pem"},
+        {"name": "manager-filebeat", "path": f"{certs}/wazuh.manager.pem"},
+        {"name": "indexer-admin", "path": f"{certs}/admin.pem"},
+        {"name": "wazuh-root-ca", "path": f"{certs}/root-ca.pem"},
+        {"name": "b89-internal-ca", "path": "/opt/b89/pki/ca.pem", "required": False},
+        {"name": "gateway", "path": "/opt/b89/pki/gateway/cert.pem", "required": False},
+        {"name": "postgres", "path": "/opt/b89/pki/postgres/postgres.crt", "required": False},
+        {"name": "wazuh-api", "path": f"{pms}/wazuh-api-ca.pem", "required": False}]},
+    "b89_ingestion": {"max_lag_minutes": 15},
+    "edge_probe": {"url": f"https://{host}/", "ok_status": [200, 301, 302, 401, 403]},
+    "vulnprio": {"cache_dir": f"{state}/vulnprio", "max_age_hours": 48},
+    "canary": {"state_file": f"{state}/canary.json", "max_verdict_age_hours": 26},
+    "sns": {"enabled": False},
+})
+write("vulnprio.json", {
+    "cache_dir": f"{state}/vulnprio", "state_file": f"{state}/vulnprio.json", "output_file": f"{out}/vulnprio.jsonl",
+    "snyk_jsonl": f"{out}/snyk-issues.jsonl", "indexer": indexer, "refresh_hours": 24, "summary_hours": 24,
+    "policy": {"epss_high": 0.5, "epss_low": 0.1, "p4_requires_no_fix": True, "max_cache_age_hours": 72},
+    "exposure": {"cdb_list": "b89-internet-facing-projects", "snyk_projects": [], "snyk_project_patterns": [],
+                 "agents": [a for a in agents.split(",") if a]},
+    "manager": {"container": "b89-wazuh.manager-1"}, "sync_cdb_lists": True, "max_events_per_run": 500,
+})
+write("canary.json", {
+    "state_file": f"{state}/canary.json", "deadline_minutes": 30, "check_b89": True, "indexer": indexer, "postgres": postgres,
+    "monitor_watch": {"state_file": f"{state}/monitor.json", "stale_minutes": 30, "output_file": f"{out}/platform-health.jsonl"},
+    "pipelines": {
+        "snyk": {"vendor": "snyk", "source": "issues", "file": f"{out}/snyk-issues.jsonl", "unit": "b89-collector-snyk"},
+        "cloudflare": {"vendor": "cloudflare", "source": "security", "file": f"{out}/cloudflare-security.jsonl", "unit": "b89-collector-cloudflare"},
+        "bitdefender": {"vendor": "bitdefender", "source": "gravityzone", "file": f"{out}/bitdefender-gz.jsonl", "unit": "b89-collector-bitdefender"},
+        "aws": {"vendor": "aws", "source": "eventbridge", "file": f"{out}/aws/aws-events.jsonl"},
+        "platform": {"vendor": "b89-platform", "source": "monitor", "file": f"{out}/platform-health.jsonl", "unit": "b89-platform-monitor"},
+        "vulnprio": {"vendor": "b89-vulnprio", "source": "vulnprio", "file": f"{out}/vulnprio.jsonl", "unit": "b89-vulnprio"},
+        "agent": {"type": "journald"},
+    },
+})
+PY
+log "configs en $ETC (agentes expuestos: ${B89_EXPOSED_AGENTS:-$(hostname)})"
+
+# ------------------------------------------------------------------ 3. feeds + listas antes del reinicio
+/usr/bin/python3 -I "$BIN/b89_vulnprio.py" run --config "$ETC/vulnprio.json" || log 'AVISO: primera pasada de vulnprio con errores (ver arriba)'
+
+# ------------------------------------------------------------------ 4. reglas + ossec.conf
+stage="$(mktemp -d)"; trap 'rm -rf "$stage"' EXIT
+cp "$HERE"/rules/*.xml "$stage/"; sed -i 's/\r$//' "$stage"/*.xml
+docker cp "$M:/var/ossec/etc/ossec.conf" "$stage/ossec.conf"
+cp "$stage/ossec.conf" "$BACKUP/ossec.conf"
+docker cp "$M:/var/ossec/etc/rules" "$BACKUP/rules"
+docker cp "$M:/var/ossec/etc/lists" "$BACKUP/lists"
+python3 - "$stage/ossec.conf" "$BEGIN" "$END" <<'PY'
+import re, sys, xml.etree.ElementTree as ET
+path, begin, end = sys.argv[1:4]
+text = open(path, encoding="utf-8").read()
+text = re.sub(re.escape(begin) + r".*?" + re.escape(end) + r"\n?", "", text, flags=re.S)
+for name in ("b89-vuln-kev", "b89-vuln-noise"):
+    entry = f"<list>etc/lists/{name}</list>"
+    if entry not in text:
+        text = text.replace("<ruleset>", f"<ruleset>\n    {entry}", 1)
+files = ["platform-health", "vulnprio"]
+blocks = "\n".join(
+    "<ossec_config>\n  <localfile>\n"
+    f"    <location>/var/ossec/logs/b89-collectors/{f}.jsonl</location>\n"
+    "    <log_format>json</log_format>\n"
+    "    <label key=\"b89.channel\">platform-monitoring</label>\n"
+    "  </localfile>\n</ossec_config>" for f in files)
+text = text.rstrip("\n") + "\n" + begin + "\n" + blocks + "\n" + end + "\n"
+ET.fromstring("<root>" + re.sub(r"<\?xml[^>]*\?>", "", text) + "</root>")
+open(path, "w", encoding="utf-8").write(text)
+PY
+docker cp "$stage/." "$M:/tmp/b89-platform"
+docker exec -u 0 "$M" bash -euo pipefail -c '
+  O=/var/ossec; S=/tmp/b89-platform
+  bak=$O/etc/b89-backup-platform-'"$TS"'; mkdir -p "$bak"
+  cp -a $O/etc/ossec.conf "$bak/"; cp -a $O/etc/rules "$bak/rules"; cp -a $O/etc/lists "$bak/lists"
+  for l in b89-vuln-kev b89-vuln-noise; do
+    [[ -s $O/etc/lists/$l ]] || { printf "CVE-0000-0000.invalid:none\n" >$O/etc/lists/$l; chown wazuh:wazuh $O/etc/lists/$l; chmod 0660 $O/etc/lists/$l; }
+  done
+  install -o wazuh -g wazuh -m 0660 $S/b89_watch_platform_rules.xml $S/b89_watch_vulnprio_rules.xml $O/etc/rules/
+  install -o root -g wazuh -m 0660 $S/ossec.conf $O/etc/ossec.conf
+  if ! $O/bin/wazuh-analysisd -t >/tmp/b89-platform-analysisd.log 2>&1; then
+    tail -20 /tmp/b89-platform-analysisd.log >&2
+    cp -a "$bak/ossec.conf" $O/etc/ossec.conf; rm -f $O/etc/rules/b89_watch_platform_rules.xml $O/etc/rules/b89_watch_vulnprio_rules.xml
+    echo "configuración inválida: revertida a $bak" >&2; exit 1
+  fi
+  rm -rf $S
+'
+log "reglas 101800-101879 instaladas; wazuh-analysisd -t OK (respaldo $BACKUP)"
+HOSTCONF="$(docker inspect "$M" --format '{{range .Mounts}}{{if eq .Destination "/wazuh-config-mount/etc/ossec.conf"}}{{.Source}}{{end}}{{end}}')"
+if [[ -n $HOSTCONF && -f $HOSTCONF ]]; then
+  cp -p "$HOSTCONF" "$BACKUP/wazuh_manager.conf.host"
+  docker cp "$M:/var/ossec/etc/ossec.conf" "$stage/persist.conf"
+  cat "$stage/persist.conf" >"$HOSTCONF"
+  log 'ossec.conf persistido en el montaje del host'
+fi
+if [[ $RESTART == true ]]; then
+  docker exec -u 0 "$M" /var/ossec/bin/wazuh-control restart >/dev/null 2>&1
+  log 'manager reiniciado (wazuh-control restart)'
+fi
+
+# ------------------------------------------------------------------ 5. systemd
+unit() { # nombre descripción comando calendario-o-intervalo
+  cat >"/etc/systemd/system/$1.service" <<EOF
+[Unit]
+Description=$2
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+User=root
+UMask=0027
+ExecStart=$3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+ProtectKernelTunables=true
+ProtectControlGroups=true
+TimeoutStartSec=600
+EOF
+  if [[ $4 == *:* ]]; then sched="OnCalendar=$4"; else sched="OnBootSec=3min
+OnUnitActiveSec=$4"; fi
+  cat >"/etc/systemd/system/$1.timer" <<EOF
+[Unit]
+Description=Programa $2
+
+[Timer]
+$sched
+RandomizedDelaySec=20s
+Persistent=true
+Unit=$1.service
+
+[Install]
+WantedBy=timers.target
+EOF
+  chmod 0644 "/etc/systemd/system/$1.service" "/etc/systemd/system/$1.timer"
+}
+PY3="/usr/bin/python3 -I"
+unit b89-platform-monitor 'B89 platform health monitor' "$PY3 $BIN/b89_platform_monitor.py --config $ETC/monitor.json" 5min
+unit b89-vulnprio 'B89 KEV/EPSS vulnerability prioritization' "$PY3 $BIN/b89_vulnprio.py run --config $ETC/vulnprio.json" 1h
+unit b89-canary-inject 'B89 synthetic canaries (inject)' "$PY3 $BIN/b89_canary.py inject --config $ETC/canary.json" '*-*-* 06:10:00 UTC'
+unit b89-canary-verify 'B89 synthetic canaries (verify)' "$PY3 $BIN/b89_canary.py verify --config $ETC/canary.json" 10min
+systemctl daemon-reload
+for t in b89-platform-monitor b89-vulnprio b89-canary-inject b89-canary-verify; do systemctl enable --now "$t.timer" >/dev/null; done
+sleep 20
+systemctl start b89-platform-monitor.service || true
+journalctl -u b89-platform-monitor.service --no-pager -o cat -n 3 | grep -E '^b89-platform-monitor' | tail -1 || true
+log "eventos de salud: $(wc -l <"$OUT/platform-health.jsonl") · vulnprio: $(wc -l <"$OUT/vulnprio.jsonl")"
+log "listo. Canarios: sudo $PY3 $BIN/b89_canary.py inject --config $ETC/canary.json (diario 06:10 UTC)"
