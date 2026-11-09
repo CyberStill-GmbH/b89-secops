@@ -1,0 +1,54 @@
+# B89 SOC · metadatos de detección (estándar: docs/detection-engineering/01-ciclo-de-vida.md#metadatos)
+# Reglas nuevas del programa en rule.xml de esta carpeta. SharePoint/OneDrive: docs/23-sharepoint-onedrive.md.
+id: B89-DET-SP-003
+title: 'Uso compartido externo: enlaces anónimos en volumen y correos personales'
+source: sharepoint
+use_case: external-sharing
+status: pending-provider-evidence
+version: 1.0.0
+owner: soc-detection-engineering
+reviewers:
+- b89.soc.lead
+created: '2026-11-09'
+updated: '2026-11-09'
+hypothesis: La salida más simple de un documento es un enlace «Cualquier persona» o una invitación a un correo personal.
+data_sources:
+- Office 365 Management Activity API, Audit.SharePoint (módulo office365 de Wazuh; ActivityFeed.Read)
+- Microsoft Graph Purview Audit Search /security/auditLog/queries (collector b89-sharepoint-audit; AuditLogsQuery-SharePoint.Read.All
+  / AuditLogsQuery-OneDrive.Read.All)
+rules:
+  file: detections/sharepoint/external-sharing/rule.xml
+  ids:
+  - 101925
+  - 101926
+  - 101927
+  - 101928
+  - 101929
+  - 101930
+  installed_as: etc/rules/b89_soc_sharepoint_external_sharing.xml
+mitre:
+- technique: T1567
+  tactic: exfiltration
+- technique: T1537
+  tactic: exfiltration
+severity:
+  levels: 2–3 cuentas aprobadas · 4 invitado externo · 9 correo personal · 11 diez enlaces anónimos en 1 h · 12 cinco correos
+    personales en 1 h
+  priority_hint: P1 (12) / P2 (9–11) / P3 (4)
+  rationale: Compartir con socios es normal; con correos personales y en volumen, no.
+false_positives:
+- Marketing y comunicaciones publican con enlaces anónimos (b89-m365-sharing-approved).
+- Proveedores con correo gratuito (documentar y aprobar por PR).
+tuning:
+- 'Allowlist b89-m365-sharing-approved (CDB versionada): baja a 2–3 y sigue indexado.'
+- El patrón exige el dominio completo (gmail.com, no gmail.com.socio.example).
+lists:
+- detections/lists/b89-m365-sharing-approved
+tests:
+  runner: logtest
+  fixtures: detections/sharepoint/external-sharing/fixtures.jsonl
+  expected: detections/sharepoint/external-sharing/expected.txt
+  generator: wazuh/provider-ingestion/sharepoint/tests/make_fixtures.py
+runbook: docs/detection-engineering/runbooks/exfiltracion-sharepoint.md
+notes: 'Sin datos al 2026-11-09: la app «Soc Interno» no tiene ActivityFeed.Read ni AuditLogsQuery-*. Instalada y probada
+  con fixtures sintéticos; pasa a testing con el primer registro real redactado (docs/23).'

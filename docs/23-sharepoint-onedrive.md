@@ -1,50 +1,133 @@
-# SharePoint y OneDrive
+# 23 · SharePoint y OneDrive
+
+> Leyenda: **[verificado]** comprobado contra el tenant o el manager real; **[sin datos]** instalado y probado con
+> fixtures sintéticos, sin eventos reales; **[bloqueado]** falta un permiso de Entra. Estado al 2026-11-09.
+> Integración de [18](18-integraciones.md); detecciones en [`detections/sharepoint/`](../detections/sharepoint);
+> runbook [Exfiltración desde SharePoint y OneDrive](detection-engineering/runbooks/exfiltracion-sharepoint.md).
+> Todo es de **solo lectura**: B89 no cambia nada en Microsoft 365.
 
 ## Alcance y estado
 
-B89 recoge actividad de archivos, uso compartido y postura del tenant. Hay dos rutas para auditoría:
+| Área | Qué | Vía | Estado |
+| --- | --- | --- | --- |
+| Actividad (auditoría) | Descargas y sincronización, accesos, borrados y papelera, enlaces anónimos creados/usados, invitaciones, cambios de política, administradores de sitio, etiquetas, DLP | **A1** módulo `office365` de Wazuh (`Audit.SharePoint`) o **A2** collector Purview Audit Search | **[bloqueado]** |
+| Contexto | Fuera de horario (Lima 08–20, fin de semana), red nueva para el usuario (línea base 30 días), cuenta deshabilitada, invitado, IP en Spamhaus/Feodo/Tor | Collector A2 (`b89.*`) y listas CDB de reputación | Cuentas deshabilitadas **[verificado]** (Graph `User.Read.All`) |
+| Postura | Configuración de uso compartido del tenant (diff con dirección *weakened*), inventario de sitios y sitios nuevos, enlaces anónimos y permisos externos en las bibliotecas | Collector de postura (Graph) | **[bloqueado]** |
+| Salud de la fuente | Estado de cada función según los permisos; aviso si un permiso que funcionaba se pierde | Ambos collectors (eventos `capability`) | Listo; timers apagados mientras esté bloqueado |
 
-- El módulo nativo `office365` lee `Audit.SharePoint` y OneDrive cuando la aplicación de Entra tiene
-  `ActivityFeed.Read` en Office 365 Management APIs.
-- El collector B89 consulta Purview Audit Search por Microsoft Graph cuando la vía nativa no está
-  disponible. Requiere `AuditLogsQuery-SharePoint.Read.All` y/o `AuditLogsQuery-OneDrive.Read.All`.
+La integración aparece en **Resumen del SOC** e **Integraciones** (tarjeta «SharePoint y OneDrive»,
+`b89_ops.integrations.sharepoint.*`) y tiene su dashboard «B89 · SharePoint y OneDrive»
+(`b89-dashboard-sharepoint-onedrive`, en `wazuh/dashboard/saved-objects/b89-provider-dashboards.ndjson`). En el
+monitor de plataforma es la fuente `sharepoint` (collectors `sharepoint-audit` y `sharepoint-posture`),
+deshabilitada con motivo mientras A1 y A2 estén bloqueadas.
 
-La postura usa `SharePointTenantSettings.Read.All` y `Sites.Read.All`. El enriquecimiento opcional de
-cuentas requiere `User.Read.All`. Preferir permisos de aplicación de solo lectura y conceder
-consentimiento de administrador. La app/tenant debe ser la de B89.
+### A1 · Módulo `office365` (vía preferida)
 
-La integración aparece en **Resumen del SOC** e **Integraciones** con estado **No configurada** mientras
-`b89_ops.integrations.sharepoint.state` sea `disabled`. La instalación prepara servicios y dashboard,
-pero no activa timers de forma predeterminada.
+`wazuh/office365/ossec-office365.xml.tmpl` ya suscribe `Audit.SharePoint` (y `DLP.All` si se activa DLP). Necesita
+**Office 365 Management APIs › `ActivityFeed.Read`**. Cuando el token lo trae, el collector A2 pasa a modo `native`
+y no consulta nada (sin duplicados). Las reglas B89 de SharePoint cuelgan de la cadena oficial
+`0755-office365_rules.xml` (91532, 91536–91538, 91542, 91544, 91702) y de 100515.
 
-## Reglas y fuentes
+### A2 · Collector Purview Audit Search (alternativa)
 
-Las detecciones `101900–101979` están en `detections/sharepoint/` y cubren descargas/sincronización y
-borrado masivos, accesos de invitados o cuentas deshabilitadas, enlaces anónimos/externos, cambios
-débiles de política, administradores y postura. Las reglas usan los eventos normalizados `office365.*`
-y los eventos de estado/postura `b89.*` / `sharepoint.*`.
+`wazuh/provider-ingestion/sharepoint/sharepoint.py audit` (timer `b89-collector-sharepoint-audit`):
 
-MITRE ATT&CK se declara por regla XML. La lista `b89-m365-service-accounts` permite mantener fuera de
-umbrales de volumen las cuentas de servicio y sincronización aprobadas. Añadir cuentas reales mediante
-el procedimiento de cambios del SOC, nunca en el ejemplo versionado.
+1. Sin consulta pendiente crea `POST /v1.0/security/auditLog/queries` para `[cursor − 2 h, ahora − 30 min]`
+   (máx. 24 h; primera vez, últimas 24 h) con `recordTypeFilters` según el permiso: `SharePoint`,
+   `SharePointFileOperation`, `SharePointSharingOperation`, `OneDrive` y, con `AuditLogsQuery.Read.All`, también
+   `ComplianceDLPSharePoint`, `SensitivityLabelAction`, `SensitivityLabeledFileAction`,
+   `SharePointAppPermissionOperation` (nombres del `$metadata` de Graph v1.0; si el tenant rechaza un tipo con 400,
+   reintenta solo con los de servicio).
+2. En las siguientes ejecuciones sondea el estado; `succeeded` → pagina `/records` (hasta 15 000 por ejecución y
+   retoma el `@odata.nextLink`); `failed`/`cancelled` o más de 3 h corriendo → la recrea.
+3. Cada registro se emite con la **misma forma que el módulo** (`integration: office365`, `office365.*` = `auditData`,
+   `RecordType` numérico) + `b89.*`; deduplica por id de registro (20 000 recientes) y el solape de 2 h absorbe la
+   demora de Purview. JSONL con checkpoint write-ahead y `fsync` (`common/b89_collector.py`).
+
+### Postura
+
+`sharepoint.py posture` (timer `b89-collector-sharepoint-posture`): `GET /v1.0/admin/sharepoint/settings` (foto
+diaria y diff de `sharingCapability`, dominios permitidos/bloqueados, re-compartir de externos, invitación con el
+mismo correo, sincronización no administrada, autenticación heredada, cierre de sesión por inactividad…),
+`GET /v1.0/sites/getAllSites` (sitios nuevos; en la primera pasada solo los creados en los últimos 7 días) y un
+recorrido acotado y rotativo de bibliotecas (20 sitios por pasada, 3 bibliotecas, 300 ítems, profundidad 3; los
+recientes primero) que solo pide `/permissions` de los ítems con faceta `shared`. Los dominios propios salen de
+`/organization` (`Organization.Read.All`, ya concedido). Un sitio inaccesible no detiene el inventario (hasta 10).
+
+## Permisos
+
+Entra ID › Registros de aplicaciones › «Soc Interno» › Permisos de API › **de aplicación** + consentimiento de
+administrador. Verificado el 2026-11-09 con `check_sharepoint_access.py` (solo GET; código HTTP y conteos):
+
+| Sondeo | HTTP | Resultado |
+| --- | --- | --- |
+| Token Graph | 200 | Roles: Organization.Read.All, Policy.Read.All, SecurityEvents.Read.All, User.Read.All, UserAuthenticationMethod.Read.All |
+| Token `manage.office.com` | 200 | **Sin roles** |
+| `activity/feed/subscriptions/list` | 401 | Falta `ActivityFeed.Read` |
+| `/v1.0` y `/beta` `security/auditLog/queries` | 403 / 403 | Falta `AuditLogsQuery-*` |
+| `/v1.0/admin/sharepoint/settings` | 403 | Falta `SharePointTenantSettings.Read.All` |
+| `/v1.0/sites/getAllSites`, `/sites?search=*` | 403 / 403 | Falta `Sites.Read.All` |
+| `/v1.0/users` deshabilitados / invitados | 200 / 200 | 26 / 110 |
+
+Conjunto recomendado de **mínimo privilegio**:
+
+| API | Permiso | Para qué | Necesidad |
+| --- | --- | --- | --- |
+| Office 365 Management APIs | `ActivityFeed.Read` | A1: Audit.SharePoint (y Entra/Exchange/General del módulo office365) | Uno de A1/A2 |
+| Microsoft Graph | `AuditLogsQuery-SharePoint.Read.All` + `AuditLogsQuery-OneDrive.Read.All` | A2 sin ActivityFeed (acotados por servicio) | Uno de A1/A2 |
+| Microsoft Graph | `SharePointTenantSettings.Read.All` | Postura del tenant | Recomendado |
+| Microsoft Graph | `Sites.Read.All` | Inventario de sitios y enlaces anónimos/externos | Recomendado |
+| Office 365 Management APIs | `ActivityFeed.ReadDlp` | DLP vía A1 (`DLP.All`) | Opcional |
+| Microsoft Graph | `User.Read.All` | Cuentas deshabilitadas | **Ya concedido** |
+
+`AuditLogsQuery.Read.All` reemplaza a los dos acotados y añade DLP y etiquetas en A2, pero lee la auditoría de
+**todos** los servicios: preferir los acotados salvo que se quiera DLP/etiquetas sin `ActivityFeed.ReadDlp`.
+`Sites.Read.All` lee el contenido de todos los sitios; `Sites.Selected` no sirve para inventariar.
+
+## Detecciones (rango 101900–101979, grupo `b89_sharepoint`)
+
+Escala B89: 12–15 P1, 8–11 P2, 4–7 P3, 0–3 P4. Correo desde nivel 8. MITRE por regla en el XML.
+
+| Caso de uso | Reglas | Qué | Nivel |
+| --- | --- | --- | --- |
+| `exfiltration` | 101900–101911 | Descarga/sincronización masiva 150/10 min (10); fuera de horario 40/30 min (12); masiva desde red nueva (12); invitado 30/10 min (10); cuenta deshabilitada (10); IP Spamhaus/Feodo (12) o Tor (11); 50 usos de enlaces anónimos/10 min por IP (10) | 2–12 |
+| `mass-deletion` | 101915–101920 | Borrado masivo 100/10 min (10), destrucción 300/15 min (13), vaciado de la papelera de 2.ª etapa 25/15 min (12) | 2–13 |
+| `external-sharing` | 101925–101930 | Correo personal (9; 5 en 1 h = 12), invitado externo (4), 10 enlaces anónimos en 1 h (11); cuentas aprobadas bajan a 2–3 | 2–12 |
+| `sharing-policy-and-admins` | 101935–101941 | Política cambiada (8) o abierta a «Cualquier persona» (12); administrador de sitio (10), en el OneDrive de otra persona (11), invitado (12) | 3–12 |
+| `labels-and-dlp` | 101945–101951 | Etiqueta quitada/rebajada (8), 10 en 1 h (12), **compartido fuera tras quitar la etiqueta** (13); DLP (7), alta (11), anulación (9) | 7–13 |
+| `posture` | 101960–101972 | Tenant debilitado (12) o cambiado (8), tenant con «Cualquier persona» (6), sitio nuevo (5), sitio reciente con enlaces externos (10), enlace anónimo (7) o de edición (10), permiso externo (5), función perdida (7) | 0–12 |
+
+Reducción de falsos positivos: listas CDB **versionadas** (el repo es la fuente de verdad, cambio por PR, las
+instala `deploy-detections.sh`) `b89-m365-service-accounts` (sincronización y servicios; `app@sharepoint` en el
+aprovisionamiento de OneDrive) y `b89-m365-sharing-approved` (publicación con enlaces anónimos y socios; hoy solo
+una cuenta sintética `.example`), que **degradan sin suprimir**; umbrales por usuario; la señal fuerte (P1) exige un
+segundo indicio (horario, red nueva, reputación, etiqueta quitada); la línea base de redes tiene 7 días de
+calentamiento e ignora redes internas; las marcas quedan en nivel 3 (por debajo del 4 oficial de `FileDownloaded`).
+No cerrar una alerta solo porque el usuario es invitado o de servicio: los cambios de permisos, la actividad fuera
+de horario o una cuenta deshabilitada se revisan igual.
+
+Pruebas: 832 casos sintéticos de `wazuh-logtest` (TP y benignos) generados por
+`wazuh/provider-ingestion/sharepoint/tests/make_fixtures.py` con un modelo del algoritmo de frecuencia de Wazuh;
+13 pruebas unitarias del collector (`python -m unittest tests/test_sharepoint_collector.py`). Los nombres de
+operación sin registro real llevan el grupo `b89_pending_provider_evidence` (como en `wazuh/office365`) y los casos
+de uso están en `pending-provider-evidence` hasta el primer registro real redactado.
 
 ## Activación segura
 
-1. Confirmar permisos efectivos con el checker de acceso; debe informar HTTP 200 para las vías que se
-   habilitarán. No basta con que los permisos aparezcan configurados en Entra.
-2. Con las credenciales del tenant B89 disponibles en `/opt/b89/secrets/services.env`, ejecutar
-   `sudo env B89_ENABLE_SHAREPOINT=true bash wazuh/provider-ingestion/install-b89-collectors.sh`.
-3. Activar únicamente después de validar el checker. El instalador
-   falla cerrado si la auditoría está bloqueada o el diagnóstico recibe HTTP 403; deja ambos timers
-   apagados.
-4. Revisar `systemctl status b89-collector-sharepoint-audit.timer
-   b89-collector-sharepoint-posture.timer` y los JSONL en `/var/ossec/logs/b89-collectors/`.
-5. Al completar la validación, cambiar `b89_ops.integrations.sharepoint.state` a `auto` y recrear el
-   contenedor de OpenSearch Dashboards para que la tarjeta refleje los eventos.
-
-El modo de auditoría es `auto`: si ActivityFeed está disponible, el collector no duplica los eventos
-que ya recoge el módulo nativo; si no, usa Purview Graph. Si no hay permisos efectivos, registra estado
-de capacidad y no procesa auditoría. La postura funciona parcialmente según los permisos concedidos.
+1. Conceder en Entra los permisos de la tabla y confirmar los efectivos (no basta con verlos configurados):
+   `sudo python3 /opt/b89/collectors/provider-ingestion/sharepoint/check_sharepoint_access.py`.
+2. A1: `sudo bash /opt/b89/src/wazuh/office365/apply-office365-docker.sh` y esperar hasta 12 h a que Microsoft active
+   las suscripciones.
+3. Collectors: `sudo env B89_ENABLE_SHAREPOINT=true bash /opt/b89/src/wazuh/provider-ingestion/install-b89-collectors.sh`.
+   El instalador falla cerrado: si la auditoría está bloqueada o el diagnóstico recibe HTTP 403, deja ambos timers
+   apagados. Revisar `systemctl status b89-collector-sharepoint-audit.timer b89-collector-sharepoint-posture.timer`
+   y los JSONL en `/var/ossec/logs/b89-collectors/`.
+4. Reglas y listas: `sudo bash /opt/b89/src/detections/tools/deploy-detections.sh` (respaldo, `analysisd -t`,
+   reinicio y verificación del agente 001).
+5. Reemplazar por PR la cuenta sintética de `detections/lists/b89-m365-sharing-approved` y agregar las cuentas de
+   sincronización/servicio reales a `b89-m365-service-accounts` (claves exactas como `UserId`, sensibles a mayúsculas).
+6. Cambiar `b89_ops.integrations.sharepoint.state` a `auto`, habilitar la fuente `sharepoint` del monitor
+   (`install-platform-monitoring.sh`) y recrear el contenedor de OpenSearch Dashboards.
 
 ## Mapamundi
 
@@ -54,14 +137,16 @@ desactivada y el estado vacío indica que `data.office365.geoip.location` aún d
 Tras desplegar GeoIP confiable y confirmar el mapping y el plugin Maps en la imagen de Wazuh Dashboard
 4.14.8, habilitar la capa para eventos del proveedor y regenerar/importar los saved objects.
 
-## Triage de exfiltración
+## Límites
 
-Ante una alerta P1/P2, verificar primero usuario, operación, archivo/sitio, volumen y ventana temporal;
-correlacionar IP, país solo si proviene de GeoIP confiable, y actividad de Entra/endpoint. Confirmar si
-la cuenta está en la allowlist de sincronización, si existe cambio aprobado y si los enlaces externos
-están autorizados. Preservar el evento original y el contexto de postura. Escalar al dueño de SharePoint
-y al líder SOC; aplicar revocaciones o bloqueo únicamente por el proceso de respuesta aprobado.
-
-No cerrar una alerta solo porque el usuario es invitado o de servicio: la allowlist reduce ruido de
-volumen, pero los cambios de permisos, actividad fuera de horario o una cuenta deshabilitada requieren
-revisión.
+- Purview Audit Search entrega con demora (30 min a varias horas): A2 no es de tiempo real. El horario se calcula
+  con la hora del evento, no la de llegada.
+- El contexto `b89.*` (horario, red nueva, cuenta deshabilitada) solo existe en A2; con A1 aplican el volumen, la
+  reputación de IP, el uso compartido, la política, las etiquetas y la DLP.
+- No hay país de origen: los registros de SharePoint no traen geolocalización del cliente; se usa reputación de IP
+  y la línea base de redes por usuario.
+- Graph no expone la configuración de uso compartido **por sitio** (requiere SharePoint REST/PowerShell con
+  `Sites.FullControl.All` y certificado); se infiere de los enlaces encontrados y de la auditoría
+  (`SharingPolicyChanged`). El recorrido de enlaces es por muestreo rotativo, no exhaustivo.
+- Las reglas de frecuencia de Wazuh comparten la lista de coincidencias: alertas simultáneas de varios usuarios
+  pueden retrasar el conteo de otro hasta que la marca salga de la ventana.

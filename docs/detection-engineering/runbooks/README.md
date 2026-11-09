@@ -13,6 +13,7 @@ Discover sobre `wazuh-alerts-*`).
 | [Vulnerabilidad expuesta](vulnerabilidad-expuesta.md) | Snyk crítica/alta con exploit maduro y expuesta, Wazuh VD | P1–P3 |
 | [Oleada en el WAF](oleada-waf.md) | Cloudflare 101513 y 101740, cambios de control | P2 |
 | [CloudTrail y auditoría](cloudtrail-y-auditoria.md) | CloudTrail/GuardDuty/Config apagados, auditoría de M365 desactivada | P1 |
+| [Exfiltración desde SharePoint](exfiltracion-sharepoint.md) | SharePoint/OneDrive: descarga masiva, borrado, uso compartido externo, política, etiquetas, postura | P1–P3 |
 
 Reglas comunes a todos:
 

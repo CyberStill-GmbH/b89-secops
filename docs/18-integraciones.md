@@ -13,6 +13,7 @@
 | --- | --- | --- | --- | --- |
 | Agentes Wazuh | Agente → manager (TCP 1514/1515) | Tiempo real | Ruleset oficial + B89 (AD 101300–101307, endpoint, Linux 101750–101769) | Activo: solo el agente del propio nodo |
 | Microsoft 365 / Entra ID | Módulo `office365` de Wazuh | 1 min | 100502–100530 (+ cadenas 101700–101709) | **Bloqueado**: falta `ActivityFeed.Read` |
+| Microsoft 365 · SharePoint/OneDrive | Módulo `office365` (Audit.SharePoint) o collector Purview `sharepoint.py audit` + postura `sharepoint.py posture` | 5–10 min · 60 min | 101900–101979 (+ 100515) | **Bloqueado**: faltan `ActivityFeed.Read` o `AuditLogsQuery-SharePoint.Read.All`, y `SharePointTenantSettings.Read.All` / `Sites.Read.All` |
 | Bitdefender GravityZone | Collector `gravityzone.py` (systemd) | 10 min | 101400–101411 (+ 101720–101729) | Activo |
 | Snyk | Collector `issues.py` (systemd) | 15 min | 101450–101458 (+ 101730–101739) | Activo |
 | Cloudflare | Collector `security.py` (systemd) | 5 min | 101500–101513 (+ 101740–101749) | Activo |
@@ -74,9 +75,26 @@ reinicia solo el manager. Estado: `systemctl list-timers 'b89-*'`.
   las suscripciones; en el host `sudo bash wazuh/office365/apply-office365-docker.sh`; cambiar
   `b89_ops.integrations.office365.state` a `auto` y redesplegar el dashboard.
 
-SharePoint y OneDrive tienen collector, reglas y dashboard separados; su estado se muestra en la tarjeta
-propia de Integraciones. El collector queda apagado hasta que el chequeo de acceso confirme HTTP 200.
-Permisos, operación, activación y falsos positivos: [23](23-sharepoint-onedrive.md).
+
+## Microsoft 365 · SharePoint y OneDrive
+
+- **Recoge:** actividad de archivos (descargas y sincronización, borrados y papelera, enlaces anónimos e
+  invitaciones, política de uso compartido, administradores de sitio, etiquetas y DLP) por el módulo `office365`
+  (A1) o, sin `ActivityFeed.Read`, por Purview Audit Search (A2, `sharepoint.py audit`, misma forma
+  `office365.*` + contexto `b89.*`: fuera de horario, red nueva, cuenta deshabilitada, invitado). Postura cada
+  60 min (`sharepoint.py posture`): configuración de uso compartido del tenant, sitios nuevos y enlaces
+  anónimos/externos.
+- **Reglas:** 101900–101979 (`detections/sharepoint/`, 6 casos de uso, 51 reglas, 832 casos de logtest): masiva
+  150/10 min (10), fuera de horario 40/30 min (12), destrucción 300/15 min (13), correo personal (9), etiqueta
+  quitada y compartido (13), tenant debilitado (12). Allowlists `b89-m365-service-accounts` y
+  `b89-m365-sharing-approved`; reputación `b89-ti-blocklist` / `b89-ti-tor`.
+- **Permisos mínimos:** `ActivityFeed.Read` **o** `AuditLogsQuery-SharePoint.Read.All` +
+  `AuditLogsQuery-OneDrive.Read.All`; `SharePointTenantSettings.Read.All` y `Sites.Read.All` para la postura;
+  `User.Read.All` (concedido). Diagnóstico sin secretos: `check_sharepoint_access.py`.
+- **Bloqueado (2026-11-09):** token de `manage.office.com` sin roles (401), `auditLog/queries`, `admin/sharepoint/settings`
+  y `sites` con 403. Collectors instalados y apagados (`B89_ENABLE_SHAREPOINT`); reglas instaladas.
+- **Detalle:** [23](23-sharepoint-onedrive.md) · runbook
+  [exfiltración desde SharePoint](detection-engineering/runbooks/exfiltracion-sharepoint.md).
 
 ## Bitdefender GravityZone
 

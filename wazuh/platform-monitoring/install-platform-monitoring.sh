@@ -190,9 +190,9 @@ write("monitor.json", {
         "bitdefender": {"unit": "b89-collector-bitdefender", "state_file": f"{coll}/bitdefender.json", "interval_minutes": 10, "fail_after_intervals": 3},
         "vulnprio": {"unit": "b89-vulnprio", "state_file": f"{state}/vulnprio.json", "interval_minutes": 60, "fail_after_intervals": 3},
         "canary": {"unit": "b89-canary-verify", "state_file": f"{state}/canary.json", "interval_minutes": 10, "fail_after_intervals": 6},
-        # SharePoint/OneDrive (docs/23): opcionales hasta que install-sharepoint.sh los instale.
-        "sharepoint-audit": {"unit": "b89-collector-sharepoint-audit", "state_file": f"{coll}/sharepoint-audit.json", "interval_minutes": 10, "fail_after_intervals": 3, "required": False},
-        "sharepoint-posture": {"unit": "b89-collector-sharepoint-posture", "state_file": f"{coll}/sharepoint-posture.json", "interval_minutes": 360, "fail_after_intervals": 2, "required": False},
+        # SharePoint/OneDrive (docs/23): timers apagados hasta tener permisos (B89_ENABLE_SHAREPOINT); poner enabled=True al activarlos.
+        "sharepoint-audit": {"unit": "b89-collector-sharepoint-audit", "state_file": f"{coll}/sharepoint-audit.json", "interval_minutes": 5, "fail_after_intervals": 4, "required": False, "enabled": False},
+        "sharepoint-posture": {"unit": "b89-collector-sharepoint-posture", "state_file": f"{coll}/sharepoint-posture.json", "interval_minutes": 60, "fail_after_intervals": 3, "required": False, "enabled": False},
     },
     # Cadencia esperada por fuente. heartbeat = fuente de bajo volumen: se exige el latido del pipeline
     # (éxito del collector o receptor sano) y solo se esperan eventos dentro de event_window_hours.

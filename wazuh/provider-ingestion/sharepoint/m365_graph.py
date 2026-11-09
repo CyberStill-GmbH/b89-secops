@@ -155,7 +155,7 @@ def safe_path(url: str) -> str:
     path = urllib.parse.urlsplit(url).path
     out = []
     for part in path.split("/"):
-        looks_like_id = len(part) > 24 or any(c.isdigit() for c in part[:6]) or "," in part
+        looks_like_id = len(part) > 20 or "," in part or (len(part) > 8 and any(c.isdigit() for c in part))
         out.append("{id}" if part and looks_like_id else part)
     return "/".join(out)
 

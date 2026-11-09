@@ -168,6 +168,17 @@ lists:
     path: etc/lists/b89-internet-facing-projects
     example: detections/snyk/exposed-critical-exploit/lists/b89-internet-facing-projects.example
     used_by: [101730, 101731]
+  # SharePoint/OneDrive (docs/23). Las listas de reputación b89-ti-blocklist / b89-ti-tor también las usan 101908/101909.
+  - name: b89-m365-service-accounts
+    path: etc/lists/b89-m365-service-accounts
+    source: detections/lists/b89-m365-service-accounts
+    used_by: [101901, 101916, 101939, 101940, 101941]
+    purpose: "Cuentas de servicio y sincronización de M365 (UserId exacto): descargas/borrados bajan a 2 y no cuentan; app@sharepoint no dispara altas de administrador"
+  - name: b89-m365-sharing-approved
+    path: etc/lists/b89-m365-sharing-approved
+    source: detections/lists/b89-m365-sharing-approved
+    used_by: [101925, 101929]
+    purpose: "Cuentas aprobadas para publicar con enlaces anónimos o compartir con socios (degradación, nunca supresión)"
 
 # Refinamientos esperados: con las reglas del programa cargadas, estos casos de suites existentes bajan
 # a una regla hija más específica. Es comportamiento buscado (más contexto), no una regresión.

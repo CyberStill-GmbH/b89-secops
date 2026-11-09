@@ -63,6 +63,8 @@ TERMINAL_FAILED = {"failed", "cancelled"}
 SEEN_LIMIT = 20000
 FINDINGS_LIMIT = 20000
 CAPABILITY_REPEAT = timedelta(hours=24)
+INTERNAL_NETS = [ipaddress.ip_network(n) for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10",
+                                                    "fc00::/7")]
 
 # Configuración del tenant: orden de permisividad (mayor índice = más permisivo = más débil).
 SHARING_ORDER = ["disabled", "existingExternalUserSharingOnly", "externalUserSharingOnly", "externalUserAndGuestSharing"]
@@ -160,7 +162,8 @@ class Enricher:
             address = ipaddress.ip_address(raw)
         except ValueError:
             return None
-        if address.is_private or address.is_loopback or address.is_link_local:
+        # Redes internas (RFC 1918, ULA, loopback, link-local) no aportan señal de origen.
+        if address.is_loopback or address.is_link_local or any(address in net for net in INTERNAL_NETS):
             return None
         bits = 24 if address.version == 4 else 48
         return str(ipaddress.ip_network(f"{address}/{bits}", strict=False))
@@ -267,7 +270,7 @@ def audit_event(record: dict, now: datetime, enricher: Enricher, query_id: str) 
     return {
         "integration": "office365",
         "office365": office,
-        "b89": {"vendor": "m365", "source": "sharepoint_audit", "channel": "graph-audit-search", "event_type": "audit",
+        "b89": {"vendor": "m365", "source": "sharepoint_audit", "api": "graph-audit-search", "event_type": "audit",
                 "collected_at": iso(now), "query": query_id[:64], "record_type": rtype,
                 **enricher.context(office, created)},
     }
@@ -593,8 +596,16 @@ def collect_posture(config: dict, state: dict, graph: Graph | None = None, now: 
         seen_findings = list(next_state.get("findings") or [])
         seen_set = set(seen_findings)
         external_sites = set()
+        crawl_errors = 0
         for site in batch:
-            for finding in crawl_site(graph, site, config, domains):
+            try:
+                found = crawl_site(graph, site, config, domains)
+            except ProviderError as error:
+                if error.status in (401,) or crawl_errors >= int(config.get("max_crawl_errors", 10)):
+                    raise
+                crawl_errors += 1  # un sitio o biblioteca inaccesible no detiene el inventario
+                continue
+            for finding in found:
                 external_sites.add(text(site.get("id")))
                 if finding["key"] in seen_set:
                     continue
@@ -624,7 +635,7 @@ def collect_posture(config: dict, state: dict, graph: Graph | None = None, now: 
             events.append({"b89": {**base, "event_type": "inventory_snapshot"}, "sharepoint": {"inventory": {
                 "sites": str(len(sites)), "personal_sites": str(sum(1 for s in sites if s.get("isPersonalSite"))),
                 "recent_sites": str(len(recent_ids)), "crawled_this_run": str(len(batch)),
-                "known_findings": str(len(seen_findings))}}})
+                "known_findings": str(len(seen_findings)), "crawl_errors": str(crawl_errors)}}})
     if snapshot_due:
         next_state["snapshot_at"] = iso(now)
     return events, next_state
