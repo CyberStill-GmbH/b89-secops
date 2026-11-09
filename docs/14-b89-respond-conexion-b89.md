@@ -1,8 +1,9 @@
 # 14 · Conexión de B89 Respond con B89 SOC
 
-> Estado: el diseño sobre **Step Functions es propuesto**; la sección 8 recoge el **estado heredado
-> basado en Shuffle** (hecho, a reemplazar). Contexto y fases de migración en [13](13-b89-respond.md);
-> arquitectura general en [02](02-arquitectura.md).
+> Estado (2026-11-08): el motor **vigente** de B89 Respond es el basado en Shuffle (sección 8),
+> desplegado en el nodo AWS PowerUser con SSO (§8.1). El diseño sobre **Step Functions** (secciones
+> 1–7) es el objetivo, no desplegado. Contexto en [13](13-b89-respond.md); arquitectura en
+> [02](02-arquitectura.md).
 
 Regla central: **la B89 API gobierna y deja evidencia; Step Functions ejecuta.** Una acción solo sale de
 la B89 API después del catálogo y la aprobación; ni el navegador, ni Wazuh, ni otro servicio inician una
@@ -154,9 +155,16 @@ stateDiagram-v2
 | Aprobador no responde | `TimeoutSeconds` lleva la solicitud a `EXPIRED` y avisa |
 | Wazuh Manager no disponible | El paso de Active Response falla cerrado y queda registrado; no hay acción parcial silenciosa |
 
-## 8. Estado heredado (Shuffle): hecho, a reemplazar
+## 8. Motor vigente basado en Shuffle
 
-El diseño anterior, **nunca desplegado**, ponía a Shuffle en un host privado detrás del edge del SIEM:
+**Desplegado** en el nodo AWS PowerUser (2026-11-04): `shuffle-backend`, `shuffle-orborus`,
+`shuffle-opensearch`, el frontend rebrandeado `b89-respond-frontend` y el puente `b89-respond-sso`
+(`infra/aws-poweruser/host/compose.respond.yaml`), servidos en `/b89-respond/` solo con sesión B89 y
+embebidos en el SIEM (app «SOAR»). El despacho automático desde el núcleo B89 descrito abajo **no**
+está implementado: hoy los playbooks se ejecutan desde la consola de Respond con aprobación humana y
+sus resultados no vuelven al incidente ([19 #11](19-brechas-y-roadmap.md)).
+
+Diseño original del despacho (no implementado):
 
 - Edge con `auth_request` sirviendo `/b89-respond/*` hacia el frontend rebrandeado de Shuffle, con
   SSO desde la sesión B89 (§8.1).

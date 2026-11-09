@@ -1,129 +1,209 @@
-# 06 · Operación
+# 06 · Operación (runbook)
 
-> Estado: **propuesto**. Describe cómo se opera B89 SOC serverless en AWS ([02](02-arquitectura.md)).
-> `infra/aws/` hoy contiene el Terraform de la demo anterior (ECS, RDS, EC2); el Terraform
-> serverless aún no existe ([09](09-plan-de-lanzamiento.md)). Lo que sí es **hecho** (sin verificar
-> en AWS) son los workflows de GitHub, los scripts de `wazuh/` y la configuración de integraciones.
-> **Ninguna cifra de costo de este documento está verificada**: son órdenes de magnitud para
-> decidir y deben validarse con el AWS Pricing Calculator y el plan de Terraform (decisión N8).
+> Estado (2026-11-08): runbook del nodo **vigente** `b89-soc-dev` en AWS modo PowerUser
+> ([02](02-arquitectura.md)). Los comandos salen de los scripts de `infra/aws-poweruser/scripts`.
+> Lo que no se ejecutó de punta a punta se marca **por verificar**. Este documento no contiene
+> credenciales: solo nombres de archivos y variables.
 
-## Topología AWS (propuesta)
+## Datos del entorno
 
-| Recurso | Cuenta | Notas |
-| --- | --- | --- |
-| CloudFront + WAF | `b89-soc-workload` | Borde único: `/` al dashboard y `/api` a API Gateway |
-| Cognito, API Gateway HTTP, Lambda (arm64) | `b89-soc-workload` | Identidad y B89 API ([04](04-identidad-y-acceso.md)) |
-| Step Functions Standard, SQS + DLQ, EventBridge | `b89-soc-workload` | B89 Respond, ingesta y colas ([11](11-cache-y-colas.md), [13](13-b89-respond.md)) |
-| Aurora Serverless v2 (PostgreSQL) | `b89-soc-workload` | Casos, sesiones y auditoría |
-| Nodo Wazuh: EC2 Graviton en ASG `min=max=1` + NLB para agentes | `b89-soc-workload` | Única parte con servidor ([02](02-arquitectura.md)) |
-| VPC con subredes privadas y **sin NAT Gateway**, con endpoints de VPC (S3 de tipo gateway; Secrets Manager, KMS, CloudWatch Logs, SSM de tipo interfaz) | `b89-soc-workload` | Las Lambdas que leen el Indexer van en la VPC |
-| S3 de snapshots, S3 con Object Lock (evidencia y auditoría) | `b89-soc-workload` | [05](05-datos-y-retencion.md) |
-| Réplica de auditoría y evidencia (Object Lock) | `b89-log-archive` | Solo escritura desde workload |
-| GuardDuty, Security Hub, Detective | `b89-security-tooling` | Administrador delegado |
-
-Lo retirado de la topología anterior (KrakenD, ECS Fargate, RDS fijo, ElastiCache, worker,
-Shuffle en VM, NAT y el frontend alojado aparte) está justificado en
-[02](02-arquitectura.md#qué-salió-del-diseño-y-por-qué).
-
-## Costos
-
-Distinción obligatoria en este documento:
-
-- **Verificado:** ninguna cifra. Aún no hay plan de Terraform serverless ni facturas de B89 SOC.
-- **Estimado (a validar con AWS Pricing Calculator):** todo lo de la tabla, a precios de lista
-  on-demand en una región de EE. UU., para una demo de bajo tráfico. Son rangos, no presupuesto.
-  La región final y los descuentos (Savings Plans, acuerdos) cambian los valores.
-
-| Componente | Qué domina el costo | Orden de magnitud USD/mes (ESTIMADO) |
-| --- | --- | --- |
-| Nodo Wazuh (EC2 Graviton, clase de 4 vCPU y 16 GB) | Horas de cómputo 24×7 | Centenas bajas (~100–150); es el mayor costo fijo |
-| Volumen EBS del Indexer (gp3, cientos de GB) y snapshots diarios | GB aprovisionados | Decenas |
-| Endpoints de VPC de interfaz (unos 4–6 en 2 AZ) | Horas por endpoint y AZ | Decenas altas (~50–100). **"Sin NAT" no es gratis**: cambia el costo de NAT por el de endpoints, a cambio de no sacar tráfico a Internet |
-| Aurora Serverless v2 | ACU-horas y almacenamiento. Con pausa a 0 ACU casi solo almacenamiento; con 0,5 ACU permanente, decenas | De un dígito a ~45 |
-| WAF (web ACL, reglas gestionadas, solicitudes) | Reglas y volumen | Decenas bajas |
-| NLB (agentes Wazuh) | Horas y LCU | Decenas bajas |
-| S3 (snapshots, evidencia, Glacier) | GB almacenados y solicitudes | De un dígito a decenas según volumen |
-| CloudWatch (logs, métricas, alarmas) | GB ingeridos | De un dígito a decenas |
-| GuardDuty y Security Hub | Volumen analizado | Decenas, muy variable |
-| Lambda, API Gateway HTTP, Step Functions, SQS, EventBridge, Cognito, CloudFront, KMS, Secrets Manager | Por uso; a volumen de demo | En conjunto, decenas bajas |
-
-**Orden de magnitud total de una demo:** unos **USD 300–450/mes (ESTIMADO)**, dominado por el nodo
-Wazuh, los endpoints de VPC y el almacenamiento, no por el cómputo serverless. La cifra de la
-demo anterior (~USD 190–229/mes) también era una estimación de lista y no es comparable: tenía
-ECS, RDS y NAT fijos. Palancas (propuestas): Savings Plan o instancia reservada para el nodo,
-mínimo de endpoints necesarios, Aurora en pausa fuera de horario en la demo y ciclo de vida a
-Glacier. Antes de cada apply se compara el plan de Terraform con esta tabla.
-
-## Observabilidad
-
-La decisión N1 (no tercerizar) exige que la observabilidad sea autogestionada y quede dentro de las
-cuentas de B89. **CloudWatch es un servicio de AWS, no un SaaS de terceros**; Grafana, Loki y
-Prometheus se retiran ([10](10-decisiones.md), A10). Wazuh cubre la observabilidad de seguridad.
-
-| Señal | Fuente | Dónde se ve |
-| --- | --- | --- |
-| Logs JSON de la API (con `correlationId`) | CloudWatch Logs de cada Lambda | Alarmas por filtros de métricas. Opcional: los ingiere el módulo AWS de Wazuh (`cloudwatchlogs`) → `wazuh-alerts-*`. La configuración (**hecha**) está en `wazuh/manager/ossec.b89-integrations.xml.tmpl` para los log groups anteriores; los nuevos se añaden |
-| Métricas de Lambda, API Gateway, Step Functions, SQS (profundidad y DLQ), Aurora (ACU y conexiones) | CloudWatch Metrics nativas | Alarmas de CloudWatch → SNS → correo o Teams. Las métricas no salen de la cuenta |
-| Ejecuciones de B89 Respond fallidas o detenidas | Step Functions y EventBridge | Alarma a SNS |
-| Logs del borde | CloudFront y WAF a S3 | Módulo AWS de Wazuh |
-| Salud del nodo Wazuh (CPU, disco, estado de la instancia, agentes, disco del Indexer) | CloudWatch Agent, Wazuh API e Indexer | Alarmas de CloudWatch y vistas nativas del dashboard |
-| Salud de la ingesta B89 (cursores, retrasos, `PROVIDER_RESPONSE_INVALID`) | `GET /api/operations/health` | Vista «Salud operativa» de B89 |
-| Acciones de los usuarios en B89 | Cadena de auditoría | Vista «Auditoría» de B89. **Se mantiene separada** de los logs (ADR-021) |
-| Actividad de la cuenta AWS | CloudTrail (organización) | S3 en `b89-log-archive` y hacia Wazuh / EventBridge |
-
-Ventaja: las acciones del SOC sobre su propia herramienta (logins, denegaciones, aprobaciones) se
-vuelven eventos Wazuh y se alertan con reglas B89, por ejemplo una ráfaga de `AUTHZ_DENIED` del
-mismo usuario. Esto apoya el monitoreo de APIs que pide la SBS (art. 21, a confirmar con B89).
-
-Prerrequisitos a verificar: rol IAM del nodo con `logs:FilterLogEvents`/`GetLogEvents` sobre los log
-groups y `s3:GetObject` sobre los buckets de logs; endpoint de VPC de CloudWatch Logs.
-
-## Backups, RTO y RPO del nodo Wazuh
-
-El nodo es el **punto de falla único aceptado** ([02](02-arquitectura.md)). El disco no es la
-fuente de verdad: lo es el conjunto de snapshots.
-
-| Mecanismo | Qué protege | Propuesta |
-| --- | --- | --- |
-| ASG `min=max=1` | Falla de la instancia o de la AZ | Reemplazo automático; el volumen de datos se reasocia o se restaura |
-| Snapshots EBS (Data Lifecycle Manager) | Disco, configuración y claves del Manager | Diarios, con retención por definir; copia a otra región por decidir |
-| Snapshots del Indexer a S3 (ISM) | Índices | Al salir de hot ([05](05-datos-y-retencion.md)) |
-| Overlay `wazuh/` versionado | Reglas, decoders, ISM, plugin | Reaplicable por script idempotente desde git |
-
-**RPO y RTO: hipótesis de diseño, no medidas** (N8 prohíbe publicarlas como objetivo vigente sin
-prueba). Con snapshots EBS diarios el RPO del disco sería de hasta 24 h; con snapshots horarios, de
-horas. Los agentes Wazuh guardan un buffer limitado de eventos si el Manager no responde, pero no
-se debe contar con él. El RTO sería el reemplazo automático de la instancia (minutos) más, si el
-volumen se pierde, la restauración del snapshot y la reaplicación del overlay (horas). **Gate:** un
-simulacro (terminar la instancia y restaurar) que mida ambos valores antes de producción.
-
-## Despliegue
-
-- **Terraform en `infra/aws`**, con estado remoto y bloqueo. El pipeline corre en **GitHub Actions
-  con OIDC** (sin claves de larga vida) y un rol de despliegue por cuenta. Antes de cada apply hay
-  que verificar cuenta, región y backend, revisar todos los create/replace/destroy y comparar el
-  costo con la tabla de arriba. Si aparece algo inesperado, se detiene.
-- **Lambdas:** artefactos arm64 empaquetados por el pipeline y publicados con el SHA de git
-  (`git-<sha>`), con versiones y alias para revertir. Step Functions y colas se definen en
-  Terraform. Los workflows actuales (ECR y ECS) se reemplazan: **propuesto**.
-- **Base de datos:** las migraciones de `platform/database/migrator` corren como paso del pipeline
-  antes de promover las Lambdas.
-- **Overlay Wazuh:** los workflows `initialize-wazuh.yml` y `configure-wazuh-office365.yml`
-  empaquetan `wazuh/` y lo aplican por SSM con scripts idempotentes (hecho). Las fases 1–2 añaden
-  `wazuh/edge`, `wazuh/indexer/*` y `wazuh/dashboard` al mismo empaquetado.
-- **Sin NAT:** ningún recurso depende de un NAT Gateway. Qué Lambda va dentro o fuera de la VPC
-  (las que llaman a Entra o Teams necesitan salida) se decide en la fase 1.
-- **Secretos:** se cargan en Secrets Manager con workflow y nunca entran a tfvars ni al estado.
-
-## Runbooks mínimos
-
-| Situación | Acción |
+| Dato | Valor |
 | --- | --- |
-| Pausar o reanudar la demo anterior conservando state y datos | [Control de costos reversible](operations/aws-demo-cost-control.md) (describe la topología previa con ECS y RDS) |
-| La fuente «Wazuh Indexer · alertas» está en rojo | `GET /api/operations/health`. Revisar los logs de la Lambda de ingesta en CloudWatch y la DLQ. Desde el nodo, `curl --cacert` al Indexer con `b89_reader` (SSM). Workflow `repair-ingestion.yml` |
-| Nadie puede entrar al dashboard | Probar `curl -i https://<dominio>/api/auth/introspect` con cookie. Revisar Cognito y la Lambda. Si la API cae, el break-glass es el usuario interno `admin` por `https://<ip-privada>:5601` vía SSM port-forward, nunca público |
-| Disco del Indexer > 80 % | `GET _plugins/_ism/explain/wazuh-alerts-*` para ver índices atascados en una fase. Revisar el repo `b89-s3` |
-| Nodo Wazuh caído o sin responder | Estado del ASG y de la instancia; si no se recupera, restaurar el último snapshot EBS y reaplicar el overlay |
-| Restaurar historia | [05](05-datos-y-retencion.md#restauración) |
-| Revocar a alguien de inmediato | Sacarlo del grupo SOC en Entra (la sincronización Graph revoca) o `POST /api/admin/sessions/:ref/revoke`. El dashboard se pierde en ≤ 5 s |
-| Teardown de la demo | Ver `infra/aws/README.md`. Los buckets con Object Lock en modo compliance no se vacían antes de vencer su retención: usar plazos cortos en la demo |
+| Cuenta / región | `061098277310` / `us-east-1` (permission set `SOC-PowerUser`, sin IAM) |
+| URL del SOC | `https://dev.security.b89.io` |
+| Manager para agentes | `agents.dev.security.b89.io` TCP 1514/1515 ([AGENTS.md](../infra/aws-poweruser/AGENTS.md)) |
+| Acceso al host | SSH `ubuntu@<EIP>` con la clave del operador, solo desde `allowed_admin_cidrs` |
+| Raíz en el host | `/opt/b89` (`src/`, `config/`, `secrets/`, `pki/`, `wazuh-docker/`, `respond/`, `collectors/`, `backups/`) |
+| Proyecto Compose | `b89` (contenedores `b89-<servicio>-1`) |
+
+Atajo usado en este runbook (en el host, como root):
+
+```bash
+COMPOSE="docker compose --env-file /opt/b89/secrets/compose.env \
+  -f /opt/b89/wazuh-docker/single-node/docker-compose.yml \
+  -f /opt/b89/src/infra/aws-poweruser/host/compose.b89.yaml \
+  -f /opt/b89/src/infra/aws-poweruser/host/compose.respond.yaml"
+```
+
+## 1. Regla de oro del despliegue
+
+**Nunca ejecutar `ship.sh` / `deploy-host.sh` mientras otras personas o agentes tengan trabajo en
+curso.** Motivos, todos en el código:
+
+- `ship.sh` empaqueta **el árbol de trabajo local** (incluido lo no commiteado) y **reemplaza
+  `/opt/b89/src` entero**: publica trabajo a medias de otros y borra lo que otro haya copiado al host.
+- `deploy-host.sh` reconstruye las imágenes del dashboard y del API desde ese árbol, reinicia el
+  manager (`setup-wazuh-content.sh` hace `wazuh-control restart`) y recrea `wazuh-gateway`,
+  `wazuh.dashboard`, `api` y `edge`: corta sesiones en curso y deja la plataforma minutos sin servicio.
+
+Antes de desplegar: avisar en [COORDINACION-CLAUDE-CODEX.md](../COORDINACION-CLAUDE-CODEX.md) o al
+equipo, partir de un árbol limpio (`git status` vacío o solo lo que se quiere publicar) y preferir el
+redespliegue **por componente** (sección 3). `SKIP_API_BUILD=1` conserva las imágenes vigentes del
+API y del migrador si `apps/api` tiene trabajo que aún no compila.
+
+## 2. Despliegue completo (nodo nuevo o reconstrucción)
+
+```bash
+# 1. Infraestructura (estación del operador, credenciales vigentes: sección 4)
+cd infra/aws-poweruser
+terraform init -backend-config=backend.hcl
+terraform plan  -var-file=environments/dev.tfvars -out=dev.tfplan   # revisar el plan
+terraform apply dev.tfplan
+
+# 2. Plugins del dashboard (los exige deploy-host.sh)
+bash infra/local/wazuh-dashboard/build-plugins.sh      # deja los zip en plugins-dist/
+
+# 3. Runtime en el nodo
+SSH_KEY=<clave privada> HOST=$(terraform -chdir=infra/aws-poweruser output -raw public_ip) \
+  SOC_HOSTNAME=dev.security.b89.io bash infra/aws-poweruser/scripts/ship.sh
+```
+
+`deploy-host.sh` es idempotente y hace, en orden: secretos (una sola vez), CA interna de
+PostgreSQL, `wazuh-docker` v4.14.8 y sus certificados, configuración del dashboard y del API,
+cuentas demo, Bunny, certificado Let's Encrypt (HTTP-01), build, Wazuh + PostgreSQL, roles de base de
+datos, migraciones, proxy auth del indexer (`apply-indexer-security.sh`), ingesta
+(`setup-ingestion.sh`), contenido del manager (`setup-wazuh-content.sh`), agente del nodo
+(`setup-host-agent.sh`), dashboard/API/edge e index patterns y dashboards de proveedores
+(`bootstrap-wazuh-app.sh`).
+
+Después, una vez por nodo (cada uno es idempotente):
+
+| Paso | Comando (en el host, root, desde `/opt/b89/src`) |
+| --- | --- |
+| B89 Respond | En la estación: `bash b89-respond/build.sh <out>` y copiar el tar del fuente a `/opt/b89/respond/frontend-source.tar.gz`; en el host: `SOC_HOSTNAME=dev.security.b89.io bash infra/aws-poweruser/scripts/deploy-respond.sh` |
+| Monitoreo AWS | `bash wazuh/aws-events/install-aws-events.sh` (y `host/aws-events.env` = `terraform output -raw aws_events_receiver_env`) |
+| Collectors y correo | `bash wazuh/provider-ingestion/install-b89-collectors.sh` ([18](18-integraciones.md)) |
+| Office 365 | `bash wazuh/office365/apply-office365-docker.sh` (bloqueado por permisos, [18](18-integraciones.md)) |
+| Políticas | `bash infra/wazuh/policies/apply-policies.sh` ([16](16-politicas.md)) |
+| Vistas de detección | `bash infra/aws-poweruser/scripts/bootstrap-detection-content.sh` ([17](17-ingenieria-de-deteccion.md)) |
+| Detecciones | `detections/tools/deploy-detections.sh` ([17](17-ingenieria-de-deteccion.md)) |
+
+## 3. Redespliegue por componente
+
+Copiar solo lo necesario al host (p. ej. `scp`/`rsync` del directorio afectado a `/opt/b89/src/...`,
+quitando CRLF si viene de Windows) y reiniciar solo ese servicio.
+
+| Componente | Cómo | Impacto |
+| --- | --- | --- |
+| Dashboard (b89_ops, b89_i18n, marca) | `build-plugins.sh` en la estación → copiar `plugins-dist/` → `$COMPOSE build wazuh.dashboard && $COMPOSE up -d --no-deps --force-recreate wazuh.dashboard` → `bash infra/aws-poweruser/scripts/bootstrap-wazuh-app.sh` | UI ~1–2 min; el `build.number` deriva del contenido para invalidar la caché de bundles |
+| API | `$COMPOSE --profile tools build api migrator && $COMPOSE --profile tools run --rm migrator migrate && $COMPOSE up -d --no-deps --force-recreate api` | Sesiones en PostgreSQL se conservan; el estado en memoria (tope de intentos, códigos) se pierde |
+| Edge | Renderizar `edge.conf.template` con `envsubst '${SOC_HOSTNAME}'` a `/opt/b89/config/edge.conf.new`, probar con `nginx -t` en un contenedor desechable (como hace `deploy-respond.sh`), instalarlo y `docker exec b89-edge-1 nginx -s reload` | Sin corte si `nginx -t` pasa |
+| B89 Respond | `deploy-respond.sh` (solo toca Respond, el puente SSO y el edge) | Respond ~1 min |
+| Reglas y listas | `detections/tools/deploy-detections.sh` o `setup-wazuh-content.sh` (ambos validan con `wazuh-analysisd -t` y revierten) | Reinicio del manager (~30 s) |
+| Collectors | `install-b89-collectors.sh` | Reinicio del manager |
+| Receptor AWS | `$COMPOSE up -d --no-deps --force-recreate aws-events` | SNS reintenta hasta ~1 h |
+| Indexer security / ISM | `apply-indexer-security.sh` (respaldo en `/opt/b89/backups/indexer-security/`), `wazuh/indexer/ism/apply-ism-local.sh` | Sin corte |
+
+## 4. Credenciales temporales de AWS (STS)
+
+El operador entra con SSO al permission set `SOC-PowerUser`; las claves son **temporales** (STS) y
+vencen a las pocas horas. Terraform falla con `ExpiredToken` cuando caducan.
+
+1. Abrir el portal de acceso AWS de B89 (URL: **por verificar**, la entrega el administrador de
+   la organización) → cuenta `061098277310` → `SOC-PowerUser` → «Access keys».
+2. Copiar `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` y `AWS_SESSION_TOKEN` al `.env` local del
+   repositorio (está en `.gitignore`; `ship.sh` nunca lo copia) o exportarlas en la shell. Con AWS
+   CLI v2 también sirve `aws configure sso` + `aws sso login --profile <perfil>`.
+3. Comprobar: `aws sts get-caller-identity` debe mostrar `AWSReservedSSO_SOC-PowerUser_*`.
+4. Nunca pegar las claves en el repositorio, en tfvars, en el host ni en un chat. El host no
+   necesita credenciales AWS: no tiene rol ni claves.
+
+## 5. Secretos en el host
+
+Todos en `/opt/b89/secrets` (0700, root; archivos 0600). Se generan en el host o se copian por SSH;
+nunca pasan por Git, Terraform ni user_data. Solo nombres:
+
+| Archivo | Contenido (variables) |
+| --- | --- |
+| `compose.env` | `INDEXER_ADMIN_PASSWORD` (break-glass del indexer), `KIBANASERVER_PASSWORD`, `WAZUH_API_PASSWORD`, `POSTGRES_ADMIN_PASSWORD`, `B89_MIGRATOR_PASSWORD`, `B89_RUNTIME_PASSWORD`, `SHUFFLE_OPENSEARCH_PASSWORD`, `SHUFFLE_ADMIN_USERNAME`, `SHUFFLE_ADMIN_PASSWORD`, `SHUFFLE_ENCRYPTION_MODIFIER` |
+| `api.env` | `B89_POSTGRES_PASSWORD`, `B89_ENTITY_REF_KEY`, `B89_VAPID_PRIVATE_KEY`, `B89_ENTRA_CLIENT_SECRET` (relleno de la identidad demo), `B89_DEMO_ADMIN_PASSWORD_HASH`, `B89_DEMO_ACCOUNTS`, `B89_WAZUH_GATEWAY_ACCESS_TOKEN`, `B89_BUNNY_API_KEY` |
+| `demo-admin-password.txt` | Contraseña de la cuenta demo administradora |
+| `demo-accounts.txt` | Cuentas demo por rol (`usuario rol contraseña`), fuente de `B89_DEMO_ACCOUNTS` |
+| `gateway.env` | `B89_WAZUH_GATEWAY_ACCESS_TOKEN`, `WAZUH_INDEXER_BASIC_AUTH_B64`, `B89_READER_PASSWORD` |
+| `services.env` | Claves de proveedores copiadas desde el `.env` local: `B89_CLAUDE_API`, `BITDEFENDER_*`, `SNYK_*`, `CLOUDFLARE_API_TOKEN`, `TENANT_ID`, `CLIENT_ID`, `CLIENT_SECRET`, `ALERT_EMAIL_*` |
+| `collectors/` | Un archivo por secreto de collector (`bitdefender-api-key`, `snyk-token`, `cloudflare-api-token`, `entra-*`, `alert-email-*`…) |
+| `wazuh-authd.pass` | Contraseña de enrolamiento de agentes |
+| `respond-sso/` | Token edge↔puente y API key de servicio de B89 Respond |
+| `ca.key` | Clave de la CA interna (PostgreSQL, gateway) |
+
+Rotación: el token del gateway se rota borrando `gateway.env` y la línea del token en `api.env`,
+y relanzando `setup-ingestion.sh` + recrear `api` y `wazuh-gateway`. La clave de Bunny se rota en
+`services.env`: cada `deploy-host.sh` la vuelve a copiar. Las contraseñas de las cuentas demo se
+cambian en `demo-accounts.txt` borrando la línea `B89_DEMO_ACCOUNTS` de `api.env` antes de
+redesplegar (**por verificar** de punta a punta).
+
+## 6. Respaldos y restauración
+
+Sin IAM no hay DLM ni subida automática a S3 desde el host: los respaldos son **manuales** y su
+automatización es una brecha abierta ([19](19-brechas-y-roadmap.md) #8).
+
+| Qué | Cómo | Dónde queda |
+| --- | --- | --- |
+| Disco completo | Snapshot EBS desde la estación: `aws ec2 create-snapshot --volume-id <vol> --description b89-soc-dev-<fecha>` (PowerUser lo permite; **por verificar** en esta cuenta) | EBS snapshots, cifrados con la CMK |
+| PostgreSQL (estado del motor y auditoría) | `$COMPOSE exec -T postgres pg_dump -U b89_admin -Fc b89_secops > /opt/b89/backups/pg-<fecha>.dump` | Host; copiar a la estación y subir al bucket de evidencia |
+| Configuración y secretos | `tar czf` de `/opt/b89/secrets`, `/opt/b89/config`, `/opt/b89/pki` y `wazuh-docker/single-node/config` | Fuera del host, cifrado; **nunca** al repositorio |
+| Reglas y `ossec.conf` | Los instaladores ya respaldan antes de cambiar: `/var/ossec/etc/b89-backup-*` (en el manager) y `/opt/b89/backups/` | Host |
+| Seguridad del indexer | `apply-indexer-security.sh` respalda en `/opt/b89/backups/indexer-security/<fecha>` | Host |
+| Alertas del indexer | Sin repositorio de snapshots (la ISM se aplica sin S3); la retención es la de [16](16-politicas.md) | — |
+
+Restauración (**por verificar**, sin ensayo registrado): crear un volumen desde el snapshot y
+reemplazar el del nodo, o nodo nuevo con `terraform apply` + `ship.sh`, restaurar
+`/opt/b89/secrets` antes de `deploy-host.sh` (para no regenerar secretos) y luego
+`pg_restore -U b89_admin -d b89_secops --clean` dentro del contenedor `postgres`.
+
+## 7. Baja (teardown)
+
+```bash
+ssh -i <clave> ubuntu@<EIP> 'cd /opt/b89/wazuh-docker/single-node && sudo docker compose -p b89 down -v'  # opcional
+# Vaciar antes los buckets con force_destroy = false (evidencia; revisar logs del ALB y del trail)
+terraform -chdir=infra/aws-poweruser destroy -var-file=environments/dev.tfvars
+```
+
+La baja elimina también los 17 temas SNS, las reglas de EventBridge y el trail de la cuenta; el SOC
+deja de ver la actividad AWS. Avisar antes a quien dependa de esas alertas.
+
+## 8. Costos
+
+Estimado a precio de lista on-demand en `us-east-1` (no es factura):
+
+| Componente | USD/mes (aprox.) |
+| --- | --- |
+| EC2 `r7i.xlarge` 24×7 | ~195 |
+| EBS gp3 100 GB + snapshots manuales | ~10 |
+| EIP, KMS (2 CMK), Route 53, S3, SNS, CloudTrail (primer trail de gestión sin cargo) | ~10–15 |
+| Transferencia de salida | variable, bajo |
+| **Subtotal del nodo** | **~240** |
+| ALB (horas + LCU) | +~20 |
+| WAFv2 (web ACL + 4 reglas + peticiones) | +~10 |
+
+El Budget de Terraform (`monthly_budget_usd`) está en **150 USD**, por debajo del costo esperado:
+alertará cada mes. Ajustarlo a ~280 y fijar `budget_email` (hoy vacío, sin suscriptor). El
+consumo de Claude (Bunny) se factura aparte en la cuenta de Anthropic.
+
+## 9. Comprobaciones de salud
+
+| Qué | Cómo | Esperado |
+| --- | --- | --- |
+| Borde y API | `curl -s https://dev.security.b89.io/health/live`; target group del ALB | 200; target `healthy` |
+| Contenedores | `$COMPOSE ps` | Todos `running`/`healthy` |
+| Agentes | Wazuh → Agentes, o `curl -k -u wazuh-wui:… https://127.0.0.1:55000/agents` en el host | `001 b89-soc-dev-node` `active` |
+| Ingesta del motor | «Salud de fuentes» en la consola | «Wazuh Indexer · alertas» en verde |
+| Collectors y correo | `systemctl list-timers 'b89-*'`; `journalctl -u b89-collector-<proveedor>` | Última ejecución reciente, sin error |
+| Monitoreo AWS | `docker inspect -f '{{.State.Health.Status}}' b89-aws-events-1`; suscripciones SNS confirmadas (17) | `healthy`; ninguna `PendingConfirmation` |
+| Integraciones | Página «Integraciones» | Estado por servicio y último evento |
+| Certificado | `certbot certificates` | Vigente; el hook recarga el edge al renovar |
+| Disco | `df -h /` | < 80 % |
+
+## 10. Problemas conocidos
+
+| Síntoma | Causa | Solución |
+| --- | --- | --- |
+| «Tu sesión se cerró porque entraste desde otro lugar» (`sessionNotice=superseded`) | **Sesión única** por cuenta: un login nuevo reemplaza las sesiones activas de esa misma cuenta, también la del dashboard | No compartir cuentas: cada persona o agente usa su cuenta demo por rol ([04](04-identidad-y-acceso.md)). Los scripts de arranque usan la identidad de servicio `b89-bootstrap` por proxy auth, nunca un login de persona |
+| Docker Desktop en Windows no arranca o queda colgado | Estado corrupto en `%LOCALAPPDATA%\Docker\run` y del motor de secretos | `scripts/dev/repair-docker-desktop.ps1`. En WSL2, `vm.max_map_count` ≥ 262144 para el indexer |
+| El API local no responde desde el edge local | `host-gateway` añade una dirección IPv6 inalcanzable | Alias solo IPv4 `b89-api-host:192.168.65.254` (`infra/local/compose.wazuh-dashboard-b89.yaml`) |
+| `env: 'sh\r'` o scripts que fallan en el host | Árbol copiado desde Windows con CRLF (`core.autocrlf`) | `ship.sh` y `deploy-respond.sh` quitan CRLF de `*.sh`, `*.yml`, `*.conf`, plantillas; al copiar a mano, `sed -i 's/\r$//'` |
+| El panel de Bunny desaparece tras navegar | OSD vuelve a renderizar `<body>` y se lleva el contenedor del panel | Corregido en `596001a` (se vuelve a adjuntar); si reaparece, recargar la página |
+| `connect() failed` hacia un upstream resuelto en tiempo de ejecución (Respond, aws-events) | nginx intenta direcciones IPv6 que la red Docker no enruta (causa exacta **por verificar**) | `resolver 127.0.0.11 valid=30s ipv6=off` en el edge de AWS y en el local; no quitarlo |
+| La UI muestra la versión anterior tras desplegar | OSD cachea bundles un año bajo `/{build.number}/` | El Dockerfile deriva `build.number` del contenido; forzar recarga si persiste |
+| Vistas de la app de Wazuh en rojo para roles de solo lectura | Index patterns sin crear o sin campos | `bootstrap-wazuh-app.sh` (se ejecuta en cada despliegue) |
+| Primer lote de un collector no aparece | logcollector abre un JSONL inexistente desde el final | Los instaladores precrean el JSONL antes de reiniciar el manager (`dea6a4f`) |

@@ -1,8 +1,10 @@
 # 13 · B89 Respond: capa de respuesta gobernada
 
-> Estado: el diseño sobre **AWS Step Functions es propuesto**. El overlay de Shuffle que existe hoy en
-> el repo es **estado heredado, a reemplazar** (sección 5). Arquitectura de referencia:
-> [02](02-arquitectura.md); conexión con el núcleo B89: [14](14-b89-respond-conexion-b89.md).
+> Estado (2026-11-08): **B89 Respond está desplegado** en el nodo AWS PowerUser sobre el motor
+> upstream Shuffle v2.3.0 (AGPL-3.0), rebrandeado, embebido en el SIEM y con SSO desde la sesión B89
+> (`infra/aws-poweruser/scripts/deploy-respond.sh`, [14 §8](14-b89-respond-conexion-b89.md#8-motor-vigente-basado-en-shuffle)).
+> El diseño sobre **AWS Step Functions** de las secciones 2–4 es el **objetivo**, no desplegado:
+> requiere IAM. Uso diario en [20](20-guia-de-usuario.md#b89-respond).
 
 **B89 Respond** es la capa de respuesta de B89 SOC: convierte una decisión humana sobre una alerta o caso
 en una acción ejecutada, auditada y reversible. Ya no es un SOAR en una VM: cada playbook es una
