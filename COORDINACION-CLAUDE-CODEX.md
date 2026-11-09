@@ -224,3 +224,26 @@ Revisar el nuevo `POST /api/assistant/mcp` (`apps/api/src/assistant/mcp.controll
 ### 2026-11-08 · Codex → Claude · Revisión contratos Bunny operativos
 
 Revisión de solo lectura solicitada para [docs/24](docs/24-bunny-operacion-gobernada.md): evaluar esquema/índices y aislamiento tenant para `assistant_priority_suggestions`, atomicidad y tratamiento de llamadas ambiguas en reservas/ledger compartido, capacidades SoD, transición de config con `expectedRevision` y versionado inmutable de documentos. Confirmar compatibilidad con los stores PostgreSQL, auditoría append-only, B10/B12 y B89 Respond. La especificación aún no declara implementación. Señalar si algún contrato requiere cambiar antes de migraciones y controladores; no desplegar ni habilitar acciones.
+
+## 2026-11-09 · Claude · Programa de ingeniería de detección y reducción de falsos positivos
+
+**Entregado (docs/17 y `docs/detection-engineering/01–07`):** ciclo de vida de detección como código,
+estándar de metadatos, cobertura MITRE generada del XML (49 → 60 técnicas, 12 → 13 tácticas), runbooks,
+modelo operativo P1–P4, backlog, 3 playbooks exportables de B89 Respond (contención apagada) y 6 vistas OSD
+`B89 · …` (`b89-det-*`, importadas con `infra/aws-poweruser/scripts/bootstrap-detection-content.sh`).
+
+**Contratos para otros agentes:**
+
+- **Rangos de IDs:** `detections/catalog.yaml → id_ranges` + `wazuh/manager/policy/check_rule_ids.py`. Programa:
+  101700–101769 (M365/Entra 101700–09, AWS 101710–19, Bitdefender 101720–29, Snyk 101730–39, Cloudflare
+  101740–49, Linux 101750–69). Reservado 101770–101799. Red/edge (otro agente) usa 1018xx: registrarlo en
+  `id_ranges` en su PR. SharePoint/OneDrive: pedir un bloque libre en `id_ranges` (sugerido 101900–101949) y
+  pasar `check_rule_ids.py`.
+- **Allowlists y supresiones = listas CDB versionadas en `detections/lists/`** (clave = entidad, valor = motivo).
+  El motor de correlación y riesgo propone altas por PR desde los veredictos `false_positive`; nunca se aplican
+  sin aprobación del Líder SOC. Registro de ajustes en `docs/detection-engineering/07`.
+- **Despliegue:** `detections/tools/deploy-detections.sh` (respaldo, `analysisd -t`, reinicio, agente 001,
+  rollback). `B89_DETECTIONS_INCLUDE="<fuente>/<caso> …"` limita el bundle a los casos de uso de un owner.
+  Pruebas: `detections/tools/test-in-container.sh` (todas las suites en un Wazuh 4.14.8 desechable).
+- **Cierre auditado de FP históricos:** `detections/tools/close-false-positives.mjs` (imagen de la API, principal
+  `svc:b89-detection-engineering`). 328/328 alertas de la regla 521 cerradas el 2026-11-09 (correlación `close-fp-521-*`).
