@@ -466,3 +466,18 @@ $b89InvGradient: linear-gradient(110deg, #ff5899 0%, #ff5841 55%, #ffc136 100%);
     background: rgba(#ff5841, 0.3);
   }
 }
+
+// Cabecera común de las vistas B89 (misma identidad que «Resumen del SOC»).
+.b89Page > .b89Page__header {
+  padding: $ouiSize $ouiSizeL;
+  border: 1px solid $ouiBorderColor;
+  border-top: 3px solid transparent;
+  border-radius: 14px;
+  background:
+    linear-gradient($ouiColorEmptyShade, $ouiColorEmptyShade) padding-box,
+    $b89InvGradient border-box;
+
+  @media (max-width: $b89InvMobile) {
+    padding: $ouiSizeM;
+  }
+}

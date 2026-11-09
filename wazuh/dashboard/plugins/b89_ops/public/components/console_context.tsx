@@ -97,6 +97,7 @@ export function B89Page({
         wrap
       >
         <EuiFlexItem grow>
+          <p className="b89Eyebrow">B89 SOC</p>
           <EuiTitle size="m">
             <h1>{title}</h1>
           </EuiTitle>
