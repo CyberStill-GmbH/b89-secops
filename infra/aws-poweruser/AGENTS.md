@@ -8,8 +8,8 @@ no transporta estos puertos). Versión: **Wazuh 4.14.8**.
 | TCP 1515 | Enrolamiento (authd) | Contraseña obligatoria (`use_password=yes`); sin ella el manager responde `Invalid password` |
 | TCP 1514 | Comunicación del agente (remoted, solo TCP) | Clave por agente emitida en el enrolamiento (`connection=secure`) |
 
-La apertura en el SG la controla `agent_cidrs` (Terraform). Hoy está restringida; abrirla a Internet
-es decisión explícita del dueño. Usar CIDR acotados cuando se conozcan.
+La apertura en el SG la controla `agent_cidrs` (Terraform). Hoy está abierta a Internet (0.0.0.0/0, aprobado por el dueño el 2026-11-03) solo para 1514/1515.
+Cambiarla es decisión explícita del dueño. Usar CIDR acotados cuando se conozcan.
 
 ## Contraseña de enrolamiento
 
