@@ -21,7 +21,7 @@
     "test": "pnpm --dir ../.. exec vitest run --config vitest.config.ts modules/telemetry/test"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "3.1138.0",
+    "@aws-sdk/client-s3": "3.1164.0",
     "@b89/contracts": "workspace:*",
     "@b89/database": "workspace:*"
   },
