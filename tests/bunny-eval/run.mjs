@@ -189,6 +189,8 @@ async function main() {
       steps: answer.body?.steps ?? [],
       citations: answer.body?.citations ?? [],
       usage: answer.body?.usage ?? null,
+      messageId: answer.body?.messageId ?? null,
+      responseKeys: answer.body ? Object.keys(answer.body) : [],
       ...(answer.error ? { error: answer.error } : {}),
     });
   }
