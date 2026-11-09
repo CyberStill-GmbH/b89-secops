@@ -17,7 +17,7 @@ ALB, NAT, EC2 Wazuh y servicios ECS antes de fallar. Antes de cualquier apply, r
 recursos AWS y el state conforme a
 `terraform-apply-recovery.md` (histórico en git `050f9fa`). La migración
 posterior de producto está en
-[`b89-wazuh-terraform-rollout.md`](../../docs/reference/b89-wazuh-terraform-rollout.md).
+[`b89-wazuh-terraform-rollout.md`](../../docs/archive/legacy/b89-wazuh-terraform-rollout.md).
 
 ## Arquitectura de esta fase
 

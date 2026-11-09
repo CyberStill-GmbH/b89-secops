@@ -1,11 +1,13 @@
+> **Legado (archivado 2026-11-05).** Documento de la etapa anterior a B89 SOC en AWS PowerUser (perfil heredado de la base de código original: Azure, ECS, Sophos/Cato o Shuffle por webhook). No describe la plataforma vigente; ver [arquitectura vigente](../../02-arquitectura.md).
+
 # Perfil multifuente para la demo SOC B89
 
 > **Nota (legado):** las menciones a Azure describen el perfil heredado de la base de código original, archivado en
-> [`docs/archive/azure`](../archive/azure/README.md). B89 SOC opera solo en AWS ([02](../02-arquitectura.md)); lo técnico
+> [`docs/archive/azure`](../azure/README.md). B89 SOC opera solo en AWS ([02](../../02-arquitectura.md)); lo técnico
 > que sigue aquí vale como referencia del perfil heredado, no como runbook vigente.
 
 > **Nota (heredado):** Shuffle y su webhook son el estado heredado de B89 Respond. El diseño vigente es
-> Step Functions ([13](../13-b89-respond.md), [14](../14-b89-respond-conexion-b89.md)); este material se reemplaza (fase M5).
+> Step Functions ([13](../../13-b89-respond.md), [14](../../14-b89-respond-conexion-b89.md)); este material se reemplaza (fase M5).
 
 **Estado del diseño original:** propuesta fechada 2026-10-20; no aprobada como política
 del tenant. **Revisión del inventario:** 2026-10-27, con última evidencia cloud fechada
@@ -19,7 +21,7 @@ arquitectura B89/Wazuh que existía al redactarse. Propone mantener Wazuh como
 colector y motor de reglas para M365, y permitir incorporar Sophos y Cato como fuentes
 read-only posteriores al MVP, sin cambiar el contrato `b89.security-event` ni
 convertir Wazuh en dueño de la respuesta externa. Es una propuesta: no modifica ni
-aprueba las decisiones vigentes de [`docs/10-decisiones.md`](../10-decisiones.md).
+aprueba las decisiones vigentes de [`docs/10-decisiones.md`](../../10-decisiones.md).
 
 ## Estado comprobado y límites
 
@@ -41,7 +43,7 @@ propuesto debajo y no equivale a una aceptación de despliegue.
   SHA-256 `89040cb69535da6b7b6b763b77fa0bdb3e15c2089481d139fa9cd2f23c7e5472`).
   La publicación verifica el archivo; no prueba instalación, salud, login ni ingesta.
 - **M365 / Graph:** el adaptador, la plantilla y las reglas de Office 365 están
-  versionados en [`wazuh/office365`](../../wazuh/office365/README.md) y empaquetados
+  versionados en [`wazuh/office365`](../../../wazuh/office365/README.md) y empaquetados
   en el candidato. No hay instalación Azure ni prueba aceptada de permisos Graph,
   lectura de eventos o indexación en el tenant.
 - **Sophos y Cato:** los conectores aparecen como capacidades opcionales y permanecen
@@ -67,15 +69,15 @@ propuesto debajo y no equivale a una aceptación de despliegue.
   publicada no certifica que estén cargadas o enlazadas todas las referencias del
   perfil. Esta revisión no cambia credenciales, autenticación ni DNS.
 
-Fuentes y criterios: [readiness operativa de Azure — 2026-10-26](../archive/azure/operational-readiness-2026-10-26.md),
-[preparación y acceptance de EUS2](../archive/azure/eus2-siem-profile-readiness.md#acceptance-evidence-required-after-deployment),
-[runbook EUS2](../archive/azure/runbook-demo-eus2.md),
-[bundle publicado](../archive/azure/siem-release-bundle.md),
-[inventario de fuentes](../reference/source-inventory.yaml),
-[decisiones vigentes](../10-decisiones.md),
-[perfil de detección AD](active-directory-detection-profile.md),
-[paquete de reglas endpoint](../../infra/wazuh/endpoint/README.md) y
-[catálogo B89 Respond](b89-respond-playbooks/catalog.yaml).
+Fuentes y criterios: [readiness operativa de Azure — 2026-10-26](../azure/operational-readiness-2026-10-26.md),
+[preparación y acceptance de EUS2](../azure/eus2-siem-profile-readiness.md#acceptance-evidence-required-after-deployment),
+[runbook EUS2](../azure/runbook-demo-eus2.md),
+[bundle publicado](../azure/siem-release-bundle.md),
+[inventario de fuentes](../../reference/source-inventory.yaml),
+[decisiones vigentes](../../10-decisiones.md),
+[perfil de detección AD](../../security/active-directory-detection-profile.md),
+[paquete de reglas endpoint](../../../infra/wazuh/endpoint/README.md) y
+[catálogo B89 Respond](../../security/b89-respond-playbooks/catalog.yaml).
 
 ## Arquitectura propuesta
 
@@ -284,4 +286,4 @@ con fixtures como evidencia de integración real.
 - Sophos, [SIEM API](https://developer.sophos.com/siem/) y [eventos/cursor](https://developer.sophos.com/reference/siem-v1/events/get-events/); repositorio de referencia: [Sophos-Central-SIEM-Integration](https://github.com/sophos/Sophos-Central-SIEM-Integration). Confirmar licencia/plan Central y host de región antes de consumir.
 - Cato, [referencia GraphQL/eventsFeed](https://api.catonetworks.com/documentation/): usar marker opaco y confirmar elegibilidad/API scope con el owner del tenant.
 - Shuffle, [documentación de workflows](https://github.com/Shuffle/shuffle-docs/blob/master/docs/workflows.md) y [workflows upstream](https://github.com/Shuffle/shuffle-workflows); importar/exportar desde la versión fijada y revisar licencia de cada artefacto/connector antes de redistribuir.
-- B89: [decisiones vigentes](../10-decisiones.md) (N2–N4, A2, A4, A15), [baseline de proveedores](b89-sophos-cato-wazuh-baseline.md), [perfil AD](active-directory-detection-profile.md), [catálogo B89 Respond](b89-respond-playbooks/catalog.yaml).
+- B89: [decisiones vigentes](../../10-decisiones.md) (N2–N4, A2, A4, A15), [baseline de proveedores](b89-sophos-cato-wazuh-baseline.md), [perfil AD](../../security/active-directory-detection-profile.md), [catálogo B89 Respond](../../security/b89-respond-playbooks/catalog.yaml).

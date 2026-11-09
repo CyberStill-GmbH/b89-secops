@@ -1,7 +1,9 @@
+> **Legado (archivado 2026-11-05).** Documento de la etapa anterior a B89 SOC en AWS PowerUser (perfil heredado de la base de código original: Azure, ECS, Sophos/Cato o Shuffle por webhook). No describe la plataforma vigente; ver [arquitectura vigente](../../02-arquitectura.md).
+
 # Baseline SOC B89: Wazuh, Sophos Central y Cato
 
 > **Nota (heredado):** Shuffle y su webhook son el estado heredado de B89 Respond. El diseño vigente es
-> Step Functions ([13](../13-b89-respond.md), [14](../14-b89-respond-conexion-b89.md)); este material se reemplaza (fase M5).
+> Step Functions ([13](../../13-b89-respond.md), [14](../../14-b89-respond-conexion-b89.md)); este material se reemplaza (fase M5).
 
 **Estado:** propuesta técnica para revisión; no aplicada en las consolas de los
 proveedores. **Ámbito:** endpoints corporativos, servidores y telemetría de red de
@@ -129,7 +131,7 @@ redacción de PII, least privilege, y retención aprobada. Seguridad/legal del n
 debe determinar inspección TLS, tratamiento de PII y retención antes del corte.
 
 El catálogo de automatización inicial, estados de conectores, permisos y límites de
-VirusTotal está en [`b89-respond-playbooks/README.md`](b89-respond-playbooks/README.md). La
+VirusTotal está en [`b89-respond-playbooks/README.md`](../../security/b89-respond-playbooks/README.md). La
 metodología para adaptar reglas abiertas y reducir falsos positivos está en
 [`detection-engineering-b89.md`](detection-engineering-b89.md).
 

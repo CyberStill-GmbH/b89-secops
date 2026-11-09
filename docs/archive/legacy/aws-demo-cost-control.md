@@ -1,8 +1,10 @@
+> **Legado (archivado 2026-11-05).** Documento de la etapa anterior a B89 SOC en AWS PowerUser (perfil heredado de la base de código original: Azure, ECS, Sophos/Cato o Shuffle por webhook). No describe la plataforma vigente; ver [arquitectura vigente](../../02-arquitectura.md).
+
 # Control de costos reversible: demo AWS
 
 > **Nota (legado):** los servicios ECS, RDS, ALB, NAT, Valkey y KrakenD de este documento son el diseño AWS anterior.
 > La arquitectura vigente reemplaza ECS por Lambda + API Gateway, RDS por Aurora Serverless v2 y quita NAT y
-> KrakenD ([02](../02-arquitectura.md)); su Terraform aún no existe en `infra/aws/`.
+> KrakenD ([02](../../02-arquitectura.md)); su Terraform aún no existe en `infra/aws/`.
 
 **Estado:** runbook operativo para la cuenta demo `123456789012`, región `us-east-1`.
 **Workflow:** `AWS Demo Cost Control` (`.github/workflows/aws-demo-cost-control.yml`).

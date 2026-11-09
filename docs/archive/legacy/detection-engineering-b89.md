@@ -1,7 +1,9 @@
+> **Legado (archivado 2026-11-05).** Documento de la etapa anterior a B89 SOC en AWS PowerUser (perfil heredado de la base de código original: Azure, ECS, Sophos/Cato o Shuffle por webhook). No describe la plataforma vigente; ver [arquitectura vigente](../../02-arquitectura.md).
+
 # Ingeniería de detección B89: incorporación de reglas abiertas y control de falsos positivos
 
 > **Nota (legado):** las menciones a Azure describen el perfil heredado de la base de código original, archivado en
-> [`docs/archive/azure`](../archive/azure/README.md). B89 SOC opera solo en AWS ([02](../02-arquitectura.md)); lo técnico
+> [`docs/archive/azure`](../azure/README.md). B89 SOC opera solo en AWS ([02](../../02-arquitectura.md)); lo técnico
 > que sigue aquí vale como referencia del perfil heredado, no como runbook vigente.
 
 **Estado:** método y backlog de detección para revisión; no equivale a políticas
@@ -25,7 +27,7 @@ eventos requeridos pueden diferir entre Sigma y el decoder Wazuh.
 
 `infra/wazuh/endpoint/rules/b89_endpoint_rules.xml` adapta manualmente la regla SigmaHQ “Suspicious Outlook Child Process” (UUID `208748f7-881d-47ac-a29c-07ea84bf691d`, status `test`) a los campos `win.eventdata.*` de Wazuh Sysmon 4.14.x. El padre oficial `sysmon_event1`/61603 confirma el evento de creación de proceso. La regla B89 `101100` alerta en nivel 8 cuando Outlook inicia un intérprete/binario seleccionado; omite `rundll32.exe` por falsos positivos documentados. Cuatro fixtures cubren dos positivos y dos negativos cercanos; el workflow `wazuh-endpoint-detection.yml` ejecuta `wazuh-logtest` sobre Manager 4.14.8.
 
-**Estado operativo: CANDIDATA / NO INSTALADA.** No hay Docker local, por lo que no ejecuté el motor ni comprobé recepción Sysmon en agentes. El workflow CI está preparado, pero no se declara validada hasta ver un run verde. Aun con CI verde, faltará medir volumen y falsos positivos en endpoints de prueba autorizados. Procedencia, versión, requisitos y guardrails: [`infra/wazuh/endpoint/README.md`](../../infra/wazuh/endpoint/README.md).
+**Estado operativo: CANDIDATA / NO INSTALADA.** No hay Docker local, por lo que no ejecuté el motor ni comprobé recepción Sysmon en agentes. El workflow CI está preparado, pero no se declara validada hasta ver un run verde. Aun con CI verde, faltará medir volumen y falsos positivos en endpoints de prueba autorizados. Procedencia, versión, requisitos y guardrails: [`infra/wazuh/endpoint/README.md`](../../../infra/wazuh/endpoint/README.md).
 ## Capa de detección existente y backlog útil
 
 La rama del overlay Wazuh ya trae reglas B89 de Office 365 en el rango local
@@ -88,7 +90,7 @@ telemetría necesaria:
 ## Automatización conectada al ciclo de detección
 
 - Las alertas de alto nivel pueden iniciar `triage.wazuh-high-severity` en B89 Respond, con dedupe por `alert.id` y solo metadatos mínimos.
-- Los playbooks M365/Graph, Sophos, Cato y VirusTotal están descritos en [`b89-respond-playbooks/README.md`](b89-respond-playbooks/README.md). Hasta completar cada conector, licencia, secreto y prueba del proveedor, su estado es diseño/bloqueado.
+- Los playbooks M365/Graph, Sophos, Cato y VirusTotal están descritos en [`b89-respond-playbooks/README.md`](../../security/b89-respond-playbooks/README.md). Hasta completar cada conector, licencia, secreto y prueba del proveedor, su estado es diseño/bloqueado.
 - Teams crítico se envía desde el outbox de B89, evitando que una regla de Wazuh y un workflow dupliquen la misma notificación.
 - La alerta `101100` no rebaja el umbral global del adaptador Wazuh→B89 Respond (nivel 12). Para automatizar triage, debe admitirse después por caso B89 y allowlist versionado; solo genera contexto para analista y no autoriza comandos ni contención.
 - Aislar endpoints, bloquear IOC, revocar sesiones y ejecutar Active Response requieren una acción B89 aprobada, SoD, clave idempotente, verificación del efecto y compensación/rollback.

@@ -1,12 +1,14 @@
+> **Legado (archivado 2026-11-05).** Documento de la etapa anterior a B89 SOC en AWS PowerUser (perfil heredado de la base de código original: Azure, ECS, Sophos/Cato o Shuffle por webhook). No describe la plataforma vigente; ver [arquitectura vigente](../../02-arquitectura.md).
+
 # Inventario de capacidades diferenciales de B89 SOC
 
-> **Contexto heredado de la base de código original; vigente solo lo que recoge [docs/10-decisiones.md](../10-decisiones.md).**
-> Se conserva como historia; la arquitectura vigente es serverless sobre AWS ([02](../02-arquitectura.md)).
+> **Contexto heredado de la base de código original; vigente solo lo que recoge [docs/10-decisiones.md](../../10-decisiones.md).**
+> Se conserva como historia; la arquitectura vigente es serverless sobre AWS ([02](../../02-arquitectura.md)).
 
 > **Nota (heredado):** Shuffle y su webhook son el estado heredado de B89 Respond. El diseño vigente es
-> Step Functions ([13](../13-b89-respond.md), [14](../14-b89-respond-conexion-b89.md)); este material se reemplaza (fase M5).
+> Step Functions ([13](../../13-b89-respond.md), [14](../../14-b89-respond-conexion-b89.md)); este material se reemplaza (fase M5).
 
-> **La arquitectura objetivo descrita en la versión original de este plan fue sustituida por [ADR-029](decisiones/029-b89-secops-product-direction.md).** B89 SOC conserva su backend y la consola B89 como producto; Wazuh sigue siendo el motor integrado. Este inventario conserva el análisis de capacidades y brechas, pero cualquier referencia a portar el dominio de B89 al servidor/plugin del Wazuh Dashboard debe interpretarse como propuesta histórica, no como decisión vigente.
+> **La arquitectura objetivo descrita en la versión original de este plan fue sustituida por [ADR-029](../../reference/decisiones/029-b89-secops-product-direction.md).** B89 SOC conserva su backend y la consola B89 como producto; Wazuh sigue siendo el motor integrado. Este inventario conserva el análisis de capacidades y brechas, pero cualquier referencia a portar el dominio de B89 al servidor/plugin del Wazuh Dashboard debe interpretarse como propuesta histórica, no como decisión vigente.
 
 Fecha: 2026-10-13. Este documento compara las capacidades descritas y servidas por
 `b89-secops` con las del plugin Wazuh local (`wazuh-dashboard-plugins` 5.1.0) y fija
