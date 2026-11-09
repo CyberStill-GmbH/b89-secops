@@ -6,7 +6,7 @@ Este runbook aplica al servicio `correlator` del Compose PowerUser. El correlado
 
 - `correlator` no publica puertos. Solo comparte la red Docker `b89-correlator-internal` con `api` y `wazuh-gateway`; esa red es `internal`.
 - Corre como UID/GID `65532`, con sistema de archivos de solo lectura, capacidades Linux retiradas, `no-new-privileges`, límites de memoria/PID/CPU y reinicio automático.
-- Docker comprueba `GET /healthz`. El operador revisa además `GET /readyz`, que expresa si terminó la carga inicial y el último ciclo está vigente. Ejecutar `wget` dentro del contenedor evita publicar los endpoints internos.
+- Docker comprueba `GET /healthz`. El operador revisa además `GET /readyz`, que expresa si terminó la carga inicial y el último ciclo está vigente. La imagen es distroless (sin shell ni `wget`): la liveness la comprueba el propio binario (`b89-correlator healthcheck`) y `readyz`/`metrics` se leen desde el contenedor `api`, que comparte la red interna, sin publicar puertos.
 - La imagen se construye desde el SHA del árbol enviado a `/opt/b89/src`; la versión de despliegue debe quedar ligada a ese SHA y a la salida de `docker image inspect`.
 - `B89_CORRELATOR_EMIT=false` por defecto en `/opt/b89/config/correlator.env`. En este estado no crea alertas a partir de candidatos. La opción de auto-supresión también permanece desactivada por defecto.
 - Un reinicio vuelve a ejecutar el backfill configurado en el runtime. Los datos durables y la idempotencia de las alertas pertenecen a la API/PostgreSQL; el contenedor no monta un volumen de estado local.
@@ -36,8 +36,10 @@ sudo bash /opt/b89/src/infra/aws-poweruser/scripts/bootstrap-correlator.sh
 sudo "${COMPOSE[@]}" build correlator
 sudo "${COMPOSE[@]}" up -d --wait correlator
 sudo "${COMPOSE[@]}" ps correlator
-sudo "${COMPOSE[@]}" exec -T correlator wget -q -T 5 -O - http://127.0.0.1:8080/healthz
-sudo "${COMPOSE[@]}" exec -T correlator wget -q -T 5 -O - http://127.0.0.1:8080/readyz
+sudo "${COMPOSE[@]}" exec -T correlator /usr/local/bin/b89-correlator healthcheck && echo healthy
+sudo "${COMPOSE[@]}" exec -T api node -e "fetch('http://correlator:8080/readyz').then(async r=>console.log(r.status,await r.text()))"
+# Replay de 7 días en seco (sin emitir ni auditar), informe JSON con entidades enmascaradas:
+sudo "${COMPOSE[@]}" run --rm --no-deps -e B89_CORRELATOR_BACKFILL=168h correlator replay --redact --top 15
 sudo "${COMPOSE[@]}" logs --since=15m --tail=200 correlator
 ```
 
@@ -90,3 +92,10 @@ Si el contenedor no debe operar mientras se investiga, usar `docker compose stop
 ## Límites pendientes
 
 El servicio mantiene estado de ejecución en memoria y repite el backfill en reinicios. El límite de tasa está en memoria y vuelve a cero con un reinicio. La API expone el contrato interno del servicio; aún no se instrumenta desde el frontend una operación de start/stop, edición de parámetros o activación de emisión. No declarar el panel de Bunny como plano de control del correlador hasta que exista contrato de configuración, autorización/auditoría y pruebas de concurrencia.
+
+## Lectura para la consola y Bunny
+
+La API expone `GET /api/risk/entities?top=N`, `GET /api/risk/entities/{type}/{ref}` y `GET /api/risk/candidates`
+con la sesión B89 y la capacidad `alerts.read` (la ruta solo admite referencias opacas `ent_…`). La API llega al
+correlador por `B89_CORRELATOR_URL=http://correlator:8080` con `B89_CORRELATOR_READ_TOKEN`; ambos los deja
+`bootstrap-correlator.sh`. El edge permite el prefijo `risk`.
