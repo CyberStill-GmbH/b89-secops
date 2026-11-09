@@ -1,0 +1,5 @@
+# Expose read-only host collector JSONL files to Wazuh. No service other than the manager changes.
+services:
+  wazuh.manager:
+    volumes:
+      - /opt/b89/provider-ingestion/logs:/var/ossec/logs/b89-providers:ro

@@ -6,3 +6,7 @@ raster/b89_respond_icon_174.png	public/images/Shuffle_logo_new.png	logo cuadrado
 raster/favicon.ico	public/favicon.ico	icono de la pestaña
 raster/b89_respond_icon_144.png	public/images/security/shuffle-icon.png	icono de la sección de seguridad
 svg/b89_respond_mark.svg	public/images/icons/shuffleLogo.svg	marca pequeña en la barra lateral
+raster/b89-bunny.webp	public/images/b89-bunny.webp	conejo de marca del login B89 Respond
+raster/b89-respond-login.webp	public/images/b89-respond-login.webp	Fondo del login de B89 Respond
+raster/b89-respond-login-mobile.webp	public/images/b89-respond-login-mobile.webp	Fondo del login de B89 Respond
+raster/b89-head-mark.webp	public/images/b89-head-mark.webp	logo cabeza del conejo, separado de la mascota IA

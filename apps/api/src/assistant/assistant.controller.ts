@@ -21,6 +21,8 @@
 
 import { randomUUID } from 'node:crypto';
 
+import { planAuditQuery, recordAudit } from '@b89/audit';
+
 import {
   Body,
   Controller,
@@ -31,16 +33,20 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Req,
 } from '@nestjs/common';
 import {
   AssistantInputError,
   CONVERSATION_LIMITS,
+  DEFAULT_ASSISTANT_LIMITS,
   Pseudonymizer,
   clampStoredText,
   conversationTitleFrom,
+  MESSAGE_FEEDBACK,
   normalizeConversationTitle,
+  type MessageFeedback,
   runAssistant,
   type AssistantResult,
   type ConversationOwner,
@@ -58,6 +64,7 @@ import type { AssistantService } from './assistant-service.js';
 import { auditConversationRemoval, type ConversationHistory } from './conversation-history.js';
 import { createInternalGet } from './internal-client.js';
 import { buildSocTools } from './soc-tools.js';
+import { connectMcpInProcess } from './mcp-protocol.js';
 
 /** Capacidades de lectura: haber una basta para usar a Bunny (las herramientas filtran el resto). */
 const READ_CAPABILITIES = [
@@ -70,6 +77,14 @@ const READ_CAPABILITIES = [
   'observability.read_soc',
   'users.read',
 ] as const;
+
+/**
+ * Presupuesto de reloj del turno. En Lambda, API Gateway corta a los 30 s; en el nodo EC2 el
+ * proxy de borde admite 65 s para `/api/assistant`, así que Bunny puede investigar más a fondo.
+ */
+const TURN_LIMITS = process.env['AWS_LAMBDA_FUNCTION_NAME']
+  ? DEFAULT_ASSISTANT_LIMITS
+  : Object.freeze({ ...DEFAULT_ASSISTANT_LIMITS, deadlineMs: 55_000 });
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
@@ -123,6 +138,7 @@ function messageView(message: StoredMessage) {
     ...(message.steps ? { steps: message.steps } : {}),
     ...(message.citations ? { citations: message.citations } : {}),
     ...(message.tone ? { tone: message.tone } : {}),
+    ...(message.feedback ? { feedback: message.feedback } : {}),
     createdAt: message.createdAt.toISOString(),
   };
 }
@@ -141,7 +157,9 @@ function assistantMessage(result: AssistantResult, at: Date): StoredMessage {
       ),
     steps: result.steps.slice(0, max),
     citations: result.citations.slice(0, max),
-    ...(result.outcome === 'refused' ? { tone: 'notice' as const } : {}),
+    ...(result.outcome === 'refused' || result.outcome === 'unverified'
+      ? { tone: 'notice' as const }
+      : {}),
     createdAt: at,
   };
 }
@@ -164,10 +182,124 @@ export class AssistantController {
         ? {
             readOnly: true,
             redactsPersonalData: service.config.redactPii,
+            provider: service.config.provider,
+            model: service.config.model,
+            effort: service.config.effort,
+            rateLimit: service.config.rateLimit.max,
             history: service.history !== undefined,
             ...(service.history ? { retentionDays: service.history.retentionDays } : {}),
           }
         : {}),
+    };
+  }
+
+  /** Métricas agregadas de uso para plataforma; no devuelve prompts, respuestas ni actor. */
+  @Get('usage')
+  public async usage(
+    @Req() request: IncomingRequest,
+    @Query() query: { from?: string; to?: string; cursor?: string },
+  ) {
+    const { actor, correlationId } = await readingActor(this.runtime, request);
+    if (!actor.capabilities.has('observability.read_platform')) {
+      throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
+    }
+    const now = this.runtime.now();
+    const to = query.to ? new Date(query.to) : now;
+    const from = query.from ? new Date(query.from) : new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
+    if (
+      Number.isNaN(from.getTime()) ||
+      Number.isNaN(to.getTime()) ||
+      from.getTime() > to.getTime() ||
+      to.getTime() > now.getTime() + 60_000 ||
+      to.getTime() - from.getTime() > 30 * 24 * 60 * 60 * 1000 ||
+      (query.cursor !== undefined && query.cursor.length > 1024)
+    ) {
+      throw new ApiError('VALIDATION_FAILED', correlationId, ['range']);
+    }
+    const plan = planAuditQuery(
+      {
+        from: from.toISOString(),
+        to: to.toISOString(),
+        pageSize: 200,
+        action: 'assistant.ask',
+        ...(query.cursor ? { cursor: query.cursor } : {}),
+      },
+      { tenantId: actor.tenantId, capabilities: actor.capabilities },
+    );
+    if (!plan.ok) throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
+    let page: Awaited<ReturnType<SecOpsRuntime['audit']['read']>>;
+    try {
+      page = await this.runtime.audit.read(plan.query);
+    } catch {
+      throw new ApiError('DEPENDENCY_DEGRADED', correlationId);
+    }
+    const totals = {
+      requests: page.events.length,
+      succeeded: 0,
+      failed: 0,
+      measured: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    };
+    const byModel = new Map<
+      string,
+      {
+        provider: string;
+        model: string;
+        requests: number;
+        inputTokens: number;
+        outputTokens: number;
+        cacheReadTokens: number;
+        cacheWriteTokens: number;
+      }
+    >();
+    for (const event of page.events) {
+      if (event.outcome === 'succeeded') totals.succeeded += 1;
+      else if (event.outcome === 'failed') totals.failed += 1;
+      const metadata = event.metadata ?? {};
+      const provider = typeof metadata['provider'] === 'string' ? metadata['provider'] : 'sin dato';
+      const model = typeof metadata['model'] === 'string' ? metadata['model'] : 'sin dato';
+      const modelKey = `${provider}:${model}`;
+      const modelTotals = byModel.get(modelKey) ?? {
+        provider,
+        model,
+        requests: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+      };
+      modelTotals.requests += 1;
+      byModel.set(modelKey, modelTotals);
+      const usage = metadata['usage'];
+      if (!usage || typeof usage !== 'object' || Array.isArray(usage)) continue;
+      const values = usage as Record<string, unknown>;
+      const numeric = ['inputTokens', 'outputTokens', 'cacheReadTokens', 'cacheWriteTokens']
+        .map((key) => values[key]);
+      if (!numeric.every((value) => typeof value === 'number' && Number.isFinite(value))) continue;
+      totals.measured += 1;
+      totals.inputTokens += values['inputTokens'] as number;
+      totals.outputTokens += values['outputTokens'] as number;
+      totals.cacheReadTokens += values['cacheReadTokens'] as number;
+      totals.cacheWriteTokens += values['cacheWriteTokens'] as number;
+      modelTotals.inputTokens += values['inputTokens'] as number;
+      modelTotals.outputTokens += values['outputTokens'] as number;
+      modelTotals.cacheReadTokens += values['cacheReadTokens'] as number;
+      modelTotals.cacheWriteTokens += values['cacheWriteTokens'] as number;
+    }
+    return {
+      correlationId,
+      period: {
+        from: from.toISOString(),
+        to: to.toISOString(),
+        days: Math.ceil((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000)),
+      },
+      totals,
+      models: [...byModel.values()].sort((left, right) => right.requests - left.requests),
+      nextCursor: page.nextCursor,
+      billing: 'not_connected',
     };
   }
 
@@ -215,10 +347,11 @@ export class AssistantController {
     const server = this.runtime.internalServer;
     if (!server) throw new ApiError('DEPENDENCY_DEGRADED', correlationId);
     const capabilities = [...actor.capabilities].sort();
-    const tools = buildSocTools(createInternalGet(server, request), {
+    const handlers = buildSocTools(createInternalGet(server, request), {
       roles: actor.roles,
       capabilities,
     });
+    const tools = await connectMcpInProcess(handlers);
     // Con historial activo manda el servidor: el del cliente se ignora (una conversación nueva
     // empieza vacía) para que lo guardado sea exactamente lo que vio el modelo. Sin historial,
     // el del cliente sigue sirviendo por compatibilidad.
@@ -246,11 +379,16 @@ export class AssistantController {
           },
         },
         pseudonymizer: new Pseudonymizer(service.config.redactPii),
+        limits: TURN_LIMITS,
         now: () => this.runtime.now(),
       });
-      await this.runtime.auditAssistant(actor.subjectId, correlationId, 'succeeded', [
-        ...new Set(result.steps.map((step) => step.tool)),
-      ]);
+      await this.runtime.auditAssistant(
+        actor.subjectId,
+        correlationId,
+        'succeeded',
+        [...new Set(result.steps.map((step) => step.tool))],
+        { provider: service.config.provider, model: service.config.model, usage: result.usage },
+      );
     } catch (error) {
       if (error instanceof AssistantInputError) {
         throw new ApiError('VALIDATION_FAILED', correlationId, ['message']);
@@ -274,6 +412,8 @@ export class AssistantController {
       conversationId: saved?.id ?? null,
       title: saved?.title ?? null,
       saved: saved?.saved ?? false,
+      // Id del mensaje guardado de Bunny: la consola lo usa para la valoración 👍/👎.
+      messageId: saved?.saved ? saved.messageId : null,
     };
   }
 
@@ -350,6 +490,47 @@ export class AssistantController {
       : false;
     if (!renamed) throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
     return { correlationId, id, title };
+  }
+
+  /**
+   * Valoración 👍/👎 de una respuesta de Bunny, guardada con la conversación (`rating: null` la
+   * quita). Auditoría `assistant.feedback` con la valoración y los ids, nunca el texto.
+   */
+  @Put('conversations/:id/messages/:messageId/feedback')
+  public async setFeedback(
+    @Req() request: IncomingRequest,
+    @Param('id') id: string,
+    @Param('messageId') messageId: string,
+    @Body() body: { rating?: unknown } | undefined,
+  ) {
+    const { actor, correlationId } = await mutatingActor(this.runtime, request);
+    const history = this.historyFor(actor, correlationId);
+    const rating = body?.rating;
+    if (rating !== null && !MESSAGE_FEEDBACK.includes(rating as MessageFeedback)) {
+      throw new ApiError('VALIDATION_FAILED', correlationId, ['rating']);
+    }
+    if (!UUID.test(messageId)) throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
+    const owner = ownerOf(actor);
+    await this.ownedConversation(history, owner, id, correlationId);
+    const store = history.store;
+    const stored = store.setFeedback
+      ? await this.guarded(correlationId, () =>
+          store.setFeedback!(owner, id, messageId, rating as MessageFeedback | null),
+        )
+      : false;
+    if (!stored) throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
+    await recordAudit(this.runtime.audit, {
+      id: randomUUID(),
+      tenantId: actor.tenantId,
+      occurredAt: this.runtime.now(),
+      actor: { id: actor.subjectId, type: 'user' },
+      action: 'assistant.feedback',
+      resource: { type: 'assistant_conversation', id },
+      outcome: 'succeeded',
+      correlationId,
+      metadata: { messageId, rating: typeof rating === 'string' ? rating : 'none' },
+    }).catch(() => undefined);
+    return { correlationId, id, messageId, rating: rating ?? null };
   }
 
   @Delete('conversations/:id')
@@ -442,11 +623,12 @@ export class AssistantController {
     askedAt: Date,
     result: AssistantResult,
     correlationId: string,
-  ): Promise<{ id: string | null; title: string | null; saved: boolean }> {
+  ): Promise<{ id: string | null; title: string | null; saved: boolean; messageId: string }> {
     const answeredAt = this.runtime.now();
+    const reply = assistantMessage(result, answeredAt);
     const turn: StoredMessage[] = [
       { id: randomUUID(), role: 'user', text: question.trim(), createdAt: askedAt },
-      assistantMessage(result, answeredAt),
+      reply,
     ];
     let outcome: { id: string | null; title: string | null; saved: boolean };
     let evicted = 0;
@@ -484,6 +666,6 @@ export class AssistantController {
       }).catch(() => undefined);
     }
     await history.purgeExpired(this.runtime.audit, owner.tenantId, answeredAt, correlationId);
-    return outcome;
+    return { ...outcome, messageId: reply.id };
   }
 }

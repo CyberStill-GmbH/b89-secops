@@ -187,3 +187,22 @@ describe('historial de Bunny · almacén en memoria', () => {
     expect(await store.get(ANA_OTHER_TENANT, otherTenant.id)).toBeDefined();
   });
 });
+
+describe('historial de Bunny · valoración de respuestas', () => {
+  it('guarda y quita 👍/👎 solo en respuestas de Bunny propias, sin reordenar', async () => {
+    const store = new InMemoryConversationStore();
+    const conversation = await seed(store);
+    const [question, answer] = conversation.messages;
+    expect(await store.setFeedback(ANA, conversation.id, answer!.id, 'down')).toBe(true);
+    let stored = await store.get(ANA, conversation.id);
+    expect(stored?.messages[1]?.feedback).toBe('down');
+    expect(stored?.updatedAt).toEqual(conversation.updatedAt);
+    expect(await store.setFeedback(ANA, conversation.id, answer!.id, null)).toBe(true);
+    stored = await store.get(ANA, conversation.id);
+    expect(stored?.messages[1]).not.toHaveProperty('feedback');
+    // Pregunta de la persona, mensaje inexistente o conversación ajena: no se valora.
+    expect(await store.setFeedback(ANA, conversation.id, question!.id, 'up')).toBe(false);
+    expect(await store.setFeedback(ANA, conversation.id, id(), 'up')).toBe(false);
+    expect(await store.setFeedback(LUIS, conversation.id, answer!.id, 'up')).toBe(false);
+  });
+});

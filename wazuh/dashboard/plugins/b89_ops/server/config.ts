@@ -33,7 +33,6 @@ const integration = (
     note: schema.string({ defaultValue: defaults.note ?? '', maxLength: 500 }),
   });
 
-
 /**
  * `b89_ops.*` en `opensearch_dashboards.yml`.
  *
@@ -57,7 +56,7 @@ export const configSchema = schema.object({
   }),
   /** Aviso de nuevas alertas P1 en la cabecera (todo el dashboard). */
   p1Watch: schema.boolean({ defaultValue: true }),
-  /** Bunny, el asistente de IA: el botón solo aparece si la API lo tiene habilitado (B89_BUNNY_ENABLED). */
+  /** Bunny launcher is always visible; the API controls whether chat can answer. */
   bunny: schema.object({ enabled: schema.boolean({ defaultValue: true }) }),
   login: schema.object({
     /** Sirve el login B89 y sustituye `/app/login` del Security plugin / Wazuh. */

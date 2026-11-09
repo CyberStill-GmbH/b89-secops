@@ -1,0 +1,22 @@
+[Unit]
+Description=B89 read-only provider collector %i
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+Environment=B89_PROVIDER_SECRET_DIR=/opt/b89/secrets/provider-services
+Environment=B89_PROVIDER_OUTPUT_DIR=/opt/b89/provider-ingestion/logs
+Environment=B89_PROVIDER_STATE_DIR=/opt/b89/provider-ingestion/state
+ExecStart=/usr/bin/python3 /opt/b89/src/wazuh/provider-ingestion/third_party.py %i
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectControlGroups=true
+ReadOnlyPaths=/opt/b89/secrets/provider-services.env
+ReadWritePaths=/opt/b89/provider-ingestion/logs /opt/b89/provider-ingestion/state
+TimeoutStartSec=240

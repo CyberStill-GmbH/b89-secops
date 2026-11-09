@@ -3,8 +3,7 @@
  * (`anthropic`) o el de Amazon Bedrock Mantle (`bedrock`); ambos exponen `messages.create`.
  *
  * Decisiones:
- * - Sin streaming: API Gateway HTTP almacena la respuesta completa; el tiempo total lo acota el
- *   bucle del dominio (`deadlineMs`) y cada llamada lleva `AbortSignal`.
+ * - Cada llamada lleva `AbortSignal` (presupuesto del turno) además del timeout por intento.
  * - Pensamiento adaptativo (por omisión en los modelos actuales) y profundidad con `effort`; no se
  *   usan `temperature`, prefill ni `tool_choice` forzado (no soportados en estos modelos).
  * - Una negativa del modelo (`refusal`) se devuelve como tal; el dominio la comunica sin inventar.
@@ -13,6 +12,15 @@
  *   reenvía intacto: alterarlo invalidaría su firma.
  * - Robustez: `timeout` por intento (`B89_BUNNY_TIMEOUT_MS`) y 2 reintentos con backoff exponencial
  *   del SDK ante 408/409/429/5xx o error de red. Nunca se registran prompts ni respuestas.
+ * - Caché de prompt: herramientas + sistema forman un prefijo estable (orden determinista, sin datos
+ *   variables) con un punto de caché en el sistema; además, `cache_control` de nivel superior
+ *   cachea el historial creciente entre rondas de herramientas del mismo turno.
+ * - Fallback ante negativas (solo API directa de Anthropic): `fallbacks: "default"` (beta
+ *   `server-side-fallback-2026-07-01`) re-ejecuta la petición en el modelo de respaldo cuando un
+ *   clasificador de seguridad declina contenido legítimo del SOC (p. ej. técnicas de ataque).
+ *   Bedrock no lo admite y usa la API estable.
+ * - Sin streaming: la consola consume JSON completo a través del proxy del dashboard; el tiempo
+ *   total lo acota el bucle del dominio (`deadlineMs`).
  */
 
 import Anthropic from '@anthropic-ai/sdk';
@@ -39,7 +47,19 @@ export interface MessagesClient {
       options?: { signal?: AbortSignal },
     ): Promise<Anthropic.Message>;
   };
+  /** Solo con la API directa: endpoint beta para `fallbacks`. */
+  beta?: {
+    messages: {
+      create(
+        params: Anthropic.Beta.MessageCreateParamsNonStreaming,
+        options?: { signal?: AbortSignal },
+      ): Promise<Anthropic.Beta.BetaMessage>;
+    };
+  };
 }
+
+/** Beta del fallback de servidor con el modo `"default"` (enruta según la categoría de la negativa). */
+export const SERVER_FALLBACK_BETA = 'server-side-fallback-2026-07-01';
 
 export function createMessagesClient(config: EnabledConfig): MessagesClient {
   if (config.provider === 'anthropic') {
@@ -52,6 +72,7 @@ export function createMessagesClient(config: EnabledConfig): MessagesClient {
   return new AnthropicBedrockMantle({
     awsRegion: config.awsRegion,
     maxRetries: 1,
+    timeout: config.timeoutMs,
   }) as unknown as MessagesClient;
 }
 
@@ -86,7 +107,7 @@ function toParam(message: ConversationMessage): Anthropic.MessageParam {
   };
 }
 
-function stopReasonOf(reason: Anthropic.Message['stop_reason']): ModelStopReason {
+function stopReasonOf(reason: string | null): ModelStopReason {
   switch (reason) {
     case 'end_turn':
     case 'tool_use':
@@ -104,30 +125,41 @@ export function createClaudeModel(
 ): AssistantModel {
   return {
     async complete(request: ModelRequest, signal?: AbortSignal): Promise<ModelResponse> {
-      const response = await client.messages.create(
-        {
-          model: config.model,
-          max_tokens: request.maxTokens,
-          system: [
-            {
-              type: 'text',
-              text: scrubCredentials(request.system),
-              cache_control: { type: 'ephemeral' },
-            },
-          ],
-          messages: request.messages.map(toParam),
-          tools: request.tools.map((tool) => ({
-            name: tool.name,
-            description: tool.description,
-            input_schema: tool.inputSchema as Anthropic.Tool.InputSchema,
-          })),
-          ...(request.allowTools ? {} : { tool_choice: { type: 'none' as const } }),
-          // Resúmenes de razonamiento visibles para la persona (por omisión vienen vacíos).
-          thinking: { type: 'adaptive' as const, display: 'summarized' as const },
-          output_config: { effort: config.effort },
-        },
-        signal ? { signal } : undefined,
-      );
+      const params = {
+        model: config.model,
+        max_tokens: request.maxTokens,
+        // Caché automática del último bloque (historial del turno entre rondas de herramientas).
+        cache_control: { type: 'ephemeral' as const },
+        system: [
+          {
+            type: 'text' as const,
+            text: scrubCredentials(request.system),
+            cache_control: { type: 'ephemeral' as const },
+          },
+        ],
+        messages: request.messages.map(toParam),
+        tools: request.tools.map((tool) => ({
+          name: tool.name,
+          description: tool.description,
+          input_schema: tool.inputSchema as Anthropic.Tool.InputSchema,
+        })),
+        ...(request.allowTools ? {} : { tool_choice: { type: 'none' as const } }),
+        // Resúmenes de razonamiento visibles para la persona (por omisión vienen vacíos).
+        thinking: { type: 'adaptive' as const, display: 'summarized' as const },
+        output_config: { effort: config.effort },
+      };
+      const options = signal ? { signal } : undefined;
+      const response: Anthropic.Message | Anthropic.Beta.BetaMessage =
+        config.provider === 'anthropic' && client.beta
+          ? await client.beta.messages.create(
+              {
+                ...(params as unknown as Anthropic.Beta.MessageCreateParamsNonStreaming),
+                betas: [SERVER_FALLBACK_BETA],
+                fallbacks: 'default',
+              },
+              options,
+            )
+          : await client.messages.create(params, options);
       const content: ModelBlock[] = [];
       for (const block of response.content) {
         if (block.type === 'text') content.push({ type: 'text', text: block.text });
@@ -150,6 +182,8 @@ export function createClaudeModel(
         usage: {
           inputTokens: response.usage.input_tokens,
           outputTokens: response.usage.output_tokens,
+          cacheReadTokens: response.usage.cache_read_input_tokens ?? 0,
+          cacheWriteTokens: response.usage.cache_creation_input_tokens ?? 0,
         },
       };
     },

@@ -16,6 +16,14 @@ import type { ConfigSchema } from './config';
 import { LEGACY_LOGIN_PATHS, LOGIN_PATH, LOGOUT_PATH } from '../common';
 import { OVERVIEW_ROUTE } from '../common/integrations';
 import { buildOverview, SearchClient } from './overview';
+import { findEvent, findRelated, findSource } from './investigation';
+import {
+  INVESTIGATION_ROUTES,
+  MAX_QUERY_ENTITIES,
+  parseEntityKey,
+  RELATED_WINDOWS,
+  RelatedWindow,
+} from '../common/investigation';
 import {
   loginContentSecurityPolicy,
   logoutContentSecurityPolicy,
@@ -32,6 +40,11 @@ const NO_STORE_HEADERS = {
   'x-content-type-options': 'nosniff',
   'x-frame-options': 'DENY',
 };
+
+const idValidator = (value: string) =>
+  /^[A-Za-z0-9_-]{1,128}$/u.test(value) ? undefined : 'identificador no válido';
+const digitsValidator = (value: string) =>
+  /^\d{1,10}$/u.test(value) ? undefined : 'regla no válida';
 
 export class B89OpsServerPlugin implements Plugin<void, void> {
   private readonly logger: Logger;
@@ -62,6 +75,78 @@ export class B89OpsServerPlugin implements Plugin<void, void> {
         headers: { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' },
       });
     });
+
+    // Investigación de alertas: evento de origen, eventos relacionados por entidad y documento
+    // completo. Siempre con la identidad de quien mira (asCurrentUser), como el resumen.
+    const currentUser = (context: unknown): SearchClient =>
+      (context as { core: { opensearch: { client: { asCurrentUser: SearchClient } } } }).core
+        .opensearch.client.asCurrentUser;
+    const json = { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' };
+    const docId = schema.string({ maxLength: 128, validate: idValidator });
+    router.get(
+      {
+        path: INVESTIGATION_ROUTES.source,
+        validate: {
+          query: schema.object({
+            id: schema.maybe(docId),
+            ruleId: schema.maybe(schema.string({ maxLength: 10, validate: digitsValidator })),
+            at: schema.maybe(schema.string({ maxLength: 40 })),
+            description: schema.maybe(schema.string({ maxLength: 400 })),
+          }),
+        },
+      },
+      async (context, request, response) =>
+        response.ok({ body: await findSource(currentUser(context), request.query), headers: json }),
+    );
+    router.get(
+      {
+        path: INVESTIGATION_ROUTES.event,
+        validate: { query: schema.object({ id: docId }) },
+      },
+      async (context, request, response) =>
+        response.ok({
+          body: await findEvent(currentUser(context), request.query.id),
+          headers: json,
+        }),
+    );
+    router.get(
+      {
+        path: INVESTIGATION_ROUTES.related,
+        validate: {
+          query: schema.object({
+            e: schema.oneOf([
+              schema.string({ maxLength: 300 }),
+              schema.arrayOf(schema.string({ maxLength: 300 }), { maxSize: MAX_QUERY_ENTITIES }),
+            ]),
+            at: schema.string({ maxLength: 40 }),
+            window: schema.string({ defaultValue: '24h', maxLength: 4 }),
+            exclude: schema.maybe(docId),
+          }),
+        },
+      },
+      async (context, request, response) => {
+        const keys = Array.isArray(request.query.e) ? request.query.e : [request.query.e];
+        const entities = keys
+          .map(parseEntityKey)
+          .filter((entity): entity is NonNullable<typeof entity> => entity !== null);
+        const at = Date.parse(request.query.at);
+        const window = (RELATED_WINDOWS as readonly string[]).includes(request.query.window)
+          ? (request.query.window as RelatedWindow)
+          : '24h';
+        if (!Number.isFinite(at) || entities.length === 0) {
+          return response.badRequest({ body: 'Entidad u hora no válidas.' });
+        }
+        return response.ok({
+          body: await findRelated(currentUser(context), {
+            entities,
+            at,
+            window,
+            excludeId: request.query.exclude,
+          }),
+          headers: json,
+        });
+      },
+    );
 
     if (!config.login.enabled) return;
 

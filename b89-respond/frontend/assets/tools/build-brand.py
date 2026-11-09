@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
-Arte de B89 Respond (Shuffle rebrandeado) a partir del monograma oficial de B89.
+Arte de B89 Respond (Shuffle rebrandeado) a partir del conejo mantenido de Bunny.
 
     python b89-respond/frontend/assets/tools/build-brand.py
 
-Fuente: docs/brand/assets/logo/b89-mark-gradient.png (recorte de la página 35 de «Formato
-presentación B89 2026»). Según docs/brand/b89-visual-identity.md el monograma no se redibuja,
-recolorea ni deforma: aquí solo se escala. El nombre del producto no se compone dentro del
-monograma ni se simula con una tipografía sustituta (Satoshi aún no está empaquetada), así que
-el «logotipo» del encabezado es el monograma y el texto «B89 Respond» lo pone la interfaz.
+Fuente: docs/brand/assets/logo/b89-bunny-mark.webp, la cabeza circular del conejo.
+La mascota de IA b89-bunny.webp es independiente y no se usa como logo.
+Se conserva el arte y su transparencia; los SVG incrustan el WebP original sin ampliar
+sus pixeles ni incluir el antiguo monograma. El titulo B89 Respond lo renderiza la interfaz.
 
 Genera (mismos nombres que `targets.tsv`):
   raster/b89_respond_icon_540.png  raster/b89_respond_icon_174.png  raster/b89_respond_icon_144.png  raster/favicon.ico
@@ -17,32 +16,27 @@ Los SVG incrustan el PNG escalado a 4x (nítido en pantallas densas).
 """
 
 import base64
-import io
 import pathlib
 
 from PIL import Image
 
 HERE = pathlib.Path(__file__).resolve().parent
 ASSETS = HERE.parent
-SOURCE = HERE.parents[3] / 'docs' / 'brand' / 'assets' / 'logo' / 'b89-mark-gradient.png'
+SOURCE = HERE.parents[3] / 'docs' / 'brand' / 'assets' / 'logo' / 'b89-bunny-mark.webp'
+UI_MARK = ASSETS / 'raster' / 'b89-head-mark.webp'
 TITLE = 'B89 Respond'
 
 
 def scaled(im, size):
-    return im.resize((size, size), Image.LANCZOS)
-
-
-def png_b64(im):
-    buf = io.BytesIO()
-    im.save(buf, 'PNG', optimize=True)
-    return base64.b64encode(buf.getvalue()).decode()
+    from PIL import ImageOps
+    return ImageOps.pad(im, (size, size), method=Image.LANCZOS, color=(0, 0, 0, 0))
 
 
 def svg(width, height, image_x, image_size, b64):
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" width="{width}" height="{height}" '
         f'role="img" aria-label="{TITLE}"><title>{TITLE}</title>'
-        f'<image href="data:image/png;base64,{b64}" x="{image_x}" y="{(height - image_size) / 2:g}" '
+        f'<image href="data:image/webp;base64,{b64}" x="{image_x}" y="{(height - image_size) / 2:g}" '
         f'width="{image_size}" height="{image_size}"/></svg>\n'
     )
 
@@ -51,13 +45,15 @@ def main():
     mark = Image.open(SOURCE).convert('RGBA')
     (ASSETS / 'raster').mkdir(parents=True, exist_ok=True)
     (ASSETS / 'svg').mkdir(parents=True, exist_ok=True)
+    scaled(mark, 256).save(UI_MARK, 'WEBP', quality=92, method=6)
     scaled(mark, 540).save(ASSETS / 'raster' / 'b89_respond_icon_540.png', optimize=True)
     scaled(mark, 174).save(ASSETS / 'raster' / 'b89_respond_icon_174.png', optimize=True)
     scaled(mark, 144).save(ASSETS / 'raster' / 'b89_respond_icon_144.png', optimize=True)
     mark.save(ASSETS / 'raster' / 'favicon.ico', sizes=[(16, 16), (32, 32), (48, 48), (64, 64)])
-    (ASSETS / 'svg' / 'b89_respond_mark.svg').write_text(svg(22, 22, 0, 22, png_b64(scaled(mark, 88))), encoding='utf-8')
-    (ASSETS / 'svg' / 'b89_respond_wordmark.svg').write_text(svg(131, 28, 0, 28, png_b64(scaled(mark, 112))), encoding='utf-8')
-    (ASSETS / 'svg' / 'b89_respond_app_icon.svg').write_text(svg(512, 512, 0, 512, png_b64(scaled(mark, 512))), encoding='utf-8')
+    (ASSETS / 'svg' / 'b89_respond_mark.svg').write_text(svg(22, 22, 0, 22, base64.b64encode(UI_MARK.read_bytes()).decode()), encoding='utf-8')
+    (ASSETS / 'svg' / 'b89_respond_wordmark.svg').write_text(svg(131, 28, 0, 28, base64.b64encode(UI_MARK.read_bytes()).decode()), encoding='utf-8')
+    (ASSETS / 'svg' / 'b89_respond_app_icon.svg').write_text(svg(512, 512, 0, 512, base64.b64encode(UI_MARK.read_bytes()).decode()), encoding='utf-8')
+    (ASSETS / 'raster' / 'b89-bunny.webp').write_bytes((HERE.parents[3] / 'wazuh' / 'dashboard' / 'assets' / 'images' / 'b89-bunny.webp').read_bytes())
     for path in sorted(ASSETS.glob('raster/*')) + sorted(ASSETS.glob('svg/*')):
         print(f'{path.relative_to(ASSETS)}: {path.stat().st_size} B')
 

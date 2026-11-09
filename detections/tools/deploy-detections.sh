@@ -8,7 +8,8 @@
 # Instala:
 #   - reglas del programa: detections/<fuente>/<caso>/rule.xml → etc/rules/b89_soc_<fuente>_<caso>.xml
 #   - archivos B89 del SOC con descripciones normalizadas (owner soc-detection-engineering en catalog.yaml)
-#   - listas CDB del catálogo que falten (con un centinela .invalid; nunca pisa una con contenido)
+#   - listas versionadas de detections/lists (allowlists de reducción de FP), si cambian
+#   - listas CDB de entorno que falten (con un centinela .invalid; nunca pisa una con contenido)
 #     y su <list> en <ruleset>
 # Seguridad: check_rule_ids.py contra lo instalado, respaldo en etc/b89-backup-<ts>-detections/,
 # wazuh-analysisd -t antes de reiniciar, verificación de analysisd/remoted y del agente 001 después;
@@ -27,10 +28,11 @@ agent_id="${B89_VERIFY_AGENT:-001}"
 log() { printf '[b89-detections] %s\n' "$*"; }
 
 stage="$B89_WORK/stage"
-b89_python "$repo/detections/tools/b89_detections.py" bundle "$stage" --existing soc >/dev/null
-mkdir -p "$stage/install"
+b89_python "$repo/detections/tools/b89_detections.py" bundle "$stage" --existing soc --managed-lists >/dev/null
+mkdir -p "$stage/install/lists"
 cp "$stage"/rules/*.xml "$stage"/existing/*.xml "$stage/install/"
-names="$(cd "$stage/install" && ls)"
+cp "$stage"/managed-lists/* "$stage/install/lists/"
+names="$(cd "$stage/install" && ls *.xml)"
 log "manager: $M · archivos: $(echo "$names" | wc -l)"
 
 # Colisiones contra lo instalado fuera de estos archivos (ruleset oficial y reglas de otros owners).
@@ -64,6 +66,9 @@ b89_mexec bash -euo pipefail -c '
   for f in $S/*.xml; do
     if ! same "$f" "$O/etc/rules/$(basename "$f")"; then echo "[b89-detections] cambia: etc/rules/$(basename "$f")"; changed=1; fi
   done
+  for f in $S/lists/*; do
+    if ! same "$f" "$O/etc/lists/$(basename "$f")"; then echo "[b89-detections] cambia lista versionada: etc/lists/$(basename "$f")"; changed=1; fi
+  done
   for l in $lists; do
     [ -s "$O/$l" ] || { echo "[b89-detections] falta lista: $l (se crea con centinela .invalid)"; changed=1; }
     grep -q "<list>$l</list>" $O/etc/ossec.conf || { echo "[b89-detections] falta <list>$l</list> en ossec.conf"; changed=1; }
@@ -81,6 +86,8 @@ b89_mexec bash -euo pipefail -c '
     $O/bin/wazuh-control restart >/dev/null 2>&1 || true
   }
   install -o wazuh -g wazuh -m 0660 $S/*.xml $O/etc/rules/
+  # Listas versionadas (detections/lists): el repo es la fuente de verdad.
+  for f in $S/lists/*; do same "$f" "$O/etc/lists/$(basename "$f")" || install -o wazuh -g wazuh -m 0660 "$f" $O/etc/lists/; done
   for l in $lists; do
     # Vacía rompe GET /lists de la API («Bad format in CDB list»): centinela que nunca coincide.
     [ -s "$O/$l" ] || { echo "b89-sin-datos-$(basename "$l").invalid:placeholder" >"$O/$l"; chown wazuh:wazuh "$O/$l"; chmod 0660 "$O/$l"; }

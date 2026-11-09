@@ -1,9 +1,16 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { describe, expect, it } from 'vitest';
 
 import { AssistantConfigError, loadAssistantConfig } from '../src/assistant/assistant-config.js';
 import { createClaudeModel, type MessagesClient } from '../src/assistant/claude-model.js';
 import { createInternalGet } from '../src/assistant/internal-client.js';
+import { SOC_KNOWLEDGE } from '../src/assistant/soc-knowledge.generated.js';
 import { buildSocTools } from '../src/assistant/soc-tools.js';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../..');
 
 describe('configuración de Bunny', () => {
   it('está apagado por defecto', () => {
@@ -94,7 +101,17 @@ describe('adaptador de Claude', () => {
     });
     expect(sent).not.toHaveProperty('temperature');
     expect(response.stopReason).toBe('tool_use');
-    expect(response.usage).toEqual({ inputTokens: 12, outputTokens: 7 });
+    expect(response.usage).toEqual({
+      inputTokens: 12,
+      outputTokens: 7,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    });
+    // Caché: punto en el sistema (prefijo herramientas + sistema) y caché automática del historial.
+    expect(sent).toMatchObject({
+      cache_control: { type: 'ephemeral' },
+      system: [{ type: 'text', cache_control: { type: 'ephemeral' } }],
+    });
     expect(response.content[1]).toEqual({
       type: 'tool_use',
       id: 'tu_1',
@@ -183,16 +200,27 @@ describe('adaptador de Claude', () => {
 describe('herramientas del SOC', () => {
   const analyst = { roles: ['b89.soc.analyst'], capabilities: ['alerts.read', 'incidents.read'] };
 
-  it('solo ofrece las herramientas que el rol puede usar', () => {
-    const names = buildSocTools(async () => ({ status: 200, body: {} }), analyst).map(
-      (t) => t.name,
+  it('solo ofrece las herramientas que el rol puede usar, en orden estable', () => {
+    const build = () =>
+      buildSocTools(async () => ({ status: 200, body: {} }), analyst).map((t) => t.name);
+    const names = build();
+    expect(names).toEqual(
+      expect.arrayContaining([
+        'whoami',
+        'find_alerts',
+        'get_alert_context',
+        'entity_activity',
+        'get_entity_risk',
+        'get_rule_mitre',
+        'lookup_runbook',
+        'get_incident',
+      ]),
     );
-    expect(names).toContain('list_alerts');
-    expect(names).toContain('get_incident');
-    expect(names).toContain('whoami');
     expect(names).not.toContain('audit_events');
     expect(names).not.toContain('list_users');
     expect(names).not.toContain('search_events');
+    // Orden determinista: el prefijo de herramientas se cachea.
+    expect(build()).toEqual(names);
   });
 
   it('valida los parámetros antes de llamar a la API', async () => {
@@ -201,17 +229,20 @@ describe('herramientas del SOC', () => {
       called = true;
       return { status: 200, body: {} };
     }, analyst);
-    const listAlerts = tools.find((t) => t.name === 'list_alerts');
+    const findAlerts = tools.find((t) => t.name === 'find_alerts');
     for (const input of [
       { priority: 'P9' },
-      { pageSize: 999 },
-      { q: 'x'.repeat(200) },
-      { entity: 'user@x.com' },
+      { limit: 999 },
+      { text: 'x'.repeat(200) },
+      { provider: 'splunk' },
+      { from: '2026-11-01' },
     ]) {
-      expect(await listAlerts?.run(input)).toMatchObject({ ok: false });
+      expect(await findAlerts?.run(input)).toMatchObject({ ok: false });
     }
-    const getAlert = tools.find((t) => t.name === 'get_alert');
-    expect(await getAlert?.run({ id: '../../admin' })).toMatchObject({ ok: false });
+    const context = tools.find((t) => t.name === 'get_alert_context');
+    expect(await context?.run({ id: '../../admin' })).toMatchObject({ ok: false });
+    const risk = tools.find((t) => t.name === 'get_entity_risk');
+    expect(await risk?.run({ type: 'ip', value: '../admin' })).toMatchObject({ ok: false });
     expect(called).toBe(false);
   });
 
@@ -221,25 +252,162 @@ describe('herramientas del SOC', () => {
       async () => ({ status, body: { correlationId: 'c', items: [] } }),
       analyst,
     );
-    const getAlert = tools.find((t) => t.name === 'get_alert');
-    const notFound = await getAlert?.run({ id: 'a-1' });
+    const getIncident = tools.find((t) => t.name === 'get_incident');
+    const notFound = await getIncident?.run({ id: 'i-1' });
     expect(notFound).toMatchObject({ ok: false });
     expect(JSON.stringify(notFound)).toContain('tu rol');
     status = 503;
-    expect(await getAlert?.run({ id: 'a-1' })).toMatchObject({ ok: false });
+    expect(await getIncident?.run({ id: 'i-1' })).toMatchObject({ ok: false });
     status = 200;
-    const list = await tools.find((t) => t.name === 'list_alerts')?.run({});
+    const list = await tools.find((t) => t.name === 'list_incidents')?.run({});
     expect(list).toEqual({ ok: true, data: { items: [] } });
   });
 
-  it('construye URLs acotadas con la paginación por defecto', async () => {
+  it('find_alerts filtra por proveedor, entidad y rango, y resume con hora de Lima', async () => {
+    const urls: string[] = [];
+    const alert = (id: string, title: string, occurredAt: string, label = '10.0.0.9') => ({
+      id,
+      title,
+      priority: 'P1',
+      status: 'new',
+      occurredAt,
+      reasons: [{ code: 'r', detail: 'Activo expuesto' }],
+      entities: [{ ref: 'ent_x', kind: 'ip', label }],
+    });
+    const tools = buildSocTools(async (url) => {
+      urls.push(url);
+      return {
+        status: 200,
+        body: {
+          items: [
+            alert('a-3', 'B89 Cloudflare: oleada distribuida contra pagos', '2026-11-05T14:12:00Z'),
+            alert('a-2', 'B89 Snyk: vulnerabilidad crítica', '2026-11-04T10:00:00Z'),
+            alert('a-1', 'B89 Cloudflare: auditoría', '2026-10-01T10:00:00Z', '10.0.0.7'),
+          ],
+          nextCursor: null,
+        },
+      };
+    }, analyst);
+    const result = await tools.find((t) => t.name === 'find_alerts')?.run({
+      provider: 'cloudflare',
+      entity: '10.0.0.9',
+      from: '2026-11-01T00:00:00Z',
+      status: 'open',
+    });
+    expect(urls[0]).toBe('/api/alerts?pageSize=200&status=open');
+    expect(result).toMatchObject({
+      ok: true,
+      data: {
+        matched: 1,
+        complete: true,
+        byProvider: { cloudflare: 1 },
+        items: [
+          {
+            id: 'a-3',
+            provider: 'cloudflare',
+            occurredAtLima: '2026-11-05 09:12 Lima (14:12 UTC)',
+            ruleId: '101740',
+            mitre: ['T1595.002', 'T1190'],
+          },
+        ],
+      },
+      citations: [{ kind: 'alert', id: 'a-3' }],
+    });
+  });
+
+  it('get_alert_context une la alerta, su regla con MITRE y runbook, y el evento de origen', async () => {
+    const lead = {
+      roles: ['b89.soc.lead'],
+      capabilities: ['alerts.read', 'events.read', 'events.read_raw'],
+    };
+    const tools = buildSocTools(async (url) => {
+      if (url.startsWith('/api/alerts/')) {
+        return {
+          status: 200,
+          body: {
+            alert: {
+              id: 'a-3',
+              title: 'B89 Cloudflare: oleada distribuida contra pagos.b89.pe: 50+ bloqueos',
+              priority: 'P1',
+              occurredAt: '2026-11-05T14:12:00Z',
+              rawRef: 'raw:rec-1',
+              relatedAlertIds: ['a-2'],
+              entities: [],
+              reasons: [],
+            },
+          },
+        };
+      }
+      return {
+        status: 200,
+        body: { items: [{ recordId: 'rec-1', title: 'x', raw: { data: 1 } }], nextCursor: null },
+      };
+    }, lead);
+    const result = await tools.find((t) => t.name === 'get_alert_context')?.run({ id: 'a-3' });
+    expect(result).toMatchObject({
+      ok: true,
+      data: {
+        rule: {
+          ruleId: '101740',
+          mitre: [{ id: 'T1595.002' }, { id: 'T1190' }],
+          runbooks: [{ id: 'oleada-waf' }],
+        },
+        sourceEvent: { recordId: 'rec-1', raw: { data: 1 } },
+      },
+    });
+    expect(result && result.ok ? result.citations?.map((c) => c.id) : []).toEqual(['a-3', 'a-2']);
+  });
+
+  it('el riesgo de entidad se degrada con claridad si el motor no existe', async () => {
     const urls: string[] = [];
     const tools = buildSocTools(async (url) => {
       urls.push(url);
-      return { status: 200, body: {} };
+      return { status: 404, body: null };
     }, analyst);
-    await tools.find((t) => t.name === 'list_alerts')?.run({ priority: 'P1', status: 'open' });
-    expect(urls[0]).toBe('/api/alerts?status=open&priority=P1&pageSize=10');
+    const result = await tools
+      .find((t) => t.name === 'get_entity_risk')
+      ?.run({ type: 'user', value: 'ana@b89.io' });
+    expect(urls[0]).toBe('/api/risk/entities/user/ana%40b89.io');
+    expect(result).toMatchObject({ ok: true, data: { available: false } });
+  });
+
+  it('el conocimiento de docs/17 responde mapeo MITRE y runbooks', async () => {
+    const tools = buildSocTools(async () => ({ status: 200, body: {} }), analyst);
+    const mitre = tools.find((t) => t.name === 'get_rule_mitre');
+    expect(await mitre?.run({ ruleId: '101740' })).toMatchObject({
+      ok: true,
+      data: { found: true, ruleId: '101740', runbooks: [{ id: 'oleada-waf' }] },
+    });
+    expect(await mitre?.run({ ruleId: '999999' })).toMatchObject({
+      ok: true,
+      data: { found: false },
+    });
+    expect(await mitre?.run({ technique: 'T1110' })).toMatchObject({
+      ok: true,
+      data: { found: true },
+    });
+    const runbook = tools.find((t) => t.name === 'lookup_runbook');
+    expect(await runbook?.run({ query: 'malware bitdefender' })).toMatchObject({
+      ok: true,
+      data: { found: true, runbook: { id: 'malware-edr' } },
+    });
+    expect(await runbook?.run({ ruleId: '101740', includePlaybooks: true })).toMatchObject({
+      ok: true,
+      data: { runbook: { id: 'oleada-waf' }, playbooks: expect.stringContaining('B89 Respond') },
+    });
+  });
+
+  it('el conocimiento empaquetado coincide con los runbooks de docs/17', () => {
+    const dir = join(ROOT, 'docs/detection-engineering/runbooks');
+    const files = readdirSync(dir).filter((name) => name.endsWith('.md') && name !== 'README.md');
+    expect(SOC_KNOWLEDGE.runbooks.map((runbook) => `${runbook.id}.md`).sort()).toEqual(
+      files.sort(),
+    );
+    for (const runbook of SOC_KNOWLEDGE.runbooks) {
+      expect(runbook.markdown, `regenera con generate-bunny-knowledge.py (${runbook.id})`).toBe(
+        readFileSync(join(dir, `${runbook.id}.md`), 'utf8').replace(/\r\n/gu, '\n').trim(),
+      );
+    }
   });
 });
 

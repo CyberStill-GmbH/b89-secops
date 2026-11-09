@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
-Arte de marca del dashboard B89 SOC a partir de los recursos oficiales de B89.
+Arte de marca del dashboard B89 SOC a partir del conejo mantenido de Bunny.
 
     python wazuh/dashboard/assets/tools/build-brand.py
 
 Fuentes (ver docs/brand/b89-visual-identity.md):
-  - Monograma oficial: docs/brand/assets/logo/b89-mark-{gradient,dark,light}.png. Solo se escala; no se
-    redibuja, recolorea ni deforma.
+  - Conejo mantenido: docs/brand/assets/logo/b89-bunny-mark.webp (solo cabeza). Se conserva la mascota de IA por separado.
   - Tipografía: Satoshi Bold (assets/fonts/satoshi-bold.woff2, licencia ITF FFL). El texto «SOC»/«B89 SOC»
     del logotipo se convierte a trazos con fontTools para que el SVG no dependa de la fuente instalada
     (uso normal de la fuente para un logotipo; no se modifica la fuente).
@@ -21,7 +20,6 @@ wazuh-app/logo_reports.png. Los PNG se versionan para que CI no necesite regener
 """
 
 import base64
-import io
 import pathlib
 
 from fontTools.pens.svgPathPen import SVGPathPen
@@ -31,7 +29,8 @@ from PIL import Image
 
 HERE = pathlib.Path(__file__).resolve().parent
 ASSETS = HERE.parent
-LOGOS = HERE.parents[3] / 'docs' / 'brand' / 'assets' / 'logo'
+RABBIT = HERE.parents[3] / 'docs' / 'brand' / 'assets' / 'logo' / 'b89-bunny-mark.webp'
+UI_MARK = ASSETS / 'images' / 'b89-head-mark.webp'
 FONT = ASSETS / 'fonts' / 'satoshi-bold.woff2'
 
 CORAL, FUCHSIA, YELLOW = '#FF5841', '#FF5899', '#FFC136'
@@ -40,17 +39,13 @@ INK_ON_DARK = '#FFFFFF'
 
 
 def mark(name):
-    return Image.open(LOGOS / f'b89-mark-{name}.png').convert('RGBA')
+    # The same maintained rabbit is used on both themes; never recolor the artwork.
+    return Image.open(RABBIT).convert('RGBA')
 
 
 def scaled(im, size):
-    return im.resize((size, size), Image.LANCZOS)
-
-
-def b64(im):
-    buf = io.BytesIO()
-    im.save(buf, 'PNG', optimize=True)
-    return base64.b64encode(buf.getvalue()).decode()
+    from PIL import ImageOps
+    return ImageOps.pad(im, (size, size), method=Image.LANCZOS, color=(0, 0, 0, 0))
 
 
 def text_path(text, size, x, baseline, fill, tracking=0.0):
@@ -76,7 +71,7 @@ def svg(width, height, label, body):
 
 
 def image(im, x, y, size):
-    return f'<image href="data:image/png;base64,{b64(scaled(im, size * 4))}" x="{x}" y="{y}" width="{size}" height="{size}"/>'
+    return f'<image href="data:image/webp;base64,{base64.b64encode(UI_MARK.read_bytes()).decode()}" x="{x}" y="{y}" width="{size}" height="{size}"/>'
 
 
 def wordmark(logo, ink):
@@ -111,7 +106,7 @@ def raster():
     wide.alpha_composite(scaled(gradient, 130), (90, 10))
     wide.save(fav / 'mstile-310x150.png', optimize=True)
     gradient.save(fav / 'favicon.ico', sizes=[(16, 16), (32, 32), (48, 48)])
-    # Logo de los PDF de reportes de la app (369×74): monograma + «B89 SOC» sobre blanco.
+    # Logo de los PDF de reportes de la app (369×74): conejo + «B89 SOC» sobre blanco.
     report = Image.new('RGBA', (369, 74), (255, 255, 255, 255))
     report.alpha_composite(scaled(gradient, 66), (4, 4))
     path_markup, _ = text_path('B89 SOC', 34, 84, 50, '#000000', tracking=0.6)
@@ -121,7 +116,7 @@ def raster():
 
         cairosvg.svg2png(bytestring=report_svg.encode(), write_to=str(ASSETS / 'wazuh-app' / 'logo_reports.png'))
     except ImportError:
-        # Sin cairosvg: solo monograma (el texto se dibuja con la fuente vía PIL).
+        # Sin cairosvg: solo conejo (el texto se dibuja con la fuente vía PIL).
         from PIL import ImageDraw, ImageFont
 
         ttf = HERE / '_satoshi-bold.ttf'
@@ -137,11 +132,13 @@ def raster():
 
 def main():
     dark, gradient = mark('dark'), mark('gradient')
+    scaled(gradient, 256).save(UI_MARK, 'WEBP', quality=92, method=6)
     write('svg/b89_mark_on_dark.svg', svg(64, 64, 'B89', image(dark, 0, 0, 64)))
     write('svg/b89_mark_on_light.svg', svg(64, 64, 'B89', image(gradient, 0, 0, 64)))
     write('svg/b89_wordmark_on_dark.svg', wordmark(dark, INK_ON_DARK))
     write('svg/b89_wordmark_on_light.svg', wordmark(gradient, INK_ON_LIGHT))
-    write('svg/b89_app_icon.svg', svg(512, 512, 'B89', image(gradient, 0, 0, 512)))
+    write('svg/b89_app_icon.svg', svg(512, 512, 'B89 SOC', image(gradient, 0, 0, 512)))
+    write('favicons/favicon.svg', svg(64, 64, 'B89 SOC', image(gradient, 0, 0, 64)))
     write('svg/b89_safari_pinned_tab.svg', svg(64, 64, 'B89', image(mark('light'), 0, 0, 64)))
     write(
         'svg/b89_login_bg.svg',

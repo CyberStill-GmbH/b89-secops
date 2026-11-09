@@ -368,6 +368,8 @@ def cmd_check_logtest(args) -> int:
             ok = m is None or m.group(2) == "0"
         elif want.startswith("!"):
             ok = got != want[1:]
+        elif "|" in want:  # alternativas, p. ej. reglas que dependen de la hora del manager (<time>, <weekday>)
+            ok = got in want.split("|")
         else:
             ok = got == want
         if not ok:
@@ -391,9 +393,16 @@ def cmd_bundle(args) -> int:
     if args.example_lists:
         (out / "lists").mkdir(exist_ok=True)
         for lst in catalog()["lists"]:
-            src = ROOT / lst["example"]
-            shutil.copyfile(src, out / "lists" / lst["name"])
+            src = ROOT / (lst.get("source") or lst["example"])
+            (out / "lists" / lst["name"]).write_bytes(src.read_bytes().replace(b"\r\n", b"\n"))
             print(f"lists/{lst['name']}")
+    if args.managed_lists:
+        (out / "managed-lists").mkdir(exist_ok=True)
+        for lst in catalog()["lists"]:
+            if lst.get("source"):
+                src = ROOT / lst["source"]
+                (out / "managed-lists" / lst["name"]).write_bytes(src.read_bytes().replace(b"\r\n", b"\n"))
+                print(f"managed-lists/{lst['name']}")
     if args.existing:
         (out / "existing").mkdir(exist_ok=True)
         for entry in catalog()["rule_files"]:
@@ -431,6 +440,7 @@ def main(argv=None) -> int:
     b.add_argument("dir")
     b.add_argument("--example-lists", action="store_true")
     b.add_argument("--existing", choices=["soc", "all"])
+    b.add_argument("--managed-lists", action="store_true", help="copia las listas versionadas (source) a DIR/managed-lists")
     sub.add_parser("cases")
     args = ap.parse_args(argv)
     return {"lint": cmd_lint, "coverage": cmd_coverage, "check-logtest": cmd_check_logtest,

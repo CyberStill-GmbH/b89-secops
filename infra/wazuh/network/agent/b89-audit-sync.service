@@ -1,0 +1,14 @@
+# B89 SOC · carga aditiva de las reglas de auditoría de red (infra/wazuh/network/agent/b89-audit-sync.sh).
+[Unit]
+Description=B89 SOC: carga las reglas de auditoria de red distribuidas por Wazuh
+After=auditd.service wazuh-agent.service
+Wants=auditd.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/b89-audit-sync
+# Después de que el agente Wazuh arranque y agregue sus reglas whodata.
+ExecStartPre=/bin/sleep 20
+
+[Install]
+WantedBy=multi-user.target

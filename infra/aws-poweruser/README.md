@@ -32,6 +32,9 @@ bucket S3 de evidencia (KMS, versionado, TLS-only, sin acceso público) y Budget
   (`scripts/setup-host-agent.sh`). Agentes externos: [AGENTS.md](AGENTS.md).
 - Edge nginx. Los secretos se generan en el host, en `/opt/b89/secrets` (0700, archivos 0600):
   no pasan por Terraform, el estado, el user_data ni Git.
+- Correlador determinista privado, sin puerto publicado y limitado a la red interna API/gateway.
+  Arranca con emisión desactivada; operación, canary, métricas y rollback en
+  [CORRELATOR-OPERACION.md](CORRELATOR-OPERACION.md).
 
 ## Despliegue
 

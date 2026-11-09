@@ -1,0 +1,242 @@
+// Package server exposes the correlator over HTTP on the internal Docker network only (no
+// published port). /v1/* requires the API→correlator bearer token; /healthz, /readyz and
+// /metrics carry no entity data and are unauthenticated for the container healthcheck and
+// scraping from the internal network.
+package server
+
+import (
+	"crypto/subtle"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/CyberStill-GmbH/b89-secops/services/b89-correlator/internal/engine"
+	"github.com/CyberStill-GmbH/b89-secops/services/b89-correlator/internal/model"
+)
+
+// Server serves the read model.
+type Server struct {
+	Runner    *engine.Runner
+	ReadToken func() string
+	Now       func() time.Time
+	Version   string
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func (s *Server) authorized(r *http.Request) bool {
+	want := s.ReadToken()
+	got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if want == "" || got == "" || len(got) != len(want) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
+}
+
+func (s *Server) guard(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !s.authorized(r) {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"code": "AUTH_REQUIRED"})
+			return
+		}
+		h(w, r)
+	}
+}
+
+// Handler builds the mux.
+func (s *Server) Handler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"status": "ok", "version": s.Version})
+	})
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		state := s.Runner.Readiness(s.Now().UTC())
+		if !state.Ready {
+			writeJSON(w, http.StatusServiceUnavailable, state)
+			return
+		}
+		writeJSON(w, http.StatusOK, state)
+	})
+	mux.HandleFunc("GET /metrics", s.metrics)
+	mux.HandleFunc("GET /v1/entities", s.guard(s.entities))
+	mux.HandleFunc("GET /v1/entities/keys", s.guard(s.keys))
+	mux.HandleFunc("GET /v1/entity", s.guard(s.entity))
+	mux.HandleFunc("GET /v1/candidates", s.guard(s.candidates))
+	mux.HandleFunc("GET /v1/feedback", s.guard(s.feedback))
+	mux.HandleFunc("GET /v1/feedback/allowlist.cdb", s.guard(s.cdb))
+	mux.HandleFunc("GET /v1/stats", s.guard(s.stats))
+	return http.MaxBytesHandler(mux, 1<<16)
+}
+
+func (s *Server) entities(w http.ResponseWriter, r *http.Request) {
+	top, err := strconv.Atoi(r.URL.Query().Get("top"))
+	if r.URL.Query().Get("top") == "" {
+		top, err = 20, nil
+	}
+	typ := r.URL.Query().Get("type")
+	if err != nil || top < 1 || top > 500 || (typ != "" && !model.ValidEntityType(typ)) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"code": "VALIDATION_FAILED"})
+		return
+	}
+	now := s.Now().UTC()
+	snap := s.Runner.Snapshot()
+	writeJSON(w, http.StatusOK, map[string]any{
+		"asOf": now, "ready": snap.Ready, "threshold": s.Runner.Eng.P.Threshold,
+		"items": s.Runner.Eng.Top(top, typ, now),
+	})
+}
+
+func (s *Server) keys(w http.ResponseWriter, r *http.Request) {
+	typ := r.URL.Query().Get("type")
+	if !model.ValidEntityType(typ) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"code": "VALIDATION_FAILED"})
+		return
+	}
+	keys := s.Runner.Eng.Keys(typ)
+	if len(keys) > 50000 {
+		keys = keys[:50000]
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"keys": keys})
+}
+
+func (s *Server) entity(w http.ResponseWriter, r *http.Request) {
+	key := r.URL.Query().Get("key")
+	if _, ok := model.ParseKey(key); !ok || len(key) > 512 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"code": "VALIDATION_FAILED"})
+		return
+	}
+	now := s.Now().UTC()
+	d, ok := s.Runner.Eng.Detail(key, now)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"code": "RESOURCE_UNAVAILABLE"})
+		return
+	}
+	cands := []model.Candidate{}
+	for _, id := range d.CandidateIDs {
+		if c, ok := s.Runner.Eng.Candidate(id); ok {
+			cands = append(cands, c)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"asOf": now, "entity": d, "candidates": cands})
+}
+
+func (s *Server) candidates(w http.ResponseWriter, r *http.Request) {
+	status := r.URL.Query().Get("status")
+	switch status {
+	case "", model.CandidateProposed, model.CandidateEmitted, model.CandidateSuppressed, model.CandidateFailed:
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]string{"code": "VALIDATION_FAILED"})
+		return
+	}
+	limit := 50
+	if v := r.URL.Query().Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > 500 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"code": "VALIDATION_FAILED"})
+			return
+		}
+		limit = n
+	}
+	items := s.Runner.Eng.Candidates(status, limit)
+	_, _, red := s.Runner.Eng.GroupStats()
+	writeJSON(w, http.StatusOK, map[string]any{
+		"asOf": s.Now().UTC(), "items": items,
+		"reduction": map[string]any{"wazuhAlerts": red, "b89Alerts": s.Runner.Snapshot().Dedup.Reduction},
+	})
+}
+
+func (s *Server) feedback(w http.ResponseWriter, r *http.Request) {
+	snap := s.Runner.Snapshot()
+	writeJSON(w, http.StatusOK, map[string]any{
+		"evaluatedAt": snap.Feedback.EvaluatedAt, "verdicts": snap.Feedback.Verdicts,
+		"falsePositiveVerdicts": snap.Feedback.FalsePos, "truePositiveVerdicts": snap.Feedback.TruePos,
+		"activeSuppressions": snap.Feedback.ActiveCount(s.Now().UTC()),
+		"proposals": snap.Feedback.Proposals, "cdbListName": "b89-correlator-fp-allowlist",
+	})
+}
+
+func (s *Server) cdb(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write([]byte(s.Runner.Snapshot().Feedback.CDB()))
+}
+
+func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
+	snap := s.Runner.Snapshot()
+	writeJSON(w, http.StatusOK, s.Runner.BuildReport(snap.LastTo.Add(-s.Runner.Opt.Backfill), s.Now().UTC(), 10, false))
+}
+
+// metrics renders Prometheus text exposition (no entity values in labels).
+func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
+	eng := s.Runner.Eng
+	snap := s.Runner.Snapshot()
+	now := s.Now().UTC()
+	var b strings.Builder
+	gauge := func(name, help string, v float64, labels ...string) {
+		fmt.Fprintf(&b, "# HELP %s %s\n# TYPE %s gauge\n", name, help, name)
+		l := ""
+		if len(labels) > 0 {
+			l = "{" + strings.Join(labels, ",") + "}"
+		}
+		fmt.Fprintf(&b, "%s%s %g\n", name, l, v)
+	}
+	counter := func(name, help string, v int64) {
+		fmt.Fprintf(&b, "# HELP %s %s\n# TYPE %s counter\n%s %d\n", name, help, name, name, v)
+	}
+	ready := 0.0
+	if snap.Ready {
+		ready = 1
+	}
+	gauge("b89_correlator_ready", "1 when backfill completed and upstream polling is fresh", ready)
+	fmt.Fprintf(&b, "# HELP b89_correlator_observations_total Wazuh alerts processed\n# TYPE b89_correlator_observations_total counter\n")
+	srcs := make([]string, 0, len(eng.BySource))
+	for k := range eng.BySource {
+		srcs = append(srcs, k)
+	}
+	sort.Strings(srcs)
+	for _, k := range srcs {
+		fmt.Fprintf(&b, "b89_correlator_observations_total{source=%q} %d\n", k, eng.BySource[k])
+	}
+	counter("b89_correlator_observations_duplicate_total", "Overlapping reads skipped by id", int64(eng.Duplicates))
+	counter("b89_correlator_observations_suppressed_total", "Contributions zeroed by an active feedback suppression", int64(eng.SuppressedObs))
+	counter("b89_correlator_gateway_errors_total", "Failed wazuh-gateway reads", s.Runner.C.GatewayErrors.Load())
+	counter("b89_correlator_api_errors_total", "Failed B89 API calls", s.Runner.C.APIErrors.Load())
+	counter("b89_correlator_candidates_emitted_total", "Candidates materialized as B89 alerts", s.Runner.C.Emitted.Load())
+	counter("b89_correlator_candidates_emit_errors_total", "Failed candidate emissions", s.Runner.C.EmitErrors.Load())
+	counter("b89_correlator_candidates_emit_skipped_total", "Candidates not emitted (stale or rate limited)", s.Runner.C.EmitSkipped.Load())
+	counter("b89_correlator_audit_recorded_total", "Feedback decisions recorded in the B89 audit chain", s.Runner.C.AuditRecorded.Load())
+	fmt.Fprintf(&b, "# HELP b89_correlator_entities Tracked entities\n# TYPE b89_correlator_entities gauge\n")
+	for _, t := range []string{"user", "host", "ip", "cloud"} {
+		fmt.Fprintf(&b, "b89_correlator_entities{type=%q} %d\n", t, eng.EntityCounts()[t])
+	}
+	byStatus := map[string]int{}
+	for _, c := range eng.Candidates("", 0) {
+		byStatus[c.Status]++
+	}
+	fmt.Fprintf(&b, "# HELP b89_correlator_candidates Candidates by status\n# TYPE b89_correlator_candidates gauge\n")
+	for _, st := range []string{model.CandidateProposed, model.CandidateEmitted, model.CandidateSuppressed, model.CandidateFailed} {
+		fmt.Fprintf(&b, "b89_correlator_candidates{status=%q} %d\n", st, byStatus[st])
+	}
+	_, _, wred := eng.GroupStats()
+	fmt.Fprintf(&b, "# HELP b89_correlator_reduction_factor Alerts per group (dedup)\n# TYPE b89_correlator_reduction_factor gauge\n")
+	fmt.Fprintf(&b, "b89_correlator_reduction_factor{stream=\"wazuh\"} %g\n", wred)
+	fmt.Fprintf(&b, "b89_correlator_reduction_factor{stream=\"b89\"} %g\n", snap.Dedup.Reduction)
+	gauge("b89_correlator_suppressions_active", "Active temporary suppressions", float64(snap.Feedback.ActiveCount(now)))
+	gauge("b89_correlator_feedback_proposals", "Feedback proposals", float64(len(snap.Feedback.Proposals)))
+	lag := 0.0
+	if !snap.CursorAt.IsZero() {
+		lag = now.Sub(snap.CursorAt).Seconds()
+	}
+	gauge("b89_correlator_ingest_lag_seconds", "Now minus the newest processed alert", lag)
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
+	_, _ = w.Write([]byte(b.String()))
+}

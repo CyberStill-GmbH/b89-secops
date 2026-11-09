@@ -10,6 +10,9 @@ networks:
     ipam:
       config:
         - subnet: 172.30.89.0/24
+  correlator-internal:
+    name: b89-correlator-internal
+    internal: true
 
 services:
   wazuh.manager:
@@ -120,6 +123,9 @@ services:
       NODE_EXTRA_CA_CERTS: /etc/b89-local/ca.pem
     volumes:
       - /opt/b89/pki/ca.pem:/etc/b89-local/ca.pem:ro
+    networks:
+      - default
+      - correlator-internal
     depends_on:
       postgres:
         condition: service_healthy
@@ -140,8 +146,55 @@ services:
       - /opt/b89/pki/gateway/cert.pem:/etc/b89-gateway/tls/cert.pem:ro
       - /opt/b89/pki/gateway/key.pem:/etc/b89-gateway/tls/key.pem:ro
       - /opt/b89/pki/gateway/indexer-ca.pem:/etc/b89-gateway/indexer-ca.pem:ro
+    networks:
+      - default
+      - correlator-internal
     depends_on:
       - wazuh.indexer
+    restart: unless-stopped
+
+  # Correlación determinista 24/7. Solo se conecta al API y al gateway en la red
+  # interna, no publica puertos y arranca en modo observación (EMIT=false).
+  correlator:
+    image: b89/correlator:local
+    build:
+      context: /opt/b89/src
+      dockerfile: services/b89-correlator/Dockerfile
+    env_file:
+      - /opt/b89/config/correlator.env
+    environment:
+      B89_CORRELATOR_LISTEN: ':8080'
+      B89_CORRELATOR_API_URL: http://api:3000/api
+      B89_CORRELATOR_GATEWAY_URL: https://wazuh-gateway:8443
+      B89_CORRELATOR_GATEWAY_TOKEN_FILE: /run/secrets/b89-correlator/gateway.token
+      B89_CORRELATOR_SERVICE_TOKEN_FILE: /run/secrets/b89-correlator/service.token
+      B89_CORRELATOR_READ_TOKEN_FILE: /run/secrets/b89-correlator/read.token
+      B89_CORRELATOR_CA_FILE: /run/secrets/b89-correlator/ca.pem
+    volumes:
+      - /opt/b89/secrets/correlator/gateway.token:/run/secrets/b89-correlator/gateway.token:ro
+      - /opt/b89/secrets/correlator/service.token:/run/secrets/b89-correlator/service.token:ro
+      - /opt/b89/secrets/correlator/read.token:/run/secrets/b89-correlator/read.token:ro
+      - /opt/b89/pki/ca.pem:/run/secrets/b89-correlator/ca.pem:ro
+    networks:
+      - correlator-internal
+    depends_on:
+      api:
+        condition: service_healthy
+      wazuh-gateway:
+        condition: service_started
+    user: '65532:65532'
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    init: true
+    mem_limit: 256m
+    cpus: 0.50
+    pids_limit: 64
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: '3' }
     restart: unless-stopped
 
   # Receptor del webhook SNS (monitoreo de la cuenta AWS sin IAM; wazuh/aws-events/README.md).

@@ -22,6 +22,8 @@ import {
   CONVERSATION_LIMITS,
   ConversationError,
   normalizeConversationTitle,
+  withFeedback,
+  type MessageFeedback,
   type ConversationCursor,
   type ConversationOwner,
   type ConversationPage,
@@ -62,6 +64,7 @@ function toJson(message: StoredMessage): MessageJson {
     ...(message.steps ? { steps: message.steps } : {}),
     ...(message.citations ? { citations: message.citations } : {}),
     ...(message.tone ? { tone: message.tone } : {}),
+    ...(message.feedback ? { feedback: message.feedback } : {}),
   };
 }
 
@@ -134,6 +137,8 @@ function fromJson(value: unknown): StoredMessage {
   const steps = stepsOf(value['steps']);
   const citations = citationsOf(value['citations']);
   const tone = value['tone'] === 'error' || value['tone'] === 'notice' ? value['tone'] : undefined;
+  const feedback =
+    value['feedback'] === 'up' || value['feedback'] === 'down' ? value['feedback'] : undefined;
   return {
     id: value['id'],
     role: value['role'],
@@ -143,6 +148,7 @@ function fromJson(value: unknown): StoredMessage {
     ...(steps ? { steps } : {}),
     ...(citations ? { citations } : {}),
     ...(tone ? { tone } : {}),
+    ...(feedback ? { feedback } : {}),
   };
 }
 
@@ -260,6 +266,32 @@ export class PostgresConversationStore implements ConversationStore {
   public async rename(owner: ConversationOwner, id: string, title: string): Promise<boolean> {
     if (!UUID.test(id)) return false;
     return this.store.rename(owner, id, normalizeConversationTitle(title));
+  }
+
+  public async setFeedback(
+    owner: ConversationOwner,
+    id: string,
+    messageId: string,
+    feedback: MessageFeedback | null,
+  ): Promise<boolean> {
+    if (!UUID.test(id)) return false;
+    for (let attempt = 0; attempt < APPEND_ATTEMPTS; attempt += 1) {
+      const row = await this.store.get(owner, id);
+      if (!row) return false;
+      const next = withFeedback(messagesOf(row), messageId, feedback);
+      if (!next) return false;
+      // Mismo conteo y misma fecha: la valoración no reordena el historial.
+      const written = await this.store.replaceMessages(
+        owner,
+        id,
+        row.messageCount,
+        next.map(toJson),
+        next.length,
+        row.updatedAt,
+      );
+      if (written) return true;
+    }
+    throw new ConversationError('CONFLICT');
   }
 
   public async delete(owner: ConversationOwner, id: string): Promise<boolean> {

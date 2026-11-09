@@ -1,0 +1,22 @@
+# Motor B89 LOCAL: gateway C-28 con token estático (platform/gateway/static-token, commit d30bd3d)
+# para que el API (en el host) lea wazuh-alerts-* sin Entra, con el usuario read-only b89_reader.
+# Secretos y certificados: infra/local/edge/gateway/ (gitignored), generados por
+# infra/local/edge/setup-ingestion.sh. Puerto solo en loopback (127.0.0.1:18443).
+services:
+  wazuh-gateway:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    env_file:
+      - ${B89_REPO:-../../../../b89-secops}/infra/local/edge/gateway/gateway.env
+    environment:
+      # Solo estas variables entran en la plantilla (no las de nginx como $http_authorization).
+      NGINX_ENVSUBST_FILTER: '^(B89_WAZUH_GATEWAY_ACCESS_TOKEN|WAZUH_INDEXER_BASIC_AUTH_B64|WAZUH_INDEXER_UPSTREAM|WAZUH_INDEXER_TLS_NAME)$$'
+    ports:
+      - '127.0.0.1:18443:8443'
+    volumes:
+      - ${B89_REPO:-../../../../b89-secops}/platform/gateway/static-token/wazuh-gateway.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ${B89_REPO:-../../../../b89-secops}/infra/local/edge/gateway/cert.pem:/etc/b89-gateway/tls/cert.pem:ro
+      - ${B89_REPO:-../../../../b89-secops}/infra/local/edge/gateway/key.pem:/etc/b89-gateway/tls/key.pem:ro
+      - ${B89_REPO:-../../../../b89-secops}/infra/local/edge/gateway/indexer-ca.pem:/etc/b89-gateway/indexer-ca.pem:ro
+    depends_on:
+      - wazuh.indexer

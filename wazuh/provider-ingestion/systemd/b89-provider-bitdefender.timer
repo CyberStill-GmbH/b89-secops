@@ -1,0 +1,12 @@
+[Unit]
+Description=Poll Bitdefender GravityZone incidents for B89
+
+[Timer]
+OnBootSec=3min
+OnUnitInactiveSec=5min
+AccuracySec=30s
+RandomizedDelaySec=30s
+Unit=b89-provider-ingest@bitdefender.service
+
+[Install]
+WantedBy=timers.target

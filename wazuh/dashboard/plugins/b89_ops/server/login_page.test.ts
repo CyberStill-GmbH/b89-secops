@@ -124,6 +124,30 @@ describe('renderLoginPage', () => {
     expect(html).toContain('Continuar con Microsoft Entra');
   });
 
+  it('con entraEnabled=false solo queda usuario y contraseña, sin enlace a /auth/start', () => {
+    const html = renderLoginPage({
+      ...base,
+      entraEnabled: false,
+      nextUrl: '/dash/app/home',
+      notice: clean,
+    });
+    expect(html).toContain('b89-password-form');
+    expect(html).not.toContain('Microsoft Entra');
+    expect(html).not.toContain('/auth/start');
+    expect(html).not.toContain('role="separator"');
+  });
+
+  it('nunca deja la pantalla sin forma de entrar', () => {
+    const html = renderLoginPage({
+      ...base,
+      entraEnabled: false,
+      passwordEnabled: false,
+      nextUrl: '/dash/app/home',
+      notice: clean,
+    });
+    expect(html).toContain('b89-password-form');
+  });
+
   it('cumple la CSP: solo script y estilos con nonce y nada inline', () => {
     const html = renderLoginPage({ ...base, nextUrl: '/dash/app/home', notice: clean });
     expect(html).toContain(ATTRIBUTION);
@@ -143,7 +167,8 @@ describe('renderLoginPage', () => {
   it('usa la ilustración y la paleta de marca', () => {
     const html = renderLoginPage({ ...base, nextUrl: '/dash/app/home', notice: clean });
     expect(html).toContain('/dash/ui/b89/b89_login_hero.webp');
-    expect(html).toContain('/dash/ui/b89/b89_login_hero_sm.webp');
+    expect(html).not.toContain('b89_login_hero_sm.webp');
+    expect(html).toContain('.login-hero{display:none}');
     expect(html).toContain('#ff5899');
     expect(html).toContain('#ffc136');
   });

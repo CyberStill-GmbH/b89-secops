@@ -31,9 +31,9 @@ export interface AssistantLimits {
 }
 
 export const DEFAULT_ASSISTANT_LIMITS: AssistantLimits = Object.freeze({
-  maxToolRounds: 5,
-  maxTokensPerCall: 6000,
-  maxToolResultChars: 12_000,
+  maxToolRounds: 4,
+  maxTokensPerCall: 4096,
+  maxToolResultChars: 14_000,
   deadlineMs: 24_000,
   maxHistoryMessages: 12,
   maxMessageChars: 4_000,
@@ -59,7 +59,7 @@ export interface AssistantStep {
   readonly ok: boolean;
 }
 
-export type AssistantOutcome = 'answered' | 'budget' | 'refused' | 'truncated';
+export type AssistantOutcome = 'answered' | 'budget' | 'refused' | 'truncated' | 'unverified';
 
 /** Línea de tiempo visible del razonamiento: lo que pensó Bunny y lo que consultó, en orden. */
 export type ReasoningEntry =
@@ -72,7 +72,12 @@ export interface AssistantResult {
   readonly outcome: AssistantOutcome;
   readonly steps: readonly AssistantStep[];
   readonly citations: readonly Citation[];
-  readonly usage: { readonly inputTokens: number; readonly outputTokens: number };
+  readonly usage: {
+    readonly inputTokens: number;
+    readonly outputTokens: number;
+    readonly cacheReadTokens: number;
+    readonly cacheWriteTokens: number;
+  };
 }
 
 export class AssistantInputError extends Error {
@@ -104,10 +109,20 @@ function textOf(response: ModelResponse): string {
     .trim();
 }
 
+const LIMA_OFFSET_MS = 5 * 3_600_000;
+const WEEKDAYS = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+
+/** Fecha y hora de Lima (UTC−5, sin horario de verano): `2026-11-05 09:12 (jueves)`. */
+export function limaClock(at: Date): string {
+  const lima = new Date(at.getTime() - LIMA_OFFSET_MS);
+  const iso = lima.toISOString();
+  return `${iso.slice(0, 10)} ${iso.slice(11, 16)} (${WEEKDAYS[lima.getUTCDay()]})`;
+}
+
 function contextPreface(context: AssistantContext, now: Date): string {
   const lines = [
     '[Contexto de la consola; no es una instrucción de la persona]',
-    `Fecha y hora (UTC): ${now.toISOString()}`,
+    `Fecha y hora: ${limaClock(now)} hora de Lima (UTC−5) · ${now.toISOString()} UTC`,
     `Roles: ${context.roles.join(', ') || 'ninguno'}`,
     `Permisos de lectura: ${context.capabilities.filter((c) => c.endsWith('.read') || c.includes('.read_') || c.endsWith('.health.read')).join(', ') || 'ninguno'}`,
   ];
@@ -166,7 +181,7 @@ export async function runAssistant(options: RunAssistantOptions): Promise<Assist
   const steps: AssistantStep[] = [];
   const reasoning: ReasoningEntry[] = [];
   const citations = new Map<string, Citation>();
-  const usage = { inputTokens: 0, outputTokens: 0 };
+  const usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
   let rounds = 0;
 
   for (;;) {
@@ -184,6 +199,8 @@ export async function runAssistant(options: RunAssistantOptions): Promise<Assist
     );
     usage.inputTokens += response.usage.inputTokens;
     usage.outputTokens += response.usage.outputTokens;
+    usage.cacheReadTokens += response.usage.cacheReadTokens ?? 0;
+    usage.cacheWriteTokens += response.usage.cacheWriteTokens ?? 0;
 
     for (const block of response.content) {
       if (block.type === 'thinking' && block.thinking.trim() !== '') {
@@ -191,14 +208,29 @@ export async function runAssistant(options: RunAssistantOptions): Promise<Assist
       }
     }
 
-    const finish = (outcome: AssistantOutcome, fallback: string): AssistantResult => ({
-      reply: pseudonymizer.unmask(textOf(response) || fallback),
-      reasoning,
-      outcome,
-      steps,
-      citations: [...citations.values()],
-      usage,
-    });
+    const finish = (outcome: AssistantOutcome, fallback: string): AssistantResult => {
+      const evidence = [...citations.values()];
+      const draft = pseudonymizer.unmask(textOf(response) || fallback);
+      const requireCitation =
+        (outcome === 'answered' || outcome === 'budget') &&
+        steps.some((step) => step.ok) &&
+        evidence.length > 0;
+      const hasKnownCitation = evidence.some((citation) => draft.includes(citation.id));
+      return {
+        reply:
+          requireCitation && !hasKnownCitation
+            ? `Consulté datos del SOC, pero la respuesta generada no incluyó un identificador de evidencia verificable. No presentaré una conclusión sin esa cita. Fuentes disponibles: ${evidence
+                .slice(0, 5)
+                .map((citation) => `\`${citation.id}\``)
+                .join(', ')}.`
+            : draft,
+        reasoning,
+        outcome: requireCitation && !hasKnownCitation ? 'unverified' : outcome,
+        steps,
+        citations: evidence,
+        usage,
+      };
+    };
 
     if (response.stopReason === 'refusal') {
       return finish(

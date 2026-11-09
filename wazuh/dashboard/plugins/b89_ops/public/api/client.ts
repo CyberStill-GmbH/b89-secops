@@ -123,6 +123,11 @@ export class B89ApiClient {
     return this.request<T>('DELETE', path, undefined, session.csrfToken);
   }
 
+  /** Prefijo público de la API B89 (mismo origen), para sondas opcionales sin redirección. */
+  public get apiPrefix(): string {
+    return this.options.apiPrefix;
+  }
+
   public loginUrl(): string {
     const current =
       this.options.currentUrl?.() ??

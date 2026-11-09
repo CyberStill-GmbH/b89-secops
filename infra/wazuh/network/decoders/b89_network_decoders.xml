@@ -1,0 +1,39 @@
+<!--
+  B89 SOC · decoders de visibilidad de red (docs/18-visibilidad-de-red-y-capacidades-wazuh.md).
+  Se instala como etc/decoders/b89_network_decoders.xml con infra/wazuh/network/deploy-network.sh.
+
+  1. b89-netconn  · salida de infra/wazuh/network/agent/b89-netconn.sh (command monitoring, una línea
+                    por puerto en escucha o conexión TCP establecida NUEVA desde la ejecución anterior):
+                    ossec: output: 'b89-netconn': type=conn dir=out proto=tcp src=10.89.0.12 sport=51234
+                    dst=198.51.100.9 dport=443 proc=curl uid=1000
+  2. auditd (hermano de auditd-syscall) · registro SOCKADDR de las reglas de auditoría de red B89
+                    (infra/wazuh/network/agent/b89-audit-network.rules). Con log_format ENRICHED (por
+                    defecto en auditd 3.x) el registro trae la dirección interpretada:
+                    saddr=...  SADDR={ saddr_fam=inet laddr=198.51.100.9 lport=443 }
+  3. b89-winfw    · pfirewall.log del Firewall de Windows (formato W3C de Microsoft):
+                    2026-11-08 10:00:00 DROP TCP 203.0.113.211 10.0.0.5 51234 3389 52 S 1 0 0 - - - RECEIVE
+-->
+
+<!-- 1. Conexiones y puertos (command monitoring) -->
+<decoder name="b89-netconn">
+  <parent>ossec</parent>
+  <type>ossec</type>
+  <prematch offset="after_parent">^output: 'b89-netconn': </prematch>
+  <regex offset="after_prematch">^type=(\S+) dir=(\S+) proto=(\S+) src=(\S+) sport=(\S+) dst=(\S+) dport=(\S+) proc=(\S+) uid=(\S+)</regex>
+  <order>b89.net.type,b89.net.direction,protocol,srcip,srcport,dstip,dstport,b89.net.process,b89.net.uid</order>
+</decoder>
+
+<!-- 2. auditd: dirección remota de connect()/bind()/accept() (registro SOCKADDR enriquecido).
+     Hermano de los decoders auditd-syscall del ruleset (mismo nombre = se suman sus campos). -->
+<decoder name="auditd-syscall">
+  <parent>auditd</parent>
+  <regex>SADDR={ saddr_fam=(\S+) laddr=(\S+) lport=(\d+) }</regex>
+  <order>audit.b89.family,dstip,dstport</order>
+</decoder>
+
+<!-- 3. Firewall de Windows (pfirewall.log). -->
+<decoder name="b89-winfw">
+  <prematch>^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d ALLOW |^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d DROP </prematch>
+  <regex>^\d\d\d\d-\d\d-\d\d \d\d:\d\d:\d\d (\w+) (\w+) (\S+) (\S+) (\S+) (\S+) \S+ \S+ \S+ \S+ \S+ \S+ \S+ \S+ (\w+)</regex>
+  <order>action,protocol,srcip,dstip,srcport,dstport,b89.winfw.path</order>
+</decoder>

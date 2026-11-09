@@ -1,0 +1,30 @@
+<!--
+  B89 SOC · reducción de falsos positivos · detections/aws/trusted-principals (metadata.yaml, docs/17 §Ajuste).
+  Los cambios del propio SOC en el pipeline de monitoreo (rol SSO AWSReservedSSO_SOC-PowerUser de
+  soc@b89.io, TagResource y similares) disparaban 101616 (nivel 6). Allowlist CDB por aws.principal
+  (detections/lists/b89-aws-trusted-principals) con DEGRADACIÓN, nunca supresión: el evento queda en
+  wazuh-alerts-* (nivel 3) y un principal desconocido conserva 101616/101615.
+  Rango B89 AWS 101710–101719. Se instala como b89_soc_aws_trusted_principals.xml.
+-->
+<group name="b89_provider,aws,b89_tuning,">
+  <rule id="101714" level="3">
+    <if_sid>101616</if_sid>
+    <list field="aws.principal" lookup="match_key">etc/lists/b89-aws-trusted-principals</list>
+    <description>B89 AWS: cambio en el pipeline de monitoreo B89 por principal de confianza $(aws.principal) ($(aws.event_name)).</description>
+    <options>no_full_log</options>
+    <group>b89_aws_api,b89_audit,b89_trusted_principal,</group>
+  </rule>
+
+  <!-- Manipulación destructiva (borrar regla/tema, desuscribir) sigue alertando aunque la haga el SOC:
+       baja de 12 a 9 (alta, correo B89), no a cero. -->
+  <rule id="101715" level="9">
+    <if_sid>101615</if_sid>
+    <list field="aws.principal" lookup="match_key">etc/lists/b89-aws-trusted-principals</list>
+    <description>B89 AWS: principal de confianza $(aws.principal) modificó de forma destructiva el pipeline de monitoreo ($(aws.event_name)); confirmar el cambio.</description>
+    <options>no_full_log</options>
+    <mitre>
+      <id>T1562.008</id>
+    </mitre>
+    <group>b89_audit,b89_trusted_principal,</group>
+  </rule>
+</group>

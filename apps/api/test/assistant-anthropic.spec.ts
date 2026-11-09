@@ -130,3 +130,52 @@ describe('minimización de credenciales hacia el modelo', () => {
     expect(sent).toContain('password=keep-intact');
   });
 });
+
+describe('fallback ante negativas', () => {
+  it('con la API directa usa el endpoint beta con fallbacks "default" e ignora el bloque fallback', async () => {
+    let sent: Record<string, unknown> = {};
+    let stable = false;
+    const client = {
+      messages: {
+        async create() {
+          stable = true;
+          throw new Error('no debe usarse');
+        },
+      },
+      beta: {
+        messages: {
+          async create(params: Record<string, unknown>) {
+            sent = params;
+            return {
+              content: [
+                { type: 'fallback', from: { model: 'claude-sonnet-5-5' }, to: { model: 'x' } },
+                { type: 'text', text: 'ok' },
+              ],
+              stop_reason: 'end_turn',
+              usage: { input_tokens: 5, output_tokens: 1, cache_read_input_tokens: 4 },
+            };
+          },
+        },
+      },
+    } as unknown as MessagesClient;
+    const model = createClaudeModel(
+      enabled({ B89_BUNNY_ENABLED: 'true', B89_BUNNY_PROVIDER: 'anthropic', B89_BUNNY_API_KEY: 'k' }),
+      client,
+    );
+    const response = await model.complete({
+      system: 's',
+      messages: [{ role: 'user', content: 'x' }],
+      tools: [],
+      maxTokens: 10,
+      allowTools: true,
+    });
+    expect(stable).toBe(false);
+    expect(sent).toMatchObject({
+      model: 'claude-sonnet-5-5',
+      betas: ['server-side-fallback-2026-07-01'],
+      fallbacks: 'default',
+    });
+    expect(response.content).toEqual([{ type: 'text', text: 'ok' }]);
+    expect(response.usage.cacheReadTokens).toBe(4);
+  });
+});

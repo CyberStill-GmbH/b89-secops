@@ -9,6 +9,37 @@ export interface BunnyConfig {
   readonly name: string;
   readonly readOnly?: boolean;
   readonly redactsPersonalData?: boolean;
+  readonly provider?: 'bedrock' | 'anthropic';
+  readonly model?: string;
+  readonly effort?: string;
+  readonly rateLimit?: number;
+  readonly history?: boolean;
+  readonly retentionDays?: number;
+}
+
+export interface BunnyUsage {
+  readonly period: { readonly from: string; readonly to: string; readonly days: number };
+  readonly totals: {
+    readonly requests: number;
+    readonly succeeded: number;
+    readonly failed: number;
+    readonly measured: number;
+    readonly inputTokens: number;
+    readonly outputTokens: number;
+    readonly cacheReadTokens: number;
+    readonly cacheWriteTokens: number;
+  };
+  readonly models: readonly {
+    readonly provider: string;
+    readonly model: string;
+    readonly requests: number;
+    readonly inputTokens: number;
+    readonly outputTokens: number;
+    readonly cacheReadTokens: number;
+    readonly cacheWriteTokens: number;
+  }[];
+  readonly nextCursor: string | null;
+  readonly billing: 'not_connected';
 }
 
 export interface BunnyStep {
@@ -35,7 +66,7 @@ export interface BunnyReply {
   readonly saved?: boolean;
   readonly reasoning?: readonly BunnyReasoning[];
   readonly reply: string;
-  readonly outcome: 'answered' | 'budget' | 'refused' | 'truncated';
+  readonly outcome: 'answered' | 'budget' | 'refused' | 'truncated' | 'unverified';
   readonly steps: readonly BunnyStep[];
   readonly citations: readonly BunnyCitation[];
 }
@@ -50,6 +81,13 @@ export const HISTORY_TURNS = 12;
 
 export function fetchBunnyConfig(api: B89ApiClient): Promise<BunnyConfig> {
   return api.get<BunnyConfig>('/assistant/config');
+}
+
+export function fetchBunnyUsage(
+  api: B89ApiClient,
+  query: { readonly from?: string; readonly to?: string; readonly cursor?: string } = {},
+): Promise<BunnyUsage> {
+  return api.get<BunnyUsage>('/assistant/usage', query);
 }
 
 export function askBunny(
@@ -174,6 +212,23 @@ export function suggestionsFor(page: string): readonly Suggestion[] {
         prompt: 'Resume el incidente abierto: qué pasó, estado y siguientes pasos.',
       },
       { title: 'Tareas pendientes', prompt: '¿Qué tareas pendientes hay en mis incidentes?' },
+      {
+        title: 'Borrador ejecutivo',
+        prompt: 'Prepara un borrador ejecutivo del incidente abierto, con alcance confirmado, incertidumbres, cronología y fuentes citadas.',
+      },
+    ];
+  }
+  if (page.includes('b89-alerts')) {
+    return [
+      {
+        title: 'Priorizar cola',
+        prompt: 'Revisa las alertas abiertas recientes y destaca primero las que requieren atención, explicando evidencia y confianza. No cambies su prioridad.',
+      },
+      {
+        title: 'Correlacionar actividad',
+        prompt: 'Investiga la alerta seleccionada y correlaciona actividad de sus entidades en la ventana relevante; separa hechos, hipótesis y brechas de telemetría.',
+      },
+      { title: 'Fuentes degradadas', prompt: '¿Hay fuentes degradadas que limiten esta investigación?' },
     ];
   }
   if (page.includes('b89-sources')) {

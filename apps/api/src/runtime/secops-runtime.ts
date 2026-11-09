@@ -92,11 +92,11 @@ import {
 } from '../access/identity-provider.js';
 import { LocalDevelopmentIssuer, LOCAL_PRINCIPALS } from '../access/local-issuer.js';
 import {
-  DEMO_ADMIN_ROLE,
   DEMO_ADMIN_SESSION_MAX_MS,
   DemoAdminJwksProvider,
   DemoAdminTokenExchange,
   isDemoAdminSubject,
+  type DemoAccount,
   type DemoAdminLogin,
 } from '../access/demo-admin-credentials.js';
 import type { AssistantService } from '../assistant/assistant-service.js';
@@ -187,6 +187,8 @@ export interface RuntimeOptions {
   readonly demoAdminLogin?: DemoAdminLogin;
   readonly profile: string;
   readonly clientSecret?: string;
+  /** Service credential for the private deterministic correlator; absent disables its API. */
+  readonly correlatorServiceToken?: string;
   readonly teamsWorkflowUrl?: string;
   readonly transport?: NotificationTransport;
   readonly clock?: () => Date;
@@ -276,7 +278,13 @@ export type SignInFailure = { readonly reason: SignInDenialReason; readonly mess
  * esperado y el canje nunca se mezclan: un token de un emisor no valida contra el otro.
  */
 type IdentitySource =
-  { readonly kind: 'directory' } | { readonly kind: 'demo-admin'; readonly login: DemoAdminLogin };
+  | { readonly kind: 'directory' }
+  | {
+      readonly kind: 'demo-admin';
+      readonly login: DemoAdminLogin;
+      /** Cuenta demo cuya contraseña se verificó: fija el único `sub` y el único rol admitidos. */
+      readonly account: DemoAccount;
+    };
 
 /** Motivos de auditoría de la excepción demo de contraseña (`access.sign_in`). */
 const DEMO_ADMIN_AUDIT = Object.freeze({
@@ -297,6 +305,7 @@ export class SecOpsRuntime {
   public readonly soc: SocPersistence;
   public readonly notifications: AttemptStore;
   public readonly dispatcher: NotificationDispatcher;
+  public readonly correlatorServiceToken: string | undefined;
   /** Bandeja de la consola: último eslabón del respaldo, siempre presente. */
   public readonly consoleFallback = new ConsoleFallbackChannel();
 
@@ -333,6 +342,7 @@ export class SecOpsRuntime {
   private readonly signalCatalog: SignalCatalog;
 
   public constructor(private readonly options: RuntimeOptions) {
+    this.correlatorServiceToken = options.correlatorServiceToken;
     this.clock = options.clock ?? (() => new Date());
     this.csrfKey = options.csrfKey ?? randomBytes(32);
     this.soc = options.soc ?? new InMemorySoc();
@@ -448,12 +458,20 @@ export class SecOpsRuntime {
 
   /**
    * Una sesión `demo-admin:*` solo vale mientras la excepción esté configurada, vigente y sea de
-   * su único sujeto. Cubre el vencimiento sin reinicio y un reinicio con la excepción apagada
+   * uno de sus sujetos configurados con exactamente el rol de esa cuenta. Cubre el vencimiento
+   * sin reinicio, un reinicio con la excepción apagada o con la cuenta retirada o cambiada de rol
    * (sesiones durables en PostgreSQL).
    */
-  private demoAdminSessionAllowed(subjectId: string, now: Date): boolean {
+  private demoAdminSessionAllowed(subjectId: string, roles: readonly string[], now: Date): boolean {
     const login = this.options.demoAdminLogin;
-    return login !== undefined && login.activeAt(now) && subjectId === login.subjectId;
+    const account = login?.accountForSubject(subjectId);
+    return (
+      login !== undefined &&
+      account !== undefined &&
+      login.activeAt(now) &&
+      roles.length === 1 &&
+      roles[0] === account.role
+    );
   }
 
   public get isLocalIdentity(): boolean {
@@ -821,14 +839,17 @@ export class SecOpsRuntime {
       (await this.attempts.get(subjectKey, originKey)) ?? emptyCounter(subjectKey, originKey, at);
     // El scrypt se calcula antes de mirar el bloqueo: un origen bloqueado tarda lo mismo que un
     // fallo y el tiempo no revela el estado de la cuenta.
-    const demoVerification = demo ? await demo.verify(username, password) : 'mismatch';
-    if (demoVerification === 'busy') {
+    const demoVerification = demo
+      ? await demo.authenticate(username, password)
+      : ({ result: 'mismatch' } as const);
+    if (demoVerification.result === 'busy') {
       return deny('RATE_LIMITED', { stage: 'rate_limit', code: 'DEMO_ADMIN_BUSY' });
     }
     if (!evaluateLockout(counter, at).allowed) {
       return deny('LOCKED_OUT', { stage: 'password', code: 'LOCKED_OUT' });
     }
-    if (demo && demoVerification === 'match') {
+    if (demo && demoVerification.result === 'match') {
+      const account = demoVerification.account;
       const { request } = await this.openHandshake(origin, input.returnTo);
       const flow: PasswordFlow = {
         state: request.state,
@@ -836,12 +857,12 @@ export class SecOpsRuntime {
         returnTo: this.takeReturnTo(request.state, request.browserBinding),
       };
       // El código queda ligado al `nonce` y al `code_verifier` de este handshake.
-      const code = demo.issueCode(request.nonce, request.codeVerifier, at);
+      const code = demo.issueCode(request.nonce, request.codeVerifier, at, account);
       const result = await this.completeSignInWith(
         { state: request.state, code, browserBinding: request.browserBinding },
         origin,
         correlationId,
-        { kind: 'demo-admin', login: demo },
+        { kind: 'demo-admin', login: demo, account },
       );
       if (result.ok) await this.attempts.save(registerSuccess(counter, at));
       return { ...result, flow };
@@ -937,6 +958,7 @@ export class SecOpsRuntime {
     const network = evaluateNetwork(origin, this.networkPolicy);
     const originKey = network.clientIp ?? 'unknown';
     const demo = source.kind === 'demo-admin' ? source.login : undefined;
+    const demoAccount = source.kind === 'demo-admin' ? source.account : undefined;
     const auditReason = demo ? DEMO_ADMIN_AUDIT.denied : undefined;
     const deny = (
       reason: SignInDenialReason,
@@ -1009,18 +1031,22 @@ export class SecOpsRuntime {
       callback.handshake.nonce,
       at,
     );
-    // El prefijo `demo-admin:` es exclusivo del emisor demo, y ese emisor solo firma a su único
-    // sujeto: ningún otro token abre una sesión con identidad de la excepción ni al revés.
+    // El prefijo `demo-admin:` es exclusivo del emisor demo, y ese emisor solo firma al sujeto de
+    // la cuenta verificada: ningún otro token abre una sesión con identidad de la excepción ni al
+    // revés, y una cuenta demo no puede obtener la sesión de otra.
     const validation: typeof verified =
       verified.ok &&
-      (demo ? verified.claims.sub !== demo.subjectId : isDemoAdminSubject(verified.claims.sub))
+      (demoAccount
+        ? verified.claims.sub !== demoAccount.subjectId
+        : isDemoAdminSubject(verified.claims.sub))
         ? { ok: false, code: 'CLAIMS_MALFORMED' }
         : verified;
     const subjectKey = validation.ok ? validation.claims.sub : `unknown:${originKey}`;
     const counter =
       (await this.attempts.get(subjectKey, originKey)) ?? emptyCounter(subjectKey, originKey, at);
     const lockout = evaluateLockout(counter, at);
-    // La persona sintética no hereda asignaciones del deploy ni grants: su único rol es el admin.
+    // La persona sintética no hereda asignaciones del deploy ni grants: su único rol es el de su
+    // cuenta (uno de los cuatro roles runtime; nunca un rol aprobador).
     const backendBinding = demo ? undefined : this.options.access.mvpRoleBinding;
     const backendRole =
       validation.ok &&
@@ -1035,8 +1061,8 @@ export class SecOpsRuntime {
         : [];
     const roles = !validation.ok
       ? []
-      : demo
-        ? (validation.claims.roles ?? []).filter((role) => role === DEMO_ADMIN_ROLE).slice(0, 1)
+      : demoAccount
+        ? (validation.claims.roles ?? []).filter((role) => role === demoAccount.role).slice(0, 1)
         : [
             ...new Set([
               ...(validation.claims.roles ?? []),
@@ -1077,19 +1103,21 @@ export class SecOpsRuntime {
     }
     // Excepción demo de contraseña: decisión explícita y separada. Solo para el sujeto del
     // emisor demo, con la excepción vigente, desde la red permitida (`inside`), sin bloqueo y
-    // con exactamente el rol admin. Admite una sesión con `amr: ['pwd']`: no inventa MFA.
+    // con exactamente el rol de la cuenta verificada. Admite una sesión con `amr: ['pwd']`: no
+    // inventa MFA.
     // Fuera de la red, con cadena de proxies no confiable o bloqueada, la denegación se mantiene.
     const demoPasswordException =
       demo !== undefined &&
+      demoAccount !== undefined &&
       !decision.admitted &&
       decision.reason === 'MFA_REQUIRED' &&
       network.decision === 'inside' &&
       lockout.allowed &&
       validation.ok &&
-      validation.claims.sub === demo.subjectId &&
+      validation.claims.sub === demoAccount.subjectId &&
       demo.activeAt(at) &&
       roles.length === 1 &&
-      roles[0] === DEMO_ADMIN_ROLE &&
+      roles[0] === demoAccount.role &&
       capabilities.size > 0;
     if (demoPasswordException) {
       decision = { admitted: true, requiredAmr: [] };
@@ -1253,6 +1281,16 @@ export class SecOpsRuntime {
     correlationId: string,
     outcome: AuditEventDraft['outcome'],
     tools: readonly string[],
+    usage?: {
+      readonly provider: string;
+      readonly model: string;
+      readonly usage: {
+        readonly inputTokens: number;
+        readonly outputTokens: number;
+        readonly cacheReadTokens: number;
+        readonly cacheWriteTokens: number;
+      };
+    },
   ): Promise<void> {
     await recordAudit(this.audit, {
       id: randomUUID(),
@@ -1264,6 +1302,20 @@ export class SecOpsRuntime {
       outcome,
       correlationId,
       ...(tools.length > 0 ? { reason: `tools:${tools.join(',')}`.slice(0, 200) } : {}),
+      ...(usage
+        ? {
+            metadata: {
+              provider: usage.provider,
+              model: usage.model,
+              usage: {
+                inputTokens: usage.usage.inputTokens,
+                outputTokens: usage.usage.outputTokens,
+                cacheReadTokens: usage.usage.cacheReadTokens,
+                cacheWriteTokens: usage.usage.cacheWriteTokens,
+              },
+            },
+          }
+        : {}),
     });
   }
 
@@ -1291,7 +1343,7 @@ export class SecOpsRuntime {
     // Excepción demo vencida, apagada o de otro sujeto: la sesión deja de valer en el acto.
     if (
       isDemoAdminSubject(evaluation.session.subjectId) &&
-      !this.demoAdminSessionAllowed(evaluation.session.subjectId, now)
+      !this.demoAdminSessionAllowed(evaluation.session.subjectId, evaluation.session.roles, now)
     ) {
       await this.sessions.update(revokeSession(stored!, 'identity_revoked', now), stored!.revision);
       return { ok: false, reason: 'SESSION_EXPIRED' };

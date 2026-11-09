@@ -15,13 +15,14 @@ import {
   NAV_CATEGORY_NAME,
   PLUGIN_NAME,
   B89_APPS,
+  RESPOND_APP,
 } from '../common';
 import type { PublicConfigSchema } from '../config';
 import { ChangeFeed } from './api/change_feed';
 import { B89ApiClient } from './api/client';
 import { mountP1Watch } from './p1_watch';
+import { renderMountFailure } from './render_failure';
 import { BunnyState, mountBunnyPanel, registerBunnyLauncher } from './bunny/bunny_panel';
-import { fetchBunnyConfig } from './bunny/chat_client';
 
 /**
  * Plugin público de B89 SecOps para OSD 2.19.6.
@@ -79,20 +80,49 @@ export class B89OpsPublicPlugin implements Plugin<void, void> {
         order: app.order,
         euiIconType: core.http.basePath.prepend(`${BRAND_ASSETS_PATH}/${app.icon}`),
         mount: async (params: AppMountParameters) => {
-          const [{ renderApp }, [coreStart]] = await Promise.all([
-            import('./application'),
+          try {
+            const [{ renderApp }, [coreStart]] = await Promise.all([
+              import('./application'),
+              core.getStartServices(),
+            ]);
+            coreStart.chrome.docTitle.change([app.title, PLUGIN_NAME]);
+            const { api, feed } = this.shared(coreStart.http.basePath.get());
+            const unmount = renderApp(coreStart, params, app.view, api, feed);
+            return () => {
+              unmount();
+              coreStart.chrome.docTitle.reset();
+            };
+          } catch (error) {
+            return renderMountFailure(params.element, error);
+          }
+        },
+      });
+    }
+    // B89 Respond (SOAR) embebido: iframe del mismo origen dentro del chrome del dashboard.
+    core.application.register({
+      id: RESPOND_APP.id,
+      title: RESPOND_APP.title,
+      category,
+      order: RESPOND_APP.order,
+      euiIconType: core.http.basePath.prepend(`${BRAND_ASSETS_PATH}/${RESPOND_APP.icon}`),
+      mount: async (params: AppMountParameters) => {
+        try {
+          const [{ renderRespondApp }, [coreStart]] = await Promise.all([
+            import('./respond_app'),
             core.getStartServices(),
           ]);
-          coreStart.chrome.docTitle.change([app.title, PLUGIN_NAME]);
-          const { api, feed } = this.shared(coreStart.http.basePath.get());
-          const unmount = renderApp(coreStart, params, app.view, api, feed);
+          coreStart.chrome.docTitle.change([RESPOND_APP.title, PLUGIN_NAME]);
+          const { api } = this.shared(coreStart.http.basePath.get());
+          const unmount = renderRespondApp(coreStart, params, api);
           return () => {
             unmount();
             coreStart.chrome.docTitle.reset();
           };
-        },
-      });
-    }
+        } catch (error) {
+          return renderMountFailure(params.element, error);
+        }
+      },
+    });
   }
 
   public start(core: CoreStart) {
@@ -108,21 +138,15 @@ export class B89OpsPublicPlugin implements Plugin<void, void> {
     this.stopWatch = mountP1Watch(core, api, feed);
   }
 
-  /**
-   * Bunny (asistente de IA): el botón y el panel solo se montan si la API lo tiene habilitado
-   * (`GET /api/assistant/config`) y la persona tiene permisos de lectura; si no, no hay rastro.
-   */
   private startBunny(core: CoreStart, api: B89ApiClient) {
-    if (this.config.bunny?.enabled === false) return;
-    fetchBunnyConfig(api).then(
-      (bunny) => {
-        if (!bunny.enabled) return;
-        const state = new BunnyState();
-        registerBunnyLauncher(core, state);
-        this.stopBunny = mountBunnyPanel(core, api, state);
-      },
-      () => undefined, // Sin sesión o con la API degradada no hay asistente.
-    );
+    const state = new BunnyState();
+    // Bunny's frontend stays available even when the AI provider has not been configured.
+    const stopLauncher = registerBunnyLauncher(core, state);
+    const stopPanel = mountBunnyPanel(core, api, state);
+    this.stopBunny = () => {
+      stopPanel();
+      stopLauncher();
+    };
   }
 
   public stop() {

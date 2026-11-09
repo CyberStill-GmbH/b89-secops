@@ -121,7 +121,9 @@ export type B89View = (typeof B89_APPS)[number]['view'];
  */
 export const RESPOND_APP = {
   id: 'b89-respond',
-  title: 'SOAR',
+  /** Nombre de producto en el menú; «SOAR» queda como descripción (`tooltip`). */
+  title: 'B89 Respond',
+  subtitle: 'SOAR',
   icon: 'b89-respond.svg',
   order: 5,
 } as const;
@@ -138,3 +140,7 @@ export * from './discover';
 export * from './user_state';
 export * from './audit_filters';
 export * from './integrations';
+export * from './vendors';
+export * from './investigation';
+export * from './bunny_bridge';
+export * from './navigation';

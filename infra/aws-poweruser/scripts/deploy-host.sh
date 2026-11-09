@@ -126,10 +126,45 @@ if [[ ! -s $SECRETS/api.env ]]; then
   } >"$SECRETS/api.env"
   chmod 600 "$SECRETS/api.env"
 fi
+# Cuentas demo por rol (B89_DEMO_ACCOUNTS, docs/04-identidad-y-acceso.md): la fuente es
+# secrets/demo-accounts.txt (0600, una cuenta por línea: `usuario rol contraseña`; `#` comenta).
+# Una línea B89_DEMO_ACCOUNTS ya presente en secrets/api.env se conserva tal cual; si falta (p. ej.
+# api.env regenerado), se rehacen los hashes scrypt desde el .txt. Guarda: si el código aún no
+# admite la variable (KNOWN_B89_VARIABLES), definirla tumbaría el arranque del API.
+if [[ -s $SECRETS/demo-accounts.txt ]] && ! grep -q '^B89_DEMO_ACCOUNTS=' "$SECRETS/api.env"; then
+  if grep -q "'B89_DEMO_ACCOUNTS'" "$SRC/platform/configuration/src/schema/environment.schema.ts"; then
+    log 'cuentas demo: regenerando B89_DEMO_ACCOUNTS desde secrets/demo-accounts.txt'
+    demo_accounts=''
+    while read -r demo_user demo_role demo_password; do
+      [[ -z $demo_user || $demo_user == \#* ]] && continue
+      [[ $demo_user =~ ^[a-z0-9][a-z0-9._@+-]{2,63}$ && $demo_role =~ ^b89\.(soc\.analyst|soc\.lead|auditor|platform\.admin)$ ]] \
+        || { echo 'secrets/demo-accounts.txt: línea inválida' >&2; exit 1; }
+      demo_account_hash="$(printf '%s' "$demo_password" | docker run --rm -i -v "$SRC/scripts/dev:/s:ro" \
+        node:24.21.0-trixie-slim node /s/hash-demo-admin-password.mjs)"
+      demo_accounts+="${demo_accounts:+,}{\"username\":\"$demo_user\",\"role\":\"$demo_role\",\"passwordHash\":\"$demo_account_hash\"}"
+    done <"$SECRETS/demo-accounts.txt"
+    # Comillas simples: Compose interpola `$` en env_file y los hashes scrypt los contienen.
+    [[ -n $demo_accounts ]] && printf "B89_DEMO_ACCOUNTS='[%s]'\n" "$demo_accounts" >>"$SECRETS/api.env"
+    chmod 600 "$SECRETS/api.env"
+    unset demo_accounts demo_user demo_role demo_password demo_account_hash
+  else
+    log 'cuentas demo: el código aún no admite B89_DEMO_ACCOUNTS; solo la cuenta admin'
+  fi
+fi
 # La excepción demo vence como máximo a los 30 días del arranque: se renueva en cada despliegue.
 DEMO_UNTIL="$(date -u -d '+29 days' +%Y-%m-%dT%H:%M:%SZ)" SOC_HOSTNAME="$SOC_HOSTNAME" \
   envsubst '${SOC_HOSTNAME} ${DEMO_UNTIL}' <"$HOST_DIR/api.env.template" >"$ROOT/config/api.env"
 chmod 0644 "$ROOT/config/api.env"
+
+# Configuración pública del correlador; el helper conserva este archivo después de crearlo.
+# Emitir alertas sigue desactivado hasta revisar una canary y cambiarlo explícitamente.
+[[ ! -L $ROOT/config/correlator.env ]] || { echo 'config/correlator.env no puede ser un symlink' >&2; exit 1; }
+if [[ ! -e $ROOT/config/correlator.env ]]; then
+  printf '%s\n' 'B89_CORRELATOR_EMIT=false' >"$ROOT/config/correlator.env"
+fi
+[[ -f $ROOT/config/correlator.env ]] || { echo 'config/correlator.env no es un archivo regular' >&2; exit 1; }
+chown root:root "$ROOT/config/correlator.env"
+chmod 0644 "$ROOT/config/correlator.env"
 
 # Bunny (asistente IA): sin IAM no hay Bedrock, así que usa Claude por la API directa de Anthropic
 # con la clave B89_CLAUDE_API de /opt/b89/secrets/services.env (nunca en el repo). Cada despliegue
@@ -176,11 +211,11 @@ chmod 0755 /etc/letsencrypt/renewal-hooks/deploy/b89-edge.sh
 # SKIP_API_BUILD=1: conserva las imágenes vigentes del API y del migrador (p. ej. si apps/api
 # tiene trabajo en curso que aún no compila).
 if [[ ${SKIP_API_BUILD:-0} == 1 ]]; then
-  log 'construyendo imagen del dashboard B89 (API y migrador sin cambios)'
+  log 'construyendo imagen del dashboard B89 (API, migrador y correlador sin cambios)'
   "${COMPOSE[@]}" build wazuh.dashboard
 else
-  log 'construyendo imágenes (dashboard B89, API, migrador)'
-  "${COMPOSE[@]}" --profile tools build wazuh.dashboard api migrator
+  log 'construyendo imágenes (dashboard B89, API, migrador y correlador)'
+  "${COMPOSE[@]}" --profile tools build wazuh.dashboard api migrator correlator
 fi
 log 'arrancando Wazuh y PostgreSQL'
 "${COMPOSE[@]}" up -d wazuh.indexer wazuh.manager postgres --wait
@@ -202,6 +237,12 @@ INDEXER_ADMIN_PASSWORD="$INDEXER_ADMIN_PASSWORD" bash "$SRC/infra/aws-poweruser/
 
 log 'ingesta sin Entra: lector, token y gateway'
 INDEXER_ADMIN_PASSWORD="$INDEXER_ADMIN_PASSWORD" bash "$SRC/infra/aws-poweruser/scripts/setup-ingestion.sh"
+if [[ ${SKIP_API_BUILD:-0} != 1 ]]; then
+  log 'preparando secretos del correlador privado'
+  bash "$SRC/infra/aws-poweruser/scripts/bootstrap-correlator.sh"
+else
+  log 'SKIP_API_BUILD=1: correlador omitido para conservar el contrato API desplegado'
+fi
 "${COMPOSE[@]}" up -d --force-recreate wazuh-gateway
 
 log 'contenido B89 del manager (reglas, grupos, integraciones sin activar)'
@@ -211,6 +252,10 @@ bash "$SRC/infra/aws-poweruser/scripts/setup-host-agent.sh"
 
 log 'arrancando dashboard, API y edge'
 "${COMPOSE[@]}" up -d --force-recreate wazuh.dashboard api edge
+if [[ ${SKIP_API_BUILD:-0} != 1 ]]; then
+  log 'arrancando correlador privado (emisión controlada por correlator.env)'
+  "${COMPOSE[@]}" up -d --force-recreate --wait correlator
+fi
 bash "$SRC/infra/aws-poweruser/scripts/bootstrap-wazuh-app.sh"
 "${COMPOSE[@]}" ps --format 'table {{.Name}}\t{{.Status}}'
 log 'listo'

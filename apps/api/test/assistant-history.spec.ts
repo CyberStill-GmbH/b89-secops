@@ -125,7 +125,7 @@ type Person = Awaited<ReturnType<typeof signIn>>;
 
 function request(
   person: Person,
-  method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
+  method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
   url: string,
   payload?: Record<string, unknown>,
   withCsrf = true,
@@ -315,6 +315,28 @@ describe('Bunny · historial de conversaciones', () => {
     expect(JSON.stringify(deletes, (_k, v) => (typeof v === 'bigint' ? String(v) : v))).not.toMatch(
       /alertas|Revisión/u,
     );
+  });
+
+  it('guarda la valoración 👍/👎 de una respuesta con la conversación y la audita sin texto', async () => {
+    enableBunny(new InMemoryConversationStore());
+    const analyst = await signIn('analista@b89.example');
+    const created = JSON.parse((await ask(analyst, '¿Hay alertas P1?')).body);
+    expect(created.messageId).toMatch(/^[0-9a-f-]{36}$/u);
+    const url = `/api/assistant/conversations/${created.conversationId}/messages/${created.messageId}/feedback`;
+    expect((await request(analyst, 'PUT', url, { rating: 'meh' })).statusCode).toBe(422);
+    expect((await request(analyst, 'PUT', url, { rating: 'down' }, false)).statusCode).toBe(403);
+    const rated = await request(analyst, 'PUT', url, { rating: 'down' });
+    expect(rated.statusCode).toBe(200);
+    expect(JSON.parse(rated.body)).toMatchObject({ rating: 'down' });
+    const detail = JSON.parse(
+      (await request(analyst, 'GET', `/api/assistant/conversations/${created.conversationId}`)).body,
+    );
+    expect(detail.messages[1]).toMatchObject({ id: created.messageId, feedback: 'down' });
+    const stranger = await signIn('lider@b89.example');
+    expect((await request(stranger, 'PUT', url, { rating: 'up' })).statusCode).toBe(404);
+    const audited = await auditActions('assistant.feedback');
+    expect(audited.at(-1)).toMatchObject({ metadata: { rating: 'down' } });
+    expect(JSON.stringify(audited, (_key, value) => (typeof value === 'bigint' ? String(value) : value))).not.toContain('¿Hay alertas P1?');
   });
 
   it('nadie más que el dueño ve, continúa, renombra o borra una conversación, ni un administrador', async () => {

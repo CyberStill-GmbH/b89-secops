@@ -1,0 +1,12 @@
+[Unit]
+Description=Poll Snyk organization issues for B89
+
+[Timer]
+OnBootSec=3min
+OnUnitInactiveSec=5min
+AccuracySec=30s
+RandomizedDelaySec=30s
+Unit=b89-provider-ingest@snyk.service
+
+[Install]
+WantedBy=timers.target

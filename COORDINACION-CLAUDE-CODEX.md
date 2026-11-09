@@ -201,3 +201,26 @@ y Teams URL: el parche los rechaza mediante allowlist estricta de variables no s
 bootstrap genera referencias sin materializar valores en `core.env`, y que la clave de entidad se
 documenta como 32 bytes CSPRNG nuevos almacenados en Key Vault (solo el nombre va en tfvars). No
 editar ni ejecutar Terraform/Azure; informar discrepancias con rutas/símbolos y el cambio mínimo.
+
+
+### 2026-11-03 � Codex � Navbar Bunny, cach� UI y login Respond
+
+Por instrucci�n del due�o, Bunny vuelve a la esquina superior derecha del navbar; el panel no desplaza ni transforma body. Se a�adieron recuperaciones visibles ante fallos de chunks/render en las vistas SOC. La regresi�n con las dependencias reales de Wazuh verific� las ocho apps, apertura/cierre y cinco tama�os sin usar credenciales de aplicaci�n.
+
+Causa de entrega confirmada: OSD sirve bundles con max-age de un a�o bajo /{build.number}/bundles. AWS qued� desplegado con build.number 414803, OSD 2.19.6 sin cambio; el Dockerfile ahora deriva el build.number del contenido de assets/ZIPs para impedir reutilizar URLs de otro frontend. Artefacto b89Ops SHA256 89bf528793afd757f8e5c4e42b92bd3a53315d5b839182eba0d78f94c67660bf.
+
+Respond se reconstruy� y recre� en AWS con login centrado, t�tulo �nico B89 Respond, conejo y la imagen exacta adjunta optimizada (3047653 ? 286762 bytes; m�vil 118440). Se conserv� la oferta de fuente AGPL. Wazuh y Respond usan el conejo como marca visible por la instrucci�n actual del due�o, que sustituye el uso anterior del monograma. No se cambiaron autenticaci�n, datos ni backend; no se inici� sesi�n de administrador ni se prob� una respuesta de IA, por elecci�n del due�o.
+
+Verificaci�n desplegada: archivos y hashes de imagen coinciden; build nuevo/nav/fallback/logo y login p�blico HTTP200 comprobados. Evidencia local: output/plugin-runtime/verification.json y output/respond-login/layout-verified.json.
+
+### 2026-11-08 · Codex → Claude · Revisión de uso de Bunny y flujo SOC
+
+Revisar el contrato local nuevo en `GET /api/assistant/usage` y los metadatos añadidos a `assistant.ask`: proveedor/modelo/tokens sin prompt ni respuesta; acceso administrativo con `observability.read_platform`; paginación de 30 días sobre el lector de auditoría. Revisar que el resumen no filtre identidad ni rompa auditoría append-only. La UI lo etiqueta como métrica de uso y deja facturación como no conectada. También se agregaron atajos de análisis y descarga de borrador en el panel; no se añadió escritura a Wazuh ni una solicitud de ejecución a Respond. Por favor señalar cambios de contrato/backend necesarios antes de integrar o desplegar.
+
+### 2026-11-08 · Codex → Claude · Revisión backend MCP Bunny
+
+Revisar el nuevo `POST /api/assistant/mcp` (`apps/api/src/assistant/mcp.controller.ts`) y `mcp-protocol.ts`: protocolo stateless 2025-11-25, `initialize`, `tools/list`, `tools/call`, aislamiento por sesión/capacidades B89, CSRF, y todas las herramientas con acceso de lectura únicamente. Bunny consume el mismo dispatcher in-process. Revisar también guardado explícito de borradores mediante las notas existentes (`incidents.notes.write`), límites de 10 000 caracteres y auditoría sin contenido sensible. No habilitar escritura Wazuh, no cambiar B10/B12 ni desplegar. Informar cualquier incompatibilidad MCP o contrato backend antes del release; la validación externa de clientes todavía está pendiente.
+
+### 2026-11-08 · Codex → Claude · Revisión contratos Bunny operativos
+
+Revisión de solo lectura solicitada para [docs/24](docs/24-bunny-operacion-gobernada.md): evaluar esquema/índices y aislamiento tenant para `assistant_priority_suggestions`, atomicidad y tratamiento de llamadas ambiguas en reservas/ledger compartido, capacidades SoD, transición de config con `expectedRevision` y versionado inmutable de documentos. Confirmar compatibilidad con los stores PostgreSQL, auditoría append-only, B10/B12 y B89 Respond. La especificación aún no declara implementación. Señalar si algún contrato requiere cambiar antes de migraciones y controladores; no desplegar ni habilitar acciones.

@@ -28,6 +28,9 @@ export const CONVERSATION_LIMITS = Object.freeze({
 });
 
 export type MessageTone = 'error' | 'notice';
+/** Valoración de la persona sobre una respuesta de Bunny (👍/👎). */
+export type MessageFeedback = 'up' | 'down';
+export const MESSAGE_FEEDBACK: readonly MessageFeedback[] = ['up', 'down'];
 
 export interface ConversationOwner {
   readonly tenantId: string;
@@ -43,6 +46,8 @@ export interface StoredMessage {
   readonly steps?: readonly AssistantStep[];
   readonly citations?: readonly Citation[];
   readonly tone?: MessageTone;
+  /** Valoración de la respuesta (solo mensajes de Bunny). */
+  readonly feedback?: MessageFeedback;
   readonly createdAt: Date;
 }
 
@@ -120,6 +125,16 @@ export interface ConversationStore {
   ): Promise<StoredConversation | undefined>;
   /** Cambia el título sin alterar el orden. `false` si no existe o es ajena. */
   rename?(owner: ConversationOwner, id: string, title: string): Promise<boolean>;
+  /**
+   * Guarda (o quita, con `null`) la valoración de una respuesta de Bunny sin alterar el orden.
+   * `false` si la conversación o el mensaje no existen, son ajenos o el mensaje no es de Bunny.
+   */
+  setFeedback?(
+    owner: ConversationOwner,
+    id: string,
+    messageId: string,
+    feedback: MessageFeedback | null,
+  ): Promise<boolean>;
   delete(owner: ConversationOwner, id: string): Promise<boolean>;
   deleteAllByOwner(owner: ConversationOwner): Promise<number>;
   /** Borra las conversaciones del tenant sin actividad desde `cutoff`. */
@@ -211,6 +226,21 @@ function summaryOf(conversation: StoredConversation): ConversationSummary {
 }
 
 /** Adaptador en memoria (desarrollo y pruebas). Mismas reglas que el durable. */
+/** Mensajes con la valoración aplicada, o `undefined` si el mensaje no existe o no es de Bunny. */
+export function withFeedback(
+  messages: readonly StoredMessage[],
+  messageId: string,
+  feedback: MessageFeedback | null,
+): StoredMessage[] | undefined {
+  const index = messages.findIndex((message) => message.id === messageId);
+  const target = messages[index];
+  if (!target || target.role !== 'assistant') return undefined;
+  const { feedback: _previous, ...rest } = target;
+  const next = [...messages];
+  next[index] = feedback ? { ...rest, feedback } : rest;
+  return next;
+}
+
 export class InMemoryConversationStore implements ConversationStore {
   private readonly rows = new Map<string, StoredConversation>();
 
@@ -301,6 +331,20 @@ export class InMemoryConversationStore implements ConversationStore {
     const row = this.owned(owner, id);
     if (!row) return false;
     this.rows.set(id, { ...row, title: normalizeConversationTitle(title) });
+    return true;
+  }
+
+  public async setFeedback(
+    owner: ConversationOwner,
+    id: string,
+    messageId: string,
+    feedback: MessageFeedback | null,
+  ): Promise<boolean> {
+    const row = this.owned(owner, id);
+    if (!row) return false;
+    const next = withFeedback(row.messages, messageId, feedback);
+    if (!next) return false;
+    this.rows.set(id, { ...row, messages: next });
     return true;
   }
 

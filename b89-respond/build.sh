@@ -42,7 +42,7 @@ node "$HERE/frontend/subpath.mjs" "$FE"
 
 grep -v '^#' "$HERE/frontend/assets/targets.tsv" | while IFS=$'\t' read -r src dst _; do
   [[ -n "$src" ]] || continue
-  [[ -f "$FE/$dst" ]] || { echo "destino de arte inexistente en upstream: $dst" >&2; exit 1; }
+  mkdir -p "$(dirname "$FE/$dst")"
   cp "$HERE/frontend/assets/$src" "$FE/$dst"
 done
 

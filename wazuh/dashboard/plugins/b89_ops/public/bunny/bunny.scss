@@ -15,94 +15,211 @@ $bunnyLavender: #cdcced;
 $bunnyEase: cubic-bezier(0.16, 1, 0.3, 1);
 
 .b89Bunny__launcher {
+  position: relative;
   display: grid;
   width: 40px;
   height: 40px;
-  place-items: center;
   margin: 0 4px;
+  place-items: center;
   padding: 0;
-  border: 1px solid transparent;
+  border: 1px solid $bunnyFuchsia;
   border-radius: 50%;
-  background: transparent;
+  background: $bunnyRaised;
+  box-shadow: none;
   cursor: pointer;
   transition:
     background-color 160ms ease,
-    border-color 160ms ease,
     transform 160ms $bunnyEase;
 
   img {
     display: block;
     object-fit: contain;
   }
-
   &:hover {
-    background: rgba(255, 88, 153, 0.14);
-    transform: translateY(-1px);
+    background: rgba(255, 88, 153, 0.2);
+    transform: translateY(-2px);
   }
-
   &:focus-visible {
     outline: 2px solid $bunnyBlue;
-    outline-offset: 2px;
+    outline-offset: 3px;
   }
-
   &--open {
-    border-color: $bunnyFuchsia;
-    background: rgba(255, 88, 153, 0.18);
+    background: $bunnyRaised;
+    border-color: $bunnyBlue;
   }
 }
 
+// The right panel is fixed to the viewport; never transform or shift OSD's body.
 .b89Bunny__panel {
   position: fixed;
+  box-sizing: border-box;
   z-index: 1100;
-  top: 0;
-  bottom: 0;
-  left: 0;
+  top: 64px;
+  right: 16px;
+  bottom: 16px;
   display: flex;
-  width: min(var(--b89-bunny-width, 420px), 100vw);
+  width: min(420px, calc(100% - 32px));
+  max-height: calc(100vh - 80px);
+  max-height: calc(100dvh - 80px);
+  min-height: 0;
+  overflow: hidden;
   flex-direction: column;
-  border-right: 1px solid $bunnyLine;
+  border: 1px solid $bunnyLine;
+  border-radius: 16px;
   background: $bunnyBg;
-  box-shadow: 12px 0 32px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
   color: $bunnyText;
   font-family: 'Satoshi', 'Helvetica Neue', Arial, sans-serif;
   font-size: 14px;
   line-height: 1.5;
   animation: b89BunnySlideIn 260ms $bunnyEase both;
-
   h2,
   h3,
   p {
     margin: 0;
   }
-
   button {
     font-family: inherit;
   }
 }
 
-// Panel anclado a la izquierda que EMPUJA el contenido (como el asistente de la consola de AWS):
-// el `body` se desplaza y se estrecha. Al llevar `transform`, pasa a ser el bloque contenedor de los
-// elementos `position: fixed` de OSD (cabecera, menú lateral), que se desplazan con él en lugar de
-// quedar tapados. En pantallas estrechas el panel se superpone (no hay espacio para empujar).
-html.b89-bunny-open body {
-  width: calc(100% - var(--b89-bunny-width, 420px));
-  margin-left: var(--b89-bunny-width, 420px);
-  transform: translateX(0);
+.b89Bunny__header,
+.b89Bunny__composer,
+.b89Bunny__disclaimer {
+  flex-shrink: 0;
+}
+.b89Bunny__list,
+.b89Bunny__history {
+  min-height: 0;
 }
 
-html.b89-bunny-open {
-  --b89-bunny-width: 420px;
-}
+.b89Bunny__usage {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px;
+  color: $bunnyText2;
 
-@media (max-width: 900px) {
-  html.b89-bunny-open body {
-    width: auto;
-    margin-left: 0;
-    transform: none;
+  h3 {
+    margin: 0 0 4px;
+    color: $bunnyText;
+    font-size: 16px;
   }
 
+  h4 {
+    margin: 20px 0 8px;
+    color: $bunnyText;
+    font-size: 13px;
+  }
+
+  dl {
+    margin: 12px 0;
+    border: 1px solid $bunnyLine;
+    border-radius: 10px;
+    background: $bunnyRaised;
+  }
+
+  dl > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 10px;
+    border-bottom: 1px solid $bunnyLine;
+  }
+
+  dl > div:last-child {
+    border-bottom: 0;
+  }
+
+  dt {
+    color: $bunnyMuted;
+  }
+
+  dd {
+    margin: 0;
+    color: $bunnyText;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+
+  button {
+    padding: 7px 10px;
+    border: 1px solid $bunnyLine;
+    border-radius: 8px;
+    background: $bunnyRaised;
+    color: $bunnyText;
+    cursor: pointer;
+  }
+
+  button:focus-visible {
+    outline: 2px solid $bunnyBlue;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+    text-align: left;
+  }
+
+  th,
+  td {
+    padding: 7px 5px;
+    border-bottom: 1px solid $bunnyLine;
+    vertical-align: top;
+  }
+
+  th {
+    color: $bunnyMuted;
+    font-weight: 600;
+  }
+
+  td small {
+    display: block;
+    color: $bunnyMuted;
+    overflow-wrap: anywhere;
+  }
+}
+
+.b89Bunny__usageTableWrap {
+  overflow-x: auto;
+}
+
+.b89Bunny__usageIntro,
+.b89Bunny__usageNote {
+  color: $bunnyMuted;
+  font-size: 12px;
+}
+
+@media (max-width: 600px) {
   .b89Bunny__panel {
-    width: 100vw;
+    right: 8px;
+    top: 64px;
+    bottom: 8px;
+    width: calc(100% - 16px);
+    max-height: calc(100vh - 72px);
+    max-height: calc(100dvh - 72px);
+  }
+}
+
+.b89Bunny__unavailable {
+  margin: auto 20px;
+  padding: 20px;
+  border: 1px solid $bunnyLine;
+  border-left: 3px solid $bunnyYellow;
+  border-radius: 10px;
+  background: $bunnyRaised;
+  color: $bunnyText2;
+
+  h3 {
+    margin: 0 0 10px;
+    color: $bunnyText;
+    font-size: 16px;
+  }
+
+  p {
+    margin: 8px 0 0;
+    line-height: 1.55;
   }
 }
 

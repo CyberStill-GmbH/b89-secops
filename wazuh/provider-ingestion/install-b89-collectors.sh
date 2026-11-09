@@ -114,7 +114,9 @@ def write(name, data):
 write("bitdefender.json", {"region": region or "us", "api_key_file": f"{cs}/bitdefender-api-key",
     "state_file": f"{state}/bitdefender.json", "output_file": f"{out}/bitdefender-gz.jsonl"})
 snyk = {"api_url": snyk_api or "https://api.snyk.io", "token_file": f"{cs}/snyk-token",
-    "state_file": f"{state}/snyk.json", "output_file": f"{out}/snyk-issues.jsonl", "initial_lookback_hours": 24}
+    "state_file": f"{state}/snyk.json", "output_file": f"{out}/snyk-issues.jsonl", "initial_lookback_hours": 24,
+    # Caché KEV/EPSS de wazuh/platform-monitoring (docs/20); si falta, los eventos no se enriquecen.
+    "vulnprio_dir": "/opt/b89/platform-monitoring/state/vulnprio"}
 if org:
     snyk["org_id"] = org
 write("snyk.json", snyk)

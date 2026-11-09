@@ -43,6 +43,8 @@ export {
   ASSISTANT_PROVIDERS,
   ASSISTANT_VARIABLES,
   KNOWN_B89_VARIABLES,
+  DEMO_ACCOUNT_ROLES,
+  DEMO_ACCOUNTS_MAX,
   DEMO_ADMIN_LOGIN_MAX_WINDOW_MS,
   DEMO_DEPLOYMENT_IDENTITY,
   DETECTION_CONTEXT_LIMITS,
@@ -55,6 +57,8 @@ export {
 } from './schema/index.js';
 export type {
   AccessConfig,
+  DemoAccountConfig,
+  DemoAccountRole,
   DemoAdminLoginConfig,
   DetectionContextConfig,
   IdentityMode,

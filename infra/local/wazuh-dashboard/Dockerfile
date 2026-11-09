@@ -14,8 +14,10 @@ USER root
 COPY --from=brand assets/ /tmp/b89/assets/
 COPY plugins-dist/ /tmp/b89/plugins/
 COPY patch-splash.cjs /tmp/b89/patch-splash.cjs
+COPY set-ui-build.cjs /tmp/b89/set-ui-build.cjs
 RUN set -eu; \
     R=/usr/share/wazuh-dashboard; \
+    "$R/node/bin/node" /tmp/b89/set-ui-build.cjs "$R/package.json" /tmp/b89/assets /tmp/b89/plugins; \
     sed 's/\r$//' /tmp/b89/assets/targets.tsv | while IFS="$(printf '\t')" read -r src kind dst; do \
       case "$src" in ''|'#'*) continue ;; esac; \
       case "$kind" in \

@@ -9,7 +9,7 @@
 | Capa | Dónde | Qué hace | Ejemplo | Estado |
 | --- | --- | --- | --- | --- |
 | 1. Regla | **Wazuh** (`wazuh/office365/rules`, `wazuh/manager/rules`) | Evento → alerta con nivel y MITRE | Login sin MFA, regla de reenvío en buzón (reglas Office 365 B89) | Reglas en el repo [sin verificar en AWS] |
-| 1b. Secuencia simple | **Wazuh** (`if_matched_sid`, `same_field`, `timeframe`) | N eventos relacionados → alerta compuesta | Fallos de login y luego éxito del mismo `UserId` en 10 min | [propuesto] |
+| 1b. Secuencia simple | **Wazuh** (`if_matched_sid`/`if_matched_group`, `same_field`, `timeframe`) | N eventos relacionados → alerta compuesta | Éxito tras fuerza bruta (M365 100505, AWS 101713, SSH 101750), rol/MFA/reenvío tras compromiso (101700–101703), CloudTrail apagado tras IAM (101710) | [verificado] en AWS con logtest; programa en [17](17-ingenieria-de-deteccion.md) |
 | 2. Anomalía (ML) | **OpenSearch Anomaly Detection** (RCF, en el Indexer) | Desvío del comportamiento por entidad | Volumen de descargas de SharePoint por usuario | Detectores en el repo [sin verificar] |
 | 3. Contexto e incidente | **B89 API** (`modules/detection`, TS, en Lambda) | Agrupa alertas y anomalías por entidad, aplica la cadena de compromiso M365 y asigna prioridad P1–P4 con razones | Credenciales, persistencia y exfiltración del mismo usuario en 24 h → P1 | Código existente [sin verificar en Lambda] |
 

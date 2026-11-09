@@ -21,8 +21,15 @@ image="${B89_TEST_IMAGE:-wazuh/wazuh-manager:4.14.8}"
 name="${B89_TEST_CONTAINER:-b89-detections-test}"
 keep=0
 [[ "${1:-}" == "--keep" ]] && keep=1
-py="$(command -v python3 || command -v python)"
-tool=("$py" "$repo/detections/tools/b89_detections.py")
+# Ruta del host que entienden docker y Python también desde Git Bash en Windows.
+hp() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi; }
+py=""
+for candidate in python3 python; do
+  if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c 'import yaml' >/dev/null 2>&1; then py="$candidate"; break; fi
+done
+[[ -n "$py" ]] || { echo 'Se requiere Python 3 con PyYAML' >&2; exit 1; }
+export PYTHONIOENCODING=utf-8
+tool=("$py" "$(hp "$repo")/detections/tools/b89_detections.py")
 work="$(mktemp -d)"
 cleanup() {
   rm -rf "$work"
@@ -36,12 +43,12 @@ docker rm -f "$name" >/dev/null 2>&1 || true
 log "arrancando manager desechable $name ($image, sin red)"
 docker run --detach --name "$name" --network none --ulimit nofile=458752:458752 "$image" >/dev/null
 
-"${tool[@]}" bundle "$work/bundle" --existing all --example-lists >/dev/null
+"${tool[@]}" bundle "$(hp "$work/bundle")" --existing all --example-lists >/dev/null
 for f in "$work"/bundle/existing/*.xml "$work"/bundle/rules/*.xml; do
-  docker cp "$f" "$name:/var/ossec/etc/rules/$(basename "$f")"
+  docker cp "$(hp "$f")" "$name:/var/ossec/etc/rules/$(basename "$f")"
 done
 for f in "$work"/bundle/lists/*; do
-  docker cp "$f" "$name:/var/ossec/etc/lists/$(basename "$f")"
+  docker cp "$(hp "$f")" "$name:/var/ossec/etc/lists/$(basename "$f")"
 done
 docker exec -u 0 "$name" sh -c '
   chown wazuh:wazuh /var/ossec/etc/rules/*.xml /var/ossec/etc/lists/b89-* && chmod 660 /var/ossec/etc/rules/*.xml
@@ -72,14 +79,15 @@ failures=0
 run_suite() { # run_suite <etiqueta> <fixtures> <expected> [suite]
   local label="$1" fixtures="$repo/$2" expected="$repo/$3" suite="${4:-}" out="$work/out-$RANDOM.txt"
   tr -d '\r' <"$fixtures" | docker exec -i "$name" /var/ossec/bin/wazuh-logtest >"$out" 2>&1 || true
-  if ! "${tool[@]}" check-logtest "$out" "$expected" ${suite:+--suite "$suite"}; then failures=$((failures + 1)); fi
+  if ! "${tool[@]}" check-logtest "$(hp "$out")" "$(hp "$expected")" ${suite:+--suite "$suite"}; then failures=$((failures + 1)); fi
 }
 
 log 'suites existentes (archivos canónicos; refinamientos de catalog.yaml)'
 while IFS=$'\t' read -r suite fixtures expected; do
+  expected="${expected%$'\r'}"
   [[ -f "$repo/$fixtures" && -f "$repo/$expected" ]] || { log "omitida $suite (sin fixtures)"; continue; }
   run_suite "$suite" "$fixtures" "$expected" "$suite"
-done < <("$py" - "$repo" <<'PY'
+done < <("$py" - "$(hp "$repo")" <<'PY'
 import sys, yaml, pathlib
 cat = yaml.safe_load((pathlib.Path(sys.argv[1]) / "detections/catalog.yaml").read_text(encoding="utf-8"))
 seen = set()
@@ -93,6 +101,7 @@ PY
 
 log 'casos de uso del programa (detections/<fuente>/<caso>)'
 while IFS=$'\t' read -r uc fixtures expected _suite; do
+  expected="${expected%$'\r'}"
   [[ "$fixtures" == detections/* ]] || continue
   run_suite "$uc" "$fixtures" "$expected"
 done < <("${tool[@]}" cases)

@@ -57,7 +57,6 @@ textarea,
   .euiHeader,
   .euiHeader--dark,
   .euiHeader--default {
-    position: relative;
     background-color: $b89Bg;
     border-bottom: 1px solid $b89Line;
     box-shadow: none;
@@ -128,7 +127,6 @@ textarea,
   .euiHeader,
   .euiHeader--default,
   .euiHeader--dark {
-    position: relative;
     border-bottom: 1px solid #e8e5ed;
     box-shadow: none;
   }

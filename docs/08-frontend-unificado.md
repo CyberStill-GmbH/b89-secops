@@ -1,5 +1,7 @@
 # 08 · Frontend unificado
 
+**Identidad vigente (2026-11-03, due�o):** el conejo mantenido en `wazuh/dashboard/assets/images/b89-bunny.webp` sustituye al monograma en Wazuh y B89 Respond. Respond usa el t�tulo �nico **B89 Respond**.
+
 > Leyenda: **[verificado]**, **[sin verificar]** (existe en el repo, no probado en AWS) y
 > **[propuesto]**. Arquitectura general en [02](02-arquitectura.md).
 

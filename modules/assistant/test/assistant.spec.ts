@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   AssistantInputError,
+  DEFAULT_ASSISTANT_LIMITS,
   Pseudonymizer,
   runAssistant,
   type AssistantModel,
@@ -73,6 +74,10 @@ describe('Pseudonymizer', () => {
 });
 
 describe('runAssistant', () => {
+  it('mantiene acotados rondas de herramientas y tokens de salida para contener consumo', () => {
+    expect(DEFAULT_ASSISTANT_LIMITS).toMatchObject({ maxToolRounds: 4, maxTokensPerCall: 4096 });
+  });
+
   it('responde sin herramientas y devuelve el uso', async () => {
     const { model } = scripted([say('Hola, soy Bunny.')]);
     const result = await runAssistant({
@@ -81,7 +86,12 @@ describe('runAssistant', () => {
       turn: { message: 'hola', history: [], context: CONTEXT },
     });
     expect(result).toMatchObject({ reply: 'Hola, soy Bunny.', outcome: 'answered', steps: [] });
-    expect(result.usage).toEqual({ inputTokens: 100, outputTokens: 20 });
+    expect(result.usage).toEqual({
+      inputTokens: 100,
+      outputTokens: 20,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    });
   });
 
   it('ejecuta la herramienta con los valores reales y enmascara lo que vuelve al modelo', async () => {
@@ -115,6 +125,28 @@ describe('runAssistant', () => {
     expect(result.reply).toBe('La alerta a-1 involucra a ana@b89.example desde 10.0.0.9.');
     expect(result.steps).toEqual([{ tool: 'list_alerts', label: 'Buscando alertas', ok: true }]);
     expect(result.citations).toEqual([{ kind: 'alert', id: 'a-1', label: 'Acceso inusual' }]);
+  });
+
+  it('no devuelve una conclusión factual si el modelo omite las citas devueltas por las herramientas', async () => {
+    const alerts = tool({
+      async run() {
+        return {
+          ok: true,
+          data: { priority: 'P1' },
+          citations: [{ kind: 'alert', id: 'alert-real-42', label: 'Alerta real' }],
+        };
+      },
+    });
+    const { model } = scripted([call('list_alerts', {}), say('La cuenta está comprometida y debe aislarse.')]);
+    const result = await runAssistant({
+      model,
+      tools: [alerts],
+      turn: { message: 'Analiza la alerta', history: [], context: CONTEXT },
+    });
+    expect(result.outcome).toBe('unverified');
+    expect(result.reply).toContain('no incluyó un identificador de evidencia verificable');
+    expect(result.reply).toContain('`alert-real-42`');
+    expect(result.reply).not.toContain('La cuenta está comprometida');
   });
 
   it('muestra el razonamiento en orden y devuelve el pensamiento intacto mientras usa herramientas', async () => {

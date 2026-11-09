@@ -1,0 +1,36 @@
+## B89 SOC · auditoría de red para Wazuh (docs/18-visibilidad-de-red-y-capacidades-wazuh.md).
+## Se distribuye con el grupo linux-servers (etc/shared/linux-servers/b89-audit-network.rules) y la
+## instala b89-audit-sync (infra/wazuh/network/agent/install-linux-network-visibility.sh) en
+## /etc/audit/rules.d/60-b89-network.rules. El agente lee /var/log/audit/audit.log (log_format audit).
+##
+## Alcance acotado para que el volumen sea el de una sesión humana, no el del servidor:
+##  - auid>=1000 y auid!=unset: solo procesos que nacen de un login interactivo (SSH, consola, SSM).
+##    Los demonios y los contenedores (dockerd los lanza sin auid) quedan fuera.
+##  - connect/bind con addrlen 16 (AF_INET) o 28 (AF_INET6): descarta sockets UNIX (docker.sock, D-Bus).
+##  - www-data (uid 33): cuenta de servicio web típica; una conexión saliente suya es rara (webshell).
+## Requiere log_format = ENRICHED en auditd.conf (por defecto en auditd 3.x) para la IP en SOCKADDR.
+
+## Conexiones salientes de sesiones interactivas
+-a always,exit -F arch=b64 -S connect -F a2=16 -F auid>=1000 -F auid!=unset -k b89_net_connect
+-a always,exit -F arch=b64 -S connect -F a2=28 -F auid>=1000 -F auid!=unset -k b89_net_connect
+-a always,exit -F arch=b32 -S connect -F a2=16 -F auid>=1000 -F auid!=unset -k b89_net_connect
+
+## Escuchas abiertas desde sesiones interactivas (bind + accept: shells de enlace, túneles, servidores ad hoc)
+-a always,exit -F arch=b64 -S bind -F a2=16 -F auid>=1000 -F auid!=unset -k b89_net_bind
+-a always,exit -F arch=b64 -S bind -F a2=28 -F auid>=1000 -F auid!=unset -k b89_net_bind
+-a always,exit -F arch=b64 -S accept,accept4 -F auid>=1000 -F auid!=unset -k b89_net_accept
+
+## Cuenta de servicio web
+-a always,exit -F arch=b64 -S connect -F a2=16 -F euid=33 -k b89_net_svc
+-a always,exit -F arch=b64 -S connect -F a2=28 -F euid=33 -k b89_net_svc
+
+## Ejecución de herramientas de red y captura (solo si el binario existe en el host; ver b89-audit-sync)
+## B89_WATCH /usr/bin/nc.openbsd
+## B89_WATCH /usr/bin/nc.traditional
+## B89_WATCH /usr/bin/ncat
+## B89_WATCH /usr/bin/socat
+## B89_WATCH /usr/bin/nmap
+## B89_WATCH /usr/bin/masscan
+## B89_WATCH /usr/bin/telnet.netkit
+## B89_WATCH /usr/bin/tcpdump
+## B89_WATCH /usr/sbin/tcpdump

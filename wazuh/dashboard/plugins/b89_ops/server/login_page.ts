@@ -362,10 +362,11 @@ export function renderLoginPage(options: LoginPageOptions): string {
 <style nonce="${nonce}">${css}</style>
 </head>
 <body>
+<div class="b89LoginSplash" aria-hidden="true"><img src="${basePath}/ui/logos/spinner.svg" alt="" width="180" height="180" loading="eager"></div>
 <main class="login-shell">
   <section class="login-side">
     <header class="login-brand">
-      <img class="brand-badge" src="${brand}/b89-mark-gradient.png" alt="B89">
+      <img class="brand-badge" src="${brand}/b89-head-mark.webp" alt="B89 SOC">
       <span class="brand-name">SOC</span>
       <span class="login-destination">Estás iniciando sesión en ${escapeHtml(destinationLabel)}</span>
     </header>
@@ -453,6 +454,7 @@ export function renderLogoutPage({ basePath, apiPrefix, nonce }: LogoutPageOptio
 <style nonce="${nonce}">html,body{margin:0;height:100%;background:#101014;color:#c9c6d2;font:13px/20px 'Satoshi',ui-sans-serif,system-ui,sans-serif}main{display:grid;height:100%;place-items:center}</style>
 </head>
 <body>
+
 <main><p role="status">Cerrando sesión…</p></main>
 <script nonce="${nonce}">
 (function () {

@@ -91,8 +91,44 @@ rule_files:
     optional: true
     installer: wazuh/manager/policy/apply-manager-policy.sh
 
-# Listas CDB que usan las reglas del programa. El instalador las crea vacías si faltan y nunca pisa una existente.
+# Listas CDB. Dos clases:
+#  - versionadas (`source`: detections/lists/<nombre>): allowlists y contexto de reducción de falsos positivos.
+#    El repo es la fuente de verdad: deploy-detections.sh las instala si cambian. Se modifican por PR (el motor
+#    de correlación y riesgo propone altas a partir de los veredictos de los analistas; un humano aprueba).
+#  - de entorno (`example`): datos que no van a git (cuentas break-glass, inventario). El instalador las crea
+#    con un centinela .invalid si faltan y nunca pisa una con contenido.
+# Formato CDB: `clave:valor` (valor = motivo); claves IP admiten prefijo de octetos (`38.250.148.:`).
 lists:
+  - name: b89-admin-ips
+    path: etc/lists/b89-admin-ips
+    source: detections/lists/b89-admin-ips
+    used_by: [101761]
+    purpose: "IPs/prefijos administrativos: SSH desde fuera de la lista se eleva (101761-101763)"
+  - name: b89-admin-accounts
+    path: etc/lists/b89-admin-accounts
+    source: detections/lists/b89-admin-accounts
+    used_by: [101766, 101767]
+    purpose: "Cuentas administrativas cuyas sesiones PAM son ruido redundante"
+  - name: b89-service-accounts
+    path: etc/lists/b89-service-accounts
+    source: detections/lists/b89-service-accounts
+    used_by: [101744]
+    purpose: "Automatizaciones aprobadas (cambios DNS de Cloudflare degradados, no suprimidos)"
+  - name: b89-authorized-scanners
+    path: etc/lists/b89-authorized-scanners
+    source: detections/lists/b89-authorized-scanners
+    used_by: [101743]
+    purpose: "Escáneres/pentest autorizados en el WAF (con vencimiento en el valor)"
+  - name: b89-critical-zones
+    path: etc/lists/b89-critical-zones
+    source: detections/lists/b89-critical-zones
+    used_by: [101741, 101742]
+    purpose: "Zonas de Cloudflare críticas: corroboran la severidad de 101513"
+  - name: b89-aws-trusted-principals
+    path: etc/lists/b89-aws-trusted-principals
+    source: detections/lists/b89-aws-trusted-principals
+    used_by: [101714, 101715]
+    purpose: "Principales AWS del SOC y automatización (degradación de 101616/101615, nunca supresión)"
   - name: b89-break-glass
     path: etc/lists/b89-break-glass
     example: wazuh/office365/lists/b89-break-glass.example
@@ -112,3 +148,7 @@ refinements:
   - {suite: aws, case: 15, from: 101622, to: 101712, reason: "mismo principal ya detuvo CloudTrail (caso 13): cegamiento múltiple"}
   - {suite: aws, case: 16, from: 101623, to: 101712, reason: "mismo principal: cegamiento múltiple"}
   - {suite: aws, case: 17, from: 101624, to: 101712, reason: "mismo principal: cegamiento múltiple"}
+  - {suite: collectors, case: 13, from: 101453, to: 101732, reason: "calibración: baja sin exploit maduro sale del índice (101732)"}
+  - {suite: collectors, case: 15, from: 101455, to: 101733, reason: "calibración: alta no expuesta ni explotable baja a 7 (101733)"}
+  - {suite: collectors, case: 16, from: 101456, to: 101734, reason: "calibración: crítica no expuesta ni explotable baja a 10 (101734)"}
+  - {suite: collectors, case: 49, from: 101513, to: 101742, reason: "corroboración: example.test no es zona crítica (101742)"}

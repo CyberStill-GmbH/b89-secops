@@ -78,18 +78,22 @@ img,svg{display:block;max-width:100%}
 .auth-footer .auth-attribution{margin-top:2px;color:#8b7f93;font-size:11px}
 
 /* --- Panel de marca: la ilustración es el fondo --- */
-.login-hero{position:relative;min-height:320px;overflow:hidden;background:url(__UI__/b89_login_hero.webp) 62% center/cover no-repeat,linear-gradient(115deg,var(--b89-pink),var(--b89-rose) 38%,var(--b89-orange))}
+/* La ilustración viene recortada a su zona útil (≈4:3), así que en un panel casi cuadrado
+   apenas se escala. El degradado funde su borde izquierdo con el blanco del formulario. */
+.login-hero{position:relative;min-height:320px;overflow:hidden;background:url(__UI__/b89_login_hero.webp) 55% center/cover no-repeat,linear-gradient(115deg,var(--b89-pink),var(--b89-rose) 38%,var(--b89-orange))}
+.login-hero::before{position:absolute;inset:0 auto 0 0;width:clamp(96px,22%,280px);background:linear-gradient(90deg,var(--b89-surface) 0%,rgb(255 255 255 / 82%) 28%,rgb(255 255 255 / 38%) 62%,rgb(255 255 255 / 0%) 100%);content:'';pointer-events:none}
 
+/* Tablet y celular: una sola columna, solo el formulario. */
 @media (max-width:1000px){
-  .login-shell{grid-template-columns:minmax(0,1fr);grid-template-rows:auto 1fr}
-  .login-hero{order:-1;min-height:220px;background:url(__UI__/b89_login_hero_sm.webp) 66% center/cover no-repeat,linear-gradient(115deg,var(--b89-pink),var(--b89-rose) 38%,var(--b89-orange))}
+  .login-shell{grid-template-columns:minmax(0,1fr)}
+  .login-hero{display:none}
   .login-side{padding:28px 24px 32px}
 }
 @media (max-width:600px){
   .login-destination{display:none}
 }
-@media (max-width:480px){
-  .login-hero{min-height:170px}
-}
-@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+.b89LoginSplash{position:fixed;inset:0;z-index:100000;display:grid;place-items:center;background:#fff;pointer-events:none;animation:b89LoginSplashOut 1600ms ease-out forwards}
+.b89LoginSplash img{width:min(28vh,180px);max-width:70vw;height:auto}
+@keyframes b89LoginSplashOut{0%,75%{opacity:1;visibility:visible}100%{opacity:0;visibility:hidden}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}.b89LoginSplash{display:none}}
 `;

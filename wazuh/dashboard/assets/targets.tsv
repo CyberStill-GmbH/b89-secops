@@ -48,6 +48,7 @@ svg/b89-audit.svg	dashboard	src/core/server/core_app/assets/b89/b89-audit.svg
 svg/b89-access.svg	dashboard	src/core/server/core_app/assets/b89/b89-access.svg
 svg/b89-sources.svg	dashboard	src/core/server/core_app/assets/b89/b89-sources.svg
 svg/b89-session.svg	dashboard	src/core/server/core_app/assets/b89/b89-session.svg
+svg/b89-respond.svg	dashboard	src/core/server/core_app/assets/b89/b89-respond.svg
 images/b89-mark-gradient-256.png	dashboard	src/core/server/core_app/assets/b89/b89-mark-gradient.png
 fonts/satoshi.css	dashboard	src/core/server/core_app/assets/b89/fonts/satoshi.css
 fonts/satoshi-medium.woff2	dashboard	src/core/server/core_app/assets/b89/fonts/satoshi-medium.woff2
@@ -59,7 +60,21 @@ svg/b89_mark_on_dark.svg	plugins	plugins/main/public/assets/images/themes/dark/i
 svg/b89_mark_on_light.svg	plugins	plugins/main/public/assets/images/themes/light/icon.svg
 wazuh-app/logo_reports.png	plugins	plugins/main/public/assets/images/logo_reports.png
 images/b89_login_hero.webp	dashboard	src/core/server/core_app/assets/b89/b89_login_hero.webp
-images/b89_login_hero_sm.webp	dashboard	src/core/server/core_app/assets/b89/b89_login_hero_sm.webp
 images/b89-remi.png	dashboard	src/core/server/core_app/assets/b89/b89-remi.png
 images/b89-mundi.png	dashboard	src/core/server/core_app/assets/b89/b89-mundi.png
 images/b89-bunny.webp	dashboard	src/core/server/core_app/assets/b89/b89-bunny.webp
+favicons/favicon.svg	dashboard	src/core/server/core_app/assets/favicons/favicon.svg
+images/b89-head-mark.webp	dashboard	src/core/server/core_app/assets/b89/b89-head-mark.webp
+# Logotipos de proveedores integrados (uso nominativo; fuente y titulares en svg/vendors/NOTICE.md), servidos en /ui/b89/vendors/.
+svg/vendors/aws-on-dark.svg	dashboard	src/core/server/core_app/assets/b89/vendors/aws-on-dark.svg
+svg/vendors/aws.svg	dashboard	src/core/server/core_app/assets/b89/vendors/aws.svg
+svg/vendors/bitdefender-on-dark.svg	dashboard	src/core/server/core_app/assets/b89/vendors/bitdefender-on-dark.svg
+svg/vendors/bitdefender.svg	dashboard	src/core/server/core_app/assets/b89/vendors/bitdefender.svg
+svg/vendors/cloudflare-on-dark.svg	dashboard	src/core/server/core_app/assets/b89/vendors/cloudflare-on-dark.svg
+svg/vendors/cloudflare.svg	dashboard	src/core/server/core_app/assets/b89/vendors/cloudflare.svg
+svg/vendors/microsoft-entra-id-on-dark.svg	dashboard	src/core/server/core_app/assets/b89/vendors/microsoft-entra-id-on-dark.svg
+svg/vendors/microsoft-entra-id.svg	dashboard	src/core/server/core_app/assets/b89/vendors/microsoft-entra-id.svg
+svg/vendors/snyk-on-dark.svg	dashboard	src/core/server/core_app/assets/b89/vendors/snyk-on-dark.svg
+svg/vendors/snyk.svg	dashboard	src/core/server/core_app/assets/b89/vendors/snyk.svg
+svg/vendors/wazuh-on-dark.svg	dashboard	src/core/server/core_app/assets/b89/vendors/wazuh-on-dark.svg
+svg/vendors/wazuh.svg	dashboard	src/core/server/core_app/assets/b89/vendors/wazuh.svg

@@ -49,9 +49,7 @@ flowchart LR
   honesto: no detecta nombres propios u otros identificadores en texto libre.
 - **Contenido de terceros = dato.** Los resultados de herramientas se marcan como datos, no como
   instrucciones; el prompt de sistema manda ignorar y avisar de intentos de inyección.
-- **Presupuesto acotado.** Máximo 5 rondas de herramientas, resultados truncados a 12 000 caracteres,
-  24 s de reloj total (API Gateway corta a 30 s) y 20 preguntas por persona cada 10 min (por instancia
-  de Lambda: un tope global exigiría un almacén compartido).
+- **Presupuesto acotado.** Máximo 4 rondas de herramientas, 4096 tokens de salida por llamada, resultados truncados a 14 000 caracteres, 24 s de reloj total en Lambda y hasta 55 s en EC2, más 20 preguntas por persona cada 10 min. El límite de tasa es por instancia; no hay aún presupuesto mensual global compartido.
 - **Auditoría.** Cada pregunta deja `assistant.ask` con quién, resultado y herramientas usadas; el
   texto de la conversación **nunca** va a auditoría ni a logs (vive solo en el historial, abajo).
 

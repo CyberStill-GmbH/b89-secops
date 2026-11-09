@@ -1,0 +1,12 @@
+[Unit]
+Description=Check Microsoft 365 Management Activity API authorization for B89
+
+[Timer]
+OnBootSec=3min
+OnUnitInactiveSec=5min
+AccuracySec=30s
+RandomizedDelaySec=30s
+Unit=b89-provider-ingest@m365.service
+
+[Install]
+WantedBy=timers.target

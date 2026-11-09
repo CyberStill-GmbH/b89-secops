@@ -78,10 +78,19 @@ export interface ModelRequest {
 
 export type ModelStopReason = 'end_turn' | 'tool_use' | 'max_tokens' | 'refusal' | 'other';
 
+export interface ModelUsage {
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  /** Tokens leídos de la caché de prompt (más baratos y rápidos). */
+  readonly cacheReadTokens?: number;
+  /** Tokens escritos en la caché de prompt. */
+  readonly cacheWriteTokens?: number;
+}
+
 export interface ModelResponse {
   readonly content: readonly ModelBlock[];
   readonly stopReason: ModelStopReason;
-  readonly usage: { readonly inputTokens: number; readonly outputTokens: number };
+  readonly usage: ModelUsage;
 }
 
 /** Puerto del modelo de lenguaje. */

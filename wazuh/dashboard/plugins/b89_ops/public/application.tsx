@@ -8,6 +8,7 @@ import type { AppMountParameters, CoreStart } from '../../../src/core/public';
 import type { B89View } from '../common';
 import type { ChangeFeed } from './api/change_feed';
 import type { B89ApiClient } from './api/client';
+import { ViewErrorBoundary } from './render_failure';
 import { AccessView } from './components/access_view';
 import { AlertsView } from './components/alerts_view';
 import { AuditView } from './components/audit_view';
@@ -97,11 +98,18 @@ export function renderApp(
   const basePath = core.http.basePath.get();
   params.element.classList.add('b89App');
   ReactDOM.render(
-    <core.i18n.Context>
-      <ConsoleProvider api={api} notifications={core.notifications} feed={feed} basePath={basePath}>
-        <Console view={view} history={params.history} basePath={basePath} />
-      </ConsoleProvider>
-    </core.i18n.Context>,
+    <ViewErrorBoundary>
+      <core.i18n.Context>
+        <ConsoleProvider
+          api={api}
+          notifications={core.notifications}
+          feed={feed}
+          basePath={basePath}
+        >
+          <Console view={view} history={params.history} basePath={basePath} />
+        </ConsoleProvider>
+      </core.i18n.Context>
+    </ViewErrorBoundary>,
     params.element,
   );
   return () => {

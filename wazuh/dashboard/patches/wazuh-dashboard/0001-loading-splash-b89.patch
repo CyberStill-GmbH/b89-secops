@@ -48,14 +48,14 @@ index 1313707..a19da60 100644
 -            height: 100px; /* Wazuh */
 -            padding: 10px 10px 10px 10px;
 +            /* B89: la animación SVG (planeta + mascota) ocupa el centro, sin pasar del 90 % del ancho */
-+            height: min(52vh, 400px);
++            height: min(28vh, 180px);
 +            padding: 0;
            }
  
            .loadingLogo {
              height: 100%;
 -            max-width: 100%;
-+            max-width: 90vw;
++            max-width: min(70vw, 280px);
 +            width: auto;
 +          }
 +
@@ -72,8 +72,8 @@ index 1313707..a19da60 100644
 +          }
 +
 +          .b89SplashOverlayImg {
-+            height: min(52vh, 400px);
-+            max-width: 90vw;
++            height: min(28vh, 180px);
++            max-width: min(70vw, 280px);
 +            width: auto;
 +          }
 +

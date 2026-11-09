@@ -30,6 +30,7 @@ from b89_collector import (  # noqa: E402
     run_collector,
     utc_now,
 )
+import b89_vuln_priority as vulnprio  # noqa: E402
 
 API_VERSION = "2024-10-15"
 DEFAULT_API = "https://api.snyk.io"
@@ -175,7 +176,41 @@ def collect(config: dict, state: dict, client: Snyk | None = None) -> tuple[list
             except ValueError:
                 pass
         cursors[org_id] = iso(newest)
+    enrich_events(events, config)
     return events, {"cursors": cursors, "seen": bounded_ids(seen, 50000)}
+
+
+def enrich_events(events: list[dict], config: dict) -> int:
+    """Add ``b89.vuln`` (KEV/EPSS/exposure priority) when the daily intel cache is available.
+
+    Optional and fail-safe: without ``vulnprio_dir`` or with a missing/stale cache the events keep
+    their original shape and the rules keep the original Snyk level (docs/20).
+    """
+    directory = config.get("vulnprio_dir")
+    if not directory or not events:
+        return 0
+    try:
+        intel = vulnprio.load_intel(pathlib.Path(directory))
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        print(f"b89-snyk: vulnerability intel unavailable ({type(error).__name__}); events not enriched", file=sys.stderr)
+        return 0
+    enriched = 0
+    for event in events:
+        issue = event["snyk"]["issue"]
+        cves = vulnprio.extract_cves(issue.get("problems") or [])
+        fixable = {"true": True, "false": False}.get(issue.get("fixable"))
+        block = vulnprio.prioritize(
+            cves,
+            issue.get("severity", ""),
+            intel,
+            exposed=vulnprio.project_exposed(event["snyk"]["project"].get("name", ""), intel),
+            fixable=fixable,
+            exploit_mature=str(issue.get("exploit_maturity") or "").lower() == "mature",
+        )
+        block["source"] = "inline"
+        event["b89"]["vuln"] = block
+        enriched += 1
+    return enriched
 
 
 def main() -> int:

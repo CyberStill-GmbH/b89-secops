@@ -53,7 +53,8 @@ contener líneas de comando y secretos, y asignarlo exige aprobación de privaci
 | Correo de Wazuh | `email_notification=no` | Los avisos los envía el notificador B89 (N6, ADR-022) |
 | Active Response | **Ninguna respuesta automática** por defecto | docs/07 y docs/13: toda acción con efectos pasa por B89 Respond con aprobación del Líder SOC |
 | Auto-bloqueo opcional | `B89_AR_AUTO_BLOCK=1`: `firewall-drop` local, 600 s (`B89_AR_TIMEOUT`), reglas 5712/5763 (fuerza bruta SSH confirmada por frecuencia) | Solo Linux: el ejecutable no existe en Windows y las reglas solo salen de sshd. `B89_AR_WHITELIST` agrega IP/CIDR a `white_list`. Encenderlo exige registrar la excepción en docs/10 |
-| Lista `b89-break-glass` | Declarada en `<ruleset>`; se crea vacía si falta | La usan las reglas B89 de Office 365 |
+| Lista `b89-break-glass` | Declarada en `<ruleset>`; si falta o está vacía se crea con un centinela `.invalid` | La usan las reglas B89 de Office 365 |
+| Lista `b89-internet-facing-projects` | Igual; clave = proyecto Snyk, valor = zona/host de Cloudflare | La usan 101730–101731 (Snyk expuesto, [17](17-ingenieria-de-deteccion.md)) |
 
 Las integraciones (`<integration>`, syslog, wodles de proveedores) no las toca este script: son de
 `wazuh/manager/ossec.b89-integrations.xml.tmpl`, `wazuh/office365` y `wazuh/provider-ingestion`.
@@ -66,7 +67,8 @@ política (original en `.b89-orig`). Si no, hay que reaplicar tras recrear el co
 
 ## 3. Reglas de detección B89
 
-`apply-manager-policy.sh` instala `wazuh/office365/rules` e `infra/wazuh/*/rules` después de
+`apply-manager-policy.sh` instala `wazuh/office365/rules`, `infra/wazuh/*/rules` y las reglas del programa de
+detección (`detections/*/*/rule.xml` como `b89_soc_*.xml`) después de
 comprobar con `check_rule_ids.py` que los IDs son únicos entre archivos B89, que están en el rango
 de usuario 100000–120000 y que no pisan IDs del ruleset oficial ni de otros archivos de `etc/rules`.
 
@@ -77,6 +79,7 @@ de usuario 100000–120000 y que no pisan IDs del ruleset oficial ni de otros ar
 | `b89_launch_provider_rules.xml` | 101200–101215 |
 | `b89_provider_service_rules.xml` | 101216–101222 |
 | `b89_active_directory_rules.xml` | 101300–101307 |
+| `b89_soc_*.xml` (programa de detección, `detections/*/*/rule.xml`) | 101700–101760 ([17](17-ingenieria-de-deteccion.md)) |
 
 Las pruebas `wazuh-logtest` de cada módulo corren en `tests/run-policy-tests.sh` sobre un manager
 desechable. Se corrigió `linux-pilot.agent.conf`: usaba `<syscollector>`, que `verify-agent-conf`
