@@ -137,7 +137,7 @@ func Load() (Config, error) {
 	set(err)
 	c.SuppressionTTL, err = duration("B89_CORRELATOR_SUPPRESSION_TTL", "72h")
 	set(err)
-	c.FeedbackLookback, err = duration("B89_CORRELATOR_FEEDBACK_LOOKBACK", "720h")
+	c.FeedbackLookback, err = duration("B89_CORRELATOR_FEEDBACK_LOOKBACK", "696h")
 	set(err)
 	for _, item := range []struct {
 		name  string
@@ -176,6 +176,10 @@ func Load() (Config, error) {
 	}
 	if c.Backfill > 30*24*time.Hour {
 		errs = append(errs, errors.New("B89_CORRELATOR_BACKFILL: at most 720h"))
+	}
+	// The API rejects feeds older than 30 days; keep a margin for clock skew between calls.
+	if c.FeedbackLookback > 29*24*time.Hour {
+		errs = append(errs, errors.New("B89_CORRELATOR_FEEDBACK_LOOKBACK: at most 696h"))
 	}
 	return c, errors.Join(errs...)
 }

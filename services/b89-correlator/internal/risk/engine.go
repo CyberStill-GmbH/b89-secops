@@ -504,8 +504,8 @@ func (e *Engine) Candidate(id string) (model.Candidate, bool) {
 		return model.Candidate{}, false
 	}
 	cp := *c
-	cp.Stages = append([]model.StageHit(nil), c.Stages...)
-	cp.B89AlertIDs = append([]string(nil), c.B89AlertIDs...)
+	cp.Stages = append([]model.StageHit{}, c.Stages...)
+	cp.B89AlertIDs = append([]string{}, c.B89AlertIDs...)
 	return cp, true
 }
 
@@ -520,8 +520,8 @@ func (e *Engine) Candidates(status string, limit int) []model.Candidate {
 			continue
 		}
 		cp := *c
-		cp.Stages = append([]model.StageHit(nil), c.Stages...)
-		cp.B89AlertIDs = append([]string(nil), c.B89AlertIDs...)
+		cp.Stages = append([]model.StageHit{}, c.Stages...)
+		cp.B89AlertIDs = append([]string{}, c.B89AlertIDs...)
 		out = append(out, cp)
 		if limit > 0 && len(out) >= limit {
 			break
