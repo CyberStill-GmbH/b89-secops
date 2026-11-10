@@ -261,10 +261,14 @@ if [[ $SP == true ]]; then
      /usr/bin/python3 - "$CHECK_JSON" <<'PY'
 import json, sys
 report = json.load(open(sys.argv[1], encoding="utf-8"))
-denied = any(item.get("status") == 403 for item in report.get("probes", {}).values())
-if report.get("audit_path") == "blocked" or denied:
-    print("SharePoint bloqueado: auditoría no disponible o diagnóstico HTTP 403")
+# Falla cerrado solo si no hay ninguna vía de auditoría (módulo office365 o Purview). La postura sin
+# SharePointTenantSettings.Read.All / Sites.Read.All queda "bloqueada" y lo informa la regla 101969/101970.
+if report.get("audit_path") == "blocked":
+    print("SharePoint bloqueado: sin ActivityFeed.Read ni AuditLogsQuery-SharePoint.Read.All")
     raise SystemExit(1)
+denied = sorted(name for name, item in report.get("probes", {}).items() if item.get("status") == 403)
+if denied:
+    print("SharePoint: auditoría por " + report["audit_path"] + "; sin permiso (403): " + ", ".join(denied))
 PY
   then SP_OK=true; else SP=false; fi
 fi
@@ -287,7 +291,7 @@ if [[ $SP_OK == true ]]; then
     systemctl start "b89-collector-$p.service" || true
     systemctl enable --now "b89-collector-$p.timer" >/dev/null
   done
-  log 'SharePoint: vía de auditoría disponible y checker sin HTTP 403; timers activados'
+  log 'SharePoint: vía de auditoría disponible; timers activados (la postura informa sus permisos faltantes)'
 else
   systemctl disable --now b89-collector-sharepoint-audit.timer b89-collector-sharepoint-posture.timer >/dev/null 2>&1 || true
   log 'SharePoint: timers instalados pero apagados; requiere B89_ENABLE_SHAREPOINT=true y permisos comprobados'

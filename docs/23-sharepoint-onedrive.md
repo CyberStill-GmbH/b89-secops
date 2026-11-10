@@ -1,7 +1,7 @@
 # 23 · SharePoint y OneDrive
 
 > Leyenda: **[verificado]** comprobado contra el tenant o el manager real; **[sin datos]** instalado y probado con
-> fixtures sintéticos, sin eventos reales; **[bloqueado]** falta un permiso de Entra. Estado al 2026-11-09.
+> fixtures sintéticos, sin eventos reales; **[bloqueado]** falta un permiso de Entra. Estado al 2026-11-10.
 > Integración de [18](18-integraciones.md); detecciones en [`detections/sharepoint/`](../detections/sharepoint);
 > runbook [Exfiltración desde SharePoint y OneDrive](detection-engineering/runbooks/exfiltracion-sharepoint.md).
 > Todo es de **solo lectura**: B89 no cambia nada en Microsoft 365.
@@ -10,10 +10,10 @@
 
 | Área | Qué | Vía | Estado |
 | --- | --- | --- | --- |
-| Actividad (auditoría) | Descargas y sincronización, accesos, borrados y papelera, enlaces anónimos creados/usados, invitaciones, cambios de política, administradores de sitio, etiquetas, DLP | **A1** módulo `office365` de Wazuh (`Audit.SharePoint`) o **A2** collector Purview Audit Search | **[bloqueado]** |
+| Actividad (auditoría) | Descargas y sincronización, accesos, borrados y papelera, enlaces anónimos creados/usados, invitaciones, cambios de política, administradores de sitio, etiquetas, DLP | **A1** módulo `office365` de Wazuh (`Audit.SharePoint`) o **A2** collector Purview Audit Search | **[verificado]** A1 activo desde 2026-11-10 (`ActivityFeed.Read`): 753 eventos SharePoint/OneDrive en 24 h; A2 sin `AuditLogsQuery-*` (no hace falta) |
 | Contexto | Fuera de horario (Lima 08–20, fin de semana), red nueva para el usuario (línea base 30 días), cuenta deshabilitada, invitado, IP en Spamhaus/Feodo/Tor | Collector A2 (`b89.*`) y listas CDB de reputación | Cuentas deshabilitadas **[verificado]** (Graph `User.Read.All`) |
 | Postura | Configuración de uso compartido del tenant (diff con dirección *weakened*), inventario de sitios y sitios nuevos, enlaces anónimos y permisos externos en las bibliotecas | Collector de postura (Graph) | **[bloqueado]** |
-| Salud de la fuente | Estado de cada función según los permisos; aviso si un permiso que funcionaba se pierde | Ambos collectors (eventos `capability`) | Listo; timers apagados mientras esté bloqueado |
+| Salud de la fuente | Estado de cada función según los permisos; aviso si un permiso que funcionaba se pierde | Ambos collectors (eventos `capability`) | **[verificado]** timers activos en AWS (auditoría 5 min en modo `native`, postura 60 min) |
 
 La integración aparece en **Resumen del SOC** e **Integraciones** (tarjeta «SharePoint y OneDrive»,
 `b89_ops.integrations.sharepoint.*`) y tiene su dashboard «B89 · SharePoint y OneDrive»
@@ -57,7 +57,11 @@ recientes primero) que solo pide `/permissions` de los ítems con faceta `shared
 ## Permisos
 
 Entra ID › Registros de aplicaciones › «Soc Interno» › Permisos de API › **de aplicación** + consentimiento de
-administrador. Verificado el 2026-11-09 con `check_sharepoint_access.py` (solo GET; código HTTP y conteos):
+administrador. Verificado el 2026-11-10 en el host con `check_sharepoint_access.py` (solo GET; código HTTP y conteos):
+el token de `manage.office.com` trae **`ActivityFeed.Read`** y `subscriptions/list` responde **200** (4 suscripciones);
+Graph sumó `RealTimeActivityFeed.Read.All`. Siguen en **403**: `auditLog/queries` (v1.0 y beta),
+`admin/sharepoint/settings`, `sites/getAllSites` y `sites?search=*`. No hay `Mail.Send`, `ActivityFeed.ReadDlp`,
+`SecurityAlert.Read.All` ni `SecurityIncident.Read.All`. Estado anterior (2026-11-09):
 
 | Sondeo | HTTP | Resultado |
 | --- | --- | --- |
@@ -108,7 +112,12 @@ de horario o una cuenta deshabilitada se revisan igual.
 
 Pruebas: 832 casos sintéticos de `wazuh-logtest` (TP y benignos) generados por
 `wazuh/provider-ingestion/sharepoint/tests/make_fixtures.py` con un modelo del algoritmo de frecuencia de Wazuh;
-13 pruebas unitarias del collector (`python -m unittest tests/test_sharepoint_collector.py`). Los nombres de
+13 pruebas unitarias del collector (`python -m unittest tests/test_sharepoint_collector.py`).
+**[verificado] 2026-11-10 en AWS:** 832/832 casos en un manager 4.14.8 desechable; réplica de las 755 auditorías
+reales de SharePoint/OneDrive de 24 h (todas en segundos, cota superior para las reglas de frecuencia): 0 alertas de
+nivel ≥ 4 de estas reglas (70 marcas de descarga 101900 y 3 de enlace anónimo usado 101910, nivel 3). Despliegue en
+el manager con `wazuh-analysisd -t` OK y agente 001 activo; los eventos de capacidad del collector (101969) llegan a
+`wazuh-alerts-*`. Los nombres de
 operación sin registro real llevan el grupo `b89_pending_provider_evidence` (como en `wazuh/office365`) y los casos
 de uso están en `pending-provider-evidence` hasta el primer registro real redactado.
 
@@ -130,6 +139,10 @@ de uso están en `pending-provider-evidence` hasta el primer registro real redac
    (`install-platform-monitoring.sh`) y recrear el contenedor de OpenSearch Dashboards.
 
 ## Mapamundi
+
+> Al importar en AWS (2026-11-10) los dos objetos `map` (`b89-microsoft-365-verified-map`,
+> `b89-sharepoint-verified-map`) fallaron con tipo desconocido: la imagen del dashboard no trae el plugin Maps. El
+> resto (50 objetos, incluido `b89-dashboard-sharepoint-onedrive`) se importó.
 
 Los dashboards M365 y SharePoint incluyen un mapa base real de OpenSearch Maps. La capa de eventos está
 desactivada y el estado vacío indica que `data.office365.geoip.location` aún debe existir en

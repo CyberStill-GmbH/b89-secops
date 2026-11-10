@@ -13,7 +13,7 @@
 | --- | --- | --- | --- | --- |
 | Agentes Wazuh | Agente → manager (TCP 1514/1515) | Tiempo real | Ruleset oficial + B89 (AD 101300–101307, endpoint, Linux 101750–101769) | Activo: solo el agente del propio nodo |
 | Microsoft 365 / Entra ID | Módulo `office365` de Wazuh | 1 min | 100502–100530 (+ cadenas 101700–101709) | **Bloqueado**: falta `ActivityFeed.Read` |
-| Microsoft 365 · SharePoint/OneDrive | Módulo `office365` (Audit.SharePoint) o collector Purview `sharepoint.py audit` + postura `sharepoint.py posture` | 5–10 min · 60 min | 101900–101979 (+ 100515) | **Bloqueado**: faltan `ActivityFeed.Read` o `AuditLogsQuery-SharePoint.Read.All`, y `SharePointTenantSettings.Read.All` / `Sites.Read.All` |
+| Microsoft 365 · SharePoint/OneDrive | Módulo `office365` (Audit.SharePoint) o collector Purview `sharepoint.py audit` + postura `sharepoint.py posture` | 5 min · 60 min | 101900–101979 (+ 100515) | **Activo** (auditoría por el módulo office365); postura **bloqueada**: faltan `SharePointTenantSettings.Read.All` y `Sites.Read.All` |
 | Bitdefender GravityZone | Collector `gravityzone.py` (systemd) | 10 min | 101400–101411 (+ 101720–101729) | Activo |
 | Snyk | Collector `issues.py` (systemd) | 15 min | 101450–101458 (+ 101730–101739) | Activo |
 | Cloudflare | Collector `security.py` (systemd) | 5 min | 101500–101513 (+ 101740–101749) | Activo |
@@ -91,8 +91,10 @@ reinicia solo el manager. Estado: `systemctl list-timers 'b89-*'`.
 - **Permisos mínimos:** `ActivityFeed.Read` **o** `AuditLogsQuery-SharePoint.Read.All` +
   `AuditLogsQuery-OneDrive.Read.All`; `SharePointTenantSettings.Read.All` y `Sites.Read.All` para la postura;
   `User.Read.All` (concedido). Diagnóstico sin secretos: `check_sharepoint_access.py`.
-- **Bloqueado (2026-11-09):** token de `manage.office.com` sin roles (401), `auditLog/queries`, `admin/sharepoint/settings`
-  y `sites` con 403. Collectors instalados y apagados (`B89_ENABLE_SHAREPOINT`); reglas instaladas.
+- **Estado (2026-11-10):** `ActivityFeed.Read` concedido → auditoría por el módulo office365 (753 eventos de
+  SharePoint/OneDrive en 24 h); reglas, listas y timers `b89-collector-sharepoint-{audit,posture}` activos en AWS.
+  Postura bloqueada (403 en `admin/sharepoint/settings` y `sites`): faltan `SharePointTenantSettings.Read.All` y
+  `Sites.Read.All`. Purview (`auditLog/queries`) en 403: no hace falta mientras exista `ActivityFeed.Read`.
 - **Detalle:** [23](23-sharepoint-onedrive.md) · runbook
   [exfiltración desde SharePoint](detection-engineering/runbooks/exfiltracion-sharepoint.md).
 

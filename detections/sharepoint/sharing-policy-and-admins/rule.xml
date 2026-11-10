@@ -70,7 +70,7 @@
 
   <rule id="101940" level="11">
     <if_sid>101938</if_sid>
-    <field name="office365.ObjectId" type="pcre2">(?i)-my\.sharepoint\.com/personal/</field>
+    <field name="office365.ObjectId" type="pcre2">(?i)-my\.sharepoint\.[a-z.]+/personal/</field>
     <list field="office365.UserId" lookup="not_match_key">etc/lists/b89-m365-service-accounts</list>
     <description>B89 SharePoint: $(office365.UserId) se agregó o agregó un administrador al OneDrive de otra persona ($(office365.ObjectId)).</description>
     <options>no_full_log</options>

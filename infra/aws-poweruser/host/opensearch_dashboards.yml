@@ -37,8 +37,7 @@ b89_ops.login.destinationLabel: 'B89'
 # medir en el Indexer (un permiso de Entra que falta) se declara aquí; al conceder el permiso, volver
 # a `auto` (o borrar la clave) y recrear solo el contenedor del dashboard.
 b89_ops.integrations.office365.state: 'auto'
-b89_ops.integrations.sharepoint.state: 'disabled'
-b89_ops.integrations.sharepoint.note: 'Collector SharePoint/OneDrive instalado pero apagado; requiere validar vía de auditoría y permisos de postura con HTTP 200 antes de activar.'
+b89_ops.integrations.sharepoint.state: 'auto'
 b89_ops.integrations.alertMail.state: 'blocked'
 b89_ops.integrations.alertMail.missingPermissions: ['Mail.Send']
 b89_ops.integrations.alertMail.note: 'Sin Microsoft Graph › Mail.Send (aplicación) el notificador no puede enviar el correo de alertas de nivel ≥ 8.'
