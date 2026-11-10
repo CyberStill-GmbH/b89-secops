@@ -47,12 +47,33 @@ const candidate = {
   priority: 'P1',
   status: 'proposed',
   stages: [],
+  explanation: {
+    patternId: 'credential-to-privilege',
+    patternTitle: 'Cadena de credenciales',
+    narrative: 'Fallos, acceso y cambio privilegiado.',
+    stages: [
+      { stage: 'auth.failure', ruleId: '101710', at: 'now', observationId: 'w1', source: 'aws' },
+    ],
+    entities: [
+      { key: 'user:victima@b89.example', role: 'pivot' },
+      { key: 'ip:203.0.113.9', role: 'related' },
+      { key: 'bogus', role: 'related' },
+    ],
+    evidenceObservationIds: ['w1', 'w2'],
+    topContributors: [{ ruleId: '101640', points: 20 }],
+    scoreBase: 90,
+    diversityMultiplier: 1.25,
+    progressionBonus: 30,
+    nextSteps: ['Revocar sesiones.'],
+  },
 };
 
 function fakeCorrelator(request: { url?: string; headers: Record<string, unknown> }) {
   const url = new URL(request.url ?? '/', 'http://fake');
-  if (url.pathname === '/v1/entities') return { asOf: 'now', ready: true, threshold: 80, items: [entitySummary] };
-  if (url.pathname === '/v1/entities/keys') return { keys: ['user:otro@b89.example', 'user:victima@b89.example'] };
+  if (url.pathname === '/v1/entities')
+    return { asOf: 'now', ready: true, threshold: 80, items: [entitySummary] };
+  if (url.pathname === '/v1/entities/keys')
+    return { keys: ['user:otro@b89.example', 'user:victima@b89.example'] };
   if (url.pathname === '/v1/entity' && url.searchParams.get('key') === 'user:victima@b89.example') {
     return {
       asOf: 'now',
@@ -66,7 +87,8 @@ function fakeCorrelator(request: { url?: string; headers: Record<string, unknown
       candidates: [candidate],
     };
   }
-  if (url.pathname === '/v1/candidates') return { asOf: 'now', reduction: { b89Alerts: 3.2 }, items: [candidate] };
+  if (url.pathname === '/v1/candidates')
+    return { asOf: 'now', reduction: { b89Alerts: 3.2 }, items: [candidate] };
   return undefined;
 }
 
@@ -76,7 +98,11 @@ function cookiesOf(response: { headers: Record<string, unknown> }): string[] {
 }
 
 async function signIn(username: string) {
-  const start = await server().inject({ method: 'GET', url: '/api/auth/start', remoteAddress: officeIp });
+  const start = await server().inject({
+    method: 'GET',
+    url: '/api/auth/start',
+    remoteAddress: officeIp,
+  });
   const flowCookie = cookiesOf(start)[0]?.split(';', 1)[0] ?? '';
   const headers = flowCookie ? { cookie: flowCookie } : {};
   const state = new URL(start.headers.location as string, 'http://local').searchParams.get('state');
@@ -143,7 +169,11 @@ afterAll(async () => {
 
 describe('riesgo por entidad (/api/risk)', () => {
   it('exige sesión', async () => {
-    const response = await server().inject({ method: 'GET', url: '/api/risk/entities', remoteAddress: officeIp });
+    const response = await server().inject({
+      method: 'GET',
+      url: '/api/risk/entities',
+      remoteAddress: officeIp,
+    });
     expect(response.statusCode).toBe(401);
   });
 
@@ -152,7 +182,11 @@ describe('riesgo por entidad (/api/risk)', () => {
     const response = await get(cookie, '/api/risk/entities?top=5');
     expect(response.statusCode).toBe(200);
     const body = JSON.parse(response.body);
-    expect(body.items[0]).toMatchObject({ kind: 'user', label: 'victima@b89.example', score: 142.5 });
+    expect(body.items[0]).toMatchObject({
+      kind: 'user',
+      label: 'victima@b89.example',
+      score: 142.5,
+    });
     expect(body.items[0].ref).toMatch(/^ent_[A-Za-z0-9_-]{22}$/u);
     expect(body.items[0].key).toBeUndefined();
     expect(seen.at(-1)).toEqual({ url: '/v1/entities?top=5', auth: `Bearer ${READ_TOKEN}` });
@@ -188,9 +222,29 @@ describe('riesgo por entidad (/api/risk)', () => {
     const response = await get(cookie, '/api/risk/candidates?status=proposed&limit=10');
     expect(response.statusCode).toBe(200);
     const body = JSON.parse(response.body);
-    expect(body.items[0]).toMatchObject({ id: 'rc_1', priority: 'P1', patternId: 'credential-to-privilege' });
+    expect(body.items[0]).toMatchObject({
+      id: 'rc_1',
+      priority: 'P1',
+      patternId: 'credential-to-privilege',
+    });
     expect(body.items[0].relatedEntities).toHaveLength(1);
     expect(body.items[0].idempotencyKey).toBeUndefined();
+    const explanation = body.items[0].explanation;
+    expect(explanation).toMatchObject({
+      patternId: 'credential-to-privilege',
+      narrative: 'Fallos, acceso y cambio privilegiado.',
+      evidenceObservationIds: ['w1', 'w2'],
+      nextSteps: ['Revocar sesiones.'],
+      score: { base: 90, diversityMultiplier: 1.25, progressionBonus: 30 },
+    });
+    expect(explanation.entities).toHaveLength(2);
+    expect(explanation.entities[0]).toMatchObject({
+      kind: 'user',
+      role: 'pivot',
+      label: 'victima@b89.example',
+    });
+    expect(explanation.entities[0].ref).toMatch(/^ent_/u);
+    expect(explanation.entities[0].key).toBeUndefined();
     expect((await get(cookie, '/api/risk/candidates?status=open')).statusCode).toBe(422);
   });
 

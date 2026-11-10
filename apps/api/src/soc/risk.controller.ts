@@ -129,6 +129,38 @@ export class RiskController {
       lastSeen: c['lastSeen'],
       status: c['status'],
       alertId: c['alertId'] ?? null,
+      explanation: this.explanation(c['explanation']),
+    };
+  }
+
+  /**
+   * Explicación del candidato para la vista de investigación: patrón, etapas, entidades (con
+   * referencia opaca y rol), ids de evidencia de Wazuh, aportes principales y próximos pasos.
+   */
+  private explanation(value: unknown) {
+    const x = record(value);
+    return {
+      patternId: x['patternId'] ?? null,
+      patternTitle: x['patternTitle'] ?? null,
+      narrative: x['narrative'] ?? null,
+      stages: list(x['stages']),
+      entities: list(x['entities'])
+        .map((item) => {
+          const entity = record(item);
+          const projected = this.entityOf(entity['key']);
+          return projected
+            ? { ...projected, role: entity['role'] === 'pivot' ? 'pivot' : 'related' }
+            : null;
+        })
+        .filter((entity) => entity !== null),
+      evidenceObservationIds: list(x['evidenceObservationIds']),
+      topContributors: list(x['topContributors']),
+      score: {
+        base: x['scoreBase'] ?? null,
+        diversityMultiplier: x['diversityMultiplier'] ?? null,
+        progressionBonus: x['progressionBonus'] ?? null,
+      },
+      nextSteps: list(x['nextSteps']),
     };
   }
 
@@ -170,7 +202,9 @@ export class RiskController {
       throw new ApiError('VALIDATION_FAILED', correlationId, ['type', 'value']);
     }
     const keys = list((await this.read(`/v1/entities/keys?type=${type}`, correlationId))['keys']);
-    const key = keys.find((candidate) => typeof candidate === 'string' && this.ref(candidate) === value);
+    const key = keys.find(
+      (candidate) => typeof candidate === 'string' && this.ref(candidate) === value,
+    );
     if (typeof key !== 'string') throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
     const body = await this.read(`/v1/entity?key=${encodeURIComponent(key)}`, correlationId);
     const detail = record(body['entity']);

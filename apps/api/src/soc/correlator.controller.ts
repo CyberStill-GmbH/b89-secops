@@ -51,6 +51,83 @@ function duplicateKeyError(error: unknown): boolean {
   );
 }
 
+const STAGE = /^[a-z][a-z._]{2,39}$/u;
+const RULE_ID = /^[A-Za-z0-9][A-Za-z0-9:._-]{0,99}$/u;
+const EVIDENCE_ID = /^[A-Za-z0-9][A-Za-z0-9:._@-]{0,119}$/u;
+const SOURCE = /^[a-z0-9][a-z0-9._-]{0,39}$/u;
+
+type ExplanationReason = {
+  code: 'ATTACK_CHAIN' | 'CORRELATED_ENTITY';
+  delta: number;
+  detail: string;
+};
+
+/**
+ * Optional explanation of a correlated candidate (pattern stages, evidence ids, next steps). It
+ * becomes extra alert reasons, which the console's investigation view and the notifications
+ * already render. Returns `undefined` when the shape is invalid (the request is rejected).
+ */
+function explanationReasons(value: unknown): ExplanationReason[] | undefined {
+  if (value === undefined || value === null) return [];
+  if (!isRecord(value)) return undefined;
+  const reasons: ExplanationReason[] = [];
+  const narrative = value['narrative'];
+  if (narrative !== undefined && narrative !== '') {
+    if (!boundedText(narrative, 600)) return undefined;
+    reasons.push({ code: 'ATTACK_CHAIN', delta: 0, detail: `Explicación: ${narrative.trim()}` });
+  }
+  const stages = value['stages'] ?? [];
+  if (!Array.isArray(stages) || stages.length > 6) return undefined;
+  for (const [index, raw] of stages.entries()) {
+    if (!isRecord(raw)) return undefined;
+    const at = typeof raw['at'] === 'string' ? new Date(raw['at']) : new Date('');
+    const observationId = raw['observationId'] ?? '';
+    if (
+      typeof raw['stage'] !== 'string' ||
+      !STAGE.test(raw['stage']) ||
+      typeof raw['ruleId'] !== 'string' ||
+      !RULE_ID.test(raw['ruleId']) ||
+      typeof raw['source'] !== 'string' ||
+      !SOURCE.test(raw['source']) ||
+      Number.isNaN(at.getTime()) ||
+      typeof observationId !== 'string' ||
+      (observationId !== '' && !EVIDENCE_ID.test(observationId))
+    ) {
+      return undefined;
+    }
+    reasons.push({
+      code: 'ATTACK_CHAIN',
+      delta: 0,
+      detail:
+        `Etapa ${index + 1}: ${raw['stage']} · regla ${raw['ruleId']} · ${raw['source']} · ` +
+        `${at.toISOString()}${observationId ? ` · evidencia wazuh:${observationId}` : ''}`,
+    });
+  }
+  const evidence = value['evidenceObservationIds'] ?? [];
+  if (
+    !Array.isArray(evidence) ||
+    evidence.length > 20 ||
+    evidence.some((id) => typeof id !== 'string' || !EVIDENCE_ID.test(id))
+  ) {
+    return undefined;
+  }
+  if (evidence.length > 0) {
+    reasons.push({
+      code: 'CORRELATED_ENTITY',
+      delta: 0,
+      detail: `Evidencia (alertas Wazuh): ${(evidence as string[]).join(', ')}`.slice(0, 1200),
+    });
+  }
+  const steps = value['nextSteps'] ?? [];
+  if (!Array.isArray(steps) || steps.length > 4 || steps.some((step) => !boundedText(step, 300))) {
+    return undefined;
+  }
+  for (const step of steps as string[]) {
+    reasons.push({ code: 'CORRELATED_ENTITY', delta: 0, detail: `Siguiente paso: ${step.trim()}` });
+  }
+  return reasons;
+}
+
 @Controller('api/internal/correlator')
 export class CorrelatorController {
   public constructor(@Inject(SECOPS_RUNTIME) private readonly runtime: SecOpsRuntime) {}
@@ -154,6 +231,10 @@ export class CorrelatorController {
         throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
       }
     }
+    const explanation = explanationReasons(body['explanation']);
+    if (explanation === undefined) {
+      throw new ApiError('VALIDATION_FAILED', correlationId, ['explanation']);
+    }
     const summary = body['summary'].trim();
     const score = Number(body['score']);
     // `riskScore` is currently validation-only: DetectionCandidate persists its integer
@@ -166,7 +247,7 @@ export class CorrelatorController {
       idempotencyKey: idem,
       priority: body['priority'] as Priority,
       score,
-      reasons: [{ code: 'ATTACK_CHAIN', delta: score, detail: summary }],
+      reasons: [{ code: 'ATTACK_CHAIN', delta: score, detail: summary }, ...explanation],
       rulesetId: 'b89-correlator',
       rulesetVersion: '1.0.0',
       occurredAt,

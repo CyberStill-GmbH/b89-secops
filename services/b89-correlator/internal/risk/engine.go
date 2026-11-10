@@ -163,6 +163,9 @@ func (e *Engine) Process(o model.Observation) []*model.Candidate {
 		for _, c := range e.open[key] {
 			if o.Time.Sub(c.LastSeen) <= e.P.GroupGap && o.Time.Sub(c.FirstSeen) <= e.P.GroupMaxSpan {
 				c.MemberCount++
+				if o.ID != "" && len(c.Explanation.EvidenceObservationIDs) < 50 && !contains(c.Explanation.EvidenceObservationIDs, o.ID) {
+					c.Explanation.EvidenceObservationIDs = append(c.Explanation.EvidenceObservationIDs, o.ID)
+				}
 				if o.Time.After(c.LastSeen) {
 					c.LastSeen = o.Time
 				}
@@ -283,6 +286,18 @@ func (e *Engine) evaluatePatterns(st *EntityState, hist stageHistory, o model.Ob
 			names[i] = fmt.Sprintf("%s (regla %s, %s)", h.Stage, h.RuleID, h.At.UTC().Format("2006-01-02 15:04Z"))
 		}
 		c.Title = "B89 Riesgo: " + p.Title
+		c.Explanation.PatternTitle = p.Title
+		c.Explanation.Stages = hits
+		stageEvidence := []string{}
+		for _, h := range hits {
+			if h.ObsID != "" {
+				stageEvidence = append(stageEvidence, h.ObsID)
+			}
+		}
+		c.Explanation.EvidenceObservationIDs = mergeIDs(stageEvidence, c.Explanation.EvidenceObservationIDs, 20)
+		c.Explanation.Narrative = fmt.Sprintf("%s. Se observaron %d de %d etapas en orden sobre la misma entidad (%s) dentro de %s: %s. Riesgo %.1f (base %.1f x diversidad %.2f + progresion %.1f).",
+			p.Title, len(hits), len(p.Stages), st.Entity.Type, p.Window, strings.Join(names, " -> "), c.RiskScore,
+			c.Explanation.ScoreBase, c.Explanation.DiversityMultiplier, c.Explanation.ProgressionBonus)
 		c.Summary = fmt.Sprintf("Patrón %s (%s, %d/%d etapas) sobre %s: %s. Riesgo %.1f.",
 			p.ID, variant, len(hits), len(p.Stages), st.Entity.Type, strings.Join(names, " → "), c.RiskScore)
 		out = append(out, e.register(st, c))
@@ -332,6 +347,8 @@ func (e *Engine) evaluateThreshold(st *EntityState, at time.Time) *model.Candida
 	c.Summary = fmt.Sprintf("Riesgo %.1f ≥ umbral %.0f (base %.1f × diversidad %.2f + progresión %.1f) con %d fuentes y tácticas %s. Aportes recientes: %s.",
 		b.Effective, e.P.Threshold, b.Base, b.Diversity, b.Progression, len(st.SourcesAt(at, e.P)),
 		strings.Join(st.TacticsAt(at, e.P), ", "), strings.Join(top, "; "))
+	c.Explanation.PatternTitle = "Umbral de riesgo por entidad"
+	c.Explanation.Narrative = c.Summary
 	e.episodes[key].cand = c
 	return e.register(st, c)
 }
@@ -363,8 +380,31 @@ func (e *Engine) newCandidate(st *EntityState, at time.Time, idem, kind, pattern
 	if len(related) > 10 {
 		related = related[:10]
 	}
+	entities := []model.ExplainedEntity{{Key: st.Entity.Key(), Role: "pivot"}}
+	for _, k := range related {
+		entities = append(entities, model.ExplainedEntity{Key: k, Role: "related"})
+	}
+	top := []model.Contributor{}
+	evidence := []string{}
+	for _, ctr := range st.Contributors {
+		if ctr.Suppressed || ctr.Points <= 0 {
+			continue
+		}
+		if len(top) < 5 {
+			top = append(top, model.Contributor{RuleID: ctr.RuleID, Description: ctr.Description, Source: ctr.Source, Points: ctr.Points, At: ctr.At, ObservationID: ctr.ObsID})
+		}
+		if len(evidence) < 20 && ctr.ObsID != "" {
+			evidence = append(evidence, ctr.ObsID)
+		}
+	}
+	expl := model.Explanation{
+		PatternID: patternID, Entities: entities, TopContributors: top, EvidenceObservationIDs: evidence,
+		ScoreBase: b.Base, DiversityMultiplier: b.Diversity, ProgressionBonus: b.Progression,
+		NextSteps: nextSteps(patternID), Stages: []model.StageHit{},
+	}
 	return &model.Candidate{
-		ID: candidateID(idem), IdempotencyKey: idem, Kind: kind, PatternID: patternID,
+		Explanation: expl,
+		ID:          candidateID(idem), IdempotencyKey: idem, Kind: kind, PatternID: patternID,
 		Entity: st.Entity, RelatedKeys: related, Score: score, RiskScore: b.Effective,
 		Priority: priority, Signal: signal, MemberCount: 1, Sources: st.SourcesAt(at, e.P),
 		Tactics: st.TacticsAt(at, e.P), LastSeen: at, CreatedAt: at, Status: model.CandidateProposed,
@@ -685,5 +725,54 @@ func (e *Engine) Prune(at time.Time) {
 			delete(e.byID, c.ID)
 		}
 		e.candidates = append([]*model.Candidate(nil), e.candidates[len(e.candidates)-5000:]...)
+	}
+}
+
+func mergeIDs(first, second []string, limit int) []string {
+	out := []string{}
+	for _, list := range [][]string{first, second} {
+		for _, id := range list {
+			if len(out) < limit && !contains(out, id) {
+				out = append(out, id)
+			}
+		}
+	}
+	return out
+}
+
+// nextSteps is the investigation checklist shown with each candidate.
+func nextSteps(patternID string) []string {
+	switch patternID {
+	case "edge-to-ssh":
+		return []string{
+			"Confirmar en Cloudflare los bloqueos WAF y las rutas atacadas por la IP.",
+			"Revisar en el nodo los intentos SSH y si hubo algun acceso exitoso desde la IP.",
+			"Proponer bloqueo de la IP en el borde y en el grupo de seguridad (B89 Respond, con aprobacion).",
+		}
+	case "credential-to-privilege":
+		return []string{
+			"Validar con la persona si reconoce los inicios de sesion y el cambio privilegiado.",
+			"Revisar en CloudTrail/Entra que permisos se otorgaron y a quien; revertir si no esta autorizado.",
+			"Revocar sesiones y rotar credenciales del usuario si el acceso no es legitimo.",
+		}
+	case "ssh-bruteforce-then-access":
+		return []string{
+			"Revisar la sesion SSH aceptada (usuario, hora, comandos) en el host.",
+			"Aislar el host o bloquear la IP si el acceso no es legitimo (con aprobacion).",
+		}
+	case "endpoint-protection-and-malware":
+		return []string{
+			"Verificar en GravityZone quien desactivo la proteccion y el estado de la deteccion.",
+			"Reactivar la proteccion y aislar el equipo si la infeccion sigue activa (con aprobacion).",
+		}
+	case "access-then-audit-tamper":
+		return []string{
+			"Restaurar de inmediato la auditoria afectada (CloudTrail/GuardDuty).",
+			"Revisar las acciones del usuario durante la ventana sin auditoria y revocar sus sesiones.",
+		}
+	}
+	return []string{
+		"Revisar los aportes principales y la linea de tiempo de la entidad.",
+		"Agrupar en un incidente si las alertas relacionadas comparten causa; registrar el veredicto para el ciclo de feedback.",
 	}
 }

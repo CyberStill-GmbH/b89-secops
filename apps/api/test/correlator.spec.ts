@@ -132,6 +132,64 @@ describe('contrato privado del correlador', () => {
     ).toHaveLength(1);
   });
 
+  it('convierte la explicación en razones de la alerta y rechaza explicaciones inválidas', async () => {
+    const explanation = {
+      narrative: 'Misma IP: bloqueo WAF, escaneo del borde y fuerza bruta SSH.',
+      stages: [
+        {
+          stage: 'edge.waf_block',
+          ruleId: '101501',
+          source: 'cloudflare',
+          at: now.toISOString(),
+          observationId: '1762250400.00001',
+        },
+        {
+          stage: 'ssh.bruteforce',
+          ruleId: '5712',
+          source: 'linux-ssh',
+          at: now.toISOString(),
+          observationId: '1762250400.00007',
+        },
+      ],
+      evidenceObservationIds: ['1762250400.00001', '1762250400.00007'],
+      nextSteps: ['Confirmar en Cloudflare los bloqueos WAF.'],
+    };
+    const created = await server().inject({
+      method: 'POST',
+      url: '/api/internal/correlator/candidates',
+      headers: serviceHeaders(),
+      payload: candidateRequest({ idempotencyKey: 'correlator-explained-001', explanation }),
+    });
+    expect(created.statusCode).toBe(201);
+    const alert = [...memorySoc().alertRows.values()][0];
+    const details = (alert?.reasons ?? []).map((reason) => reason.detail);
+    expect(details[0]).toBe('Multiple independent signals share a user entity.');
+    expect(details).toContain(
+      'Explicación: Misma IP: bloqueo WAF, escaneo del borde y fuerza bruta SSH.',
+    );
+    expect(details.some((d) => d.startsWith('Etapa 2: ssh.bruteforce · regla 5712'))).toBe(true);
+    expect(details).toContain('Evidencia (alertas Wazuh): 1762250400.00001, 1762250400.00007');
+    expect(details).toContain('Siguiente paso: Confirmar en Cloudflare los bloqueos WAF.');
+
+    for (const bad of [
+      { stages: [{ stage: 'X;drop', ruleId: '1', source: 'aws', at: now.toISOString() }] },
+      { evidenceObservationIds: ['<script>'] },
+      { nextSteps: Array.from({ length: 5 }, () => 'paso') },
+      'texto',
+    ]) {
+      const rejected = await server().inject({
+        method: 'POST',
+        url: '/api/internal/correlator/candidates',
+        headers: serviceHeaders(),
+        payload: candidateRequest({
+          idempotencyKey: 'correlator-bad-explanation',
+          explanation: bad,
+        }),
+      });
+      expect(rejected.statusCode).toBe(422);
+    }
+  });
+
   it('no permite referencias relacionadas de otro tenant y el feed no permite ampliar tenant por query', async () => {
     const foreignTenant = 'tenant-outside-runtime';
     const foreign: DetectionCandidate = {

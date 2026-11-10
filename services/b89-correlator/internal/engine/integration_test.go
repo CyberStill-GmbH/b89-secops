@@ -226,6 +226,10 @@ func TestIntegrationFixtureReplayEmitsAuditsAndServes(t *testing.T) {
 	if c := patterns["edge-to-ssh"]; c.Entity.Key() != "ip:203.0.113.77" || len(c.Stages) != 3 {
 		t.Errorf("edge-to-ssh: %+v", c)
 	}
+	if x := patterns["edge-to-ssh"].Explanation; len(x.Stages) != 3 || len(x.EvidenceObservationIDs) < 3 || x.Narrative == "" ||
+		len(x.NextSteps) == 0 || x.Entities[0].Role != "pivot" || x.PatternTitle == "" {
+		t.Errorf("edge-to-ssh explanation: %+v", x)
+	}
 	if c := patterns["credential-to-privilege"]; c.Entity.Key() != "user:victima@b89.example" || c.Priority != "P1" || len(c.B89AlertIDs) == 0 {
 		t.Errorf("credential-to-privilege: %+v", c)
 	}
@@ -239,7 +243,8 @@ func TestIntegrationFixtureReplayEmitsAuditsAndServes(t *testing.T) {
 		t.Fatalf("emitted %d of %d", len(api.candidates), len(created))
 	}
 	for _, c := range api.candidates {
-		if c.IdempotencyKey == "" || c.PrimaryEntityKey == "" || c.Score < 0 || c.Score > 100 {
+		if c.IdempotencyKey == "" || c.PrimaryEntityKey == "" || c.Score < 0 || c.Score > 100 || c.RiskScore > 100 ||
+			c.Explanation == nil || c.Explanation.Narrative == "" || len(c.Explanation.EvidenceObservationIDs) == 0 {
 			t.Errorf("candidate request: %+v", c)
 		}
 	}

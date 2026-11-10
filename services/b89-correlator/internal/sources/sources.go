@@ -228,6 +228,15 @@ type CandidateRequest struct {
 	Stages           []model.StageHit `json:"stages"`
 	Sources          []string         `json:"sources"`
 	Tactics          []string         `json:"tactics"`
+	Explanation      *ExplanationRequest `json:"explanation,omitempty"`
+}
+
+// ExplanationRequest is the bounded explanation sent with a candidate.
+type ExplanationRequest struct {
+	Narrative              string           `json:"narrative"`
+	Stages                 []model.StageHit `json:"stages"`
+	EvidenceObservationIDs []string         `json:"evidenceObservationIds"`
+	NextSteps              []string         `json:"nextSteps"`
 }
 
 // CandidateResponse is the API's answer.

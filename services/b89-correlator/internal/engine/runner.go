@@ -5,6 +5,7 @@ package engine
 
 import (
 	"context"
+	"math"
 	"errors"
 	"log/slog"
 	"sort"
@@ -368,10 +369,10 @@ func (r *Runner) Emit(ctx context.Context, cands []*model.Candidate) {
 		resp, err := r.API.CreateCandidate(ctx, sources.CandidateRequest{
 			IdempotencyKey: cur.IdempotencyKey, PatternID: cur.PatternID, Kind: cur.Kind,
 			Title: cur.Title, Summary: cur.Summary, Priority: cur.Priority, Score: cur.Score,
-			RiskScore: cur.RiskScore, Signal: cur.Signal, PrimaryEntityKey: cur.Entity.Key(),
+			RiskScore: math.Min(cur.RiskScore, 100), Signal: cur.Signal, PrimaryEntityKey: cur.Entity.Key(),
 			EntityKeys: keys, RelatedAlertIDs: cur.B89AlertIDs, OccurredAt: cur.LastSeen,
 			FirstSeen: cur.FirstSeen, MemberCount: cur.MemberCount, Stages: cur.Stages,
-			Sources: cur.Sources, Tactics: cur.Tactics,
+			Sources: cur.Sources, Tactics: cur.Tactics, Explanation: explanationRequest(cur.Explanation),
 		})
 		if err != nil {
 			r.C.EmitErrors.Add(1)
@@ -509,4 +510,26 @@ func errText(err error) string {
 		s = s[:300]
 	}
 	return s
+}
+
+// explanationRequest bounds the explanation for the API: stages, evidence ids, narrative and
+// next steps become alert reasons that the console and notifications already render.
+func explanationRequest(x model.Explanation) *sources.ExplanationRequest {
+	ev := x.EvidenceObservationIDs
+	if len(ev) > 20 {
+		ev = ev[:20]
+	}
+	stages := x.Stages
+	if len(stages) > 6 {
+		stages = stages[:6]
+	}
+	narrative := x.Narrative
+	if len(narrative) > 600 {
+		narrative = narrative[:600]
+	}
+	steps := x.NextSteps
+	if len(steps) > 4 {
+		steps = steps[:4]
+	}
+	return &sources.ExplanationRequest{Narrative: narrative, Stages: stages, EvidenceObservationIDs: ev, NextSteps: steps}
 }

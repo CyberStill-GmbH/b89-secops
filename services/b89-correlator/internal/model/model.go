@@ -120,6 +120,38 @@ const (
 	CandidateFailed     = "emit_failed"
 )
 
+// ExplainedEntity is an entity of a candidate with its role in the explanation.
+type ExplainedEntity struct {
+	Key  string `json:"key"`
+	Role string `json:"role"` // "pivot" or "related"
+}
+
+// Contributor is one rule that added risk to the pivot entity.
+type Contributor struct {
+	RuleID        string    `json:"ruleId"`
+	Description   string    `json:"description"`
+	Source        string    `json:"source"`
+	Points        float64   `json:"points"`
+	At            time.Time `json:"at"`
+	ObservationID string    `json:"observationId"`
+}
+
+// Explanation is what the investigation view and notifications show: why this candidate
+// exists (pattern and stages or threshold), which entities, which evidence and what to do.
+type Explanation struct {
+	PatternID              string            `json:"patternId"`
+	PatternTitle           string            `json:"patternTitle"`
+	Narrative              string            `json:"narrative"`
+	Stages                 []StageHit        `json:"stages"`
+	Entities               []ExplainedEntity `json:"entities"`
+	EvidenceObservationIDs []string          `json:"evidenceObservationIds"`
+	TopContributors        []Contributor     `json:"topContributors"`
+	ScoreBase              float64           `json:"scoreBase"`
+	DiversityMultiplier    float64           `json:"diversityMultiplier"`
+	ProgressionBonus       float64           `json:"progressionBonus"`
+	NextSteps              []string          `json:"nextSteps"`
+}
+
 // Candidate is a correlated "risk incident" proposal: one entity, one stage window.
 type Candidate struct {
 	ID             string     `json:"id"`
@@ -145,4 +177,5 @@ type Candidate struct {
 	Status         string     `json:"status"`
 	AlertID        string     `json:"alertId,omitempty"`
 	StatusDetail   string     `json:"statusDetail,omitempty"`
+	Explanation    Explanation `json:"explanation"`
 }
