@@ -345,6 +345,46 @@ export interface NotificationAttempt {
   readonly acknowledgedAt: string | null;
   readonly acknowledgedBy: string | null;
   readonly lastFailureClass: string | null;
+  /*
+   * Campos opcionales pedidos al dispatcher (coordinación con el agente de notificaciones,
+   * COORDINACION-CLAUDE-CODEX.md). La bandeja funciona sin ellos y los usa en cuanto llegan.
+   */
+  /** Mensaje lógico: varios intentos del mismo aviso comparten `messageId`. */
+  readonly messageId?: string;
+  /** Alerta B89 que originó el aviso (si la hay). */
+  readonly alertId?: string | null;
+  readonly incidentId?: string | null;
+  /** Resumen ya proyectado y con la entidad enmascarada (sin datos personales en claro). */
+  readonly subject?: NotificationSubject | null;
+  /** Historial de entrega por canal e intento. */
+  readonly deliveries?: readonly NotificationDelivery[];
+  /** Enlace al mensaje en Teams («Ver en Teams»), si el canal lo devuelve. */
+  readonly link?: string | null;
+  readonly lastFailureReason?: string | null;
+}
+
+export interface NotificationSubject {
+  readonly title: string;
+  readonly priority?: Priority | null;
+  readonly ruleId?: string | null;
+  /** `wazuh | office365 | bitdefender | snyk | cloudflare | aws | sharepoint`. */
+  readonly source?: string | null;
+  /** Entidad afectada YA enmascarada por la API (p. ej. `is***@b89.io`). */
+  readonly entity?: string | null;
+}
+
+export type NotificationDeliveryOutcome = 'sent' | 'delivered' | 'failed' | 'acknowledged';
+
+export interface NotificationDelivery {
+  readonly attempt: number;
+  readonly channel: NotificationChannel;
+  /** sent = aceptado por Microsoft 365/SMTP; delivered = confirmado en destino. */
+  readonly outcome: NotificationDeliveryOutcome;
+  readonly at: string;
+  readonly reason?: string | null;
+  /** Quién reconoció (solo `acknowledged`). */
+  readonly actor?: string | null;
+  readonly link?: string | null;
 }
 
 /** `GET /api/changes`: qué cambió (tipo, id), nunca el contenido. */

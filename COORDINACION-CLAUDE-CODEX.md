@@ -247,3 +247,15 @@ modelo operativo P1–P4, backlog, 3 playbooks exportables de B89 Respond (conte
   Pruebas: `detections/tools/test-in-container.sh` (todas las suites en un Wazuh 4.14.8 desechable).
 - **Cierre auditado de FP históricos:** `detections/tools/close-false-positives.mjs` (imagen de la API, principal
   `svc:b89-detection-engineering`). 328/328 alertas de la regla 521 cerradas el 2026-11-09 (correlación `close-fp-521-*`).
+
+## Frontend (b89_ops) ↔ notificaciones — campos pedidos a `GET /api/notifications` (2026-11-10)
+
+La bandeja (`public/components/notifications_view.tsx`, lógica en `notification_groups.ts`) ya usa estos
+campos **opcionales** por ítem y funciona sin ellos (`common/api_contract.ts › NotificationAttempt`):
+
+- `messageId` (agrupa reintentos del mismo aviso), `alertId`, `incidentId` (agrupa por alerta/incidente; con
+  `alertId` la UI carga la alerta y habilita «Abrir en investigación» y «Preguntar a Bunny»).
+- `subject: { title, priority, ruleId, source, entity }` con `entity` **ya enmascarada** en la API.
+- `deliveries: [{ attempt, channel, outcome: 'sent'|'delivered'|'failed'|'acknowledged', at, reason?, actor?, link? }]`
+  → «Enviado (aceptado por M365)» / «Entregado» / «Fallido (motivo)» / «Reconocido (quién, cuándo)».
+- `link` («Ver en Teams») y `lastFailureReason` (texto legible del fallo).

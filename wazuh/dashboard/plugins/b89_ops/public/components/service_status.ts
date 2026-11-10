@@ -22,8 +22,9 @@ import {
  * 2. Monitor de plataforma (docs/20): último `source_status` de la fuente, si tiene ≤ 2 h.
  *    `failing` con error de permisos → «Requiere permiso»; `failing` → «Fallando»;
  *    `silent` → «Silencioso»; `disabled` → «Deshabilitado»; `ok` → «Operativo».
- * 3. Sin monitor reciente: eventos en 24 h y hora del último evento → «Recibiendo datos»,
- *    «Silencioso» (más viejo que el ritmo esperado) o «Sin datos».
+ * 3. Eventos en 24 h con el último dentro del ritmo esperado → «Operativo» (ganan a un
+ *    «silencioso»/«deshabilitado» del monitor que quedó atrás; no a un collector que falla).
+ *    Sin eventos en 24 h pero dentro del ritmo → «Recibiendo datos»; más viejo → «Silencioso».
  *
  * «Requiere permiso» solo sale cuando el monitor o el collector reportan un error de permisos;
  * nunca de una configuración estática que quedó vieja mientras los eventos fluyen.
@@ -143,9 +144,19 @@ export function providerStatus(
   }
   const monitored = monitorStatus(id, overview, now);
   const stats = overview.providers?.[id];
-  const flowing = (stats?.events24h ?? 0) > 0;
-  // Eventos fluyendo en 24 h ganan a un «silencioso» del monitor que todavía no se recuperó.
-  if (monitored && !(monitored.label === STATUS_LABEL.silent && flowing)) return monitored;
+  const ageHours = stats?.lastEventAt
+    ? (now - new Date(stats.lastEventAt).getTime()) / 3600000
+    : Number.POSITIVE_INFINITY;
+  const fresh = (stats?.events24h ?? 0) > 0 && ageHours <= STALE_AFTER_HOURS[id];
+  // Eventos frescos ganan a un «silencioso»/«deshabilitado» del monitor que quedó atrás: la
+  // fuente está operativa. Un collector que falla (o sin permisos) sí se muestra aunque haya datos.
+  if (
+    fresh &&
+    (!monitored || (monitored.tone !== 'fail' && monitored.label !== STATUS_LABEL.permission))
+  ) {
+    return { tone: 'ok', label: STATUS_LABEL.operational, detail: null };
+  }
+  if (monitored) return monitored;
   if (!stats) {
     return { tone: 'fail', label: 'Sin respuesta del Indexer', detail: null };
   }
@@ -154,7 +165,6 @@ export function providerStatus(
     if (permission) return { tone: 'warn', label: STATUS_LABEL.permission, detail: permission };
     return { tone: 'neutral', label: 'Sin datos', detail: 'Todavía no llegó ningún evento.' };
   }
-  const ageHours = (now - new Date(stats.lastEventAt).getTime()) / 3600000;
   if (ageHours > STALE_AFTER_HOURS[id]) {
     const permission = permissionProblem(id, overview);
     if (permission) return { tone: 'warn', label: STATUS_LABEL.permission, detail: permission };

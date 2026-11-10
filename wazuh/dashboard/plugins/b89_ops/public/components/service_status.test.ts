@@ -67,7 +67,7 @@ describe('estado de servicios', () => {
       tone: 'warn',
       label: 'Silencioso',
     });
-    expect(providerStatus('bitdefender', overview(), NOW).label).toBe('Recibiendo datos');
+    expect(providerStatus('bitdefender', overview(), NOW).label).toBe('Operativo');
   });
 
   it('sin permiso de lectura no se presenta como caída', () => {
@@ -123,12 +123,17 @@ describe('estado de servicios', () => {
       providerStatus('office365', o(health('failing', 'AF10001: permission set does not include')), NOW)
         .label,
     ).toBe('Requiere permiso');
-    expect(providerStatus('office365', o(health('disabled')), NOW).label).toBe('Deshabilitado');
-    // Monitor con más de 2 h: deciden los datos (eventos recientes).
+    // Monitor atrasado («deshabilitado»/«silencioso») con eventos fluyendo: Operativo.
+    expect(providerStatus('office365', o(health('disabled', 'falta ActivityFeed.Read')), NOW).label).toBe(
+      'Operativo',
+    );
+    expect(providerStatus('office365', o(health('silent')), NOW).label).toBe('Operativo');
+    // Monitor con más de 2 h: deciden los datos.
     expect(
       providerStatus('office365', o(health('failing', 'x', '2026-11-04T10:00:00Z')), NOW).label,
-    ).toBe('Recibiendo datos');
-    // Eventos fluyendo ganan a un «silencioso» todavía no recuperado.
-    expect(providerStatus('office365', o(health('silent')), NOW).label).toBe('Recibiendo datos');
+    ).toBe('Operativo');
+    // Sin eventos: el monitor manda.
+    const quiet = { ...o(health('disabled')), providers: { ...base.providers!, office365: stats(null) } };
+    expect(providerStatus('office365', quiet as OverviewResponse, NOW).label).toBe('Deshabilitado');
   });
 });
