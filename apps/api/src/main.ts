@@ -114,6 +114,7 @@ export async function main(): Promise<void> {
         warning: `excepción demo de contraseña ACTIVA hasta ${until}`,
         until,
         additionalAccounts: String(runtime.demoAccountCount),
+        deployment: runtime.demoAdminLoginDeployment ?? 'unknown',
       });
     }
     process.on('SIGINT', onSignal);

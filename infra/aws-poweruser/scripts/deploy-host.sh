@@ -125,12 +125,22 @@ if [[ ! -s $SECRETS/api.env ]]; then
     echo "B89_POSTGRES_PASSWORD=$B89_RUNTIME_PASSWORD"
     echo "B89_ENTITY_REF_KEY=$(openssl rand 48 | base64 -w0 | tr '+/' '-_' | tr -d '=')"
     echo "B89_VAPID_PRIVATE_KEY=$vapid"
-    echo "B89_ENTRA_CLIENT_SECRET=$(openssl rand -hex 24)"
     # Comillas simples: Compose interpola `$` en env_file y el hash scrypt los contiene.
     echo "B89_DEMO_ADMIN_PASSWORD_HASH='$demo_hash'"
   } >"$SECRETS/api.env"
   chmod 600 "$SECRETS/api.env"
 fi
+# Entra uses the app registration secret provisioned from the local .env into services.env.
+# Never let a generated placeholder secret make production sign-in appear configured.
+entra_client_secret="$(grep -s '^B89_ENTRA_CLIENT_SECRET=.' "$SECRETS/services.env" | cut -d= -f2- || true)"
+if [[ -z $entra_client_secret ]]; then
+  echo 'Entra: falta el client secret en /opt/b89/secrets/services.env; no se inicia el API' >&2
+  exit 1
+fi
+sed -i '/^B89_ENTRA_CLIENT_SECRET=/d' "$SECRETS/api.env"
+printf "B89_ENTRA_CLIENT_SECRET='%s'\n" "$entra_client_secret" >>"$SECRETS/api.env"
+chmod 600 "$SECRETS/api.env"
+unset entra_client_secret
 # Cuentas demo por rol (B89_DEMO_ACCOUNTS, docs/04-identidad-y-acceso.md): la fuente es
 # secrets/demo-accounts.txt (0600, una cuenta por línea: `usuario rol contraseña`; `#` comenta).
 # Una línea B89_DEMO_ACCOUNTS ya presente en secrets/api.env se conserva tal cual; si falta (p. ej.
@@ -156,6 +166,9 @@ if [[ -s $SECRETS/demo-accounts.txt ]] && ! grep -q '^B89_DEMO_ACCOUNTS=' "$SECR
     log 'cuentas demo: el código aún no admite B89_DEMO_ACCOUNTS; solo la cuenta admin'
   fi
 fi
+# Entra real + cuentas demo exige el opt-in B89_DEMO_LOGIN_WITH_ENTRA (api.env.template). Si el
+# código copiado no lo admite, el API no arrancaría (CONFIG_VALUE_INVALID): se aborta antes.
+grep -q "'B89_DEMO_LOGIN_WITH_ENTRA'" "$SRC/platform/configuration/src/schema/environment.schema.ts"   || { echo 'el código no admite B89_DEMO_LOGIN_WITH_ENTRA; no se reescribe config/api.env' >&2; exit 1; }
 # La excepción demo vence como máximo a los 30 días del arranque: se renueva en cada despliegue.
 DEMO_UNTIL="$(date -u -d '+29 days' +%Y-%m-%dT%H:%M:%SZ)" SOC_HOSTNAME="$SOC_HOSTNAME" \
   envsubst '${SOC_HOSTNAME} ${DEMO_UNTIL}' <"$HOST_DIR/api.env.template" >"$ROOT/config/api.env"

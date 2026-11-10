@@ -12,6 +12,12 @@
  *   configurada es exactamente la del despliegue demo (tenant, client y redirect fijos, los de
  *   infra/aws/environments/demo.tfvars). Un despliegue de producción real tiene otro tenant y su
  *   arranque falla con `CONFIG_VALUE_INVALID` en `B89_DEMO_ADMIN_LOGIN_ENABLED`.
+ * - Convivencia con Entra real (opt-in explícito, `B89_DEMO_LOGIN_WITH_ENTRA=true`): un
+ *   despliegue `production` con identidad de Entra real (no la de la demo) puede mantener las
+ *   cuentas demo de contraseña JUNTO al login de Entra. Exige la excepción habilitada y modo de
+ *   identidad `entra`; conserva todas las reglas (vencimiento ≤ 30 días, tope de cuentas, roles
+ *   runtime sin aprobadores, auditoría y sesión única los aplica el API igual). Sin el opt-in, el
+ *   comportamiento es el anterior; el opt-in sin la excepción habilitada impide arrancar.
  * - La contraseña nunca llega en claro: solo su hash scrypt. Aquí solo se comprueba que exista;
  *   el formato y los parámetros los valida el API al construir el verificador (y también falla
  *   al arrancar si no cumplen).
@@ -69,12 +75,18 @@ export interface DemoAccountConfig {
   readonly passwordHash: SecretValue;
 }
 
+/**
+ * Despliegue que justificó la excepción: `demo` = producción atada a la identidad fija de la demo;
+ * `entra` = producción con Entra real y opt-in explícito de convivencia.
+ */
+export type DemoAdminLoginDeployment = 'development' | 'test' | 'demo' | 'entra';
+
 export type DemoAdminLoginConfig =
   | { readonly enabled: false }
   | {
       readonly enabled: true;
-      /** Perfil efectivo que justificó la excepción; `demo` = producción atada al despliegue demo. */
-      readonly deployment: 'development' | 'test' | 'demo';
+      /** Perfil efectivo que justificó la excepción (ver `DemoAdminLoginDeployment`). */
+      readonly deployment: DemoAdminLoginDeployment;
       readonly until: Date;
       readonly username: string;
       readonly passwordHash: SecretValue;
@@ -91,6 +103,19 @@ function isDemoDeployment(access: AccessConfig): boolean {
   );
 }
 
+/**
+ * `B89_DEMO_LOGIN_WITH_ENTRA`: `true` habilita la convivencia; ausente o `false`, no. Cualquier
+ * otro valor impide arrancar (falla cerrada, sin interpretar).
+ */
+function demoLoginWithEntra(environment: EnvironmentInput, profile: ConfigurationProfile): boolean {
+  const raw = optionalString(environment, profile, 'B89_DEMO_LOGIN_WITH_ENTRA');
+  if (raw === undefined || raw === 'false') return false;
+  if (raw !== 'true') {
+    throw configurationError('CONFIG_VALUE_INVALID', 'B89_DEMO_LOGIN_WITH_ENTRA', profile.name);
+  }
+  return true;
+}
+
 export function parseDemoAdminLogin(
   environment: EnvironmentInput,
   profile: ConfigurationProfile,
@@ -99,7 +124,14 @@ export function parseDemoAdminLogin(
 ): DemoAdminLoginConfig {
   const flag = optionalString(environment, profile, 'B89_DEMO_ADMIN_LOGIN_ENABLED');
   const rawAccounts = environment['B89_DEMO_ACCOUNTS'];
+  const withEntra = demoLoginWithEntra(environment, profile);
   if (flag === undefined || flag === 'false') {
+    // El opt-in de convivencia no tiene sentido sin la excepción: se rechaza en vez de ignorarse.
+    if (withEntra) {
+      throw configurationError('CONFIG_VALUE_INVALID', 'B89_DEMO_LOGIN_WITH_ENTRA', profile.name, {
+        reason: 'DEMO_LOGIN_WITH_ENTRA_REQUIRES_DEMO_ADMIN_LOGIN',
+      });
+    }
     // Las cuentas adicionales no existen sin la excepción: configurarlas sola es un error.
     if (rawAccounts !== undefined && rawAccounts !== '') {
       throw configurationError('CONFIG_VALUE_INVALID', 'B89_DEMO_ACCOUNTS', profile.name, {
@@ -111,10 +143,15 @@ export function parseDemoAdminLogin(
   if (flag !== 'true') {
     throw configurationError('CONFIG_VALUE_INVALID', 'B89_DEMO_ADMIN_LOGIN_ENABLED', profile.name);
   }
-  let deployment: 'development' | 'test' | 'demo';
+  let deployment: DemoAdminLoginDeployment;
   if (profile.name === 'production') {
-    if (!isDemoDeployment(access)) {
-      // Fallo explícito: la excepción no existe en un perfil de producción que no sea la demo.
+    if (isDemoDeployment(access)) {
+      deployment = 'demo';
+    } else if (withEntra && access.identityMode === 'entra') {
+      // Convivencia explícita con Entra real: mismas reglas, decisión consciente del despliegue.
+      deployment = 'entra';
+    } else {
+      // Fallo explícito: sin opt-in, la excepción no existe en producción fuera de la demo.
       throw configurationError(
         'CONFIG_VALUE_INVALID',
         'B89_DEMO_ADMIN_LOGIN_ENABLED',
@@ -122,7 +159,6 @@ export function parseDemoAdminLogin(
         { reason: 'DEMO_ADMIN_LOGIN_NOT_ALLOWED_IN_PROFILE' },
       );
     }
-    deployment = 'demo';
   } else {
     deployment = profile.name;
   }

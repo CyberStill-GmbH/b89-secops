@@ -42,5 +42,6 @@ export {
   type DemoAccountConfig,
   type DemoAccountRole,
   type DemoAdminLoginConfig,
+  type DemoAdminLoginDeployment,
 } from './demo-admin-login.schema.js';
 export { parseAlertMailSender, parseTeamsWorkflowUrl } from './notifications.schema.js';

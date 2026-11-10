@@ -36,9 +36,11 @@ navegador ─TLS─▶ ALB + WAF ─▶ edge nginx (172.30.89.11)
 
 ### Cuentas demo y sus límites
 
-No hay Entra real: la API corre con `B89_PROFILE=production` y la **identidad fija de demo**
-(`DEMO_DEPLOYMENT_IDENTITY`, `infra/aws-poweruser/host/api.env.template`), la única combinación que
-admite la excepción de contraseña en producción.
+Desde el 2026-11-10 `dev.security.b89.io` usa **Entra real** (tenant y app de B89, redirect
+`https://dev.security.b89.io/api/auth/callback`) **junto a** las cuentas demo de contraseña, por el
+opt-in explícito `B89_DEMO_LOGIN_WITH_ENTRA=true` (`infra/aws-poweruser/host/api.env.template`). Sin
+ese opt-in, la única combinación de `production` que admite la excepción de contraseña sigue siendo
+la **identidad fija de demo** (`DEMO_DEPLOYMENT_IDENTITY`).
 
 | Cuenta | Rol | Origen |
 | --- | --- | --- |
@@ -194,6 +196,16 @@ admite. Al arrancar con la excepción activa, el log emite
 despliegue demo (tenant, client y redirect de `DEMO_DEPLOYMENT_IDENTITY` en `demo-admin-login.schema.ts`, la misma
 atadura que la antigua excepción de MFA). Cualquier otro despliegue de producción no arranca
 (`CONFIG_VALUE_INVALID` en `B89_DEMO_ADMIN_LOGIN_ENABLED`, `reason: DEMO_ADMIN_LOGIN_NOT_ALLOWED_IN_PROFILE`).
+
+**Convivencia con Entra real (opt-in).** `B89_DEMO_LOGIN_WITH_ENTRA=true` admite la excepción en
+`production` con una identidad de Entra real (`deployment: 'entra'`, visible en el log
+`auth.demo_admin_password.active`). No relaja nada más: exige `B89_DEMO_ADMIN_LOGIN_ENABLED=true`
+(si no, `CONFIG_VALUE_INVALID` en `B89_DEMO_LOGIN_WITH_ENTRA`,
+`reason: DEMO_LOGIN_WITH_ENTRA_REQUIRES_DEMO_ADMIN_LOGIN`), mantiene el vencimiento ≤ 30 días, el
+tope de 8 cuentas, los roles runtime sin aprobadores, la auditoría, la cookie estricta y la sesión
+única por cuenta. Las sesiones demo llevan el emisor propio `urn:b89:demo-admin-password` y el
+prefijo `demo-admin:`: un token de Entra nunca abre una sesión demo ni al revés. Cualquier valor
+distinto de `true`/`false` impide arrancar. Pruebas: `platform/configuration/test/demo-accounts-config.spec.ts`.
 
 ### Cuentas demo adicionales por rol (opcional)
 

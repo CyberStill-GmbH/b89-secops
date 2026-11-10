@@ -206,3 +206,157 @@ describe('B89_DEMO_ACCOUNTS', () => {
     expect(serialized).not.toContain('plaintext');
   });
 });
+
+/** Identidad de Entra real (no la de la demo), como la de dev.security.b89.io. */
+const REAL_ENTRA_IDENTITY = {
+  ...DEMO_IDENTITY,
+  B89_ENTRA_TENANT_ID: '33333333-3333-4333-8333-333333333333',
+  B89_ENTRA_CLIENT_ID: '44444444-4444-4444-8444-444444444444',
+  B89_ENTRA_REDIRECT_URI: 'https://soc.cliente.example/api/auth/callback',
+  B89_ENTRA_ALLOWED_REDIRECT_URIS: 'https://soc.cliente.example/api/auth/callback',
+  B89_CONSOLE_BASE_URL: 'https://soc.cliente.example',
+};
+
+describe('B89_DEMO_LOGIN_WITH_ENTRA (convivencia con Entra real)', () => {
+  const accounts = [
+    account('lider@b89.io', 'b89.soc.lead'),
+    account('analista@b89.io', 'b89.soc.analyst'),
+  ];
+
+  it('es una variable conocida', () => {
+    expect(KNOWN_B89_VARIABLES.has('B89_DEMO_LOGIN_WITH_ENTRA')).toBe(true);
+    expect(() => rejectUnknownB89Variables({ B89_DEMO_LOGIN_WITH_ENTRA: 'true' })).not.toThrow();
+  });
+
+  it('sin opt-in, producción con Entra real sigue rechazando la excepción', () => {
+    const failure = failureOf(() =>
+      loadDemoAdminLoginConfig(
+        { ...REAL_ENTRA_IDENTITY, ...environment(accounts), B89_PROFILE: 'production' },
+        new Date(),
+      ),
+    );
+    expect(failure).toMatchObject({
+      code: 'CONFIG_VALUE_INVALID',
+      path: 'B89_DEMO_ADMIN_LOGIN_ENABLED',
+      details: { reason: 'DEMO_ADMIN_LOGIN_NOT_ALLOWED_IN_PROFILE' },
+    });
+  });
+
+  it('con opt-in, admite el admin y las cuentas demo junto a la identidad real', () => {
+    const config = loadDemoAdminLoginConfig(
+      {
+        ...REAL_ENTRA_IDENTITY,
+        ...environment(accounts),
+        B89_PROFILE: 'production',
+        B89_DEMO_LOGIN_WITH_ENTRA: 'true',
+      },
+      new Date(),
+    );
+    expect(config).toMatchObject({ enabled: true, deployment: 'entra', username: ADMIN });
+    expect(config.enabled && config.accounts.map((entry) => entry.role)).toEqual([
+      'b89.soc.lead',
+      'b89.soc.analyst',
+    ]);
+    expect(JSON.stringify(config)).not.toContain(HASH);
+  });
+
+  it('la identidad fija de la demo sigue siendo `demo`, con o sin opt-in', () => {
+    for (const optIn of [undefined, 'true', 'false']) {
+      const config = loadDemoAdminLoginConfig(
+        {
+          ...DEMO_IDENTITY,
+          ...environment(accounts),
+          B89_PROFILE: 'production',
+          B89_DEMO_LOGIN_WITH_ENTRA: optIn,
+        },
+        new Date(),
+      );
+      expect(config).toMatchObject({ enabled: true, deployment: 'demo' });
+    }
+  });
+
+  it('el opt-in conserva la ventana de 30 días, el tope de cuentas y la exclusión de aprobadores', () => {
+    const base = {
+      ...REAL_ENTRA_IDENTITY,
+      B89_PROFILE: 'production',
+      B89_DEMO_LOGIN_WITH_ENTRA: 'true',
+    };
+    expect(
+      failureOf(() =>
+        loadDemoAdminLoginConfig(
+          {
+            ...base,
+            ...environment(accounts, {
+              B89_DEMO_ADMIN_LOGIN_UNTIL: new Date(Date.now() + 31 * 86_400_000).toISOString(),
+            }),
+            B89_PROFILE: 'production',
+          },
+          new Date(),
+        ),
+      ),
+    ).toMatchObject({ code: 'CONFIG_LIMIT_INVALID', path: 'B89_DEMO_ADMIN_LOGIN_UNTIL' });
+    const tooMany = Array.from({ length: DEMO_ACCOUNTS_MAX + 1 }, (_, index) =>
+      account(`cuenta${index}@b89.io`, 'b89.soc.analyst'),
+    );
+    expect(
+      failureOf(() =>
+        loadDemoAdminLoginConfig(
+          { ...base, ...environment(tooMany), B89_PROFILE: 'production' },
+          new Date(),
+        ),
+      ),
+    ).toMatchObject({ code: 'CONFIG_LIMIT_INVALID', path: 'B89_DEMO_ACCOUNTS' });
+    for (const approver of ['b89.access.approver', 'b89.security.approver']) {
+      expect(
+        failureOf(() =>
+          loadDemoAdminLoginConfig(
+            {
+              ...base,
+              ...environment([account('aprobador@b89.io', approver)]),
+              B89_PROFILE: 'production',
+            },
+            new Date(),
+          ),
+        ),
+      ).toMatchObject({ path: 'B89_DEMO_ACCOUNTS', details: { reason: 'ROLE_INVALID' } });
+    }
+  });
+
+  it('el opt-in sin la excepción habilitada impide arrancar', () => {
+    for (const flag of [undefined, 'false']) {
+      expect(
+        failureOf(() =>
+          loadDemoAdminLoginConfig(
+            {
+              ...REAL_ENTRA_IDENTITY,
+              B89_PROFILE: 'production',
+              B89_DEMO_ADMIN_LOGIN_ENABLED: flag,
+              B89_DEMO_LOGIN_WITH_ENTRA: 'true',
+            },
+            new Date(),
+          ),
+        ),
+      ).toMatchObject({
+        code: 'CONFIG_VALUE_INVALID',
+        path: 'B89_DEMO_LOGIN_WITH_ENTRA',
+        details: { reason: 'DEMO_LOGIN_WITH_ENTRA_REQUIRES_DEMO_ADMIN_LOGIN' },
+      });
+    }
+  });
+
+  it('un valor distinto de true/false impide arrancar', () => {
+    expect(
+      failureOf(() =>
+        loadDemoAdminLoginConfig(
+          {
+            ...REAL_ENTRA_IDENTITY,
+            ...environment(accounts),
+            B89_PROFILE: 'production',
+            B89_DEMO_LOGIN_WITH_ENTRA: 'yes',
+          },
+          new Date(),
+        ),
+      ),
+    ).toMatchObject({ code: 'CONFIG_VALUE_INVALID', path: 'B89_DEMO_LOGIN_WITH_ENTRA' });
+  });
+});

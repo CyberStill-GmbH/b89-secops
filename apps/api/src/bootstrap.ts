@@ -567,6 +567,8 @@ export async function buildApi(
     ingestion: ingestionConfig.source,
     /** Vencimiento de la excepción demo de contraseña, para la advertencia del arranque. */
     demoAdminLoginUntil: demoAdminLogin?.until,
+    /** Despliegue que justificó la excepción (`entra` = convivencia con Entra real). */
+    demoAdminLoginDeployment: demoAdminConfig.enabled ? demoAdminConfig.deployment : undefined,
     /** Cuentas demo adicionales (sin el administrador), para la advertencia del arranque. */
     demoAccountCount: Math.max(0, (demoAdminLogin?.accounts.length ?? 1) - 1),
     async start() {

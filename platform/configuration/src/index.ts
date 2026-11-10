@@ -60,6 +60,7 @@ export type {
   DemoAccountConfig,
   DemoAccountRole,
   DemoAdminLoginConfig,
+  DemoAdminLoginDeployment,
   DetectionContextConfig,
   IdentityMode,
   DirectoryConfig,

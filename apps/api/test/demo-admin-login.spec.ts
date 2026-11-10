@@ -303,6 +303,26 @@ describe('configuración y arranque de la excepción demo', () => {
     expect(JSON.stringify(config)).not.toContain(passwordHash);
   });
 
+  it('producción con Entra real la admite solo con el opt-in B89_DEMO_LOGIN_WITH_ENTRA=true', () => {
+    const environment = { ...PRODUCTION_ACCESS, ...demoEnvironment(), B89_PROFILE: 'production' };
+    expect(() => loadDemoAdminLoginConfig(environment, new Date())).toThrow(ConfigurationError);
+    const config = loadDemoAdminLoginConfig(
+      { ...environment, B89_DEMO_LOGIN_WITH_ENTRA: 'true' },
+      new Date(),
+    );
+    expect(config).toMatchObject({ enabled: true, deployment: 'entra', username: USERNAME });
+    expect(JSON.stringify(config)).not.toContain(passwordHash);
+  });
+
+  it('el arranque expone el despliegue que justificó la excepción para el log', async () => {
+    const h = await harness(demoEnvironment());
+    try {
+      expect(h.built.demoAdminLoginDeployment).toBe('test');
+    } finally {
+      await h.built.stop();
+    }
+  });
+
   it.each([
     ['mal formado', 'no-es-un-hash'],
     ['con parámetros débiles', passwordHashWith({ ln: '14' })],
