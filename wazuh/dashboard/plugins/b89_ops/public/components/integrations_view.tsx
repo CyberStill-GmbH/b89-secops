@@ -14,6 +14,7 @@ import {
   StatusPill,
   usePlatformData,
 } from './overview_parts';
+import { STATUS_LABEL } from './service_status';
 import { ServiceMark } from './vendor_logo';
 import { ErrorCallout } from './primitives';
 import { ProviderSeverity, ServiceModel, serviceModels } from './service_cards';
@@ -25,11 +26,8 @@ import { ProviderSeverity, ServiceModel, serviceModels } from './service_cards';
 export function IntegrationsView({ basePath }: { basePath: string }) {
   const data = usePlatformData(basePath);
   const models = serviceModels(data);
-  const blocked = models.filter(
-    (model) =>
-      model.status.tone === 'warn' &&
-      data.overview.data?.integrations[model.spec.id]?.state === 'blocked',
-  );
+  // Solo lo que hoy reporta un error de permisos (monitor, collector o override explícito).
+  const blocked = models.filter((model) => model.status.label === STATUS_LABEL.permission);
   return (
     <main className="b89Page b89Overview">
       <header className="b89Hero">
@@ -78,7 +76,11 @@ export function IntegrationsView({ basePath }: { basePath: string }) {
               model={model}
               basePath={basePath}
               severity={<ProviderSeverity model={model} data={data} />}
-              missing={data.overview.data?.integrations[model.spec.id]?.missingPermissions ?? []}
+              missing={
+                model.status.label === STATUS_LABEL.permission
+                  ? (data.overview.data?.integrations[model.spec.id]?.missingPermissions ?? [])
+                  : []
+              }
             />
           ),
         )}

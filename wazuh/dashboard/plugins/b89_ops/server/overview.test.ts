@@ -100,6 +100,7 @@ describe('overview: consultas', () => {
     expect(query.size).toBe(0);
     expect(Object.keys(query.aggs.providers.filters.filters)).toEqual([
       'office365',
+      'sharepoint',
       'bitdefender',
       'snyk',
       'cloudflare',

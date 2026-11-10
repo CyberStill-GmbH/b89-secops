@@ -4,19 +4,29 @@
 
 import {
   HealthTone,
-  PLATFORM_SOURCE_LABEL,
-  PlatformSourceHealth,
-  serviceSourceState,
   IntegrationConfig,
   OverviewResponse,
+  PLATFORM_SOURCE_LABEL,
+  PlatformSourceHealth,
   ProviderId,
+  SERVICE_HEALTH_SOURCE,
+  serviceSourceState,
   SourceHealth,
 } from '../../common';
 
 /**
- * Estado visible de cada servicio a partir de lo declarado (`b89_ops.integrations`) y de lo
- * medido (Indexer, API B89). Una sola tabla de decisión para «Resumen del SOC» e
- * «Integraciones»: la misma integración nunca dice cosas distintas en dos pantallas.
+ * Estado visible de cada servicio. Una sola tabla de decisión para «Resumen del SOC» e
+ * «Integraciones», guiada por los datos:
+ *
+ * 1. Override explícito de `b89_ops.integrations.<id>.state` (≠ `auto`, que es el defecto).
+ * 2. Monitor de plataforma (docs/20): último `source_status` de la fuente, si tiene ≤ 2 h.
+ *    `failing` con error de permisos → «Requiere permiso»; `failing` → «Fallando»;
+ *    `silent` → «Silencioso»; `disabled` → «Deshabilitado»; `ok` → «Operativo».
+ * 3. Sin monitor reciente: eventos en 24 h y hora del último evento → «Recibiendo datos»,
+ *    «Silencioso» (más viejo que el ritmo esperado) o «Sin datos».
+ *
+ * «Requiere permiso» solo sale cuando el monitor o el collector reportan un error de permisos;
+ * nunca de una configuración estática que quedó vieja mientras los eventos fluyen.
  */
 export interface ServiceStatus {
   readonly tone: HealthTone;
@@ -24,6 +34,15 @@ export interface ServiceStatus {
   /** Una línea con el porqué (permiso faltante, último evento, error). */
   readonly detail: string | null;
 }
+
+export const STATUS_LABEL = {
+  operational: 'Operativo',
+  receiving: 'Recibiendo datos',
+  silent: 'Silencioso',
+  failing: 'Fallando',
+  disabled: 'Deshabilitado',
+  permission: 'Requiere permiso',
+} as const;
 
 /** Horas sin eventos a partir de las cuales un proveedor se considera callado. */
 export const STALE_AFTER_HOURS: Readonly<Record<ProviderId, number>> = {
@@ -36,10 +55,41 @@ export const STALE_AFTER_HOURS: Readonly<Record<ProviderId, number>> = {
   aws: 24,
 };
 
-/**
- * Estado que reporta el monitor de plataforma (docs/20) para un servicio. Solo cuenta si es
- * reciente (≤ 2 h); «ok» o desconocido no cambian lo que dicen los datos.
- */
+/** Texto de un error de permisos (Graph/Entra, API de proveedor, HTTP 401/403). */
+const PERMISSION_ERROR =
+  /permis|permission|forbidden|unauthori[sz]ed|access denied|consent|\b40[13]\b|AF10001|ActivityFeed|insufficient/iu;
+
+export function isPermissionError(text: string | null | undefined): boolean {
+  return !!text && PERMISSION_ERROR.test(text);
+}
+
+/** Override explícito por configuración; `auto` (el defecto) deja decidir a los datos. */
+export function declaredStatus(config: IntegrationConfig | undefined): ServiceStatus | null {
+  if (!config || config.state === 'auto') return null;
+  const permissions = config.missingPermissions.join(', ');
+  if (config.state === 'blocked') {
+    return {
+      tone: 'warn',
+      label: STATUS_LABEL.permission,
+      detail: [permissions, config.note].filter(Boolean).join(' · ') || null,
+    };
+  }
+  if (config.state === 'disabled') {
+    return { tone: 'neutral', label: STATUS_LABEL.disabled, detail: config.note || null };
+  }
+  return { tone: 'info', label: 'Pendiente', detail: config.note || null };
+}
+
+/** Problema abierto del monitor con error de permisos para las fuentes del servicio. */
+function permissionProblem(serviceId: string, overview: OverviewResponse | null): string | null {
+  const sources = SERVICE_HEALTH_SOURCE[serviceId] ?? [serviceId];
+  const problem = overview?.platformHealth?.problems.find(
+    (item) => sources.includes(item.source) && isPermissionError(`${item.check} ${item.summary}`),
+  );
+  return problem ? problem.summary || problem.check : null;
+}
+
+/** Estado según el monitor de plataforma (≤ 2 h). `null` si no hay dato reciente. */
 export function monitorStatus(
   serviceId: string,
   overview: OverviewResponse | null,
@@ -50,34 +100,30 @@ export function monitorStatus(
     serviceId,
     now,
   );
-  if (!item) return null;
+  if (!item || item.state === 'unknown') return null;
   const who = PLATFORM_SOURCE_LABEL[item.source] ?? item.source;
   if (item.state === 'failing') {
-    return { tone: 'fail', label: 'Collector con fallos', detail: item.summary || `${who}: el collector falla.` };
-  }
-  if (item.state === 'silent') {
-    return { tone: 'warn', label: 'Fuente en silencio', detail: item.summary || `${who} no envía eventos.` };
-  }
-  if (item.state === 'disabled') {
-    return { tone: 'neutral', label: 'Desactivada', detail: item.summary || null };
-  }
-  return null;
-}
-
-export function declaredStatus(config: IntegrationConfig | undefined): ServiceStatus | null {
-  if (!config || config.state === 'auto') return null;
-  const permissions = config.missingPermissions.join(', ');
-  if (config.state === 'blocked') {
+    const permission = isPermissionError(item.summary)
+      ? item.summary
+      : permissionProblem(serviceId, overview);
+    if (permission) return { tone: 'warn', label: STATUS_LABEL.permission, detail: permission };
     return {
-      tone: 'warn',
-      label: permissions ? `Requiere ${permissions}` : 'Bloqueada',
-      detail: config.note || null,
+      tone: 'fail',
+      label: STATUS_LABEL.failing,
+      detail: item.summary || `${who}: el collector falla.`,
     };
   }
-  if (config.state === 'disabled') {
-    return { tone: 'neutral', label: 'No configurada', detail: config.note || null };
+  if (item.state === 'silent') {
+    return {
+      tone: 'warn',
+      label: STATUS_LABEL.silent,
+      detail: item.summary || `${who} no envía eventos.`,
+    };
   }
-  return { tone: 'info', label: 'Pendiente', detail: config.note || null };
+  if (item.state === 'disabled') {
+    return { tone: 'neutral', label: STATUS_LABEL.disabled, detail: item.summary || null };
+  }
+  return { tone: 'ok', label: STATUS_LABEL.operational, detail: null };
 }
 
 export function providerStatus(
@@ -96,24 +142,35 @@ export function providerStatus(
     };
   }
   const monitored = monitorStatus(id, overview, now);
-  if (monitored) return monitored;
   const stats = overview.providers?.[id];
+  const flowing = (stats?.events24h ?? 0) > 0;
+  // Eventos fluyendo en 24 h ganan a un «silencioso» del monitor que todavía no se recuperó.
+  if (monitored && !(monitored.label === STATUS_LABEL.silent && flowing)) return monitored;
   if (!stats) {
     return { tone: 'fail', label: 'Sin respuesta del Indexer', detail: null };
   }
   if (!stats.lastEventAt) {
+    const permission = permissionProblem(id, overview);
+    if (permission) return { tone: 'warn', label: STATUS_LABEL.permission, detail: permission };
     return { tone: 'neutral', label: 'Sin datos', detail: 'Todavía no llegó ningún evento.' };
   }
-  const ageHours = (now - new Date(stats.lastEventAt).getTime()) / 3_600_000;
+  const ageHours = (now - new Date(stats.lastEventAt).getTime()) / 3600000;
   if (ageHours > STALE_AFTER_HOURS[id]) {
-    return { tone: 'warn', label: 'Sin eventos recientes', detail: null };
+    const permission = permissionProblem(id, overview);
+    if (permission) return { tone: 'warn', label: STATUS_LABEL.permission, detail: permission };
+    return {
+      tone: 'warn',
+      label: STATUS_LABEL.silent,
+      detail: `Sin eventos en ${Math.round(ageHours)} h (se esperan cada ${STALE_AFTER_HOURS[id]} h).`,
+    };
   }
-  return { tone: 'ok', label: 'Recibiendo datos', detail: null };
+  return { tone: 'ok', label: STATUS_LABEL.receiving, detail: null };
 }
 
 export function wazuhStatus(
   overview: OverviewResponse | null,
   source: SourceHealth | null,
+  now: number = Date.now(),
 ): ServiceStatus {
   const declared = declaredStatus(overview?.integrations.wazuh);
   if (declared) return declared;
@@ -124,12 +181,12 @@ export function wazuhStatus(
   if (source && (source.state === 'failed' || source.state === 'degraded')) {
     return {
       tone: source.state === 'failed' ? 'fail' : 'warn',
-      label: source.state === 'failed' ? 'Ingesta caída' : 'Ingesta degradada',
+      label: source.state === 'failed' ? STATUS_LABEL.failing : 'Ingesta degradada',
       detail: 'La lectura de alertas hacia la cola B89 tiene fallos.',
     };
   }
-  const monitored = monitorStatus('wazuh', overview);
-  if (monitored) return monitored;
+  const monitored = monitorStatus('wazuh', overview, now);
+  if (monitored && monitored.tone !== 'ok') return monitored;
   const agents = overview.agents;
   if (agents && agents.total > 0 && agents.disconnected > 0) {
     return {
@@ -141,5 +198,5 @@ export function wazuhStatus(
   if (agents && agents.total === 0) {
     return { tone: 'warn', label: 'Sin agentes', detail: 'No hay agentes enrolados.' };
   }
-  return { tone: 'ok', label: 'Operativo', detail: null };
+  return { tone: 'ok', label: STATUS_LABEL.operational, detail: null };
 }

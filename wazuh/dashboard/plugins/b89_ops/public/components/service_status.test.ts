@@ -53,10 +53,10 @@ describe('estado de servicios', () => {
   it('lo declarado manda: permiso faltante, servicio no configurado', () => {
     expect(providerStatus('office365', overview(), NOW)).toEqual({
       tone: 'warn',
-      label: 'Requiere ActivityFeed.Read',
-      detail: 'Pedir consentimiento',
+      label: 'Requiere permiso',
+      detail: 'ActivityFeed.Read · Pedir consentimiento',
     });
-    expect(providerStatus('aws', overview(), NOW).label).toBe('No configurada');
+    expect(providerStatus('aws', overview(), NOW).label).toBe('Deshabilitado');
   });
 
   it('lo medido: reciente, callado según el ritmo del proveedor', () => {
@@ -65,8 +65,9 @@ describe('estado de servicios', () => {
     expect(providerStatus('snyk', overview(), NOW).tone).toBe('ok');
     expect(providerStatus('cloudflare', overview(), NOW)).toMatchObject({
       tone: 'warn',
-      label: 'Sin eventos recientes',
+      label: 'Silencioso',
     });
+    expect(providerStatus('bitdefender', overview(), NOW).label).toBe('Recibiendo datos');
   });
 
   it('sin permiso de lectura no se presenta como caída', () => {
@@ -86,5 +87,48 @@ describe('estado de servicios', () => {
         null,
       ),
     ).toMatchObject({ tone: 'warn', label: 'Agentes desconectados' });
+  });
+
+  it('monitor de plataforma: manda si es reciente; permisos solo con error de permisos', () => {
+    const auto = { state: 'auto' as const, missingPermissions: [], note: '' };
+    const health = (state: string, summary = '', at = '2026-11-04T15:30:00Z') => ({
+      access: 'ok' as const,
+      sources: {
+        office365: {
+          source: 'office365',
+          state: state as 'ok',
+          at,
+          severity: 'info' as const,
+          summary,
+          lastSeen: null,
+          since: null,
+        },
+      },
+      problems: [],
+    });
+    const base = overview();
+    const o = (h: ReturnType<typeof health>) =>
+      ({
+        ...base,
+        integrations: { ...base.integrations, office365: auto },
+        providers: { ...base.providers!, office365: stats('2026-11-04T15:55:00Z') },
+        platformHealth: h,
+      }) as OverviewResponse;
+    expect(providerStatus('office365', o(health('ok')), NOW).label).toBe('Operativo');
+    expect(providerStatus('office365', o(health('failing', 'HTTP 503 del proveedor')), NOW)).toMatchObject({
+      tone: 'fail',
+      label: 'Fallando',
+    });
+    expect(
+      providerStatus('office365', o(health('failing', 'AF10001: permission set does not include')), NOW)
+        .label,
+    ).toBe('Requiere permiso');
+    expect(providerStatus('office365', o(health('disabled')), NOW).label).toBe('Deshabilitado');
+    // Monitor con más de 2 h: deciden los datos (eventos recientes).
+    expect(
+      providerStatus('office365', o(health('failing', 'x', '2026-11-04T10:00:00Z')), NOW).label,
+    ).toBe('Recibiendo datos');
+    // Eventos fluyendo ganan a un «silencioso» todavía no recuperado.
+    expect(providerStatus('office365', o(health('silent')), NOW).label).toBe('Recibiendo datos');
   });
 });
