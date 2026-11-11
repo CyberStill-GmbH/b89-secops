@@ -87,6 +87,16 @@ function NotificationsContent() {
   const [open, setOpen] = useState<string | null>(null);
   const [alerts, setAlerts] = useState<Record<string, Alert | null>>({});
   const [tab, setTab] = useState<'inbox' | 'channels'>('inbox');
+  // «Canales» solo aparece cuando la API de canales está publicada (sin 404 ni errores).
+  const channelsApi = useAsync(
+    () =>
+      api.get<{ channels?: unknown[] }>('/notifications/channels').then(
+        (body) => Array.isArray(body.channels),
+        () => false,
+      ),
+    [api],
+  );
+  const showChannels = channelsApi.data === true;
   const page = useAsync(
     () => api.get<Page<NotificationAttempt>>('/notifications', { pageSize: 100 }),
     [api],
@@ -175,7 +185,7 @@ function NotificationsContent() {
       title="Notificaciones"
       description="Avisos por Teams, correo alternativo o consola, agrupados por alerta. Enviado no es lo mismo que entregado, ni entregado lo mismo que reconocido por una persona."
       actions={
-        tab === 'channels' ? undefined : (
+        showChannels && tab === 'channels' ? undefined : (
           <EuiSwitch
             compressed
             label="Solo sin acuse"
@@ -185,16 +195,18 @@ function NotificationsContent() {
         )
       }
     >
-      <EuiTabs size="s" className="b89Tabs">
-        <EuiTab isSelected={tab === 'inbox'} onClick={() => setTab('inbox')}>
-          Bandeja
-        </EuiTab>
-        <EuiTab isSelected={tab === 'channels'} onClick={() => setTab('channels')}>
-          Canales
-        </EuiTab>
-      </EuiTabs>
+      {showChannels && (
+        <EuiTabs size="s" className="b89Tabs">
+          <EuiTab isSelected={tab === 'inbox'} onClick={() => setTab('inbox')}>
+            Bandeja
+          </EuiTab>
+          <EuiTab isSelected={tab === 'channels'} onClick={() => setTab('channels')}>
+            Canales
+          </EuiTab>
+        </EuiTabs>
+      )}
       <EuiSpacer size="m" />
-      {tab === 'channels' ? (
+      {showChannels && tab === 'channels' ? (
         <ChannelsPanel />
       ) : (
         <>
