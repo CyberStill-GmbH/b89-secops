@@ -12,7 +12,7 @@
 | Fuente | Mecanismo | Intervalo | Reglas B89 | Estado |
 | --- | --- | --- | --- | --- |
 | Agentes Wazuh | Agente → manager (TCP 1514/1515) | Tiempo real | Ruleset oficial + B89 (AD 101300–101307, endpoint, Linux 101750–101769) | Activo: solo el agente del propio nodo |
-| Microsoft 365 / Entra ID | Módulo `office365` de Wazuh | 1 min | 100502–100530 (+ cadenas 101700–101709) | **Bloqueado**: falta `ActivityFeed.Read` |
+| Microsoft 365 / Entra ID | Módulo `office365` de Wazuh | 1 min | 100502–100530 (+ cadenas 101700–101709) | **Activo** (2026-11-10): `ActivityFeed.Read` concedido; 4 suscripciones (Entra ID, Exchange, SharePoint, General) |
 | Microsoft 365 · SharePoint/OneDrive | Módulo `office365` (Audit.SharePoint) o collector Purview `sharepoint.py audit` + postura `sharepoint.py posture` | 5 min · 60 min | 101900–101979 (+ 100515) | **Activo** (auditoría por el módulo office365); postura **bloqueada**: faltan `SharePointTenantSettings.Read.All` y `Sites.Read.All` |
 | Bitdefender GravityZone | Collector `gravityzone.py` (systemd) | 10 min | 101400–101411 (+ 101720–101729) | Activo |
 | Snyk | Collector `issues.py` (systemd) | 15 min | 101450–101458 (+ 101730–101739) | Activo |
