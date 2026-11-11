@@ -6,6 +6,7 @@ package risk
 import (
 	"math"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/CyberStill-GmbH/b89-secops/services/b89-correlator/internal/model"
@@ -107,6 +108,9 @@ func CriticalityMultiplier(label string) float64 {
 		return 1.5
 	case "low":
 		return 0.7
+	case "trusted":
+		// Known administrative activity: demoted, not ignored (patterns still apply).
+		return 0.25
 	}
 	return 1.0
 }
@@ -378,4 +382,47 @@ func (s *EntityState) merge(o *EntityState, p Policy) {
 		s.Contributors = s.Contributors[:p.ContributorsKept]
 	}
 	s.CandidateIDs = append(s.CandidateIDs, o.CandidateIDs...)
+}
+
+// CriticalityLookup resolves an entity's criticality label from a CDB-style map: first the
+// full key ("type:value"), then the bare value, then (IPs only) the longest prefix key ending
+// in '.' or ':' (Wazuh CDB prefix convention, e.g. "38.250.148."). adminIPs entries (same
+// matching) are "trusted" unless the map says otherwise.
+func CriticalityLookup(labels map[string]string, adminIPs map[string]string) func(model.Entity) string {
+	prefixOf := func(m map[string]string, ip string) (string, bool) {
+		best, label := "", ""
+		for k, v := range m {
+			key := strings.TrimPrefix(k, "ip:")
+			if (strings.HasSuffix(key, ".") || strings.HasSuffix(key, ":")) && strings.HasPrefix(ip, key) && len(key) > len(best) {
+				best, label = key, v
+			}
+		}
+		return label, best != ""
+	}
+	return func(e model.Entity) string {
+		key := strings.ToLower(e.Key())
+		value := strings.ToLower(e.Value)
+		if v, ok := labels[key]; ok {
+			return v
+		}
+		if v, ok := labels[value]; ok {
+			return v
+		}
+		if e.Type != model.EntityIP {
+			return ""
+		}
+		if v, ok := prefixOf(labels, value); ok {
+			return v
+		}
+		if _, ok := adminIPs[value]; ok {
+			return "trusted"
+		}
+		if _, ok := adminIPs[key]; ok {
+			return "trusted"
+		}
+		if _, ok := prefixOf(adminIPs, value); ok {
+			return "trusted"
+		}
+		return ""
+	}
 }

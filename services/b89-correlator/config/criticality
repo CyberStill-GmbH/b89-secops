@@ -1,0 +1,22 @@
+# Criticidad de activos para b89-correlator (formato lista CDB: clave:valor; las claves con ':'
+# van entre comillas). La clave es la clave canónica de la entidad ("tipo:valor") o solo el valor;
+# una clave de IP que termina en '.' es un prefijo. Valores: critical (x2.0), high (x1.5),
+# medium (x1.0, por defecto), low (x0.7), trusted (x0.25).
+#
+# "trusted" DEGRADA el riesgo acumulado (y por tanto los candidatos por umbral) de actividad
+# administrativa conocida; NO ciega: los patrones multietapa (edge-to-ssh, credential-to-privilege,
+# ssh-bruteforce-then-access, ...) se evalúan igual y conservan su prioridad.
+#
+# Las IP de administración del dueño se leen además de detections/lists/b89-admin-ips
+# (B89_CORRELATOR_ADMIN_IPS_FILE): todo lo que esté allí es "trusted".
+
+# IP de administración del dueño que aún no figura en b89-admin-ips (2026-11-10).
+"ip:168.181.8.186":trusted
+
+# Nodo del SOC (Wazuh + B89) y sus cuentas administrativas locales (sudo/PAM de sesiones admin).
+"host:b89-soc-dev-node":trusted
+"user:local:b89-soc-dev-node/ubuntu":trusted
+"user:local:b89-soc-dev-node/root":trusted
+
+# Host sintético de pruebas de detección.
+"host:b89-synthetic-web01":trusted

@@ -38,6 +38,7 @@ type Config struct {
 	SuppressionTTL   time.Duration
 	FPMin            int
 	CriticalityFile  string
+	AdminIPsFile     string
 	AliasesFile      string
 	UserDomain       string
 	ProtectedRules   []string
@@ -90,7 +91,7 @@ func Load() (Config, error) {
 		"LAG", "OVERLAP", "MIN_LEVEL", "GROUP_MIN_LEVEL", "THRESHOLD", "HALF_LIFE", "EMIT",
 		"EMIT_MAX_AGE", "EMIT_MAX_PER_HOUR", "AUTO_SUPPRESS", "SUPPRESSION_TTL", "FP_MIN",
 		"CRITICALITY_FILE", "ALIASES_FILE", "USER_DOMAIN", "PROTECTED_RULES", "PAGE_SIZE",
-		"FEEDBACK_LOOKBACK", "LOG_LEVEL"} {
+		"FEEDBACK_LOOKBACK", "LOG_LEVEL", "ADMIN_IPS_FILE"} {
 		known["B89_CORRELATOR_"+k] = true
 	}
 	for _, kv := range os.Environ() {
@@ -112,6 +113,7 @@ func Load() (Config, error) {
 		ReadTokenFile:    env("B89_CORRELATOR_READ_TOKEN_FILE", "/run/secrets/b89-correlator/read.token"),
 		CriticalityFile:  env("B89_CORRELATOR_CRITICALITY_FILE", ""),
 		AliasesFile:      env("B89_CORRELATOR_ALIASES_FILE", ""),
+		AdminIPsFile:     env("B89_CORRELATOR_ADMIN_IPS_FILE", ""),
 		UserDomain:       env("B89_CORRELATOR_USER_DOMAIN", ""),
 	}
 	var err error

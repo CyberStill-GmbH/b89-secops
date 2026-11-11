@@ -170,11 +170,16 @@ services:
       B89_CORRELATOR_SERVICE_TOKEN_FILE: /run/secrets/b89-correlator/service.token
       B89_CORRELATOR_READ_TOKEN_FILE: /run/secrets/b89-correlator/read.token
       B89_CORRELATOR_CA_FILE: /run/secrets/b89-correlator/ca.pem
+      # Criticidad versionada (demoter, no cegar) e IP de administración de detections/lists.
+      B89_CORRELATOR_CRITICALITY_FILE: /etc/b89-correlator/criticality
+      B89_CORRELATOR_ADMIN_IPS_FILE: /etc/b89-correlator/b89-admin-ips
     volumes:
       - /opt/b89/secrets/correlator/gateway.token:/run/secrets/b89-correlator/gateway.token:ro
       - /opt/b89/secrets/correlator/service.token:/run/secrets/b89-correlator/service.token:ro
       - /opt/b89/secrets/correlator/read.token:/run/secrets/b89-correlator/read.token:ro
       - /opt/b89/pki/ca.pem:/run/secrets/b89-correlator/ca.pem:ro
+      - /opt/b89/src/services/b89-correlator/config/criticality:/etc/b89-correlator/criticality:ro
+      - /opt/b89/src/detections/lists/b89-admin-ips:/etc/b89-correlator/b89-admin-ips:ro
     networks:
       - correlator-internal
     depends_on:

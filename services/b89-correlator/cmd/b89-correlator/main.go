@@ -95,11 +95,18 @@ func build(cfg config.Config, log *slog.Logger, dryRun bool) (*engine.Runner, st
 	resolver := resolve.New(aliases, cfg.UserDomain)
 	policy := risk.DefaultPolicy()
 	policy.HalfLife, policy.Threshold, policy.MinLevel = cfg.HalfLife, cfg.Threshold, cfg.MinLevel
+	adminIPs, err := config.ReadList(cfg.AdminIPsFile)
+	if err != nil {
+		return nil, "", err
+	}
+	lookup := risk.CriticalityLookup(criticality, adminIPs)
 	criticalityOf := func(entity model.Entity) string {
-		if v, ok := criticality[strings.ToLower(resolver.Canonical(entity.Key()))]; ok {
-			return v
+		if canonical, ok := model.ParseKey(resolver.Canonical(entity.Key())); ok {
+			if v := lookup(canonical); v != "" {
+				return v
+			}
 		}
-		return criticality[strings.ToLower(entity.Value)]
+		return lookup(entity)
 	}
 	eng := risk.NewEngine(policy, risk.DefaultPatterns(), resolver, criticalityOf, cfg.GroupMinLevel)
 

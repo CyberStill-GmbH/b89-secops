@@ -276,3 +276,43 @@ func TestGroupingAndReduction(t *testing.T) {
 		t.Fatalf("max span split: %d", g.Groups)
 	}
 }
+
+func TestCriticalityLookupDemotesAdminActivityWithoutBlinding(t *testing.T) {
+	labels := map[string]string{"host:b89-soc-dev-node": "trusted", "user:local:b89-soc-dev-node/ubuntu": "trusted", "ip:168.181.8.186": "trusted", "db-1": "critical"}
+	admin := map[string]string{"38.250.148.": "operador-b89-soc"}
+	look := CriticalityLookup(labels, admin)
+	cases := map[string]string{
+		"host:b89-soc-dev-node":              "trusted",
+		"user:local:b89-soc-dev-node/ubuntu": "trusted",
+		"ip:168.181.8.186":                   "trusted",
+		"ip:38.250.148.107":                  "trusted",
+		"ip:38.250.149.1":                    "",
+		"host:db-1":                          "critical",
+		"user:rodrigo@b89.io":                "",
+	}
+	for k, want := range cases {
+		e, _ := model.ParseKey(k)
+		if got := look(e); got != want {
+			t.Errorf("%s: got %q want %q", k, got, want)
+		}
+	}
+	if CriticalityMultiplier("trusted") != 0.25 {
+		t.Fatal("trusted multiplier")
+	}
+	// Demoted: the same activity scores a quarter; a multi-stage pattern still fires.
+	e := NewEngine(DefaultPolicy(), DefaultPatterns(), nil, look, 7)
+	ip := "ip:38.250.148.107"
+	e.Process(obs("1", 0, "101501", 6, "cloudflare", nil, []model.Stage{model.StageEdgeWAFBlock}, ip))
+	e.Process(obs("2", 10*time.Minute, "31151", 10, "web", nil, []model.Stage{model.StageEdgeScan}, ip))
+	created := e.Process(obs("3", 20*time.Minute, "5712", 10, "linux-ssh", nil, []model.Stage{model.StageSSHBruteForce}, ip))
+	found := false
+	for _, c := range created {
+		found = found || (c.PatternID == "edge-to-ssh" && c.Priority == "P2")
+	}
+	if !found {
+		t.Fatal("a real attack pattern against a trusted entity must still be detected")
+	}
+	if b := e.states[ip].Base(t0.Add(20*time.Minute), e.P); b > 6 { // untrusted: ~21.9
+		t.Fatalf("trusted base not demoted: %v", b)
+	}
+}
