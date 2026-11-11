@@ -81,7 +81,7 @@ export const configSchema = schema.object({
   integrations: schema.object({
     wazuh: integration(),
     office365: integration(),
-    sharepoint: integration({ state: 'disabled', note: 'Collector instalado pero apagado hasta validar permisos de auditoría y postura.' }),
+    sharepoint: integration(),
     bitdefender: integration(),
     snyk: integration(),
     cloudflare: integration(),
