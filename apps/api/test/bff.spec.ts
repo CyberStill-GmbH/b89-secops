@@ -19,7 +19,7 @@ import { wazuhRecordToEvent } from '../src/runtime/wazuh-ingestion.js';
 import type { InMemoryAttemptStore } from '@b89/soar';
 import type { InMemorySoc } from '@b89/soc';
 
-import type { SecOpsRuntime } from '../src/runtime/secops-runtime.js';
+import type { RuntimeDirectory, SecOpsRuntime } from '../src/runtime/secops-runtime.js';
 
 const ENVIRONMENT = { B89_PROFILE: 'test' } as const;
 
@@ -1897,6 +1897,55 @@ describe('Sprint 5 · fase 3 · GET /api/admin/users', () => {
       items: [],
       totalCount: 0,
     });
+  });
+
+  it('Graph configurado sin permiso: «permiso faltante» en Miembros y Solicitudes, no un error', async () => {
+    const pending: RuntimeDirectory = {
+      mode: 'pending',
+      intervalMs: 900_000,
+      lastErrorCode: 'DIRECTORY_FORBIDDEN',
+      lastAttemptAt: new Date(),
+      nextAttemptAt: new Date(Date.now() + 60_000),
+    };
+    Object.defineProperty(runtime, 'directory', { value: pending, configurable: true });
+    try {
+      const admin = await signIn('admin@b89.example');
+      const call = (url: string) =>
+        server().inject({
+          method: 'GET',
+          url,
+          headers: { cookie: admin.cookie },
+          remoteAddress: OFFICE_IP,
+        });
+      const users = await call('/api/admin/users');
+      expect(users.statusCode).toBe(200);
+      expect(JSON.parse(users.body).sync).toMatchObject({
+        mode: 'graph',
+        status: 'failed',
+        lastErrorClass: 'DIRECTORY_FORBIDDEN',
+        groupResolved: false,
+        permissionMissing: true,
+        stale: true,
+      });
+      const requests = await call('/api/admin/role-requests');
+      expect(requests.statusCode).toBe(200);
+      expect(JSON.parse(requests.body)).toMatchObject({
+        items: [],
+        nextCursor: null,
+        directory: { status: 'pending', permissionMissing: true },
+      });
+      // Sin capability de roles sigue siendo indistinguible de un recurso inexistente.
+      const lead = await signIn('lider@b89.example');
+      const hidden = await server().inject({
+        method: 'GET',
+        url: '/api/admin/role-requests',
+        headers: { cookie: lead.cookie },
+        remoteAddress: OFFICE_IP,
+      });
+      expect(hidden.statusCode).toBe(404);
+    } finally {
+      delete (runtime as unknown as { directory?: unknown }).directory;
+    }
   });
 
   it('sin users.read responde igual que un recurso inexistente', async () => {

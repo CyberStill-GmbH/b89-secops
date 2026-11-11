@@ -257,10 +257,20 @@ export interface RoleRequestView {
   readonly revision: number;
 }
 
+/** Estado del padrón cuando todavía no hay solicitudes posibles (sin grupo resuelto). */
+export interface RoleRequestDirectoryState {
+  readonly status: 'pending' | 'disabled';
+  readonly lastErrorClass: string | null;
+  /** Falta `GroupMember.Read.All` (consentimiento de administrador) en la app de Entra. */
+  readonly permissionMissing: boolean;
+  readonly nextAttemptAt: string | null;
+}
+
 export interface RoleRequestPage {
   readonly correlationId: string;
   readonly items: readonly RoleRequestView[];
   readonly nextCursor: string | null;
+  readonly directory?: RoleRequestDirectoryState;
 }
 
 export type RoleRequestListResponse = RoleRequestPage;
@@ -301,6 +311,12 @@ export interface DirectorySync {
   readonly lastSuccessAt: string | null;
   readonly lastErrorClass: string | null;
   readonly stale: boolean;
+  /** `false` mientras el grupo Accesos_SOC no se ha podido resolver en Graph. */
+  readonly groupResolved?: boolean;
+  /** Falta `GroupMember.Read.All` (consentimiento de administrador) en la app de Entra. */
+  readonly permissionMissing?: boolean;
+  /** Próximo reintento automático de resolver el grupo. */
+  readonly nextAttemptAt?: string | null;
 }
 
 export interface SessionInfo {

@@ -19,7 +19,7 @@ export interface GroupOwnerSource {
   /** Miembros vigentes del grupo sincronizado; solo cuenta si ese grupo es admin. */
   isMember?(oid: string): Promise<boolean>;
   /** Object ID del grupo sincronizado, en minúsculas. */
-  readonly groupId?: string;
+  readonly groupId?: string | undefined;
 }
 
 export type RoleGrantResolver = (

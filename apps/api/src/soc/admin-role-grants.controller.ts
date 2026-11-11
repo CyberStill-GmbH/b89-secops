@@ -276,8 +276,35 @@ export class AdminRoleGrantsController {
   ) {
     const { actor, correlationId } = await readingActor(this.runtime, request);
     const deps = this.dependencies(actor.tenantId);
-    if (!INBOX_CAPABILITIES.some((capability) => actor.capabilities.has(capability)) || !deps) {
+    if (!INBOX_CAPABILITIES.some((capability) => actor.capabilities.has(capability))) {
       throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
+    }
+    if (!deps) {
+      // Sin padrón no hay solicitudes posibles. Quien puede verlas recibe el motivo (padrón
+      // apagado o grupo aún sin resolver por falta de permiso), no un «recurso no disponible».
+      const directory = this.runtime.directory;
+      if (actor.tenantId !== this.runtime.tenantIdForDirectory || directory?.mode === 'graph') {
+        throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
+      }
+      return {
+        correlationId,
+        items: [],
+        nextCursor: null,
+        directory:
+          directory?.mode === 'pending'
+            ? {
+                status: 'pending' as const,
+                lastErrorClass: directory.lastErrorCode,
+                permissionMissing: directory.lastErrorCode === 'DIRECTORY_FORBIDDEN',
+                nextAttemptAt: directory.nextAttemptAt?.toISOString() ?? null,
+              }
+            : {
+                status: 'disabled' as const,
+                lastErrorClass: null,
+                permissionMissing: false,
+                nextAttemptAt: null,
+              },
+      };
     }
     const status = query.status === undefined ? 'pending' : query.status;
     const pageSize = query.pageSize === undefined ? PAGE_SIZE.default : Number(query.pageSize);

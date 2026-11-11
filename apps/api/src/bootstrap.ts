@@ -29,7 +29,11 @@ import { DemoAdminLogin } from './access/demo-admin-credentials.js';
 import { entityRefFactory } from './runtime/entity-refs.js';
 import { deriveCsrfKey } from './http/csrf.js';
 import type { ProcessInfo } from './soc/operations-health.js';
-import { SecOpsRuntime, type SignInDiagnostic } from './runtime/secops-runtime.js';
+import {
+  SecOpsRuntime,
+  type RuntimeDirectory,
+  type SignInDiagnostic,
+} from './runtime/secops-runtime.js';
 import {
   createWazuhEventProvider,
   createWazuhEventsReader,
@@ -47,7 +51,12 @@ import {
   isRoleRosterFresh,
   withDynamicGrants,
 } from './runtime/role-grants.js';
-import { cachedOwnerSource, createDirectorySyncPass } from './runtime/directory-sync.js';
+import {
+  cachedOwnerSource,
+  createDirectorySyncPass,
+  lazyOwnerSource,
+} from './runtime/directory-sync.js';
+import { DirectoryGroupActivation } from './runtime/directory-activation.js';
 import { GraphDirectoryReader } from './runtime/graph-directory.js';
 import { directoryRecipients } from './runtime/notification-recipients.js';
 import { GraphMailFallbackChannel } from './runtime/email-fallback.js';
@@ -312,37 +321,37 @@ export async function buildApi(
           }).token,
         })
       : undefined;
-  let directoryGroupId: string | undefined;
-  if (directoryConfig.mode === 'graph' && directoryReader) {
-    if (directoryConfig.groupId) {
-      directoryGroupId = directoryConfig.groupId;
-    } else {
-      try {
-        directoryGroupId = await Promise.race([
-          directoryReader.resolveGroupId(directoryConfig.groupName!),
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new DirectoryError('DIRECTORY_UNAVAILABLE')), 10_000).unref?.(),
-          ),
-        ]);
-      } catch (error) {
-        (onDirectoryError ?? (() => undefined))(error);
-      }
-    }
-  }
+  // Si el nombre no se resuelve al arrancar (sin consentimiento, red), se reintenta en segundo
+  // plano con espera exponencial y el padrón se activa solo al resolverse, sin reiniciar.
+  // El ciclo de sincronización existe después; al resolverse el grupo se le pide una pasada.
+  let kickDirectorySync: () => void = () => undefined;
+  const activation =
+    directoryConfig.mode === 'graph' && directoryReader
+      ? new DirectoryGroupActivation({
+          ...(directoryConfig.groupId ? { groupId: directoryConfig.groupId } : {}),
+          ...(directoryConfig.groupName ? { groupName: directoryConfig.groupName } : {}),
+          resolve: (name) => directoryReader.resolveGroupId(name),
+          onResolved: () => kickDirectorySync(),
+          onError: onDirectoryError ?? (() => undefined),
+        })
+      : undefined;
+  await activation?.attempt();
   const durable = await durableStoresFor(persistenceConfig);
   const directoryStore: DirectoryStore = durable?.directory ?? new InMemoryDirectoryStore();
   // Los grants dinámicos exigen padrón: sin él no hay cómo validar miembro ni cuenta habilitada,
-  // así que ni se asignan ni cuentan al iniciar sesión.
-  const rosterGroupId =
-    directoryGroupId && directoryConfig.mode === 'graph' ? directoryGroupId : undefined;
+  // así que ni se asignan ni cuentan al iniciar sesión. El grupo puede resolverse más tarde.
+  const rosterGroupId = (): string | undefined => activation?.groupId;
   // En memoria, la unidad de trabajo se apoya en la del SOC en memoria del runtime, dueña de la
   // cadena de auditoría; `runtime` solo se usa al ejecutar, cuando ya existe.
   const memoryAdministration = () =>
     new InMemoryRoleAdministration((work) => runtime.soc.run((context) => work(context.audit)));
   let roleAdministration: RoleAdministration | undefined;
-  if (rosterGroupId) roleAdministration = durable?.roleAdministration ?? memoryAdministration();
-  const ownerSource = directoryGroupId
-    ? cachedOwnerSource(directoryStore, access.tenantId, directoryGroupId)
+  if (activation) roleAdministration = durable?.roleAdministration ?? memoryAdministration();
+  const ownerSource = activation
+    ? lazyOwnerSource(
+        () => activation.groupId,
+        (groupId) => cachedOwnerSource(directoryStore, access.tenantId, groupId),
+      )
     : undefined;
   const staticRoleGrants = createRoleGrantResolver(roleGrants, ownerSource);
   // La URL del Teams Workflow es un secreto y se resuelve por `SecretProvider`, no por
@@ -380,18 +389,25 @@ export async function buildApi(
         }
       : {}),
     roleGrants:
-      roleAdministration && rosterGroupId && directoryIntervalMs !== undefined
+      roleAdministration && activation && directoryIntervalMs !== undefined
         ? withDynamicGrants(staticRoleGrants, {
             store: roleAdministration.grants,
             tenantId: access.tenantId,
-            isRosterFresh: async () =>
-              isRoleRosterFresh(
-                await directoryStore.syncState(access.tenantId, rosterGroupId),
-                runtime.now(),
-                directoryIntervalMs,
-              ),
+            isRosterFresh: async () => {
+              const groupId = rosterGroupId();
+              return (
+                groupId !== undefined &&
+                isRoleRosterFresh(
+                  await directoryStore.syncState(access.tenantId, groupId),
+                  runtime.now(),
+                  directoryIntervalMs,
+                )
+              );
+            },
             isActiveMember: async (oid) => {
-              const member = await directoryStore.member(access.tenantId, rosterGroupId, oid);
+              const groupId = rosterGroupId();
+              if (groupId === undefined) return false;
+              const member = await directoryStore.member(access.tenantId, groupId, oid);
               return member?.membership === 'member' && member.accountEnabled === true;
             },
           })
@@ -425,12 +441,23 @@ export async function buildApi(
       now: () => runtime.now(),
     }),
     directory:
-      directoryGroupId && directoryConfig.mode === 'graph'
-        ? {
-            mode: 'graph',
-            groupId: directoryGroupId,
-            intervalMs: directoryConfig.intervalMs,
-            store: directoryStore,
+      activation && directoryConfig.mode === 'graph'
+        ? (): RuntimeDirectory => {
+            const state = activation.state;
+            return state.groupId
+              ? {
+                  mode: 'graph',
+                  groupId: state.groupId,
+                  intervalMs: directoryConfig.intervalMs,
+                  store: directoryStore,
+                }
+              : {
+                  mode: 'pending',
+                  intervalMs: directoryConfig.intervalMs,
+                  lastErrorCode: state.lastErrorCode,
+                  lastAttemptAt: state.lastAttemptAt,
+                  nextAttemptAt: state.nextAttemptAt,
+                };
           }
         : { mode: 'disabled' },
     sourceHealth: monitor,
@@ -499,41 +526,57 @@ export async function buildApi(
         })
       : undefined;
   // Sprint 5 · fase 3: sincronización del padrón por Microsoft Graph (token de aplicación).
-  const directorySync =
-    directoryGroupId && directoryReader && directoryConfig.mode === 'graph'
-      ? new NotificationDispatcher({
-          drain: createDirectorySyncPass({
-            tenantId: access.tenantId,
-            groupId: directoryGroupId,
-            store: directoryStore,
-            now: () => runtime.now(),
-            // Quien sale del grupo o deja de ser dueño pierde sus sesiones abiertas. Un dueño
-            // que sigue declarado en el deploy conserva el admin y no se toca.
-            // La baja también retira sus grants dinámicos y cancela sus solicitudes abiertas: si
-            // vuelve al grupo, no recupera nada sin una solicitud y aprobación nuevas.
-            reconcileAccess: async ({ removedMembers, formerOwners }) => {
-              await runtime.revokeSessionsByOid(removedMembers, 'membership_removed');
-              await runtime.revokeSessionsByOid(
-                formerOwners.filter((oid) => !roleGrants.groupOwnerOids.includes(oid)),
-                'ownership_removed',
-              );
-              if (roleAdministration) {
-                await clearRemovedMembers(
-                  {
-                    administration: roleAdministration,
-                    tenantId: access.tenantId,
-                    now: () => runtime.now(),
-                  },
-                  removedMembers,
-                );
-              }
+  // La pasada se construye al resolverse el grupo; hasta entonces el ciclo no hace nada.
+  let directorySyncPass:
+    { readonly groupId: string; readonly drain: () => Promise<number> } | undefined;
+  const directorySyncPassFor = (groupId: string, reader: GraphDirectoryReader) =>
+    createDirectorySyncPass({
+      tenantId: access.tenantId,
+      groupId,
+      store: directoryStore,
+      now: () => runtime.now(),
+      // Quien sale del grupo o deja de ser dueño pierde sus sesiones abiertas. Un dueño
+      // que sigue declarado en el deploy conserva el admin y no se toca.
+      // La baja también retira sus grants dinámicos y cancela sus solicitudes abiertas: si
+      // vuelve al grupo, no recupera nada sin una solicitud y aprobación nuevas.
+      reconcileAccess: async ({ removedMembers, formerOwners }) => {
+        await runtime.revokeSessionsByOid(removedMembers, 'membership_removed');
+        await runtime.revokeSessionsByOid(
+          formerOwners.filter((oid) => !roleGrants.groupOwnerOids.includes(oid)),
+          'ownership_removed',
+        );
+        if (roleAdministration) {
+          await clearRemovedMembers(
+            {
+              administration: roleAdministration,
+              tenantId: access.tenantId,
+              now: () => runtime.now(),
             },
-            reader: directoryReader,
-          }),
+            removedMembers,
+          );
+        }
+      },
+      reader,
+    });
+  const directorySync =
+    activation && directoryReader && directoryConfig.mode === 'graph'
+      ? new NotificationDispatcher({
+          drain: async () => {
+            const groupId = activation.groupId;
+            if (!groupId) return 0;
+            if (directorySyncPass?.groupId !== groupId) {
+              directorySyncPass = {
+                groupId,
+                drain: directorySyncPassFor(groupId, directoryReader),
+              };
+            }
+            return directorySyncPass.drain();
+          },
           intervalMs: directoryConfig.intervalMs,
           onError: onDirectoryError ?? (() => undefined),
         })
       : undefined;
+  kickDirectorySync = () => directorySync?.kick();
   const application = await composeApi(config, lifecycle, runtime);
   // Bunny lee el SOC por esta misma API (inject de Fastify, sin red) con la sesión de la persona.
   runtime.internalServer = application.getHttpAdapter().getInstance() as unknown as InjectingServer;
@@ -545,6 +588,7 @@ export async function buildApi(
       // Primero se detiene el despacho: espera la pasada en curso para no dejar leases
       // tomados por un proceso que ya no existe.
       await ingestion?.stop();
+      await activation?.stop();
       await directorySync?.stop();
       await runtime.stopDispatcher();
       await application.close();
@@ -583,6 +627,7 @@ export async function buildApi(
           runtime.startDispatcher();
           ingestion?.start();
           directorySync?.start();
+          activation?.start();
         }
       } catch (error) {
         lifecycle.fail();

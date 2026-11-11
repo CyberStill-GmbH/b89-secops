@@ -119,6 +119,17 @@ import {
 /** Padrón disponible para la administración. */
 export type RuntimeDirectory =
   | { readonly mode: 'disabled' }
+  /**
+   * Padrón por Graph configurado pero grupo aún sin resolver (p. ej. falta el permiso
+   * `GroupMember.Read.All`). Se reintenta solo; la consola muestra el motivo.
+   */
+  | {
+      readonly mode: 'pending';
+      readonly intervalMs: number;
+      readonly lastErrorCode: string | null;
+      readonly lastAttemptAt: Date | null;
+      readonly nextAttemptAt: Date | null;
+    }
   | {
       readonly mode: 'graph';
       readonly groupId: string;
@@ -231,7 +242,8 @@ export interface RuntimeOptions {
   /** Fuente vigilada por la salud por fuente (fase 2); existe aunque esté deshabilitada. */
   readonly sourceHealth?: SourceHealthMonitor;
   /** Padrón del grupo de admisión (fase 3); sin él, la sincronización está deshabilitada. */
-  readonly directory?: RuntimeDirectory;
+  /** Una función si el padrón puede activarse después del arranque (grupo resuelto tarde). */
+  readonly directory?: RuntimeDirectory | (() => RuntimeDirectory);
   /** Roles concedidos por el deploy, para explicar el origen de cada rol en la administración. */
   readonly roleGrantsConfig?: RoleGrantsConfig;
   /**
@@ -419,7 +431,8 @@ export class SecOpsRuntime {
   }
 
   public get directory(): RuntimeDirectory | undefined {
-    return this.options.directory;
+    const directory = this.options.directory;
+    return typeof directory === 'function' ? directory() : directory;
   }
 
   public get roleGrantsConfig(): RoleGrantsConfig | undefined {

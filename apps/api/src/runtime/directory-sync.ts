@@ -131,3 +131,33 @@ export function cachedOwnerSource(
     },
   };
 }
+
+/**
+ * Dueños del grupo cuando el grupo puede resolverse después del arranque: sin grupo resuelto no
+ * hay dueños leídos de Graph (solo los declarados en el deploy, que suma el resolvedor de roles);
+ * en cuanto se resuelve, delega en la fuente con caché del grupo. Los dueños leídos reciben
+ * `b89.platform.admin` por `createRoleGrantResolver`, igual que con el ID configurado.
+ */
+export function lazyOwnerSource(
+  groupId: () => string | undefined,
+  sourceFor: (groupId: string) => GroupOwnerSource,
+): GroupOwnerSource {
+  let current: GroupOwnerSource | undefined;
+  const source = (): GroupOwnerSource | undefined => {
+    const id = groupId();
+    if (!id) return undefined;
+    if (current?.groupId !== id.toLowerCase()) current = sourceFor(id);
+    return current;
+  };
+  return {
+    get groupId() {
+      return groupId()?.toLowerCase();
+    },
+    async isMember(oid) {
+      return (await source()?.isMember?.(oid)) ?? false;
+    },
+    async owners() {
+      return (await source()?.owners()) ?? new Set<string>();
+    },
+  };
+}
