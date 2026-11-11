@@ -426,8 +426,10 @@ def build() -> list[dict]:
                 f"{name} · mapamundi de ubicaciones verificadas",
                 query,
             )
-            panels.append((geo, {"x": 0, "y": y, "w": 48, "h": 16}))
-            built.append(geo)
+            # El objeto `map` de OSD 2.19 usa layerList/mapState/uiState (no *JSON) y su import
+            # falla: un panel que apunta a un mapa inexistente rompe el dashboard con
+            # «"undefined" is not valid JSON». Hasta tener GeoIP verificado solo va el estado vacío.
+            del geo
             empty_state = markdown(
                 f"{prefix}-verified-map-empty",
                 f"{name} · estado del mapamundi",
