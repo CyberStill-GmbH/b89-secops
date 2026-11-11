@@ -75,16 +75,28 @@
   </rule>
 
   <!-- ================================================================ descargas y sincronización -->
+  <!-- Calibración con datos reales (2026-11-10/11, 25 h): 97 % de las descargas son del cliente de sincronización
+       (FileSyncDownloadedFull, "OneDrive SyncEngine"); un solo equipo resincronizó 6449 archivos y disparó 41 veces
+       la regla de 150/10 min. La sincronización va a su propia marca y umbral (500/10 min, P3); la descarga web o
+       por API (FileDownloaded) conserva 150/10 min (P2) y 40/30 min fuera de horario (P1). -->
+  <rule id="101912" level="3">
+    <if_sid>91537, 91538</if_sid>
+    <field name="office365.Operation">^FileSyncDownloadedFull$</field>
+    <description>B89 SharePoint: el cliente de sincronización de $(office365.UserId) descargó $(office365.SourceFileName).</description>
+    <options>no_full_log</options>
+    <group>b89_sync,</group>
+  </rule>
+
   <rule id="101900" level="3">
     <if_sid>91537, 91538, 91702</if_sid>
-    <field name="office365.Operation">^FileDownloaded$|^FileSyncDownloadedFull$</field>
-    <description>B89 SharePoint: $(office365.UserId) descargó o sincronizó $(office365.SourceFileName).</description>
+    <field name="office365.Operation">^FileDownloaded$</field>
+    <description>B89 SharePoint: $(office365.UserId) descargó $(office365.SourceFileName).</description>
     <options>no_full_log</options>
     <group>b89_download,</group>
   </rule>
 
   <rule id="101901" level="2">
-    <if_sid>101900</if_sid>
+    <if_sid>101900, 101912</if_sid>
     <list field="office365.UserId" lookup="match_key">etc/lists/b89-m365-service-accounts</list>
     <description>B89 SharePoint: descarga de la cuenta de servicio/sincronización aprobada $(office365.UserId).</description>
     <options>no_full_log</options>
@@ -110,7 +122,7 @@
   <rule id="101902" level="10" frequency="150" timeframe="600">
     <if_matched_sid>101900</if_matched_sid>
     <same_field>office365.UserId</same_field>
-    <description>B89 SharePoint: descarga o sincronización masiva de $(office365.UserId) (150 archivos en 10 min).</description>
+    <description>B89 SharePoint: descarga masiva de $(office365.UserId) (150 archivos en 10 min por web o API).</description>
     <options>no_full_log</options>
     <mitre>
       <id>T1530</id>
@@ -130,6 +142,31 @@
       <id>T1078.004</id>
     </mitre>
     <group>b89_collection,b89_exfiltration,</group>
+  </rule>
+
+  <!-- Sincronización masiva: equipo nuevo o resincronización de una biblioteca completa es habitual (P3, sin correo);
+       desde una red nueva para el usuario (vía Purview) sube a P2. -->
+  <rule id="101913" level="7" frequency="500" timeframe="600">
+    <if_matched_sid>101912</if_matched_sid>
+    <same_field>office365.UserId</same_field>
+    <description>B89 SharePoint: sincronización masiva de $(office365.UserId) (500 archivos en 10 min, cliente OneDrive).</description>
+    <options>no_full_log</options>
+    <mitre>
+      <id>T1530</id>
+    </mitre>
+    <group>b89_collection,b89_sync,</group>
+  </rule>
+
+  <rule id="101914" level="11">
+    <if_sid>101913</if_sid>
+    <field name="b89.ip_first_seen">^true$</field>
+    <description>B89 SharePoint: sincronización masiva de $(office365.UserId) desde una red nueva para el usuario ($(office365.ClientIP)).</description>
+    <options>no_full_log</options>
+    <mitre>
+      <id>T1530</id>
+      <id>T1078.004</id>
+    </mitre>
+    <group>b89_collection,b89_sync,</group>
   </rule>
 
   <!-- ================================================================ enlaces anónimos usados -->

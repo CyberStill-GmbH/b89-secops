@@ -94,7 +94,7 @@ Escala B89: 12–15 P1, 8–11 P2, 4–7 P3, 0–3 P4. Correo desde nivel 8. MIT
 
 | Caso de uso | Reglas | Qué | Nivel |
 | --- | --- | --- | --- |
-| `exfiltration` | 101900–101911 | Descarga/sincronización masiva 150/10 min (10); fuera de horario 40/30 min (12); masiva desde red nueva (12); invitado 30/10 min (10); cuenta deshabilitada (10); IP Spamhaus/Feodo (12) o Tor (11); 50 usos de enlaces anónimos/10 min por IP (10) | 2–12 |
+| `exfiltration` | 101900–101914 | Descarga web/API masiva 150/10 min (10); sincronización del cliente OneDrive 500/10 min (7; 11 desde red nueva); fuera de horario 40/30 min (12); masiva desde red nueva (12); invitado 30/10 min (10); cuenta deshabilitada (10); IP Spamhaus/Feodo (12) o Tor (11); 50 usos de enlaces anónimos/10 min por IP (10) | 2–12 |
 | `mass-deletion` | 101915–101920 | Borrado masivo 100/10 min (10), destrucción 300/15 min (13), vaciado de la papelera de 2.ª etapa 25/15 min (12) | 2–13 |
 | `external-sharing` | 101925–101930 | Correo personal (9; 5 en 1 h = 12), invitado externo (4), 10 enlaces anónimos en 1 h (11); cuentas aprobadas bajan a 2–3 | 2–12 |
 | `sharing-policy-and-admins` | 101935–101941 | Política cambiada (8) o abierta a «Cualquier persona» (12); administrador de sitio (10), en el OneDrive de otra persona (11), invitado (12) | 3–12 |
@@ -110,14 +110,22 @@ calentamiento e ignora redes internas; las marcas quedan en nivel 3 (por debajo 
 No cerrar una alerta solo porque el usuario es invitado o de servicio: los cambios de permisos, la actividad fuera
 de horario o una cuenta deshabilitada se revisan igual.
 
-Pruebas: 832 casos sintéticos de `wazuh-logtest` (TP y benignos) generados por
+Pruebas: 1832 casos sintéticos de `wazuh-logtest` (TP y benignos) generados por
 `wazuh/provider-ingestion/sharepoint/tests/make_fixtures.py` con un modelo del algoritmo de frecuencia de Wazuh;
 13 pruebas unitarias del collector (`python -m unittest tests/test_sharepoint_collector.py`).
 **[verificado] 2026-11-10 en AWS:** 832/832 casos en un manager 4.14.8 desechable; réplica de las 755 auditorías
 reales de SharePoint/OneDrive de 24 h (todas en segundos, cota superior para las reglas de frecuencia): 0 alertas de
 nivel ≥ 4 de estas reglas (70 marcas de descarga 101900 y 3 de enlace anónimo usado 101910, nivel 3). Despliegue en
 el manager con `wazuh-analysisd -t` OK y agente 001 activo; los eventos de capacidad del collector (101969) llegan a
-`wazuh-alerts-*`. Los nombres de
+`wazuh-alerts-*`.
+
+**Calibración con datos reales (2026-11-10 13:01 → 2026-11-11 14:47 UTC):** 7893 alertas `b89_sharepoint`, todas
+marcas salvo 45 de 101902 (P2) de 3 usuarios, 44 de ellas del cliente de sincronización: el 97 % de las descargas
+eran `FileSyncDownloadedFull` («OneDrive SyncEngine», WinDesktop) y un solo equipo resincronizó 6449 archivos. Se
+separó la sincronización (101912/101913, 500/10 min, P3 sin correo; 101914 P2 desde red nueva) de la descarga web o
+por API (101900/101902). Réplica de 2000 eventos reales con la regla nueva: una sola alerta 101913 (nivel 7) y 0 de
+nivel ≥ 8. También dispararon en real 101915 (borrado, marca), 101910 (enlace anónimo usado), 101928 (compartido con
+externo, 2) y 100515 (enlace anónimo, 4). Los nombres de
 operación sin registro real llevan el grupo `b89_pending_provider_evidence` (como en `wazuh/office365`) y los casos
 de uso están en `pending-provider-evidence` hasta el primer registro real redactado.
 

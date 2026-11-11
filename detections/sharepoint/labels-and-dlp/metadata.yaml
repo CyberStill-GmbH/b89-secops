@@ -4,13 +4,13 @@ id: B89-DET-SP-005
 title: Etiquetas de confidencialidad quitadas o rebajadas y coincidencias DLP
 source: sharepoint
 use_case: labels-and-dlp
-status: pending-provider-evidence
+status: testing
 version: 1.0.0
 owner: soc-detection-engineering
 reviewers:
 - b89.soc.lead
 created: '2026-11-09'
-updated: '2026-11-09'
+updated: '2026-11-11'
 hypothesis: Quitar o rebajar la etiqueta evita el cifrado y el DLP; compartir el mismo archivo justo después es exfiltración
   preparada.
 data_sources:
@@ -51,5 +51,5 @@ tests:
   expected: detections/sharepoint/labels-and-dlp/expected.txt
   generator: wazuh/provider-ingestion/sharepoint/tests/make_fixtures.py
 runbook: docs/detection-engineering/runbooks/exfiltracion-sharepoint.md
-notes: 'Sin datos al 2026-11-09: la app «Soc Interno» no tiene ActivityFeed.Read ni AuditLogsQuery-*. Instalada y probada
-  con fixtures sintéticos; pasa a testing con el primer registro real redactado (docs/23).'
+notes: Activa desde 2026-11-10 en AWS con datos reales (módulo office365, Audit.SharePoint, ActivityFeed.Read). Operaciones
+  sin registro real todavía siguen en el grupo b89_pending_provider_evidence (docs/23).

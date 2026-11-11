@@ -120,9 +120,20 @@ def exfiltration() -> list[tuple[dict, str]]:
     cases.append((one, str(downloads.process(one))))
     # Descarga masiva en horario (vía nativa, sin b89.*): 150 en 10 min.
     for i in range(150):
-        e = o365("FileDownloaded" if i % 3 else "FileSyncDownloadedFull", 6, "ana@b89-lab.example",
-                 workload="OneDrive" if i % 2 else "SharePoint")
+        e = o365("FileDownloaded", 6, "ana@b89-lab.example", workload="OneDrive" if i % 2 else "SharePoint")
         cases.append((e, str(downloads.process(e))))
+    # Sincronización (cliente OneDrive): 499 marcas y la 500 en 10 min es P3 (calibración con datos reales);
+    # la misma cantidad de descargas web habría sido P2.
+    sync = FrequencyChain(101912, [{"id": 101913, "level": 7, "n": 500, "same": user_of,
+                                    "children": [{"id": 101914, "cond": lambda e: b89(e, "ip_first_seen") == "true"}]}])
+    for i in range(500):
+        e = o365("FileSyncDownloadedFull", 6, "equipo.nuevo@b89-lab.example", workload="OneDrive",
+                 ApplicationDisplayName="OneDrive SyncEngine", Platform="WinDesktop")
+        cases.append((e, str(sync.process(e))))
+    for i in range(500):
+        e = o365("FileSyncDownloadedFull", 6, "viajero@b89-lab.example", workload="OneDrive", ip="192.0.2.88",
+                 b89={"ip_first_seen": "true" if i == 499 else "false"})
+        cases.append((e, str(sync.process(e))))
     # Fuera de horario (vía Purview): 40 en 30 min.
     for _ in range(40):
         e = o365("FileDownloaded", 6, "bruno@b89-lab.example", b89={"after_hours": "true", "local_hour": "23"})

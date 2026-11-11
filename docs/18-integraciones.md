@@ -84,8 +84,8 @@ reinicia solo el manager. Estado: `systemctl list-timers 'b89-*'`.
   `office365.*` + contexto `b89.*`: fuera de horario, red nueva, cuenta deshabilitada, invitado). Postura cada
   60 min (`sharepoint.py posture`): configuración de uso compartido del tenant, sitios nuevos y enlaces
   anónimos/externos.
-- **Reglas:** 101900–101979 (`detections/sharepoint/`, 6 casos de uso, 51 reglas, 832 casos de logtest): masiva
-  150/10 min (10), fuera de horario 40/30 min (12), destrucción 300/15 min (13), correo personal (9), etiqueta
+- **Reglas:** 101900–101979 (`detections/sharepoint/`, 6 casos de uso, 54 reglas, 1832 casos de logtest): descarga web/API
+  masiva 150/10 min (10), sincronización OneDrive 500/10 min (7), fuera de horario 40/30 min (12), destrucción 300/15 min (13), correo personal (9), etiqueta
   quitada y compartido (13), tenant debilitado (12). Allowlists `b89-m365-service-accounts` y
   `b89-m365-sharing-approved`; reputación `b89-ti-blocklist` / `b89-ti-tor`.
 - **Permisos mínimos:** `ActivityFeed.Read` **o** `AuditLogsQuery-SharePoint.Read.All` +
