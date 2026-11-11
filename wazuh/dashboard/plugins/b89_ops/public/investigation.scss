@@ -626,3 +626,57 @@ $b89InvGradient: linear-gradient(110deg, #ff5899 0%, #ff5841 55%, #ffc136 100%);
   padding-bottom: 8px;
   border-bottom: 1px solid $ouiBorderColor;
 }
+
+// Canales de notificación.
+.b89Channels {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: $ouiSize;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.b89Channel {
+  padding: $ouiSize;
+  border: 1px solid $ouiBorderColor;
+  border-top: 3px solid $ouiBorderColor;
+  border-radius: 14px;
+
+  &[data-state='active'] {
+    border-top-color: #5fb98a;
+  }
+
+  &[data-state='failing'] {
+    border-top-color: #ff5f57;
+  }
+
+  &[data-state='unconfigured'] {
+    border-top-color: #d8c35c;
+  }
+
+  h3 {
+    margin: 0;
+    font-size: $ouiFontSizeM;
+    font-weight: 700;
+  }
+}
+
+.b89Channel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: $ouiSizeS;
+  margin-bottom: 4px;
+}
+
+.b89Channel__test {
+  margin-top: $ouiSizeS;
+}
+
+.b89Channel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $ouiSizeS;
+  margin-top: $ouiSizeM;
+}

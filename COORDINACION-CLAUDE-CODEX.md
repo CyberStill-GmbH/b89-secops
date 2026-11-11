@@ -259,3 +259,15 @@ campos **opcionales** por ítem y funciona sin ellos (`common/api_contract.ts �
 - `deliveries: [{ attempt, channel, outcome: 'sent'|'delivered'|'failed'|'acknowledged', at, reason?, actor?, link? }]`
   → «Enviado (aceptado por M365)» / «Entregado» / «Fallido (motivo)» / «Reconocido (quién, cuándo)».
 - `link` («Ver en Teams») y `lastFailureReason` (texto legible del fallo).
+
+### Canales de notificación — forma que consume la UI (pestaña «Canales», `channels_panel.tsx`)
+
+- `GET /api/notifications/channels` → `{ correlationId, channels: [{ id: 'teams'|'fallback_email'|'manual_console',
+  enabled, configured, state: 'active'|'inactive'|'failing'|'unconfigured', target /* enmascarado, nunca el secreto */,
+  lastDelivery: { ok, at, reason? } | null, updatedAt?, updatedBy?, revision? }] }`. 404 = la UI muestra «aún no publicada».
+- `PUT /api/notifications/channels/teams` `{ webhookUrl, expectedRevision? }` (la UI valida https y host de Workflows
+  `*.logic.azure.com` / `*.api.powerplatform.com`; rechaza `*.webhook.office.com`).
+- `POST /api/notifications/channels/{id}/test` → `{ ok, at, reason?, latencyMs? }`.
+- `POST /api/notifications/channels/{id}/enable|disable` `{ expectedRevision? }`.
+- Todas las mutaciones con `notifications.manage` (b89.platform.admin), CSRF y auditoría; la UI oculta los botones sin
+  esa capacidad y deja la vista en solo lectura.

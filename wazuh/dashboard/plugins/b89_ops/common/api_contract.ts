@@ -373,6 +373,40 @@ export interface NotificationSubject {
   readonly entity?: string | null;
 }
 
+/**
+ * Canales de notificación (`GET /api/notifications/channels`, propuesta acordada con el agente
+ * de notificaciones; ver COORDINACION-CLAUDE-CODEX.md). El secreto nunca viaja completo:
+ * `target` es el webhook o buzón ya enmascarado por la API.
+ */
+export type NotificationChannelState = 'active' | 'inactive' | 'failing' | 'unconfigured';
+
+export interface NotificationChannelView {
+  readonly id: NotificationChannel;
+  readonly enabled: boolean;
+  readonly configured: boolean;
+  readonly state: NotificationChannelState;
+  readonly target: string | null;
+  readonly lastDelivery: {
+    readonly ok: boolean;
+    readonly at: string;
+    readonly reason?: string | null;
+  } | null;
+  readonly updatedAt?: string | null;
+  readonly updatedBy?: string | null;
+  readonly revision?: number;
+}
+
+export interface NotificationChannelsResponse {
+  readonly channels: readonly NotificationChannelView[];
+}
+
+export interface NotificationChannelTest {
+  readonly ok: boolean;
+  readonly at: string;
+  readonly reason?: string | null;
+  readonly latencyMs?: number | null;
+}
+
 export type NotificationDeliveryOutcome = 'sent' | 'delivered' | 'failed' | 'acknowledged';
 
 export interface NotificationDelivery {
@@ -496,6 +530,7 @@ export const CAPABILITIES = {
   sessionsRead: 'sessions.read',
   sessionsRevoke: 'sessions.revoke',
   notificationsRead: 'notifications.read',
+  notificationsManage: 'notifications.manage',
   observabilitySoc: 'observability.read_soc',
   observabilityPlatform: 'observability.read_platform',
 } as const;

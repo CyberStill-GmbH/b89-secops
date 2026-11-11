@@ -18,7 +18,8 @@ import {
 
 /** Lógica pura de la bandeja de notificaciones (agrupación, entrega, enmascarado). */
 
-export type DeliveryKind = 'pending' | 'sent' | 'delivered' | 'failed' | 'acknowledged' | 'uncertain';
+export type DeliveryKind =
+  'pending' | 'sent' | 'delivered' | 'failed' | 'acknowledged' | 'uncertain';
 
 export const DELIVERY: Record<DeliveryKind, { label: string; tone: HealthTone }> = {
   pending: { label: 'Pendiente', tone: 'neutral' },
@@ -172,4 +173,29 @@ export function describeGroup(group: NotificationGroup, alert: Alert | null | un
       : 'wazuh';
   const entity = subject?.entity ?? maskEntity(alert?.entities[0]?.label);
   return { title, priority, ruleId, vendor, entity };
+}
+
+/** Pistas de validación del webhook de Teams (Workflows). `null` si es válido. */
+export function webhookProblem(value: string): string | null {
+  const text = value.trim();
+  if (!text) return 'Pega la URL HTTP POST que muestra el flujo de Workflows.';
+  let url: URL;
+  try {
+    url = new URL(text);
+  } catch {
+    return 'No es una URL válida.';
+  }
+  if (url.protocol !== 'https:') return 'Debe empezar por https://.';
+  const host = url.hostname.toLowerCase();
+  const workflows = host.endsWith('.logic.azure.com') || host.endsWith('.api.powerplatform.com');
+  if (host.endsWith('.webhook.office.com')) {
+    return 'Es un conector de Office 365 (retirado por Microsoft). Crea el webhook con Workflows.';
+  }
+  if (!workflows) {
+    return 'El host debe ser de Workflows (*.logic.azure.com o *.api.powerplatform.com).';
+  }
+  if (!url.searchParams.has('sig') && !url.pathname.includes('/workflows/')) {
+    return 'Falta la firma (sig) de la URL: copia la URL completa del paso «When a Teams webhook request is received».';
+  }
+  return null;
 }

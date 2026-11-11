@@ -16,6 +16,8 @@ import {
   EuiLoadingContent,
   EuiSpacer,
   EuiSwitch,
+  EuiTab,
+  EuiTabs,
   EuiText,
   EuiTitle,
 } from '@elastic/eui';
@@ -46,6 +48,7 @@ import {
   useIsMobile,
 } from './primitives';
 import { VendorLogo } from './vendor_logo';
+import { ChannelsPanel } from './channels_panel';
 import {
   DELIVERY,
   deliveryLines,
@@ -83,6 +86,7 @@ function NotificationsContent() {
   const [error, setError] = useState<unknown>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [alerts, setAlerts] = useState<Record<string, Alert | null>>({});
+  const [tab, setTab] = useState<'inbox' | 'channels'>('inbox');
   const page = useAsync(
     () => api.get<Page<NotificationAttempt>>('/notifications', { pageSize: 100 }),
     [api],
@@ -171,97 +175,114 @@ function NotificationsContent() {
       title="Notificaciones"
       description="Avisos por Teams, correo alternativo o consola, agrupados por alerta. Enviado no es lo mismo que entregado, ni entregado lo mismo que reconocido por una persona."
       actions={
-        <EuiSwitch
-          compressed
-          label="Solo sin acuse"
-          checked={onlyPending}
-          onChange={(event) => setOnlyPending(event.target.checked)}
-        />
+        tab === 'channels' ? undefined : (
+          <EuiSwitch
+            compressed
+            label="Solo sin acuse"
+            checked={onlyPending}
+            onChange={(event) => setOnlyPending(event.target.checked)}
+          />
+        )
       }
     >
-      {error != null && (
-        <>
-          <ErrorCallout error={error} />
-          <EuiSpacer size="m" />
-        </>
-      )}
-      {page.error != null ? (
-        <ErrorCallout error={page.error} onRetry={page.reload} />
-      ) : page.loading && items.length === 0 ? (
-        <EuiLoadingContent lines={6} />
-      ) : visible.length === 0 ? (
-        <EmptyLine>
-          {onlyPending
-            ? 'No hay notificaciones pendientes de acuse.'
-            : 'Todavía no se ha enviado ninguna notificación.'}
-        </EmptyLine>
+      <EuiTabs size="s" className="b89Tabs">
+        <EuiTab isSelected={tab === 'inbox'} onClick={() => setTab('inbox')}>
+          Bandeja
+        </EuiTab>
+        <EuiTab isSelected={tab === 'channels'} onClick={() => setTab('channels')}>
+          Canales
+        </EuiTab>
+      </EuiTabs>
+      <EuiSpacer size="m" />
+      {tab === 'channels' ? (
+        <ChannelsPanel />
       ) : (
-        <DataZone>
-          <ul className="b89NotifList" aria-label="Notificaciones agrupadas por alerta">
-            {visible.map((group) => {
-              const info = describeGroup(group, group.alertId ? alerts[group.alertId] : null);
-              const pending = group.items.some((item) => ACKNOWLEDGEABLE.includes(item.status));
-              return (
-                <li key={group.key}>
-                  <button
-                    type="button"
-                    className={`b89Notif${pending ? ' b89Notif--pending' : ''}`}
-                    onClick={() => setOpen(group.key)}
-                    aria-haspopup="dialog"
-                  >
-                    <span className="b89Notif__lead">
-                      <VendorLogo id={info.vendor} basePath={basePath} size="m" />
-                      {info.priority && <PriorityMark priority={info.priority} />}
-                    </span>
-                    <span className="b89Notif__body">
-                      <span className="b89Notif__title">
-                        {info.title ??
-                          (group.alertId
-                            ? 'Cargando la alerta…'
-                            : `Aviso ${(group.latest.messageId ?? group.latest.id).slice(0, 12)}`)}
-                        {group.items.length > 1 && (
-                          <EuiBadge color="hollow" className="b89Notif__count">
-                            ×{group.items.length}
-                          </EuiBadge>
-                        )}
-                      </span>
-                      <span className="b89CellMeta">
-                        {[info.entity, info.ruleId ? `regla ${info.ruleId}` : null]
-                          .filter(Boolean)
-                          .join(' · ') ||
-                          'La API no informó la alerta de este aviso (ver detalle).'}
-                      </span>
-                      <span className="b89Notif__deliveries">
-                        {latestByChannel(group.items).map((line) => (
-                          <span key={line.channel} className="b89Notif__delivery">
-                            <span className="b89Muted">
-                              {NOTIFICATION_CHANNEL_LABEL[line.channel] ?? line.channel}:
-                            </span>{' '}
-                            <HealthMark
-                              tone={DELIVERY[line.kind].tone}
-                              label={DELIVERY[line.kind].label}
-                            />
-                          </span>
-                        ))}
-                      </span>
-                    </span>
-                    <span className="b89Notif__time">
-                      <Timestamp iso={group.latest.sentAt ?? group.latest.acknowledgedAt} />
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-          {cursor && (
+        <>
+          {error != null && (
             <>
-              <EuiSpacer size="s" />
-              <EuiButtonEmpty size="s" onClick={loadMore}>
-                Cargar más
-              </EuiButtonEmpty>
+              <ErrorCallout error={error} />
+              <EuiSpacer size="m" />
             </>
           )}
-        </DataZone>
+          {page.error != null ? (
+            <ErrorCallout error={page.error} onRetry={page.reload} />
+          ) : page.loading && items.length === 0 ? (
+            <EuiLoadingContent lines={6} />
+          ) : visible.length === 0 ? (
+            <EmptyLine>
+              {onlyPending
+                ? 'No hay notificaciones pendientes de acuse.'
+                : 'Todavía no se ha enviado ninguna notificación.'}
+            </EmptyLine>
+          ) : (
+            <DataZone>
+              <ul className="b89NotifList" aria-label="Notificaciones agrupadas por alerta">
+                {visible.map((group) => {
+                  const info = describeGroup(group, group.alertId ? alerts[group.alertId] : null);
+                  const pending = group.items.some((item) => ACKNOWLEDGEABLE.includes(item.status));
+                  return (
+                    <li key={group.key}>
+                      <button
+                        type="button"
+                        className={`b89Notif${pending ? ' b89Notif--pending' : ''}`}
+                        onClick={() => setOpen(group.key)}
+                        aria-haspopup="dialog"
+                      >
+                        <span className="b89Notif__lead">
+                          <VendorLogo id={info.vendor} basePath={basePath} size="m" />
+                          {info.priority && <PriorityMark priority={info.priority} />}
+                        </span>
+                        <span className="b89Notif__body">
+                          <span className="b89Notif__title">
+                            {info.title ??
+                              (group.alertId
+                                ? 'Cargando la alerta…'
+                                : `Aviso ${(group.latest.messageId ?? group.latest.id).slice(0, 12)}`)}
+                            {group.items.length > 1 && (
+                              <EuiBadge color="hollow" className="b89Notif__count">
+                                ×{group.items.length}
+                              </EuiBadge>
+                            )}
+                          </span>
+                          <span className="b89CellMeta">
+                            {[info.entity, info.ruleId ? `regla ${info.ruleId}` : null]
+                              .filter(Boolean)
+                              .join(' · ') ||
+                              'La API no informó la alerta de este aviso (ver detalle).'}
+                          </span>
+                          <span className="b89Notif__deliveries">
+                            {latestByChannel(group.items).map((line) => (
+                              <span key={line.channel} className="b89Notif__delivery">
+                                <span className="b89Muted">
+                                  {NOTIFICATION_CHANNEL_LABEL[line.channel] ?? line.channel}:
+                                </span>{' '}
+                                <HealthMark
+                                  tone={DELIVERY[line.kind].tone}
+                                  label={DELIVERY[line.kind].label}
+                                />
+                              </span>
+                            ))}
+                          </span>
+                        </span>
+                        <span className="b89Notif__time">
+                          <Timestamp iso={group.latest.sentAt ?? group.latest.acknowledgedAt} />
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              {cursor && (
+                <>
+                  <EuiSpacer size="s" />
+                  <EuiButtonEmpty size="s" onClick={loadMore}>
+                    Cargar más
+                  </EuiButtonEmpty>
+                </>
+              )}
+            </DataZone>
+          )}
+        </>
       )}
       {selected && (
         <NotificationFlyout
@@ -498,7 +519,8 @@ function NotificationFlyout({
                     }),
                     context: { alertId: alert.id },
                   });
-                  if (!opened) notifications.toasts.addWarning({ title: 'Bunny no está disponible' });
+                  if (!opened)
+                    notifications.toasts.addWarning({ title: 'Bunny no está disponible' });
                 }}
               >
                 Preguntar a Bunny

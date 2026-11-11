@@ -3,7 +3,13 @@
  */
 
 import type { NotificationAttempt } from '../../common';
-import { deliveryLines, groupNotifications, latestByChannel, maskEntity } from './notification_groups';
+import {
+  deliveryLines,
+  groupNotifications,
+  latestByChannel,
+  maskEntity,
+} from './notification_groups';
+import { webhookProblem } from './notification_groups';
 
 const base: NotificationAttempt = {
   id: 'n1',
@@ -64,12 +70,27 @@ describe('bandeja de notificaciones', () => {
       },
     ]);
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toMatchObject({ kind: 'delivered', link: 'https://teams.microsoft.com/l/message/x' });
+    expect(lines[0]).toMatchObject({
+      kind: 'delivered',
+      link: 'https://teams.microsoft.com/l/message/x',
+    });
   });
 
   it('enmascara entidades en claro', () => {
     expect(maskEntity('isabel.saravia@b89.io')).toBe('is***@b89.io');
     expect(maskEntity('18.214.220.109')).toBe('18.214.x.x');
     expect(maskEntity(null)).toBeNull();
+  });
+
+  it('valida el webhook de Teams (Workflows) sin aceptar conectores retirados', () => {
+    expect(
+      webhookProblem(
+        'https://prod-00.westus.logic.azure.com:443/workflows/abc/triggers/manual/paths/invoke?api-version=2016-06-01&sig=xyz',
+      ),
+    ).toBeNull();
+    expect(webhookProblem('http://x.logic.azure.com/workflows/a')).toMatch(/https/);
+    expect(webhookProblem('https://b89.webhook.office.com/webhookb2/x')).toMatch(/Workflows/);
+    expect(webhookProblem('https://evil.example.com/hook')).toMatch(/host/);
+    expect(webhookProblem('')).toMatch(/Pega/);
   });
 });
