@@ -17,6 +17,8 @@ export {
   loadRoleGrantsConfig,
   loadTeamsWorkflowUrl,
   loadAlertMailSender,
+  loadNotificationPolicy,
+  type NotificationPolicyEnvironment,
   loadVapidPrivateKey,
   loadSocPersistenceConfig,
   loadLocalWorkerConfig,

@@ -484,10 +484,40 @@ model NotificationAttempt {
   sentAt           DateTime? @map("sent_at") @db.Timestamptz(3)
   acknowledgedAt   DateTime? @map("acknowledged_at") @db.Timestamptz(3)
   acknowledgedBy   String?   @map("acknowledged_by") @db.Text
+  groupKey          String?   @map("group_key") @db.Text
+  context           Json?     @db.JsonB
+  delivery          Json      @default("[]") @db.JsonB
+  suppressionReason String?   @map("suppression_reason") @db.Text
+  supersededBy      String?   @map("superseded_by") @db.Uuid
+  digestId          String?   @map("digest_id") @db.Uuid
 
   @@unique([tenantId, idempotencyKey], map: "notification_attempts_idempotency_key")
   @@index([status, availableAt, id], map: "notification_attempts_pending_idx")
+  @@index([tenantId, groupKey, sentAt], map: "notification_attempts_group_idx")
   @@map("notification_attempts")
+}
+
+// Canales de aviso administrables (Teams, correo, push). El webhook de Teams se guarda cifrado
+// (AES-256-GCM, clave derivada en el API); la API nunca lo devuelve.
+model NotificationChannel {
+  tenantId           String    @map("tenant_id") @db.Text
+  channelId          String    @map("channel_id") @db.Text
+  enabled            Boolean   @default(true)
+  secretCiphertext   String?   @map("secret_ciphertext") @db.Text
+  secretHint         String?   @map("secret_hint") @db.Text
+  updatedAt          DateTime  @map("updated_at") @db.Timestamptz(3)
+  updatedBy          String?   @map("updated_by") @db.Text
+  lastSuccessAt      DateTime? @map("last_success_at") @db.Timestamptz(3)
+  lastFailureAt      DateTime? @map("last_failure_at") @db.Timestamptz(3)
+  lastHttpStatus     Int?      @map("last_http_status")
+  lastFailureReason  String?   @map("last_failure_reason") @db.Text
+  lastTestAt         DateTime? @map("last_test_at") @db.Timestamptz(3)
+  lastTestOutcome    String?   @map("last_test_outcome") @db.Text
+  lastTestHttpStatus Int?      @map("last_test_http_status")
+  lastTestProviderId String?   @map("last_test_provider_id") @db.Text
+
+  @@id([tenantId, channelId], map: "notification_channels_pkey")
+  @@map("notification_channels")
 }
 
 // C-18/C-25 — sesiones del BFF. `idHash` es el SHA-256 del identificador de la cookie: el

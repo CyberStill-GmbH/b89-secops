@@ -8,6 +8,7 @@ import {
   loadRoleGrantsConfig,
   loadTeamsWorkflowUrl,
   loadAlertMailSender,
+  loadNotificationPolicy,
   loadDemoAdminLoginConfig,
   loadVapidPrivateKey,
   loadSocPersistenceConfig,
@@ -17,7 +18,16 @@ import {
 } from '@b89/configuration';
 import type { PrioritizationContext } from '@b89/detection';
 import type { SessionStore } from '@b89/access';
-import type { AttemptStore } from '@b89/soar';
+import {
+  ConsoleFallbackChannel,
+  InMemoryChannelStore,
+  notificationPolicyFrom,
+  type AttemptStore,
+  type ChannelStore,
+} from '@b89/soar';
+import { SOC_KNOWLEDGE } from './assistant/soc-knowledge.generated.js';
+import { deriveChannelKey, NotificationChannelRegistry } from './runtime/notification-channels.js';
+import { notificationEnricher } from './runtime/notification-enricher.js';
 import type { SocPersistence } from '@b89/soc';
 import { composeApi } from './composition-root.js';
 import { createAssistantService } from './assistant/assistant-service.js';
@@ -110,7 +120,10 @@ function connectionStringFor({ postgres }: PostgresPersistenceConfig): string {
 
 interface DurableStores {
   readonly soc: SocPersistence;
-  readonly notifications: AttemptStore & { close(): Promise<void> };
+  readonly notifications: AttemptStore & {
+    close(): Promise<void>;
+    readonly channels: ChannelStore;
+  };
   readonly sessions: SessionStore & { close(): Promise<void> };
   readonly directory: DirectoryStore & { close(): Promise<void> };
   readonly push: PushSubscriptionStore & { close(): Promise<void> };
@@ -337,6 +350,34 @@ export async function buildApi(
       : undefined;
   await activation?.attempt();
   const durable = await durableStoresFor(persistenceConfig);
+  // Avisos: política de ruido, canales administrables y correo (si hay buzón y secreto).
+  const notificationPolicy = notificationPolicyFrom(loadNotificationPolicy(environment));
+  const graphMail =
+    alertMailSender && clientSecret
+      ? (next: ConstructorParameters<typeof GraphMailFallbackChannel>[0]['next']) =>
+          new GraphMailFallbackChannel({
+            sender: alertMailSender,
+            accessToken: new EntraClientCredentialsTokenSource({
+              tenantId: access.tenantId,
+              clientId: access.clientId,
+              clientSecret,
+              scope: 'https://graph.microsoft.com/.default',
+            }).token,
+            next,
+            ...(onDispatchError ? { onError: (code) => onDispatchError(new Error(code)) } : {}),
+          })
+      : undefined;
+  const channels = new NotificationChannelRegistry({
+    tenantId: access.tenantId,
+    store: durable?.notifications.channels ?? new InMemoryChannelStore(),
+    ...(entityRefSecret ? { key: deriveChannelKey(entityRefSecret) } : {}),
+    ...(teamsWorkflowUrl ? { environmentTeamsUrl: teamsWorkflowUrl } : {}),
+    emailConfigured: graphMail !== undefined,
+    pushConfigured: vapidKey !== undefined,
+    clock: () => new Date(),
+    ...(onDispatchError ? { onError: (code) => onDispatchError(new Error(code)) } : {}),
+  });
+  await channels.refresh();
   const directoryStore: DirectoryStore = durable?.directory ?? new InMemoryDirectoryStore();
   // Los grants dinámicos exigen padrón: sin él no hay cómo validar miembro ni cuenta habilitada,
   // así que ni se asignan ni cuentan al iniciar sesión. El grupo puede resolverse más tarde.
@@ -416,22 +457,20 @@ export async function buildApi(
     ...(roleAdministration ? { roleAdministration } : {}),
     ...(teamsWorkflowUrl ? { teamsWorkflowUrl } : {}),
     // Respaldo: si Teams no confirma, correo a los mismos destinatarios; si no, la consola.
-    ...(alertMailSender && clientSecret
+    // El canal de correo se puede apagar desde la consola: entonces el respaldo es la consola.
+    ...(graphMail
       ? {
           fallbackChain: (consoleFallback) =>
-            new GraphMailFallbackChannel({
-              sender: alertMailSender,
-              accessToken: new EntraClientCredentialsTokenSource({
-                tenantId: access.tenantId,
-                clientId: access.clientId,
-                clientSecret,
-                scope: 'https://graph.microsoft.com/.default',
-              }).token,
-              next: consoleFallback,
-              ...(onDispatchError ? { onError: (code) => onDispatchError(new Error(code)) } : {}),
-            }),
+            channels.fallback(graphMail(consoleFallback), consoleFallback),
+          mail: channels.mail(graphMail(new ConsoleFallbackChannel())),
         }
       : {}),
+    channels,
+    notificationPolicy,
+    notificationEnricher: notificationEnricher({
+      alertById: (tenantId, alertId) => runtime.soc.alertById(tenantId, alertId),
+      knowledge: SOC_KNOWLEDGE,
+    }),
     // Destinatarios por rol desde el padrón. Las funciones leen el runtime al despachar, que
     // siempre ocurre después de construirlo.
     recipients: directoryRecipients({

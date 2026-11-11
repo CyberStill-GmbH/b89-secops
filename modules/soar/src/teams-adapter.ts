@@ -21,6 +21,29 @@ export interface DeliveryOutcome {
   readonly delivered: boolean;
   readonly failure?: DeliveryFailure;
   readonly httpStatus?: number;
+  /**
+   * Identificador que devolvió el destino. Power Automate / Logic Apps responden 202 con
+   * `x-ms-workflow-run-id` (la ejecución del flujo que publica la tarjeta); si no, el
+   * `x-ms-request-id`/`request-id`. Prueba que M365 aceptó el mensaje, no que alguien lo leyó.
+   */
+  readonly providerMessageId?: string;
+}
+
+const PROVIDER_ID_HEADERS = [
+  'x-ms-workflow-run-id',
+  'x-ms-request-id',
+  'request-id',
+  'x-ms-correlation-request-id',
+] as const;
+
+/** Primer identificador de proveedor presente, saneado (solo caracteres de id). */
+export function providerMessageIdOf(headers: Headers | undefined): string | undefined {
+  if (!headers) return undefined;
+  for (const name of PROVIDER_ID_HEADERS) {
+    const value = headers.get(name);
+    if (value && /^[A-Za-z0-9._:-]{4,128}$/u.test(value)) return `${name}:${value}`;
+  }
+  return undefined;
 }
 
 export interface NotificationTransport {
@@ -67,10 +90,18 @@ export class TeamsWorkflowTransport implements NotificationTransport {
         body: JSON.stringify(webhookPayload),
         signal: controller.signal,
       });
-      if (response.ok) return { delivered: true, httpStatus: response.status };
+      const providerMessageId = providerMessageIdOf(response.headers);
+      if (response.ok) {
+        return {
+          delivered: true,
+          httpStatus: response.status,
+          ...(providerMessageId ? { providerMessageId } : {}),
+        };
+      }
       return {
         delivered: false,
         httpStatus: response.status,
+        ...(providerMessageId ? { providerMessageId } : {}),
         failure: {
           class: classifyHttpStatus(response.status),
           code: `HTTP_${response.status}`,

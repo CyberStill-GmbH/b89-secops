@@ -24,7 +24,7 @@ describe('política de ruteo por rol', () => {
 
   it('lo que no es crítico no se notifica', () => {
     expect(
-      rolesToNotify({ messageType: 'soc.alert.created', payload: { priority: 'P2' } }),
+      rolesToNotify({ messageType: 'soc.alert.created', payload: { priority: 'P3' } }),
     ).toEqual([]);
     expect(
       rolesToNotify({ messageType: 'soc.alert.triaged', payload: { priority: 'P1' } }),

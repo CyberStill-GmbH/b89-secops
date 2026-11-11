@@ -28,6 +28,11 @@ export const CAPABILITIES = [
    * no basta con poder leer la bandeja: el despacho normal lo hace el bucle del runtime.
    */
   'notifications.dispatch',
+  /**
+   * Administrar los canales de aviso (webhook de Teams, encender/apagar canales, probarlos).
+   * Cambiar el webhook redirige los avisos del SOC: solo administración de plataforma.
+   */
+  'notifications.manage',
   /** Salud del pipeline SOC (ingesta, cola de notificaciones, despacho). Agregado, sin PII. */
   'observability.read_soc',
   /** Salud por fuente de telemetría (Sprint 5 · fase 2): estado, motivo y transiciones. */
@@ -127,6 +132,7 @@ export const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> 
     'incidents.close',
     'notifications.read',
     'notifications.dispatch',
+    'notifications.manage',
     'observability.read_soc',
     'sources.health.read',
     'observability.read_platform',
@@ -172,6 +178,7 @@ const SCOPE_CAPABILITIES: Readonly<Record<Scope, readonly Capability[]>> = Objec
     'incidents.tasks.write',
     'incidents.notes.write',
     'notifications.dispatch',
+    'notifications.manage',
     'sessions.revoke',
     'roles.request',
     'roles.approve',

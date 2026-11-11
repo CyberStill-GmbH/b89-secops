@@ -6,7 +6,7 @@
  * reentregas del mismo mensaje.
  */
 
-import type { PrismaClient } from '../generated/client/client.js';
+import { Prisma, type PrismaClient } from '../generated/client/client.js';
 
 export interface NotificationAttemptRow {
   readonly id: string;
@@ -25,7 +25,18 @@ export interface NotificationAttemptRow {
   readonly sentAt: Date | null;
   readonly acknowledgedAt: Date | null;
   readonly acknowledgedBy: string | null;
+  readonly groupKey?: string | null;
+  readonly context?: unknown;
+  readonly delivery?: unknown;
+  readonly suppressionReason?: string | null;
+  readonly supersededBy?: string | null;
+  readonly digestId?: string | null;
 }
+
+/** Estados en que el aviso se publicó (tiene `sentAt`). */
+const NOTIFIED_STATUSES = ['sent', 'fallback', 'acknowledged', 'superseded'];
+
+
 
 /** Store de una fila actual por (tenant, clave idempotente). */
 export class PrismaNotificationAttemptStore {
@@ -86,6 +97,52 @@ export class PrismaNotificationAttemptStore {
     });
   }
 
+  /** Último aviso publicado del grupo desde `since`. */
+  public async lastNotifiedInGroup(
+    tenantId: string,
+    groupKey: string,
+    since: Date,
+  ): Promise<NotificationAttemptRow | undefined> {
+    const row = await this.client.notificationAttempt.findFirst({
+      where: { tenantId, groupKey, sentAt: { gte: since }, status: { in: NOTIFIED_STATUSES } },
+      orderBy: [{ sentAt: 'desc' }, { id: 'desc' }],
+    });
+    return row ?? undefined;
+  }
+
+  public listSuppressedInGroup(
+    tenantId: string,
+    groupKey: string,
+    after: Date,
+    limit: number,
+  ): Promise<readonly NotificationAttemptRow[]> {
+    return this.client.notificationAttempt.findMany({
+      where: { tenantId, groupKey, status: 'suppressed', createdAt: { gt: after } },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      take: Math.min(Math.max(limit, 1), 2_000),
+    });
+  }
+
+  /** Avisos inmediatos publicados desde `since` (los resúmenes no cuentan para el tope). */
+  public countNotifiedSince(tenantId: string, since: Date): Promise<number> {
+    return this.client.notificationAttempt.count({
+      where: {
+        tenantId,
+        sentAt: { gte: since },
+        status: { in: NOTIFIED_STATUSES },
+        OR: [{ groupKey: null }, { NOT: { groupKey: { startsWith: 'digest:' } } }],
+      },
+    });
+  }
+
+  public listUndigested(tenantId: string, limit: number): Promise<readonly NotificationAttemptRow[]> {
+    return this.client.notificationAttempt.findMany({
+      where: { tenantId, status: 'suppressed', digestId: null },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      take: Math.min(Math.max(limit, 1), 2_000),
+    });
+  }
+
   /**
    * Inserta el primer intento o guarda su estado más reciente. La identidad del intento,
    * mensaje e idempotency key no cambia al pasar por retries o acknowledgements.
@@ -107,6 +164,15 @@ export class PrismaNotificationAttemptStore {
       sentAt: attempt.sentAt,
       acknowledgedAt: attempt.acknowledgedAt,
       acknowledgedBy: attempt.acknowledgedBy,
+      groupKey: attempt.groupKey ?? null,
+      context:
+        attempt.context === undefined || attempt.context === null
+          ? Prisma.DbNull
+          : (attempt.context as Prisma.InputJsonValue),
+      delivery: (attempt.delivery ?? []) as Prisma.InputJsonValue,
+      suppressionReason: attempt.suppressionReason ?? null,
+      supersededBy: attempt.supersededBy ?? null,
+      digestId: attempt.digestId ?? null,
     };
     const where = { tenantId_idempotencyKey: { tenantId, idempotencyKey } };
     if (existing) {
@@ -116,7 +182,9 @@ export class PrismaNotificationAttemptStore {
     }
 
     try {
-      await this.client.notificationAttempt.create({ data: attempt });
+      await this.client.notificationAttempt.create({
+        data: { ...mutable, id: attempt.id, tenantId, idempotencyKey },
+      });
     } catch (error) {
       // Dos réplicas pueden crear el primer estado simultáneamente. La unicidad de
       // PostgreSQL decide al ganador; el perdedor solo puede continuar si era el mismo
@@ -133,5 +201,51 @@ export class PrismaNotificationAttemptStore {
       this.assertIdentity(raced, attempt);
       await this.client.notificationAttempt.update({ where, data: mutable });
     }
+  }
+}
+
+export interface NotificationChannelRow {
+  readonly tenantId: string;
+  readonly channelId: string;
+  readonly enabled: boolean;
+  readonly secretCiphertext: string | null;
+  readonly secretHint: string | null;
+  readonly updatedAt: Date;
+  readonly updatedBy: string | null;
+  readonly lastSuccessAt: Date | null;
+  readonly lastFailureAt: Date | null;
+  readonly lastHttpStatus: number | null;
+  readonly lastFailureReason: string | null;
+  readonly lastTestAt: Date | null;
+  readonly lastTestOutcome: string | null;
+  readonly lastTestHttpStatus: number | null;
+  readonly lastTestProviderId: string | null;
+}
+
+/** Canales de aviso administrables: una fila por (tenant, canal). */
+export class PrismaNotificationChannelStore {
+  public constructor(private readonly client: PrismaClient) {}
+
+  public list(tenantId: string): Promise<readonly NotificationChannelRow[]> {
+    return this.client.notificationChannel.findMany({
+      where: { tenantId },
+      orderBy: { channelId: 'asc' },
+    });
+  }
+
+  public async get(tenantId: string, channelId: string): Promise<NotificationChannelRow | undefined> {
+    const row = await this.client.notificationChannel.findUnique({
+      where: { tenantId_channelId: { tenantId, channelId } },
+    });
+    return row ?? undefined;
+  }
+
+  public async save(row: NotificationChannelRow): Promise<void> {
+    const { tenantId, channelId, ...data } = row;
+    await this.client.notificationChannel.upsert({
+      where: { tenantId_channelId: { tenantId, channelId } },
+      create: row,
+      update: data,
+    });
   }
 }

@@ -196,6 +196,54 @@ export function loadTeamsWorkflowUrl(environment: EnvironmentInput): string | un
   return parseTeamsWorkflowUrl(environment, profileFrom(environment));
 }
 
+/**
+ * Política de ruido de los avisos (`B89_NOTIFY_*`, minutos enteros). Todas opcionales: sin ellas
+ * rigen los valores por defecto de `@b89/soar` (P1 30 min, P2 120 min, atraso 60 min, 12/h,
+ * resumen P3/P4 cada 360 min). Un valor fuera de rango detiene el arranque con su ruta.
+ */
+export interface NotificationPolicyEnvironment {
+  readonly quietP1Minutes?: number;
+  readonly quietP2Minutes?: number;
+  readonly staleMinutes?: number;
+  readonly maxPerHour?: number;
+  readonly digestMinutes?: number;
+  readonly timeZone?: string;
+}
+
+const NOTIFY_INTEGERS: readonly (readonly [keyof NotificationPolicyEnvironment, string, number, number])[] = [
+  ['quietP1Minutes', 'B89_NOTIFY_QUIET_P1_MINUTES', 1, 1_440],
+  ['quietP2Minutes', 'B89_NOTIFY_QUIET_P2_MINUTES', 1, 1_440],
+  ['staleMinutes', 'B89_NOTIFY_STALE_MINUTES', 5, 10_080],
+  ['maxPerHour', 'B89_NOTIFY_MAX_PER_HOUR', 1, 120],
+  ['digestMinutes', 'B89_NOTIFY_DIGEST_MINUTES', 0, 10_080],
+];
+
+export function loadNotificationPolicy(environment: EnvironmentInput): NotificationPolicyEnvironment {
+  const profile = profileFrom(environment);
+  const result: Record<string, number | string> = {};
+  for (const [field, name, minimum, maximum] of NOTIFY_INTEGERS) {
+    const raw = environment[name];
+    if (raw === undefined || raw === '') continue;
+    const value = Number(raw);
+    if (!/^\d+$/u.test(raw) || value < minimum || value > maximum) {
+      throw configurationError('CONFIG_VALUE_INVALID', name, profile.name);
+    }
+    result[field] = value;
+  }
+  const timeZone = environment['B89_NOTIFY_TIME_ZONE'];
+  if (timeZone !== undefined && timeZone !== '') {
+    let valid = /^[A-Za-z_]+(?:\/[A-Za-z_+-]+){0,2}$/u.test(timeZone);
+    try {
+      new Intl.DateTimeFormat('es', { timeZone });
+    } catch {
+      valid = false;
+    }
+    if (!valid) throw configurationError('CONFIG_VALUE_INVALID', 'B89_NOTIFY_TIME_ZONE', profile.name);
+    result['timeZone'] = timeZone;
+  }
+  return deepFreeze(result) as NotificationPolicyEnvironment;
+}
+
 /** Sprint 5 — buzón remitente del respaldo por correo; `undefined` = solo consola. */
 export function loadAlertMailSender(environment: EnvironmentInput): string | undefined {
   return parseAlertMailSender(environment, profileFrom(environment));

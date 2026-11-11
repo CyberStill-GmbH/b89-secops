@@ -7,7 +7,11 @@
 
 import type { OutboxMessageDraft } from '@b89/soc';
 
-import type { NotificationAttempt, NotificationChannel } from './notification.js';
+import type {
+  DeliveryEvidence,
+  NotificationAttempt,
+  NotificationChannel,
+} from './notification.js';
 import type { AttemptStore, FallbackChannel, FallbackNotification, OutboxReader } from './ports.js';
 
 interface OutboxRow {
@@ -101,6 +105,69 @@ export class InMemoryAttemptStore implements AttemptStore {
     return Promise.resolve(counts);
   }
 
+  public lastNotifiedInGroup(
+    tenantId: string,
+    groupKey: string,
+    since: Date,
+  ): Promise<NotificationAttempt | undefined> {
+    const notified = [...this.rows.values()]
+      .filter(
+        (attempt) =>
+          attempt.tenantId === tenantId &&
+          attempt.groupKey === groupKey &&
+          attempt.sentAt !== null &&
+          attempt.sentAt.getTime() >= since.getTime(),
+      )
+      .sort((left, right) => right.sentAt!.getTime() - left.sentAt!.getTime());
+    return Promise.resolve(notified[0]);
+  }
+
+  public listSuppressedInGroup(
+    tenantId: string,
+    groupKey: string,
+    after: Date,
+    limit: number,
+  ): Promise<readonly NotificationAttempt[]> {
+    return Promise.resolve(
+      [...this.rows.values()]
+        .filter(
+          (attempt) =>
+            attempt.tenantId === tenantId &&
+            attempt.groupKey === groupKey &&
+            attempt.status === 'suppressed' &&
+            attempt.createdAt.getTime() > after.getTime(),
+        )
+        .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime())
+        .slice(0, limit),
+    );
+  }
+
+  public countNotifiedSince(tenantId: string, since: Date): Promise<number> {
+    return Promise.resolve(
+      [...this.rows.values()].filter(
+        (attempt) =>
+          attempt.tenantId === tenantId &&
+          attempt.sentAt !== null &&
+          !(attempt.groupKey ?? '').startsWith('digest:') &&
+          attempt.sentAt.getTime() >= since.getTime(),
+      ).length,
+    );
+  }
+
+  public listUndigested(tenantId: string, limit: number): Promise<readonly NotificationAttempt[]> {
+    return Promise.resolve(
+      [...this.rows.values()]
+        .filter(
+          (attempt) =>
+            attempt.tenantId === tenantId &&
+            attempt.status === 'suppressed' &&
+            (attempt.digestId ?? null) === null,
+        )
+        .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime())
+        .slice(0, limit),
+    );
+  }
+
   public listByTenant(tenantId: string, limit: number): Promise<readonly NotificationAttempt[]> {
     return Promise.resolve(
       [...this.rows.values()]
@@ -123,11 +190,26 @@ export class ConsoleFallbackChannel implements FallbackChannel {
 
   public notify(
     notification: FallbackNotification,
-  ): Promise<{ readonly channel: NotificationChannel; readonly reference: string }> {
+  ): Promise<{
+    readonly channel: NotificationChannel;
+    readonly reference: string;
+    readonly evidence: readonly DeliveryEvidence[];
+  }> {
     this.delivered.push(notification);
     return Promise.resolve({
       channel: 'manual_console',
       reference: `fallback:${notification.tenantId}:${notification.aggregateId}`,
+      evidence: [
+        {
+          channel: 'console',
+          outcome: 'accepted',
+          at: notification.at.toISOString(),
+          httpStatus: null,
+          providerMessageId: null,
+          providerLink: null,
+          reason: notification.reason,
+        },
+      ],
     });
   }
 }

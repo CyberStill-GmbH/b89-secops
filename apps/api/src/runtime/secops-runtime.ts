@@ -137,6 +137,14 @@ export type RuntimeDirectory =
       readonly store: DirectoryStore;
     };
 import { NotificationDispatcher } from './notification-dispatcher.js';
+import type { NotificationChannelRegistry } from './notification-channels.js';
+import {
+  runLowPriorityDigest,
+  runSuppressedDigest,
+  type MailChannel,
+  type NotificationEnricher,
+  type NotificationPolicyConfig,
+} from '@b89/soar';
 import { CONNECTED_SOURCE_SIGNAL_CATALOG } from './signal-catalog.js';
 
 /**
@@ -259,6 +267,13 @@ export interface RuntimeOptions {
    * consola como siguiente eslabón; sin él, el respaldo es solo la consola.
    */
   readonly fallbackChain?: (consoleFallback: FallbackChannel) => FallbackChannel;
+  /** Canales administrables (Teams/correo/push); su transporte de Teams sustituye al fijo. */
+  readonly channels?: NotificationChannelRegistry;
+  /** Contexto explicativo de los avisos (alerta, catálogo, correlador). */
+  readonly notificationEnricher?: NotificationEnricher;
+  /** Copia por correo de P1/incidentes críticos y de los resúmenes. */
+  readonly mail?: MailChannel;
+  readonly notificationPolicy?: NotificationPolicyConfig;
   /** Avisos al dispositivo (Web Push, Sprint 5); sin él la consola los muestra deshabilitados. */
   readonly push?: { readonly store: PushSubscriptionStore; readonly sender: PushSender };
 }
@@ -278,6 +293,9 @@ const DISPATCH_BATCH = 5;
  */
 const OUTBOX_LEASE_MS = Math.max(120_000, 2 * DISPATCH_BATCH * RETRY_POLICY.requestTimeoutMs);
 const DEFAULT_DISPATCH_INTERVAL_MS = 5_000;
+const DIGEST_INTERVAL_MS = 5 * 60_000;
+/** Tope de alertas P3/P4 que lee un resumen (el total real viene aparte). */
+const DIGEST_ALERT_LIMIT = 500;
 /** Pasadas de revocación tras un cambio de roles; cada una relee las sesiones activas. */
 const ROLE_CHANGE_REVOCATION_ATTEMPTS = 3;
 
@@ -322,6 +340,7 @@ export class SecOpsRuntime {
   public readonly soc: SocPersistence;
   public readonly notifications: AttemptStore;
   public readonly dispatcher: NotificationDispatcher;
+  private readonly digests: NotificationDispatcher;
   public readonly correlatorServiceToken: string | undefined;
   public readonly correlatorRead: { readonly baseUrl: string; readonly token: string } | undefined;
   /** Bandeja de la consola: último eslabón del respaldo, siempre presente. */
@@ -372,6 +391,15 @@ export class SecOpsRuntime {
       intervalMs: options.dispatchIntervalMs ?? DEFAULT_DISPATCH_INTERVAL_MS,
       onError: options.onDispatchError ?? (() => undefined),
     });
+    // Resúmenes (suprimidas y P3/P4): una pasada cada 5 min, en el mismo proceso.
+    this.digests = new NotificationDispatcher({
+      drain: async () => {
+        await this.runDigests();
+        return 0;
+      },
+      intervalMs: DIGEST_INTERVAL_MS,
+      onError: options.onDispatchError ?? (() => undefined),
+    });
     this.detectionContext = options.detectionContext ?? {
       privilegedIdentities: new Set(),
       criticalAssets: new Set(),
@@ -406,6 +434,7 @@ export class SecOpsRuntime {
     }
     this.transport =
       options.transport ??
+      options.channels?.teamsTransport ??
       new TeamsWorkflowTransport({
         workflowUrl: options.teamsWorkflowUrl ?? 'https://localhost/teams-not-configured',
         destinationRef: 'teams:canal-soc',
@@ -563,6 +592,9 @@ export class SecOpsRuntime {
       ids: { next: () => randomUUID() },
       consoleBaseUrl: this.options.access.consoleBaseUrl,
       ...(this.options.recipients ? { recipients: this.options.recipients } : {}),
+      ...(this.options.notificationEnricher ? { enricher: this.options.notificationEnricher } : {}),
+      ...(this.options.mail ? { mail: this.options.mail } : {}),
+      ...(this.options.notificationPolicy ? { policy: this.options.notificationPolicy } : {}),
       ...(this.options.push
         ? {
             devices: {
@@ -731,10 +763,78 @@ export class SecOpsRuntime {
   /** Arranca el despacho continuo. Lo llama el entrypoint, no las specs. */
   public startDispatcher(): void {
     this.dispatcher.start();
+    this.digests.start();
+    this.options.channels?.start();
   }
 
-  public stopDispatcher(): Promise<void> {
-    return this.dispatcher.stop();
+  public async stopDispatcher(): Promise<void> {
+    this.options.channels?.stop();
+    await Promise.all([this.dispatcher.stop(), this.digests.stop()]);
+  }
+
+  public get channels(): NotificationChannelRegistry | undefined {
+    return this.options.channels;
+  }
+
+  public get consoleBaseUrl(): string {
+    return this.options.access.consoleBaseUrl;
+  }
+
+  public get mailChannel(): MailChannel | undefined {
+    return this.options.mail;
+  }
+
+  /** Prueba de Web Push a los dispositivos de una persona; devuelve cuántos aceptaron. */
+  public async testPush(tenantId: string, subjectKey: string): Promise<number> {
+    if (!this.options.push) return 0;
+    return notifyDevices({
+      store: this.options.push.store,
+      sender: this.options.push.sender,
+      tenantId,
+      subjectKeys: [subjectKey.toLowerCase()],
+      now: () => this.now(),
+    });
+  }
+
+  /** Resúmenes de avisos: suprimidas (agrupadas/atraso/tope) y P3/P4 periódico. */
+  public async runDigests(): Promise<void> {
+    const recipients = this.options.recipients;
+    const dependencies = {
+      tenantId: this.tenantId,
+      attempts: this.notifications,
+      transport: this.transport,
+      audit: this.soc.audit,
+      clock: { now: () => this.now() },
+      consoleBaseUrl: this.options.access.consoleBaseUrl,
+      ...(this.options.notificationPolicy ? { policy: this.options.notificationPolicy } : {}),
+      ...(recipients ? { recipients } : {}),
+      ...(this.options.mail ? { mail: this.options.mail } : {}),
+      lowPriorityAlerts: async (since: Date) => {
+        const items = [];
+        let total = 0;
+        for (const priority of ['P3', 'P4'] as const) {
+          const result = await this.soc.listAlerts({
+            tenantId: this.tenantId,
+            priority,
+            status: 'open',
+          });
+          const recent = result.items.filter((alert) => alert.createdAt >= since);
+          total += recent.length;
+          items.push(
+            ...recent.slice(0, DIGEST_ALERT_LIMIT).map((alert) => ({
+              alertId: alert.id,
+              title: alert.title,
+              priority,
+              ruleId: alert.ruleId,
+              occurredAt: alert.occurredAt,
+            })),
+          );
+        }
+        return { items, total };
+      },
+    };
+    await runSuppressedDigest(dependencies);
+    await runLowPriorityDigest(dependencies);
   }
 
   /** Token CSRF de la sesión: se entrega en `GET /api/auth/session` y se exige al mutar. */
