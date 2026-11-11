@@ -250,6 +250,11 @@ func (s *EntityState) Effective(t time.Time, p Policy) Breakdown {
 	if base < 1 {
 		prog *= base
 	}
+	// Demoted (low/trusted) entities get proportionally less progression bonus too; their
+	// multi-stage patterns are still evaluated independently of this score.
+	if m := CriticalityMultiplier(s.Criticality); m < 1 {
+		prog *= m
+	}
 	eff := base*div + prog
 	return Breakdown{Base: round2(base), Diversity: round2(div), Progression: round2(prog), Effective: round2(eff)}
 }

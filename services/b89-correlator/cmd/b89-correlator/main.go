@@ -101,12 +101,24 @@ func build(cfg config.Config, log *slog.Logger, dryRun bool) (*engine.Runner, st
 	}
 	lookup := risk.CriticalityLookup(criticality, adminIPs)
 	criticalityOf := func(entity model.Entity) string {
-		if canonical, ok := model.ParseKey(resolver.Canonical(entity.Key())); ok {
+		canonicalKey := resolver.Canonical(entity.Key())
+		if canonical, ok := model.ParseKey(canonicalKey); ok {
 			if v := lookup(canonical); v != "" {
 				return v
 			}
 		}
-		return lookup(entity)
+		if v := lookup(entity); v != "" {
+			return v
+		}
+		// Any alias of the same machine/person (e.g. the manager container name of the SOC node).
+		for _, alias := range resolver.Aliases(canonicalKey) {
+			if e, ok := model.ParseKey(alias); ok {
+				if v := lookup(e); v != "" {
+					return v
+				}
+			}
+		}
+		return ""
 	}
 	eng := risk.NewEngine(policy, risk.DefaultPatterns(), resolver, criticalityOf, cfg.GroupMinLevel)
 
