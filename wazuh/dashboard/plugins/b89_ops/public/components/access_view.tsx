@@ -74,10 +74,10 @@ function PermissionMissingCallout({
     >
       <p>
         B89 recibió una denegación de Graph al resolver o leer Accesos_SOC. Revisa que la identidad
-        de aplicación configurada en el API tenga GroupMember.Read.All o Group.Read.All como
-        permiso de aplicación de Microsoft Graph, con consentimiento de administrador, en el mismo
-        registro de aplicación que usa B89. El token se renovará automáticamente y el grupo se
-        volverá a resolver sin reiniciar el servicio.
+        de aplicación configurada en el API tenga GroupMember.Read.All o Group.Read.All como permiso
+        de aplicación de Microsoft Graph, con consentimiento de administrador, en el mismo registro
+        de aplicación que usa B89. El token se renovará automáticamente y el grupo se volverá a
+        resolver sin reiniciar el servicio.
       </p>
       {diagnostic && (
         <p>
@@ -257,7 +257,10 @@ function UsersPanel() {
       )}
       {sync?.permissionMissing && (
         <>
-          <PermissionMissingCallout nextAttemptAt={sync.nextAttemptAt} diagnostic={sync.diagnostic} />
+          <PermissionMissingCallout
+            nextAttemptAt={sync.nextAttemptAt}
+            diagnostic={sync.diagnostic}
+          />
           <EuiSpacer size="m" />
         </>
       )}
@@ -295,26 +298,26 @@ function UsersPanel() {
         sync.mode === 'graph' &&
         !sync.permissionMissing &&
         (sync.status !== 'ok' || sync.stale) && (
-        <>
-          <EuiCallOut
-            size="s"
-            color="warning"
-            iconType="alert"
-            title={
-              sync.status === 'never'
-                ? 'El directorio todavía no se ha sincronizado con Entra ID.'
-                : sync.status === 'failed'
-                  ? `La última sincronización con Entra ID falló${sync.lastErrorClass ? ` (${sync.lastErrorClass})` : ''}.`
-                  : 'La sincronización con Entra ID está desactualizada.'
-            }
-          >
-            <p>
-              Última correcta: <Timestamp iso={sync.lastSuccessAt} />
-            </p>
-          </EuiCallOut>
-          <EuiSpacer size="m" />
-        </>
-      )}
+          <>
+            <EuiCallOut
+              size="s"
+              color="warning"
+              iconType="alert"
+              title={
+                sync.status === 'never'
+                  ? 'El directorio todavía no se ha sincronizado con Entra ID.'
+                  : sync.status === 'failed'
+                    ? `La última sincronización con Entra ID falló${sync.lastErrorClass ? ` (${sync.lastErrorClass})` : ''}.`
+                    : 'La sincronización con Entra ID está desactualizada.'
+              }
+            >
+              <p>
+                Última correcta: <Timestamp iso={sync.lastSuccessAt} />
+              </p>
+            </EuiCallOut>
+            <EuiSpacer size="m" />
+          </>
+        )}
       <EuiBasicTable<DirectoryUser>
         items={users.data?.items ?? []}
         columns={columns}

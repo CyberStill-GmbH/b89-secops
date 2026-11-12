@@ -43,7 +43,9 @@ export interface IngestionPassOptions {
   }>;
   readonly state: IngestionStateStore;
   readonly toEvent: (record: ProviderRecord) => RecordConversion;
-  readonly promote: (event: SecurityEvent) => Promise<'promoted' | 'duplicate' | 'not_promoted'>;
+  readonly promote: (
+    event: SecurityEvent,
+  ) => Promise<'promoted' | 'duplicate' | 'not_promoted' | 'below_threshold' | 'suppressed'>;
   readonly window: IngestionWindowPolicy;
   readonly pageSize: number;
   readonly maximumPages: number;
@@ -79,6 +81,8 @@ export function createIngestionPass(options: IngestionPassOptions): () => Promis
     let quarantined = 0;
     let duplicates = 0;
     let notPromoted = 0;
+    let belowThreshold = 0;
+    let suppressed = 0;
     let newestEventAt: Date | null = null;
     let pending = false;
     let failure: ReturnType<typeof classify> | undefined;
@@ -110,7 +114,13 @@ export function createIngestionPass(options: IngestionPassOptions): () => Promis
             const outcome = await options.promote(converted.event);
             if (outcome === 'promoted') promoted += 1;
             else if (outcome === 'duplicate') duplicates += 1;
-            else notPromoted += 1;
+            else if (outcome === 'below_threshold') {
+              notPromoted += 1;
+              belowThreshold += 1;
+            } else if (outcome === 'suppressed') {
+              notPromoted += 1;
+              suppressed += 1;
+            } else notPromoted += 1;
           }
           if (pageNewest) {
             if (!newestEventAt || pageNewest > newestEventAt) newestEventAt = pageNewest;
@@ -155,6 +165,8 @@ export function createIngestionPass(options: IngestionPassOptions): () => Promis
         quarantined,
         duplicates,
         notPromoted,
+        belowThreshold,
+        suppressed,
         newestEventAt,
         errorClass: failure ? failure.errorClass : null,
       });

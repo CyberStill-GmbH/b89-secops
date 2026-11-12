@@ -19,16 +19,12 @@ let cleanupStatus: 'PASS' | 'FAIL' = 'PASS';
 
 function runSuite(args: readonly string[], connectionString: string): Promise<number> {
   return new Promise((done, reject) => {
-    const child = spawn(
-      process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm',
-      args,
-      {
-        cwd: root,
-        env: { ...process.env, DATABASE_URL: connectionString },
-        stdio: 'inherit',
-        shell: process.platform === 'win32',
-      },
-    );
+    const child = spawn(process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm', args, {
+      cwd: root,
+      env: { ...process.env, DATABASE_URL: connectionString },
+      stdio: 'inherit',
+      shell: process.platform === 'win32',
+    });
     child.once('error', reject);
     child.once('close', (code) => done(code ?? 1));
   });

@@ -2,8 +2,16 @@
  * Copyright B89. SPDX-License-Identifier: Apache-2.0
  */
 
-import { bunnyNumericChartSvg, bunnyNumericTable, bunnyReportData, collectBunnyInvestigationReport } from './bunny_report';
-import { createInvestigationXlsx, investigationPrintHtml } from '../components/investigation_report';
+import {
+  bunnyNumericChartSvg,
+  bunnyNumericTable,
+  bunnyReportData,
+  collectBunnyInvestigationReport,
+} from './bunny_report';
+import {
+  createInvestigationXlsx,
+  investigationPrintHtml,
+} from '../components/investigation_report';
 import type { Alert, InvestigationEvent, RelatedResponse } from '../../common';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -11,13 +19,15 @@ import { BunnyReportActions } from './bunny_report_actions';
 
 describe('informes de Bunny', () => {
   it('monta el control de creación sin exigir una ventana o estado global durante el render', () => {
-    const markup = renderToStaticMarkup(React.createElement(BunnyReportActions, {
-      api: {} as never,
-      basePath: '',
-      messageId: 17,
-      text: 'Análisis revisado',
-      citations: [{ kind: 'alert', id: 'alert-17', label: 'Alerta de prueba' }],
-    }));
+    const markup = renderToStaticMarkup(
+      React.createElement(BunnyReportActions, {
+        api: {} as never,
+        basePath: '',
+        messageId: 17,
+        text: 'Análisis revisado',
+        citations: [{ kind: 'alert', id: 'alert-17', label: 'Alerta de prueba' }],
+      }),
+    );
     expect(markup).toContain('Crear informe');
     expect(markup).not.toContain('Generando');
   });
@@ -25,9 +35,14 @@ describe('informes de Bunny', () => {
   it('solo habilita gráficos para tablas Markdown completas con valores numéricos explícitos', () => {
     expect(bunnyNumericTable('No hay tabla cuantitativa.')).toBeNull();
     expect(bunnyNumericTable('| Indicador | Estado |\n| --- | --- |\n| EDR | activo |')).toBeNull();
-    expect(bunnyNumericTable('| Día | Alertas |\n| --- | ---: |\n| lunes | 12 |\n| martes | 7 |')).toEqual({
+    expect(
+      bunnyNumericTable('| Día | Alertas |\n| --- | ---: |\n| lunes | 12 |\n| martes | 7 |'),
+    ).toEqual({
       headers: ['Día', 'Alertas'],
-      rows: [['lunes', 12], ['martes', 7]],
+      rows: [
+        ['lunes', 12],
+        ['martes', 7],
+      ],
     });
   });
 
@@ -61,7 +76,9 @@ describe('informes de Bunny', () => {
     });
     const workbook = await createInvestigationXlsx(report);
     expect(workbook.type).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    expect(Array.from(new Uint8Array(await workbook.arrayBuffer()).slice(0, 4))).toEqual([0x50, 0x4b, 0x03, 0x04]);
+    expect(Array.from(new Uint8Array(await workbook.arrayBuffer()).slice(0, 4))).toEqual([
+      0x50, 0x4b, 0x03, 0x04,
+    ]);
     expect(workbook.size).toBeGreaterThan(500);
   });
 
@@ -77,27 +94,58 @@ describe('informes de Bunny', () => {
 
   it('genera un expediente real desde una alerta citada y carga las páginas autorizadas relacionadas', async () => {
     const alert = {
-      id: 'alert-42', title: 'Envío M365 inusual', priority: 'P2', score: 70, status: 'new',
-      assigneeId: null, verdict: null, incidentId: null, occurredAt: '2026-11-12T12:00:00Z', revision: 1,
-      reasons: [], entities: [{ ref: null, kind: 'user', label: 'analyst@example.test' }],
+      id: 'alert-42',
+      title: 'Envío M365 inusual',
+      priority: 'P2',
+      score: 70,
+      status: 'new',
+      assigneeId: null,
+      verdict: null,
+      incidentId: null,
+      occurredAt: '2026-11-12T12:00:00Z',
+      revision: 1,
+      reasons: [],
+      entities: [{ ref: null, kind: 'user', label: 'analyst@example.test' }],
     } as Alert;
     const event = {
-      id: 'evt-1', index: 'wazuh-alerts-test', at: alert.occurredAt, level: 8, ruleId: '101701',
-      description: 'Envío sospechoso', groups: ['office365'], vendor: 'office365', agent: null,
-      mitre: { ids: [], tactics: [], techniques: [] }, matched: ['user:analyst@example.test'],
-      location: null, entities: [{ kind: 'user', value: 'analyst@example.test', field: 'data.office365.UserId' }],
-      raw: {}, rawTruncated: false,
+      id: 'evt-1',
+      index: 'wazuh-alerts-test',
+      at: alert.occurredAt,
+      level: 8,
+      ruleId: '101701',
+      description: 'Envío sospechoso',
+      groups: ['office365'],
+      vendor: 'office365',
+      agent: null,
+      mitre: { ids: [], tactics: [], techniques: [] },
+      matched: ['user:analyst@example.test'],
+      location: null,
+      entities: [{ kind: 'user', value: 'analyst@example.test', field: 'data.office365.UserId' }],
+      raw: {},
+      rawTruncated: false,
     } as InvestigationEvent;
     const page: RelatedResponse = {
-      access: 'ok', from: alert.occurredAt, to: alert.occurredAt, total: 1, events: [event], nextCursor: null,
-      pageSize: 50, perEntity: { 'user:analyst@example.test': 1 },
+      access: 'ok',
+      from: alert.occurredAt,
+      to: alert.occurredAt,
+      total: 1,
+      events: [event],
+      nextCursor: null,
+      pageSize: 50,
+      perEntity: { 'user:analyst@example.test': 1 },
     };
     const loadPage = jest.fn(async () => page);
     const report = await collectBunnyInvestigationReport({
       citation: { kind: 'alert', id: alert.id, label: alert.title },
-      window: '24h', analysis: 'Análisis de actividad real.', citations: [{ kind: 'alert', id: alert.id, label: alert.title }],
-      includeChart: false, loadAlert: async () => alert, loadEvent: async () => ({ access: 'ok', event }),
-      loadPage, signal: new AbortController().signal, now: () => new Date('2026-11-12T13:00:00Z'),
+      window: '24h',
+      analysis: 'Análisis de actividad real.',
+      citations: [{ kind: 'alert', id: alert.id, label: alert.title }],
+      includeChart: false,
+      loadAlert: async () => alert,
+      loadEvent: async () => ({ access: 'ok', event }),
+      loadPage,
+      signal: new AbortController().signal,
+      now: () => new Date('2026-11-12T13:00:00Z'),
     });
     expect(loadPage).toHaveBeenCalledOnce();
     expect(report.alert?.id).toBe('alert-42');
@@ -117,15 +165,40 @@ describe('informes de Bunny', () => {
 
   it('falla cerrada si la página relacionada niega acceso, sin fabricar un informe parcial', async () => {
     const alert = {
-      id: 'alert-42', title: 'Alerta', priority: 'P2', score: 70, status: 'new', assigneeId: null,
-      verdict: null, incidentId: null, occurredAt: '2026-11-12T12:00:00Z', revision: 1, reasons: [],
+      id: 'alert-42',
+      title: 'Alerta',
+      priority: 'P2',
+      score: 70,
+      status: 'new',
+      assigneeId: null,
+      verdict: null,
+      incidentId: null,
+      occurredAt: '2026-11-12T12:00:00Z',
+      revision: 1,
+      reasons: [],
       entities: [{ ref: null, kind: 'user', label: 'analyst@example.test' }],
     } as Alert;
-    await expect(collectBunnyInvestigationReport({
-      citation: { kind: 'alert', id: alert.id, label: alert.title }, window: '24h', analysis: 'texto', citations: [],
-      includeChart: false, loadAlert: async () => alert, loadEvent: async () => ({ access: 'ok', event: null }),
-      loadPage: async () => ({ access: 'forbidden', from: '', to: '', total: 0, events: [], nextCursor: null, pageSize: 50, perEntity: {} }),
-      signal: new AbortController().signal,
-    })).rejects.toMatchObject({ kind: 'forbidden' });
+    await expect(
+      collectBunnyInvestigationReport({
+        citation: { kind: 'alert', id: alert.id, label: alert.title },
+        window: '24h',
+        analysis: 'texto',
+        citations: [],
+        includeChart: false,
+        loadAlert: async () => alert,
+        loadEvent: async () => ({ access: 'ok', event: null }),
+        loadPage: async () => ({
+          access: 'forbidden',
+          from: '',
+          to: '',
+          total: 0,
+          events: [],
+          nextCursor: null,
+          pageSize: 50,
+          perEntity: {},
+        }),
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toMatchObject({ kind: 'forbidden' });
   });
 });

@@ -8,14 +8,14 @@
 | # | Brecha | Impacto | Estado | Responsable / dónde |
 | --- | --- | --- | --- | --- |
 | 1 | **Cobertura de endpoints**: no hay agentes en equipos ni servidores de B89; solo el propio nodo (`001`) | La mayoría de reglas de endpoint, AD, FIM, SCA y vulnerabilidades no ven el parque real | Abierta. Enrolamiento listo (puertos 1514/1515 abiertos, contraseña, grupos y políticas) | TI de B89 + plataforma; [AGENTS.md](../infra/aws-poweruser/AGENTS.md), [16](16-politicas.md). Otro agente trabaja en detección de conexiones de red y en aprovechar más capacidades de Wazuh |
-| 2 | **Correlación y alertas basadas en riesgo** con resolución de entidades (UEBA-lite) | Hoy la correlación es por regla (`if_matched_sid`, ventanas) y la agrupación en incidentes es manual | En curso (servicio en Go) | Otro agente; enlace pendiente |
+| 2 | **Correlación y alertas basadas en riesgo** con resolución de entidades (UEBA-lite) | El correlador Go produce patrones y candidatos de riesgo por entidad; no correlaciona correo M365 ni reconstruye conversaciones | Implementado en el repo local; despliegue/estado operativo por verificar. El evaluador offline usa pruebas sintéticas; falta corpus SOC adjudicado y no se afirma reducción medida de falsos positivos | [Servicio Go](../services/b89-correlator/), [evaluador y criterios](17-ingenieria-de-deteccion.md#evaluacion-reproducible-sobre-corpus-adjudicado), [programa de confiabilidad §5](25-programa-confiabilidad-e-investigacion.md) |
 | 3 | **Retroalimentación del veredicto del analista** para falsos positivos | El veredicto se registra en el triaje, pero no ajusta reglas ni umbrales | Parcial: veredicto en la cola de alertas y cierre auditado por regla con `detections/tools/close-false-positives.mjs`; falta el bucle automático hacia las reglas | Ingeniería de detección; [17](17-ingenieria-de-deteccion.md) |
 | 4 | **Métricas del SOC**: MTTD, MTTA, MTTR y SLA por prioridad | Sin medición no hay gestión del servicio | Abierta. SLA P1–P4 definidos en [detection-engineering/03](detection-engineering/03-modelo-operativo.md); la vista de calidad de detección existe, el cálculo de tiempos no | Por asignar |
 | 5 | **Inteligencia de amenazas / coincidencia de IOC** | Sin enriquecimiento ni detección por indicadores conocidos | Abierta | Por asignar (candidatas: listas CDB de Wazuh alimentadas por un feed) |
 | 6 | **Silencio de fuentes y salud de la plataforma** | Una fuente que deja de enviar pasa inadvertida | En curso (Python). Hoy: «Salud de fuentes» para la ingesta del motor y «Integraciones» con último evento por proveedor | Otro agente; enlace pendiente |
 | 7 | **Priorización de vulnerabilidades** con CISA KEV y EPSS | Snyk y Wazuh priorizan solo por CVSS/severidad | En curso (Python) | Otro agente; enlace pendiente |
 | 8 | **Respaldos sin IAM y riesgo de nodo único** | Sin DLM ni subida automática a S3; un fallo del nodo o del disco detiene todo el SOC | Abierta. Respaldo manual documentado en [06 §6](06-operacion.md#6-respaldos-y-restauración), sin ensayo de restauración | Plataforma; requiere rol IAM o tarea programada desde una estación |
-| 9 | **Cobertura M365 y correo** | ActivityFeed.Read consta como concedido desde 2026-11-10; falta vigilar frescura y validar que el feed cubra cada caso de investigacion | Parcial: auditoria Office 365 activa segun docs/18; permisos Graph de seguridad y lectura de buzones son capacidades separadas | Platform + admin de Entra; [18](18-integraciones.md), [25](25-programa-confiabilidad-e-investigacion.md) |
+| 9 | **Cobertura M365 y correo** | ActivityFeed.Read consta como concedido desde 2026-11-10; falta vigilar frescura y validar que el feed cubra cada caso de investigación | Parcial: la investigación/UI de `b89_ops` agrupa actividad mediante IDs exactos de mensaje cuando están disponibles; no infiere dirección ni hilo. El correlador Go no implementa correlación de correo. Cobertura del feed y permisos Graph siguen siendo límites separados | Platform + admin de Entra; [18](18-integraciones.md), [modelo y agrupación de investigación](../wazuh/dashboard/plugins/b89_ops/common/investigation.ts), [25](25-programa-confiabilidad-e-investigacion.md) |
 | 10 | **Deception / canary tokens** | Sin señales de alta fidelidad ante intrusión | Abierta | Por asignar |
 | 11 | **Ciclo cerrado Respond ↔ incidentes** | Las ejecuciones de B89 Respond no quedan en el incidente ni en la auditoría B89 | Abierta. Playbooks exportables con puerta de aprobación (`b84562e`); contención deshabilitada por defecto (decisión B12) | Por asignar; [13](13-b89-respond.md), [14](14-b89-respond-conexion-b89.md) |
 
@@ -66,13 +66,19 @@ despliegue sigue pendiente.
   y el análisis contra M365 autorizado; ver [08](08-frontend-unificado.md) y [25](25-programa-confiabilidad-e-investigacion.md).
 
 
-## Actualizacion de correlacion, acceso, privacidad e informes (2026-11-11)
+## Actualización de correlación, acceso, privacidad e informes (2026-11-12)
 
-- **Correlador:** conteos TP/FP/revisados/no revisados, ventana y truncamiento del feed se exponen en
-  API, Prometheus y reportes. La cohorte de alertas usa `OccurredAt`; veredictos por fecha de
-  adjudicacion/ventana y filtro de futuro. No hubo Go/gofmt para validar. No hay evidencia de
-  precision/recall ni reduccion de FP. El matcher admite empates de timestamp por resolucion de
-  segundos; imponer orden estricto puede descartar senales. No modificarlo sin corpus de evaluacion.
+- **Correlador y falsos positivos:** el servicio Go correlaciona etapas de borde, SSH, autenticación,
+  cambios privilegiados, protección de endpoint y auditoría cloud por entidad. No tiene etapas ni
+  reglas para envíos/recepciones M365, IDs de mensaje o destinatarios; esa capacidad vive en la
+  investigación/UI de `b89_ops`, que agrupa por ID exacto disponible y no infiere dirección ni hilo.
+  El CLI [evaluate-corpus](../services/b89-correlator/cmd/evaluate-corpus/) calcula métricas
+  comparativas y guardas sobre un holdout, pero las pruebas/repositorio usan datos sintéticos: falta
+  un corpus SOC adjudicado y no se afirma reducción real de falsos positivos. Conteos TP/FP/revisados,
+  ventana y truncamiento del feed se exponen en API, Prometheus y reportes. El matcher admite empates
+  de timestamp por resolución de segundos; no cambiar el criterio de orden ni ajustar supresiones sin
+  corpus evaluado. Ver [17](17-ingenieria-de-deteccion.md#evaluacion-reproducible-sobre-corpus-adjudicado)
+  y [25 §5](25-programa-confiabilidad-e-investigacion.md).
 - **Owners SOC:** `directoryOwnerSource` dejo la cache local y consulta el roster durable en cada
   autenticacion tras el primer sync confirmado; Graph solo resuelve el bootstrap previo. API build
   PASS y 18/18 tests `directory-sync`/`directory-activation` reportados. PostgreSQL/replicas,

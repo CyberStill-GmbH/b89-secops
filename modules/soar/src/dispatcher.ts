@@ -167,6 +167,7 @@ function evidence(
     readonly delivered: boolean;
     readonly httpStatus?: number;
     readonly providerMessageId?: string;
+    readonly responseAt?: string;
     readonly failure?: DeliveryFailure;
   },
 ): DeliveryEvidence {
@@ -174,6 +175,7 @@ function evidence(
     channel,
     outcome: outcome.delivered ? 'accepted' : 'failed',
     at: at.toISOString(),
+    ...(outcome.delivered && outcome.responseAt ? { responseAt: outcome.responseAt } : {}),
     httpStatus: outcome.httpStatus ?? null,
     providerMessageId: outcome.providerMessageId ?? null,
     providerLink: null,
@@ -465,18 +467,24 @@ export async function dispatchMessage(
     devicesNotified,
     mailed,
   ]);
+  const measuredOutcome =
+    outcome.delivered && !outcome.responseAt
+      ? { ...outcome, responseAt: dependencies.clock.now().toISOString() }
+      : outcome;
   const delivery = [
     ...(sending.delivery ?? []),
-    evidence('teams', at, outcome),
+    evidence('teams', at, measuredOutcome),
     ...(mailEvidence ? [mailEvidence] : []),
   ];
 
   if (outcome.delivered) {
+    const acceptedAt = new Date(measuredOutcome.responseAt!);
+    const completedAt = dependencies.clock.now();
     const sent: NotificationAttempt = {
       ...sending,
       status: 'sent',
-      sentAt: at,
-      updatedAt: at,
+      sentAt: acceptedAt,
+      updatedAt: completedAt,
       lastFailureCode: null,
       lastFailureClass: null,
       delivery,
@@ -568,10 +576,31 @@ export async function dispatchMessage(
 export async function drainOutbox(
   dependencies: DispatchDependencies,
   limit = 20,
+  concurrency = 1,
 ): Promise<readonly DispatchResult[]> {
+  const batchLimit = Math.min(Math.max(Math.floor(limit), 1), 5);
+  const workerCount = Math.min(Math.max(Math.floor(concurrency), 1), batchLimit);
   const now = dependencies.clock.now();
-  const messages = await dependencies.outbox.claimPending(limit, now);
-  const results: DispatchResult[] = [];
-  for (const message of messages) results.push(await dispatchMessage(dependencies, message));
+  const messages = await dependencies.outbox.claimPending(batchLimit, now);
+  if (workerCount === 1) {
+    const results: DispatchResult[] = [];
+    for (const message of messages) results.push(await dispatchMessage(dependencies, message));
+    return results;
+  }
+  const results = new Array<DispatchResult>(messages.length);
+  let nextIndex = 0;
+  let failure: unknown;
+  const worker = async () => {
+    while (nextIndex < messages.length) {
+      const index = nextIndex++;
+      try {
+        results[index] = await dispatchMessage(dependencies, messages[index]!);
+      } catch (error) {
+        failure ??= error;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: workerCount }, worker));
+  if (failure !== undefined) throw failure;
   return results;
 }

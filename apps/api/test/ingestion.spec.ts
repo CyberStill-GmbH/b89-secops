@@ -229,7 +229,8 @@ describe('pasada de ingesta', () => {
     const docs = [
       office365Document('created', '2026-10-12T17:10:00.000Z'),
       office365Document('duplicate', '2026-10-12T17:11:00.000Z'),
-      office365Document('not-promoted', '2026-10-12T17:12:00.000Z'),
+      office365Document('below-threshold', '2026-10-12T17:12:00.000Z'),
+      office365Document('suppressed', '2026-10-12T17:13:00.000Z'),
     ];
     const recordIds = docs.map(wazuhRecordToEventId);
     const pass = createIngestionPass({
@@ -240,17 +241,21 @@ describe('pasada de ingesta', () => {
           ? 'promoted'
           : event.recordId === recordIds[1]
             ? 'duplicate'
-            : 'not_promoted',
+            : event.recordId === recordIds[2]
+              ? 'below_threshold'
+              : 'suppressed',
     });
 
     await pass();
     const [observation] = await state.recentObservations(KEY, 1);
     expect(observation).toMatchObject({
-      recordsSeen: 3,
-      normalized: 3,
+      recordsSeen: 4,
+      normalized: 4,
       promoted: 1,
       duplicates: 1,
-      notPromoted: 1,
+      notPromoted: 2,
+      belowThreshold: 1,
+      suppressed: 1,
       quarantined: 0,
     });
   });

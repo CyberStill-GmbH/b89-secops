@@ -46,6 +46,8 @@ describe('desglose del procesamiento de fuentes', () => {
       promoted: 1,
       duplicates: null,
       notPromoted: null,
+      belowThreshold: null,
+      suppressed: null,
       errorClass: null,
     };
     const markup = renderToStaticMarkup(<ProcessingSummary processing={historical} />);

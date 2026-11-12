@@ -32,6 +32,8 @@ function observation(
     quarantined: 0,
     duplicates: 0,
     notPromoted: 0,
+    belowThreshold: 0,
+    suppressed: 0,
     newestEventAt: null,
     errorClass: outcome === 'success' ? null : 'PROVIDER_TIMEOUT',
     ...overrides,

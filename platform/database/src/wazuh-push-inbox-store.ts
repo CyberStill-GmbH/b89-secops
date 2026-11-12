@@ -406,9 +406,12 @@ export class PrismaWazuhPushInboxStore {
         sampleCount: count(row?.source_latency_sample_count),
         clockSkewSamples: count(row?.source_latency_clock_skew_count),
         sampleCapReached: row?.source_latency_cap_reached ?? false,
-        p50: row?.source_latency_p50_ms === null ? null : Math.round(row?.source_latency_p50_ms ?? 0),
-        p95: row?.source_latency_p95_ms === null ? null : Math.round(row?.source_latency_p95_ms ?? 0),
-        p99: row?.source_latency_p99_ms === null ? null : Math.round(row?.source_latency_p99_ms ?? 0),
+        p50:
+          row?.source_latency_p50_ms === null ? null : Math.round(row?.source_latency_p50_ms ?? 0),
+        p95:
+          row?.source_latency_p95_ms === null ? null : Math.round(row?.source_latency_p95_ms ?? 0),
+        p99:
+          row?.source_latency_p99_ms === null ? null : Math.round(row?.source_latency_p99_ms ?? 0),
       },
       receiptToHandlerMs: {
         windowHours: 24,

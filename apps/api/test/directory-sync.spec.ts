@@ -444,14 +444,11 @@ describe('adapter de Microsoft Graph', () => {
 
   it('lee los dueños paginados', async () => {
     const { reader } = graph({
-      [`/v1.0/groups/${GROUP}/owners/microsoft.graph.user?$select=id&$top=100`]:
-        () =>
-          json({
-            value: [
-              { id: DUENO, displayName: 'Dueno', userPrincipalName: 'dueno@b89-lab.example' },
-            ],
-            '@odata.nextLink': `https://graph.microsoft.com/v1.0/groups/${GROUP}/owners/page2`,
-          }),
+      [`/v1.0/groups/${GROUP}/owners/microsoft.graph.user?$select=id&$top=100`]: () =>
+        json({
+          value: [{ id: DUENO, displayName: 'Dueno', userPrincipalName: 'dueno@b89-lab.example' }],
+          '@odata.nextLink': `https://graph.microsoft.com/v1.0/groups/${GROUP}/owners/page2`,
+        }),
       [`/v1.0/groups/${GROUP}/owners/page2`]: () =>
         json({ value: [{ id: ANA, displayName: 'Ana' }] }),
     });
@@ -466,9 +463,7 @@ describe('adapter de Microsoft Graph', () => {
 
     const owners = await reader.readOwners(GROUP);
 
-    expect(owners).toEqual([
-      { oid: DUENO, displayName: null, upn: null, accountEnabled: null },
-    ]);
+    expect(owners).toEqual([{ oid: DUENO, displayName: null, upn: null, accountEnabled: null }]);
     expect(calls).toEqual([
       `/v1.0/groups/${GROUP}/owners/microsoft.graph.user?$select=id&$top=100`,
     ]);

@@ -49,6 +49,10 @@ export interface SourcePollObservation {
   readonly duplicates: number | null;
   /** Normalized events below the promotion threshold or otherwise suppressed by policy. */
   readonly notPromoted: number | null;
+  /** Subset of `notPromoted` below the promotion score threshold; null for historic rows. */
+  readonly belowThreshold: number | null;
+  /** Subset of `notPromoted` suppressed by a benign rule or maintenance window. */
+  readonly suppressed: number | null;
   /** Hora del evento más reciente visto en esta pasada; `null` si no vio ninguno. */
   readonly newestEventAt: Date | null;
   /** Código neutral del catálogo de errores; nunca el mensaje del proveedor. */

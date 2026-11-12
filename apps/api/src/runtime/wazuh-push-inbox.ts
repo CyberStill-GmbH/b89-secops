@@ -23,7 +23,9 @@ export interface WazuhPushInboxPassOptions {
   readonly tenantId: string;
   readonly sourceId: string;
   readonly now: () => Date;
-  readonly promote: (event: SecurityEvent) => Promise<'promoted' | 'duplicate' | 'not_promoted'>;
+  readonly promote: (
+    event: SecurityEvent,
+  ) => Promise<'promoted' | 'duplicate' | 'not_promoted' | 'below_threshold' | 'suppressed'>;
 }
 
 function safeErrorCode(error: unknown): string {

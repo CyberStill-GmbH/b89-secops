@@ -112,6 +112,61 @@ export interface ExactEmailMessageGroup {
   readonly events: readonly InvestigationEventSummary[];
 }
 
+export type EmailMessageDirection = 'Salida' | 'Dirección no determinada';
+
+export interface ExactEmailMessageEvidence {
+  /** Direction is derived only from an explicit, recognized audit operation. */
+  readonly direction: string;
+  readonly operations: readonly string[];
+  /** MailboxOwnerUPN is an audited mailbox, not necessarily the human actor. */
+  readonly auditedMailboxes: readonly string[];
+  readonly recipients: readonly string[];
+  readonly recipientsTruncated: boolean;
+}
+
+/** Conservative mapping: unknown operations never imply a message direction. */
+export function emailOperationDirection(operation: string | undefined): EmailMessageDirection {
+  const normalized = operation
+    ?.trim()
+    .toLocaleLowerCase('en-US')
+    .replace(/[\s_-]/gu, '');
+  if (normalized === 'send' || normalized === 'sendas' || normalized === 'sendonbehalf') {
+    return 'Salida';
+  }
+  return 'Dirección no determinada';
+}
+
+/** Aggregate only metadata already present in the allowlisted investigation DTO. */
+export function summarizeExactEmailMessageGroup(
+  group: ExactEmailMessageGroup,
+): ExactEmailMessageEvidence {
+  const distinct = (values: readonly (string | undefined)[]) =>
+    [
+      ...new Set(
+        values.map((value) => value?.trim()).filter((value): value is string => Boolean(value)),
+      ),
+    ].sort((left, right) => left.localeCompare(right, 'es'));
+  const operations = distinct(group.events.map((event) => event.email?.operation));
+  const directions = new Set(
+    group.events.map((event) => emailOperationDirection(event.email?.operation)),
+  );
+  const hasUnknown = directions.has('Dirección no determinada');
+  const known = (['Salida'] as const).filter((direction) => directions.has(direction));
+  const direction = [
+    ...known,
+    ...(hasUnknown || known.length === 0 ? ['Dirección no determinada'] : []),
+  ].join('; ');
+  const auditedMailboxes = distinct(group.events.map((event) => event.email?.mailboxOwnerUpn));
+  const recipients = distinct(group.events.flatMap((event) => event.email?.recipients ?? []));
+  return {
+    direction: direction || 'Dirección no determinada',
+    operations,
+    auditedMailboxes,
+    recipients,
+    recipientsTruncated: group.events.some((event) => event.email?.recipientsTruncated === true),
+  };
+}
+
 /** Groups only events that share an explicit message identifier; time or user never forms a group. */
 export function groupExactEmailMessages(
   events: readonly InvestigationEventSummary[],

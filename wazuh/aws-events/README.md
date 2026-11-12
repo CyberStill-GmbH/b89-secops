@@ -14,14 +14,14 @@ CloudTrail (trail de organización, ya existente)
   → reglas 101600–101699 → wazuh-alerts-* → dashboard «B89 · AWS»
 ```
 
-| Pieza | Dónde |
-| --- | --- |
-| Terraform (CMK, tema, 10 reglas us-east-1, 16 centinelas regionales, suscripciones) | `infra/aws-poweruser/aws-monitoring.tf`, `modules/aws-events-sentinel` |
-| Receptor | `receiver/sns-receiver.mjs` (+ `sns-receiver.test.mjs`, `node --test`) |
-| Servicio y edge | `infra/aws-poweruser/host/compose.b89.yaml` (`aws-events`), `edge.conf.template` (bloque `B89:aws-sns`), `host/aws-events.env` (temas aceptados) |
-| Reglas y logtest | `rules/b89_aws_rules.xml`, `tests/make-cases.mjs` → `aws-cases.jsonl`, `tests/run-aws-logtest.sh` |
-| Instalación en el manager | `sudo bash wazuh/aws-events/install-aws-events.sh` (crea el directorio de salida, reglas, `<localfile>`, `wazuh-analysisd -t`, reinicia solo el manager) |
-| Dashboard | `wazuh/dashboard/saved-objects/build_aws_dashboard.py` → `b89-aws.ndjson` |
+| Pieza                                                                               | Dónde                                                                                                                                                    |
+| ----------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Terraform (CMK, tema, 10 reglas us-east-1, 16 centinelas regionales, suscripciones) | `infra/aws-poweruser/aws-monitoring.tf`, `modules/aws-events-sentinel`                                                                                   |
+| Receptor                                                                            | `receiver/sns-receiver.mjs` (+ `sns-receiver.test.mjs`, `node --test`)                                                                                   |
+| Servicio y edge                                                                     | `infra/aws-poweruser/host/compose.b89.yaml` (`aws-events`), `edge.conf.template` (bloque `B89:aws-sns`), `host/aws-events.env` (temas aceptados)         |
+| Reglas y logtest                                                                    | `rules/b89_aws_rules.xml`, `tests/make-cases.mjs` → `aws-cases.jsonl`, `tests/run-aws-logtest.sh`                                                        |
+| Instalación en el manager                                                           | `sudo bash wazuh/aws-events/install-aws-events.sh` (crea el directorio de salida, reglas, `<localfile>`, `wazuh-analysisd -t`, reinicia solo el manager) |
+| Dashboard                                                                           | `wazuh/dashboard/saved-objects/build_aws_dashboard.py` → `b89-aws.ndjson`                                                                                |
 
 ## Receptor
 
@@ -39,13 +39,13 @@ CloudTrail (trail de organización, ya existente)
 
 ## Reglas (101600–101699)
 
-| Nivel | Regla |
-| --- | --- |
-| 13 | 101605 login de consola root · 101620 CloudTrail StopLogging/DeleteTrail · 101664/101673 hallazgo crítico |
-| 12 | 101606 API de root · 101612 cómputo/VPC en región no habitual · 101615 manipulación del pipeline B89 · 101622–101624 GuardDuty/Security Hub/Config deshabilitados · 101632 admin concedido · 101636 Organizations/SCP · 101657 KMS ScheduleKeyDeletion · 101663/101672 hallazgo alto |
-| 10 | 101608 fuerza bruta (5 fallos/5 min por IP) · 101611 actividad en región no habitual · 101621 CloudTrail modificado · 101625 Access Analyzer · 101631 IAM alto riesgo · 101634 permission sets · 101635 Organizations · 101641 SG abierto a Internet · 101644 flow logs borrados · 101645 snapshot/AMI compartido · 101651/101652 S3 público · 101656 KMS DisableKey |
-| 8 | 101609 login IAM sin MFA · 101630 IAM · 101633 Identity Center · 101640 SG · 101642 NACL · 101643 rutas/gateways · 101650 S3 · 101655 KMS política · hallazgos medios |
-| 3–6 | 101601/101602/101610 actividad, 101607 login fallido (5), 101613 servicio AWS en otra región (4), 101616 cambio del pipeline (6), 101646 EC2 RunInstances |
+| Nivel | Regla                                                                                                                                                                                                                                                                                                                                                                |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 13    | 101605 login de consola root · 101620 CloudTrail StopLogging/DeleteTrail · 101664/101673 hallazgo crítico                                                                                                                                                                                                                                                            |
+| 12    | 101606 API de root · 101612 cómputo/VPC en región no habitual · 101615 manipulación del pipeline B89 · 101622–101624 GuardDuty/Security Hub/Config deshabilitados · 101632 admin concedido · 101636 Organizations/SCP · 101657 KMS ScheduleKeyDeletion · 101663/101672 hallazgo alto                                                                                 |
+| 10    | 101608 fuerza bruta (5 fallos/5 min por IP) · 101611 actividad en región no habitual · 101621 CloudTrail modificado · 101625 Access Analyzer · 101631 IAM alto riesgo · 101634 permission sets · 101635 Organizations · 101641 SG abierto a Internet · 101644 flow logs borrados · 101645 snapshot/AMI compartido · 101651/101652 S3 público · 101656 KMS DisableKey |
+| 8     | 101609 login IAM sin MFA · 101630 IAM · 101633 Identity Center · 101640 SG · 101642 NACL · 101643 rutas/gateways · 101650 S3 · 101655 KMS política · hallazgos medios                                                                                                                                                                                                |
+| 3–6   | 101601/101602/101610 actividad, 101607 login fallido (5), 101613 servicio AWS en otra región (4), 101616 cambio del pipeline (6), 101646 EC2 RunInstances                                                                                                                                                                                                            |
 
 `bash wazuh/aws-events/tests/run-aws-logtest.sh b89-wazuh.manager-1` → 50/50 casos.
 

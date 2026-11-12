@@ -167,20 +167,23 @@ export function InvestigationView({
   const mitre = event?.mitre ?? { ids: [], tactics: [], techniques: [] };
   const exportTitle = current?.title ?? title;
   const reportSourceEvent = useMemo<ReportEventSummary | null>(
-    () => event ? {
-      id: event.id,
-      index: event.index,
-      at: event.at,
-      level: event.level,
-      ruleId: event.ruleId,
-      description: event.description,
-      groups: event.groups,
-      vendor: event.vendor,
-      agent: event.agent,
-      mitre: event.mitre,
-      matched: event.matched,
-      email: event.email,
-    } : null,
+    () =>
+      event
+        ? {
+            id: event.id,
+            index: event.index,
+            at: event.at,
+            level: event.level,
+            ruleId: event.ruleId,
+            description: event.description,
+            groups: event.groups,
+            vendor: event.vendor,
+            agent: event.agent,
+            mitre: event.mitre,
+            matched: event.matched,
+            email: event.email,
+          }
+        : null,
     [event],
   );
   const [selected, setSelected] = useState<string[] | null>(null);

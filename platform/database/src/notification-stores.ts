@@ -96,7 +96,7 @@ export class PrismaNotificationAttemptStore {
   }
 
   /**
-   * Desde `soc_outbox_messages.created_at` hasta la primera evidencia aceptada por HTTP 2xx.
+   * Desde `soc_outbox_messages.created_at` hasta la primera respuesta HTTP 2xx de Teams.
    * El CTE lee como máximo 10 001 filas del tenant para poder informar truncamiento; el
    * join exige tenant_id en ambos lados. JSON inválido no rompe health y evidencia sin
    * 2xx no se interpreta como aceptación del proveedor.
@@ -124,8 +124,9 @@ export class PrismaNotificationAttemptStore {
         SELECT s.message_id,
                s.created_at,
                MIN(CASE
-                     WHEN pg_input_is_valid(evidence.item ->> 'at', 'timestamptz')
-                     THEN (evidence.item ->> 'at')::timestamptz
+                     WHEN evidence.item ->> 'channel' = 'teams'
+                      AND pg_input_is_valid(evidence.item ->> 'responseAt', 'timestamptz')
+                     THEN (evidence.item ->> 'responseAt')::timestamptz
                    END) AS accepted_at
           FROM sampled s
           JOIN notification_attempts a
@@ -135,6 +136,8 @@ export class PrismaNotificationAttemptStore {
             CASE WHEN jsonb_typeof(a.delivery) = 'array' THEN a.delivery ELSE '[]'::jsonb END
           ) AS evidence(item)
          WHERE evidence.item ->> 'outcome' = 'accepted'
+           AND evidence.item ->> 'channel' = 'teams'
+           AND evidence.item ? 'responseAt'
            AND evidence.item ->> 'httpStatus' ~ '^[0-9]{3}$'
            AND (evidence.item ->> 'httpStatus')::integer BETWEEN 200 AND 299
          GROUP BY s.message_id, s.created_at

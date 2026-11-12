@@ -137,8 +137,18 @@ export class OperationsController {
         validation.errors.map((error) => error.path),
       );
     }
-    const outcome = await this.runtime.promoteEvent(validation.value);
-    return { correlationId, outcome };
+    const result = await this.runtime.promoteEvent(validation.value);
+    const outcome =
+      result === 'below_threshold' || result === 'suppressed' ? 'not_promoted' : result;
+    return {
+      correlationId,
+      outcome,
+      ...(result === 'below_threshold'
+        ? { reason: 'BELOW_THRESHOLD' }
+        : result === 'suppressed'
+          ? { reason: 'SUPPRESSED' }
+          : {}),
+    };
   }
 
   /**

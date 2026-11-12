@@ -31,6 +31,8 @@ export interface SourcePollObservationRow {
   readonly quarantined: number;
   readonly duplicates: number | null;
   readonly notPromoted: number | null;
+  readonly belowThreshold: number | null;
+  readonly suppressed: number | null;
   readonly newestEventAt: Date | null;
   readonly errorClass: string | null;
 }

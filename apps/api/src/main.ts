@@ -108,9 +108,7 @@ export async function main(): Promise<void> {
             : undefined;
         const safeOperation =
           typeof diagnostic?.operation === 'string' &&
-          ['resolveGroupId', 'memberDelta', 'owners', 'userProfile'].includes(
-            diagnostic.operation,
-          )
+          ['resolveGroupId', 'memberDelta', 'owners', 'userProfile'].includes(diagnostic.operation)
             ? diagnostic.operation
             : undefined;
         const safeErrorCode =

@@ -382,9 +382,7 @@ function encodeRelatedCursor(
     sort: [timestamp, shardDoc],
     count,
   };
-  return Buffer.from(
-    JSON.stringify(cursor),
-  ).toString('base64url');
+  return Buffer.from(JSON.stringify(cursor)).toString('base64url');
 }
 
 async function closeRelatedPit(client: SearchClient, pitId: string): Promise<void> {

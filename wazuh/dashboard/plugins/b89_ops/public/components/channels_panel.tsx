@@ -167,8 +167,8 @@ export function ChannelsPanel() {
                 <p className="b89CellMeta">{CHANNEL_HINT[channel.id]}</p>
                 {channel.enabled && !channel.configured && channel.id !== 'manual_console' && (
                   <p className="b89CellMeta" role="status">
-                    El canal está activado, pero falta configurar el destino. No podrá entregar avisos
-                    hasta que esté listo.
+                    El canal está activado, pero falta configurar el destino. No podrá entregar
+                    avisos hasta que esté listo.
                   </p>
                 )}
                 <dl className="b89KeyValues">
@@ -220,8 +220,8 @@ export function ChannelsPanel() {
                     </p>
                   </EuiText>
                 )}
-                {manage && (
-                  channel.id === 'manual_console' ? (
+                {manage &&
+                  (channel.id === 'manual_console' ? (
                     <p className="b89CellMeta b89Channel__alwaysOn" role="note">
                       Este canal de respaldo siempre está disponible y no se puede desactivar.
                     </p>
@@ -254,8 +254,7 @@ export function ChannelsPanel() {
                         {channel.enabled ? 'Desactivar' : 'Activar'}
                       </EuiButtonEmpty>
                     </div>
-                  )
-                )}
+                  ))}
               </li>
             );
           })}

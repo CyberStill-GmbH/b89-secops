@@ -499,3 +499,12 @@
   pertenecen al proceso API; `apps/worker` continúa lifecycle-only y no figura en el Compose EC2.
   Los workers que Shuffle/Orborus crea son parte de B89 Respond, no Cintel ni procesamiento de
   informes.
+
+## 2026-11-12 · Motivos de promoción, despacho Teams y exportación Bunny
+
+- **Promoción:** `GET /api/sources/health` y Salud de fuentes desglosan eventos por debajo del umbral B89 y suprimidos por política. El endpoint manual mantiene `outcome: not_promoted` y añade el motivo tipado. No se cambió la priorización.
+- **Teams:** las pasadas automáticas de outbox usan hasta cinco envíos concurrentes con los claims/leases, idempotencia, fencing, reservas P2 y agrupación existentes. Los drains manuales y el helper mantienen concurrencia uno por defecto. La métrica de Operaciones registra `responseAt`, excluye respuestas de correo y datos históricos sin marca de respuesta.
+- **Bunny:** el prompt dirige al botón Crear informe bajo la respuesta y distingue XLSX de la vista imprimible que el navegador guarda como PDF. El documento de producto aclara permisos, requisito de evidencia para expedientes y límites del cliente.
+- **Investigación M365:** los informes PDF/XLSX agrupan por identificador de mensaje exacto y resumen buzones auditados, destinatarios allowlisted, operaciones y truncamiento. Solo las operaciones de envío explícitas clasifican salida; la auditoría actual no demuestra recepción ni identifica siempre al actor humano. Citas de [Bunny](15-bunny-asistente.md) y criterios en [confiabilidad](25-programa-confiabilidad-e-investigacion.md).
+- **Validación local:** pruebas unitarias de assistant (33), API/ingesta/SOAR/detección (152), plugin b89_ops (154), typechecks de API, database, SOAR y assistant, typecheck OSD 2.19.6, e integración PostgreSQL temporal (25) aprobados. Una primera integración detectó semántica de error distinta al paralelizar el helper; se conservó secuencial por defecto y el runtime solicita concurrencia explícita. La integración PostgreSQL se repitió tras ese ajuste (25/25) y los typechecks finales de API, database, SOAR y assistant pasaron.
+- **Estado:** cambios locales en la rama de trabajo. No se han desplegado ni se afirma aceptación real de Teams. Continúan pendientes el canario Wazuh→Indexer→B89, la recepción por Workflow y la medición p95 en el entorno.

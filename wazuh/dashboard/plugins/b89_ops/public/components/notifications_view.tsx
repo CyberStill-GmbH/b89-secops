@@ -211,10 +211,10 @@ function NotificationsContent() {
             title="Tiempos y estado de los avisos"
           >
             <p>
-              P1 genera un intento inmediato; P2 recientes también. Las P2 procesadas con más de
-              una hora de atraso y los avisos agrupados aparecen en resúmenes; P3 y P4 se
-              consolidan cada seis horas. Revisa «Canales» para confirmar la configuración y «Salud
-              de fuentes» para ver la última actividad recibida.
+              P1 genera un intento inmediato; P2 recientes también. Las P2 procesadas con más de una
+              hora de atraso y los avisos agrupados aparecen en resúmenes; P3 y P4 se consolidan
+              cada seis horas. Revisa «Canales» para confirmar la configuración y «Salud de fuentes»
+              para ver la última actividad recibida.
             </p>
           </EuiCallOut>
           <EuiSpacer size="m" />

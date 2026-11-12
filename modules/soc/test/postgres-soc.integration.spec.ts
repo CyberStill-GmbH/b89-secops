@@ -613,6 +613,8 @@ describe.skipIf(!databaseUrl)('C-17 · persistencia SOC sobre PostgreSQL', () =>
       quarantined: 0,
       duplicates: 0,
       notPromoted: 0,
+      belowThreshold: 0,
+      suppressed: 0,
       newestEventAt: null,
       errorClass: null,
     };

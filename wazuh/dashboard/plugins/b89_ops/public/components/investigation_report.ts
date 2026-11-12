@@ -3,7 +3,10 @@
  */
 
 import type { Alert, InvestigationEventSummary, RelatedResponse } from '../../common';
-import { groupExactEmailMessages } from '../../common/investigation';
+import {
+  groupExactEmailMessages,
+  summarizeExactEmailMessageGroup,
+} from '../../common/investigation';
 import type { EntityKind, RelatedWindow } from '../../common/investigation';
 import { groupInvestigationActivity } from './investigation_activity_grouping';
 
@@ -34,10 +37,17 @@ export interface InvestigationReportData {
   readonly truncated: boolean;
   /** Bunny export preserves the exact validated answer and citations in the same artifact. */
   readonly assistantAnalysis?: string;
-  readonly assistantCitations?: readonly { readonly kind: string; readonly id: string; readonly label: string }[];
+  readonly assistantCitations?: readonly {
+    readonly kind: string;
+    readonly id: string;
+    readonly label: string;
+  }[];
   /** Optional SVG created only from numeric values explicitly present in the answer. */
   readonly assistantChartSvg?: string;
-  readonly assistantChartData?: { readonly headers: readonly string[]; readonly rows: readonly (readonly (string | number)[])[] };
+  readonly assistantChartData?: {
+    readonly headers: readonly string[];
+    readonly rows: readonly (readonly (string | number)[])[];
+  };
 }
 
 export interface ReportProgress {
@@ -469,26 +479,37 @@ export async function createInvestigationXlsx(
         [
           'Tipo de identificador',
           'Identificador exacto',
+          'Dirección según operaciones explícitas',
           'Eventos',
+          'Buzones auditados (MailboxOwnerUPN)',
+          'Destinatarios presentes en el DTO allowlisted',
+          'Lista de destinatarios truncada',
           'Operaciones auditadas',
           'IDs de evento',
           'Interpretación',
         ],
-        ...exactEmailGroups.map((group) => [
-          group.idType,
-          group.id,
-          group.events.length,
-          [...new Set(group.events.map((event) => event.email?.operation).filter(Boolean))]
-            .sort()
-            .join(' | '),
-          group.events.map((event) => event.id).join(' | '),
-          'Coincidencia por ID exacto; no implica dirección ni hilo',
-        ]),
+        ...exactEmailGroups.map((group) => {
+          const evidence = summarizeExactEmailMessageGroup(group);
+          return [
+            group.idType,
+            group.id,
+            evidence.direction,
+            group.events.length,
+            evidence.auditedMailboxes.join(' | '),
+            evidence.recipients.join(' | '),
+            evidence.recipientsTruncated ? 'Sí' : 'No',
+            evidence.operations.join(' | '),
+            group.events.map((event) => event.id).join(' | '),
+            'Coincidencia por ID exacto; no prueba causalidad ni hilo',
+          ];
+        }),
       ],
     },
   ];
   const sheets: Sheet[] =
-    input.assistantAnalysis === undefined || input.events.length > 0 || input.alert !== null ? investigationSheets : [];
+    input.assistantAnalysis === undefined || input.events.length > 0 || input.alert !== null
+      ? investigationSheets
+      : [];
   if (input.assistantAnalysis !== undefined) {
     sheets.unshift({
       name: 'Análisis Bunny',
@@ -501,7 +522,11 @@ export async function createInvestigationXlsx(
         [],
         ['Fuentes citadas'],
         ['Tipo', 'ID', 'Referencia'],
-        ...(input.assistantCitations ?? []).map((citation) => [citation.kind, citation.id, citation.label]),
+        ...(input.assistantCitations ?? []).map((citation) => [
+          citation.kind,
+          citation.id,
+          citation.label,
+        ]),
       ],
     });
     if (input.assistantChartSvg) {
@@ -579,12 +604,10 @@ function activityPrintRow(group: ReturnType<typeof groupInvestigationActivity>[n
 }
 
 function exactEmailPrintRow(group: ReturnType<typeof groupExactEmailMessages>[number]): string {
-  const operations = [
-    ...new Set(group.events.map((event) => event.email?.operation).filter(Boolean)),
-  ]
-    .sort()
-    .join(', ');
-  return `<tr><td>${html(group.idType)}</td><td class="mono">${html(group.id)}</td><td>${group.events.length}</td><td>${html(operations || 'No provista')}</td><td>${html(group.events.map((event) => event.id).join(' · '))}</td></tr>`;
+  const evidence = summarizeExactEmailMessageGroup(group);
+  const recipients = evidence.recipients.join(', ') || 'No provistos en los eventos';
+  const truncation = evidence.recipientsTruncated ? 'Sí; la lista está truncada' : 'No';
+  return `<tr><td>${html(group.idType)}</td><td class="mono">${html(group.id)}</td><td>${html(evidence.direction)}</td><td>${group.events.length}</td><td>${html(evidence.auditedMailboxes.join(', ') || 'No provisto')}</td><td>${html(recipients)}<br/><small>Lista truncada: ${html(truncation)}</small></td><td>${html(evidence.operations.join(', ') || 'No provista')}</td><td>${html(group.events.map((event) => event.id).join(' · '))}</td></tr>`;
 }
 
 interface InvestigationPrintRows {
@@ -602,17 +625,25 @@ function investigationPrintHtmlWithRows(
   if (input.assistantAnalysis !== undefined) {
     const hasInvestigation = Boolean(input.alert || input.sourceEvent || input.events.length > 0);
     const citations = (input.assistantCitations ?? [])
-      .map((citation) => `<li><strong>${html(citation.kind)}</strong> · ${html(citation.label)} <code>${html(citation.id)}</code></li>`)
+      .map(
+        (citation) =>
+          `<li><strong>${html(citation.kind)}</strong> · ${html(citation.label)} <code>${html(citation.id)}</code></li>`,
+      )
       .join('');
-    const investigation = !hasInvestigation ? '' : `<h2>Evidencia de investigación</h2><div class="meta"><strong>Alerta B89:</strong> ${html(input.alert?.id ?? '—')}<br/><strong>Eventos:</strong> ${input.events.length.toLocaleString('es-PE')} de ${input.totalEvents.toLocaleString('es-PE')}${input.truncated ? ' (límite de exportación)' : ''}<br/><strong>Entidades:</strong> ${html(input.entities.join(' · '))}</div><p class="notice">La actividad agrupada muestra coincidencias y proximidad temporal; no prueba causalidad ni un hilo de correo.</p><h3>Actividad agrupada por entidad</h3><table><thead><tr><th>Entidad</th><th>Primera actividad UTC</th><th>Última actividad UTC</th><th>Eventos</th><th>Orígenes</th></tr></thead><tbody>${groups.map(activityPrintRow).join('') || '<tr><td colspan="5">Sin grupos</td></tr>'}</tbody></table><h3>Coincidencias por ID exacto de mensaje</h3><table><thead><tr><th>Tipo</th><th>ID exacto</th><th>Eventos</th><th>Operaciones</th><th>IDs de evento</th></tr></thead><tbody>${exactEmailGroups.map(exactEmailPrintRow).join('') || '<tr><td colspan="5">Sin coincidencias</td></tr>'}</tbody></table><h3>Línea de tiempo (${input.events.length.toLocaleString('es-PE')} eventos)</h3><table><thead><tr><th>Tipo</th><th>Fecha UTC</th><th>Nivel</th><th>Origen</th><th>Regla</th><th>Descripción</th><th>Entidades</th><th>Metadatos M365</th><th>ID</th></tr></thead><tbody>${input.events.map((event) => eventPrintRow(input, event)).join('') || '<tr><td colspan="9">Sin eventos autorizados en la ventana seleccionada.</td></tr>'}</tbody></table>`;
+    const investigation = !hasInvestigation
+      ? ''
+      : `<h2>Evidencia de investigación</h2><div class="meta"><strong>Alerta B89:</strong> ${html(input.alert?.id ?? '—')}<br/><strong>Eventos:</strong> ${input.events.length.toLocaleString('es-PE')} de ${input.totalEvents.toLocaleString('es-PE')}${input.truncated ? ' (límite de exportación)' : ''}<br/><strong>Entidades:</strong> ${html(input.entities.join(' · '))}</div><p class="notice">La actividad agrupada muestra coincidencias y proximidad temporal; no prueba causalidad ni un hilo de correo. Solo las operaciones de envío documentadas permiten clasificar salida; el feed actual no acredita recepción.</p><h3>Actividad agrupada por entidad</h3><table><thead><tr><th>Entidad</th><th>Primera actividad UTC</th><th>Última actividad UTC</th><th>Eventos</th><th>Orígenes</th></tr></thead><tbody>${groups.map(activityPrintRow).join('') || '<tr><td colspan="5">Sin grupos</td></tr>'}</tbody></table><h3>Coincidencias por ID exacto de mensaje</h3><table><thead><tr><th>Tipo</th><th>ID exacto</th><th>Dirección según operaciones</th><th>Eventos</th><th>Buzones auditados</th><th>Destinatarios del DTO</th><th>Operaciones</th><th>IDs de evento</th></tr></thead><tbody>${exactEmailGroups.map(exactEmailPrintRow).join('') || '<tr><td colspan="8">Sin coincidencias</td></tr>'}</tbody></table><h3>Línea de tiempo (${input.events.length.toLocaleString('es-PE')} eventos)</h3><table><thead><tr><th>Tipo</th><th>Fecha UTC</th><th>Nivel</th><th>Origen</th><th>Regla</th><th>Descripción</th><th>Entidades</th><th>Metadatos M365</th><th>ID</th></tr></thead><tbody>${input.events.map((event) => eventPrintRow(input, event)).join('') || '<tr><td colspan="9">Sin eventos autorizados en la ventana seleccionada.</td></tr>'}</tbody></table>`;
     return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${html(input.title)} · B89 SOC</title><style>body{font:14px/1.55 Arial,sans-serif;color:#17212b;max-width:1100px;margin:36px auto;padding:0 24px}header{border-bottom:4px solid #df8b26;padding:0 0 18px;margin-bottom:22px}h1{font-size:25px;margin:0 0 8px;color:#263444}h2{font-size:17px;color:#263444;margin:24px 0 8px}h3{font-size:14px;color:#263444;margin:20px 0 8px}.meta,.notice{padding:12px 14px;background:#f2f5f8;border-left:4px solid #df8b26}.analysis{white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.6 Arial,sans-serif}.chart{margin:20px 0}.chart svg{max-width:100%;height:auto}figcaption,small{color:#536477;font-size:11px}li{margin:6px 0}code{font:11px monospace}table{width:100%;border-collapse:collapse;margin-top:10px;table-layout:fixed;font-size:11px}th{background:#263444;color:white;text-align:left}th,td{padding:6px;border:1px solid #cbd2d9;vertical-align:top;overflow-wrap:anywhere}.foot{margin-top:32px;border-top:1px solid #cbd2d9;padding-top:10px;color:#536477;font-size:11px}@page{size:A4 landscape;margin:14mm}@media print{body{margin:0;max-width:none;padding:0}thead{display:table-header-group}tr{break-inside:avoid}}</style></head><body><header><h1>B89 SOC · ${hasInvestigation ? 'Informe profesional de investigación' : 'Informe de análisis Bunny'}</h1><div>${html(input.title)}</div></header><div class="meta"><strong>Generado (UTC):</strong> ${html(input.generatedAt.toISOString())}</div><p class="notice">Respuesta asistida por IA. Revisa las fuentes y valida los hallazgos antes de compartir o tomar decisiones.</p>${input.assistantChartSvg ? `<figure class="chart">${input.assistantChartSvg}<figcaption>Gráfico derivado solo de los valores numéricos explícitos de la respuesta.</figcaption></figure>` : ''}<h2>Análisis de Bunny</h2><pre class="analysis">${html(input.assistantAnalysis)}</pre><h2>Fuentes citadas</h2><ul>${citations || '<li>La respuesta no incluyó fuentes citadas.</li>'}</ul>${investigation}<footer class="foot">B89 SOC · Evidencia consultada con la identidad del analista; contiene solo campos autorizados del contrato de investigación.</footer><script>window.addEventListener('load',()=>window.print());</script></body></html>`;
   }
   const rows =
     prepared?.events ?? input.events.map((event) => eventPrintRow(input, event)).join('');
   const blocks = prepared?.activity ?? groups.map(activityPrintRow).join('');
   const emailBlocks = prepared?.exactEmail ?? exactEmailGroups.map(exactEmailPrintRow).join('');
-  const bunnySection = input.assistantAnalysis === undefined ? '' : `<h2>Análisis de Bunny</h2><p class="note">Respuesta asistida por IA; debe revisarse antes de compartir o tomar decisiones.</p>${input.assistantChartSvg ? `<figure>${input.assistantChartSvg}<figcaption>Visualización derivada exclusivamente de la tabla numérica incluida en la respuesta.</figcaption></figure>` : ''}<pre class="analysis">${html(input.assistantAnalysis)}</pre><h3>Fuentes citadas</h3><ul>${(input.assistantCitations ?? []).map((citation) => `<li>${html(citation.kind)} · ${html(citation.label)} (ID ${html(citation.id)})</li>`).join('') || '<li>La respuesta no incluyó fuentes citadas.</li>'}</ul>`;
-  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${html(input.title)} · Informe B89 SOC</title><style>body{font:12px/1.45 Arial,sans-serif;color:#17212b;margin:32px}header{border-bottom:3px solid #df8b26;padding-bottom:16px;margin-bottom:24px}h1{font-size:24px;margin:0 0 8px}h2{font-size:16px;margin:28px 0 8px;color:#25384b}.meta{display:grid;grid-template-columns:180px 1fr;gap:5px 12px}.meta strong{color:#536477}table{width:100%;border-collapse:collapse;margin-top:10px;table-layout:fixed}th{background:#263444;color:white;text-align:left}th,td{padding:6px;border:1px solid #cbd2d9;vertical-align:top;overflow-wrap:anywhere}.mono{font-family:monospace;font-size:10px}.note{background:#f2f5f8;padding:10px;border-left:3px solid #df8b26}.analysis{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.55 Arial,sans-serif}.foot{margin-top:24px;color:#536477;font-size:10px}@page{size:A4 landscape;margin:12mm}@media print{body{margin:0}thead{display:table-header-group}tr{break-inside:avoid}h2{break-after:avoid}}</style></head><body><header><h1>B89 SOC · ${input.assistantAnalysis === undefined ? 'Informe de investigación' : 'Análisis asistido por Bunny'}</h1><div>${html(input.title)}</div></header><section class="meta"><strong>Generado (UTC)</strong><span>${html(input.generatedAt.toISOString())}</span><strong>Alerta B89</strong><span>${html(input.alert?.id ?? '—')}</span><strong>Evento Wazuh de origen</strong><span>${html(input.sourceEvent?.id ?? '—')}</span><strong>Eventos incluidos</strong><span>${input.events.length.toLocaleString('es-PE')} de ${input.totalEvents.toLocaleString('es-PE')}${input.truncated ? ' · informe limitado a 10.000 eventos' : ''}</span><strong>Entidades analizadas</strong><span>${html(input.entities.join(' · '))}</span></section>${bunnySection}<p class="note">La actividad por entidad y proximidad no establece causalidad. La sección de IDs exactos solo agrupa eventos que comparten NetworkMessageId o, si falta, InternetMessageId; esto no determina dirección ni prueba un hilo. Identificadores y destinatarios aparecen solo si están disponibles en el DTO de auditoría scrubbed. Los campos sensibles excluidos por contrato no se incorporan.</p><h2>Actividad agrupada por entidad y proximidad</h2><table><thead><tr><th>Entidad</th><th>Primera actividad UTC</th><th>Última actividad UTC</th><th>Eventos</th><th>Orígenes</th></tr></thead><tbody>${blocks || '<tr><td colspan="5">Sin bloques de actividad</td></tr>'}</tbody></table><h2>Coincidencias por identificador exacto de mensaje</h2><table><thead><tr><th>Campo</th><th>Identificador exacto</th><th>Eventos</th><th>Operaciones auditadas</th><th>IDs de evento</th></tr></thead><tbody>${emailBlocks || '<tr><td colspan="5">Sin identificadores exactos compartidos</td></tr>'}</tbody></table><h2>Línea de tiempo · ${input.events.length.toLocaleString('es-PE')} eventos</h2><table><thead><tr><th>Tipo</th><th>Fecha y hora UTC</th><th>Nivel</th><th>Origen</th><th>Regla</th><th>Descripción</th><th>Entidades</th><th>Metadatos M365 de auditoría</th><th>ID</th></tr></thead><tbody>${rows || '<tr><td colspan="9">Sin eventos</td></tr>'}</tbody></table><footer class="foot">B89 SOC · Evidencia consultada con la identidad del analista. Exportación limitada a los campos visibles del contrato de investigación.</footer><script>window.addEventListener('load',()=>window.print());</script></body></html>`;
+  const bunnySection =
+    input.assistantAnalysis === undefined
+      ? ''
+      : `<h2>Análisis de Bunny</h2><p class="note">Respuesta asistida por IA; debe revisarse antes de compartir o tomar decisiones.</p>${input.assistantChartSvg ? `<figure>${input.assistantChartSvg}<figcaption>Visualización derivada exclusivamente de la tabla numérica incluida en la respuesta.</figcaption></figure>` : ''}<pre class="analysis">${html(input.assistantAnalysis)}</pre><h3>Fuentes citadas</h3><ul>${(input.assistantCitations ?? []).map((citation) => `<li>${html(citation.kind)} · ${html(citation.label)} (ID ${html(citation.id)})</li>`).join('') || '<li>La respuesta no incluyó fuentes citadas.</li>'}</ul>`;
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${html(input.title)} · Informe B89 SOC</title><style>body{font:12px/1.45 Arial,sans-serif;color:#17212b;margin:32px}header{border-bottom:3px solid #df8b26;padding-bottom:16px;margin-bottom:24px}h1{font-size:24px;margin:0 0 8px}h2{font-size:16px;margin:28px 0 8px;color:#25384b}.meta{display:grid;grid-template-columns:180px 1fr;gap:5px 12px}.meta strong{color:#536477}table{width:100%;border-collapse:collapse;margin-top:10px;table-layout:fixed}th{background:#263444;color:white;text-align:left}th,td{padding:6px;border:1px solid #cbd2d9;vertical-align:top;overflow-wrap:anywhere}.mono{font-family:monospace;font-size:10px}.note{background:#f2f5f8;padding:10px;border-left:3px solid #df8b26}.analysis{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.55 Arial,sans-serif}.foot{margin-top:24px;color:#536477;font-size:10px}@page{size:A4 landscape;margin:12mm}@media print{body{margin:0}thead{display:table-header-group}tr{break-inside:avoid}h2{break-after:avoid}}</style></head><body><header><h1>B89 SOC · ${input.assistantAnalysis === undefined ? 'Informe de investigación' : 'Análisis asistido por Bunny'}</h1><div>${html(input.title)}</div></header><section class="meta"><strong>Generado (UTC)</strong><span>${html(input.generatedAt.toISOString())}</span><strong>Alerta B89</strong><span>${html(input.alert?.id ?? '—')}</span><strong>Evento Wazuh de origen</strong><span>${html(input.sourceEvent?.id ?? '—')}</span><strong>Eventos incluidos</strong><span>${input.events.length.toLocaleString('es-PE')} de ${input.totalEvents.toLocaleString('es-PE')}${input.truncated ? ' · informe limitado a 10.000 eventos' : ''}</span><strong>Entidades analizadas</strong><span>${html(input.entities.join(' · '))}</span></section>${bunnySection}<p class="note">La actividad por entidad y proximidad no establece causalidad. Los grupos por NetworkMessageId o InternetMessageId son coincidencias exactas; no prueban causalidad ni un hilo. Solo las operaciones de envío documentadas permiten clasificar salida; el feed actual no acredita recepción. Buzones y destinatarios proceden únicamente del DTO allowlisted; un buzón auditado no identifica necesariamente al actor humano. Los campos sensibles excluidos por contrato no se incorporan.</p><h2>Actividad agrupada por entidad y proximidad</h2><table><thead><tr><th>Entidad</th><th>Primera actividad UTC</th><th>Última actividad UTC</th><th>Eventos</th><th>Orígenes</th></tr></thead><tbody>${blocks || '<tr><td colspan="5">Sin bloques de actividad</td></tr>'}</tbody></table><h2>Coincidencias por identificador exacto de mensaje</h2><table><thead><tr><th>Campo</th><th>Identificador exacto</th><th>Dirección según operaciones</th><th>Eventos</th><th>Buzones auditados</th><th>Destinatarios del DTO</th><th>Operaciones auditadas</th><th>IDs de evento</th></tr></thead><tbody>${emailBlocks || '<tr><td colspan="8">Sin identificadores exactos compartidos</td></tr>'}</tbody></table><h2>Línea de tiempo · ${input.events.length.toLocaleString('es-PE')} eventos</h2><table><thead><tr><th>Tipo</th><th>Fecha y hora UTC</th><th>Nivel</th><th>Origen</th><th>Regla</th><th>Descripción</th><th>Entidades</th><th>Metadatos M365 de auditoría</th><th>ID</th></tr></thead><tbody>${rows || '<tr><td colspan="9">Sin eventos</td></tr>'}</tbody></table><footer class="foot">B89 SOC · Evidencia consultada con la identidad del analista. Exportación limitada a los campos visibles del contrato de investigación.</footer><script>window.addEventListener('load',()=>window.print());</script></body></html>`;
 }
 
 export function investigationPrintHtml(input: InvestigationReportData): string {

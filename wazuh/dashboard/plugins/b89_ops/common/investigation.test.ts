@@ -7,7 +7,9 @@ import {
   entityKey,
   entityKql,
   extractEntities,
+  emailOperationDirection,
   groupExactEmailMessages,
+  summarizeExactEmailMessageGroup,
   parseEntityKey,
   selectQueryEntities,
   validEntity,
@@ -104,6 +106,9 @@ describe('correlación de mensajes M365 por identificador exacto', () => {
       networkMessageId?: string;
       internetMessageId?: string;
       operation?: string;
+      mailboxOwnerUpn?: string;
+      recipients?: readonly string[];
+      recipientsTruncated?: boolean;
     },
   ) => ({
     id,
@@ -120,7 +125,7 @@ describe('correlación de mensajes M365 por identificador exacto', () => {
     matched: [],
   });
 
-  it('agrupa envío y recepción por NetworkMessageId compartido e ignora proximidad sin ID', () => {
+  it('agrupa por NetworkMessageId compartido aunque no pueda afirmar recepción', () => {
     const sender = summary('send-1', {
       networkMessageId: 'abcdef01-2345-6789-abcd-ef0123456789',
       internetMessageId: '<message-1@example.test>',
@@ -129,7 +134,7 @@ describe('correlación de mensajes M365 por identificador exacto', () => {
     const receiver = summary('receive-1', {
       networkMessageId: 'ABCDEF01-2345-6789-ABCD-EF0123456789',
       internetMessageId: '<message-1@example.test>',
-      operation: 'Receive',
+      operation: 'MailItemsAccessed',
     });
     const sameUserAndTime = summary('nearby-1');
 
@@ -163,6 +168,39 @@ describe('correlación de mensajes M365 por identificador exacto', () => {
         summary('case-variant', { internetMessageId: '<MESSAGE-2@EXAMPLE.TEST>' }),
       ]),
     ).toEqual([]);
+  });
+
+  it('resume buzones, destinatarios y direcciones solo desde operaciones explícitas', () => {
+    const send = summary('send', {
+      networkMessageId: 'same-id',
+      operation: 'SendAs',
+      mailboxOwnerUpn: 'sender@example.test',
+      recipients: ['recipient@example.test'],
+    });
+    const receive = summary('receive', {
+      networkMessageId: 'same-id',
+      operation: 'MailItemsAccessed',
+      mailboxOwnerUpn: 'recipient@example.test',
+      recipients: ['archive@example.test'],
+      recipientsTruncated: true,
+    });
+    const ambiguous = summary('ambiguous', {
+      networkMessageId: 'same-id',
+      operation: 'MailItemsAccessed',
+    });
+    const group = groupExactEmailMessages([send, receive, ambiguous])[0]!;
+
+    expect(summarizeExactEmailMessageGroup(group)).toEqual({
+      direction: 'Salida; Dirección no determinada',
+      operations: ['MailItemsAccessed', 'SendAs'],
+      auditedMailboxes: ['recipient@example.test', 'sender@example.test'],
+      recipients: ['archive@example.test', 'recipient@example.test'],
+      recipientsTruncated: true,
+    });
+    expect(emailOperationDirection('MailItemsAccessed')).toBe('Dirección no determinada');
+    expect(emailOperationDirection('Receive')).toBe('Dirección no determinada');
+    expect(emailOperationDirection('Deliver')).toBe('Dirección no determinada');
+    expect(emailOperationDirection(undefined)).toBe('Dirección no determinada');
   });
 });
 

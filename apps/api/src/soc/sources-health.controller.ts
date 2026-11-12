@@ -88,6 +88,8 @@ export class SourcesHealthController {
                 promoted: latestPoll.promoted,
                 duplicates: latestPoll.duplicates,
                 notPromoted: latestPoll.notPromoted,
+                belowThreshold: latestPoll.belowThreshold,
+                suppressed: latestPoll.suppressed,
                 errorClass: latestPoll.errorClass,
               }
             : null,

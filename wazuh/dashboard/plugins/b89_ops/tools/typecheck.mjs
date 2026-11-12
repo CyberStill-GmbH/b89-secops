@@ -66,14 +66,15 @@ try {
         '*': [`${modules}/*`, `${modules}/@types/*`],
       },
     },
-    files: [
-      'plugins/b89_ops/tools/shims/osd-modules.d.ts',
-      `${modules}/@elastic/eui/oui.d.ts`,
-    ],
+    files: ['plugins/b89_ops/tools/shims/osd-modules.d.ts', `${modules}/@elastic/eui/oui.d.ts`],
     include: ['plugins/b89_ops/**/*.ts', 'plugins/b89_ops/**/*.tsx'],
     // Unit tests are executed with Vitest, whose matcher types are intentionally not part of
     // the OSD production dependency tree used here. Keep this check scoped to plugin sources.
-    exclude: ['plugins/b89_ops/tools/**', 'plugins/b89_ops/**/*.test.ts', 'plugins/b89_ops/**/*.test.tsx'],
+    exclude: [
+      'plugins/b89_ops/tools/**',
+      'plugins/b89_ops/**/*.test.ts',
+      'plugins/b89_ops/**/*.test.tsx',
+    ],
   };
   writeFileSync(join(stage, 'tsconfig.json'), JSON.stringify(tsconfig, null, 2));
   const tsc = join(tools, 'node_modules', 'typescript', 'bin', 'tsc');

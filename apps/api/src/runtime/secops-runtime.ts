@@ -403,13 +403,15 @@ export class SecOpsRuntime {
     this.notifications = options.notifications ?? new InMemoryNotificationStore();
     this.urgentDispatcher = new NotificationDispatcher({
       drain: async () =>
-        (await drainOutbox(this.dispatchDependencies('urgent'), DISPATCH_BATCH)).length,
+        (await drainOutbox(this.dispatchDependencies('urgent'), DISPATCH_BATCH, DISPATCH_BATCH))
+          .length,
       intervalMs: options.dispatchIntervalMs ?? DEFAULT_DISPATCH_INTERVAL_MS,
       onError: options.onDispatchError ?? (() => undefined),
     });
     this.dispatcher = new NotificationDispatcher({
       drain: async () =>
-        (await drainOutbox(this.dispatchDependencies('normal'), DISPATCH_BATCH)).length,
+        (await drainOutbox(this.dispatchDependencies('normal'), DISPATCH_BATCH, DISPATCH_BATCH))
+          .length,
       intervalMs: options.dispatchIntervalMs ?? DEFAULT_DISPATCH_INTERVAL_MS,
       onError: options.onDispatchError ?? (() => undefined),
       onKick: () => this.urgentDispatcher.kick(),
@@ -694,7 +696,7 @@ export class SecOpsRuntime {
    */
   public async promoteEvent(
     event: SecurityEvent,
-  ): Promise<'promoted' | 'duplicate' | 'not_promoted'> {
+  ): Promise<'promoted' | 'duplicate' | 'not_promoted' | 'below_threshold' | 'suppressed'> {
     const tenantId = event.tenant.id;
     const key = promotionKey(tenantId, event.recordId, PRIORITIZATION_RULESET_VERSION);
     const existingAlert = await this.soc.alertByEventRecordId(tenantId, event.recordId);
@@ -734,7 +736,10 @@ export class SecOpsRuntime {
       existing,
       this.now(),
     );
-    if (decision.outcome !== 'promoted') return decision.outcome;
+    if (decision.outcome === 'duplicate') return 'duplicate';
+    if (decision.outcome === 'not_promoted') {
+      return decision.reasonCode === 'SUPPRESSED' ? 'suppressed' : 'below_threshold';
+    }
     const ingested = await ingestCandidate(this.socDependencies(), decision.candidate);
     if (!ingested.ok) {
       // Do not let the pull cursor advance as if an alert/outbox row had been created.

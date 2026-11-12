@@ -22,7 +22,7 @@ en [`docs/03-evaluacion-de-componentes.md`](../docs/03-evaluacion-de-componentes
 | `indexer/anomaly-detection/` | Detectores ML (RCF)                                                                                                      | `indexer/anomaly-detection/apply-detectors.sh`                            | Propuesto                                     |
 | `dashboard/`                 | Marca B89, proxy auth y plugin `b89-ops`                                                                                 | Copia más reinicio de `wazuh-dashboard`                                   | Propuesto                                     |
 | `core/`                      | Núcleo B89 dentro del SIEM: login Entra, casos (B89 Cases), auditoría, avisos y colas, como servicios del host (docs/12) | `core/apply-core.sh` (workflow «B89 SIEM», step=core)                     | Implementado; pendiente del primer despliegue |
-| `manager/integrations/`      | Push HMAC minimizado a la inbox B89; configuración de conexión preparada, integración no activa | `ossec.conf` + `infra/aws-poweruser/scripts/prepare-wazuh-push-secret.sh` | Local; canario y activación pendientes       |
+| `manager/integrations/`      | Push HMAC minimizado a la inbox B89; configuración de conexión preparada, integración no activa                          | `ossec.conf` + `infra/aws-poweruser/scripts/prepare-wazuh-push-secret.sh` | Local; canario y activación pendientes        |
 
 ## Reglas
 

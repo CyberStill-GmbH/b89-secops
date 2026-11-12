@@ -180,10 +180,25 @@ describe.skipIf(!databaseUrl)('C-20 · intentos SOAR durables', () => {
         createdAt,
         updatedAt: createdAt,
         delivery: [
+          ...(index === 0
+            ? [
+                {
+                  channel: 'email' as const,
+                  outcome: 'accepted' as const,
+                  at: new Date(createdAt.getTime() - 500).toISOString(),
+                  responseAt: new Date(createdAt.getTime() - 500).toISOString(),
+                  httpStatus: 202,
+                  providerMessageId: null,
+                  providerLink: null,
+                  reason: null,
+                },
+              ]
+            : []),
           {
             channel: 'teams',
             outcome: 'accepted',
             at: acceptedAt.toISOString(),
+            responseAt: acceptedAt.toISOString(),
             httpStatus: 202,
             providerMessageId: null,
             providerLink: null,
@@ -218,6 +233,7 @@ describe.skipIf(!databaseUrl)('C-20 · intentos SOAR durables', () => {
           channel: 'teams',
           outcome: 'accepted',
           at: new Date(otherCreatedAt.getTime() + 100).toISOString(),
+          responseAt: new Date(otherCreatedAt.getTime() + 100).toISOString(),
           httpStatus: 202,
           providerMessageId: null,
           providerLink: null,

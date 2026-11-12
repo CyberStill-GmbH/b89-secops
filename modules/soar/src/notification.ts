@@ -45,7 +45,10 @@ export type SuppressionReason = (typeof SUPPRESSION_REASONS)[number];
 export interface DeliveryEvidence {
   readonly channel: 'teams' | 'email' | 'console' | 'push';
   readonly outcome: 'accepted' | 'failed';
+  /** Start of the attempt; retained for compatibility with historical evidence. */
   readonly at: string;
+  /** Provider response time. Historical evidence without it is excluded from latency metrics. */
+  readonly responseAt?: string;
   readonly httpStatus: number | null;
   /** Identificador del proveedor: run id del Workflow, request-id de Graph… */
   readonly providerMessageId: string | null;
@@ -180,7 +183,8 @@ export function supersede(
   at: Date,
 ): AcknowledgementResult {
   if (attempt.status === 'acknowledged') return { ok: false, code: 'ALREADY_ACKNOWLEDGED' };
-  if (!AWAITING_ACKNOWLEDGEMENT.includes(attempt.status)) return { ok: false, code: 'NOT_DELIVERED' };
+  if (!AWAITING_ACKNOWLEDGEMENT.includes(attempt.status))
+    return { ok: false, code: 'NOT_DELIVERED' };
   return {
     ok: true,
     attempt: { ...attempt, status: 'superseded', supersededBy: by, updatedAt: at },

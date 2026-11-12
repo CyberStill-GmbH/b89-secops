@@ -597,3 +597,46 @@ La lectura de la cola outbox vacía durante 24 h no identifica por sí sola en q
 El sondeo pull ya guardaba documentos devueltos, cuarentena y alertas promovidas, pero descartaba los resultados `duplicate` y `not_promoted`. El registro nuevo expone el desglose del último poll en Salud de fuentes: documentos devueltos por la consulta, normalizados y en cuarentena, alertas creadas, duplicados y eventos sin promoción. `null` en los dos contadores nuevos significa que la observación es histórica y anterior a la métrica; no equivale a cero. Cero documentos devueltos describe la respuesta de esa consulta, no prueba que la fuente no tuviera actividad.
 
 La promoción ahora confirma el resultado de la transacción SOC: un evento existente se cuenta como duplicado; un fallo de materialización se eleva como error reintentable para no avanzar el cursor como si la alerta/outbox se hubiera creado. Un poll con `promoted > 0` comprueba alertas materializadas, no el despacho ni la aceptación del proveedor; esos pasos requieren revisar outbox e intentos por separado. Este cambio instrumenta y corrige la clasificación local, pero no aporta evidencia de ingesta real ni de un despliegue.
+
+### Motivos de eventos que no ascienden (2026-11-12)
+
+`promoteEvent` conserva ahora el resultado que el motor ya distinguía: `below_threshold` o `suppressed`.
+El resultado del endpoint de ingesta manual mantiene `outcome: not_promoted` por compatibilidad y añade
+`reason: BELOW_THRESHOLD | SUPPRESSED`. Cada observación del sondeo persiste contadores agregados
+`belowThreshold` y `suppressed`; `GET /api/sources/health` los publica en **Salud de fuentes**. El panel
+muestra los motivos sin guardar IDs de evento, entidades ni contenido. Las filas históricas conservan
+`null`, que significa «sin desglose histórico»; no se convierte en cero. La migración aditiva es
+`20261112170000_source_poll_nonpromotion_reasons`.
+
+La vista **Alertas que requieren atención** es independiente: contiene alertas abiertas que ya fueron
+promovidas. El nuevo desglose explica eventos del sondeo que no llegaron a esa cola; no cambia reglas,
+puntajes ni prioridades persistidas.
+
+### Latencia y concurrencia acotada de notificaciones (2026-11-12)
+
+El outbox ahora despacha hasta cinco mensajes reclamados en paralelo; el claim conserva `SKIP LOCKED`,
+fencing e idempotencia y las reservas PostgreSQL existentes mantienen las cuotas P2 y el quiet window
+entre réplicas. El runtime pide concurrencia cinco, con máximo cinco mensajes por tanda; el helper y el endpoint manual conservan un
+solo mensaje para caber en el timeout de gateway. El cambio elimina la espera serial de hasta cinco
+timeouts dentro de una tanda automática; no reemplaza la política de agrupación, antigüedad o digest.
+
+La evidencia de cada intento conserva `at` como inicio del envío y añade `responseAt` al recibir respuesta
+del proveedor. La métrica de Operaciones calcula outbox→HTTP 2xx usando únicamente respuestas Teams con
+`responseAt`; excluye email y evidencia histórica que solo tiene `at`. Por ello puede haber menos muestras
+tras la corrección. HTTP 2xx significa aceptación de Microsoft, no publicación final del Workflow ni lectura
+humana. Falta medir p50/p95/p99 con tráfico y validar un canario autorizado.
+
+### Exportación de informes de Bunny (2026-11-12)
+
+El prompt del asistente ahora explica que cada respuesta tiene **Crear informe**, que Excel se descarga
+como `.xlsx` y que PDF abre una vista imprimible para **Guardar como PDF** en el navegador. El modelo no
+puede iniciar la descarga por chat. Los expedientes de investigación requieren una alerta/evento citado y
+la sesión reúne evidencia con los permisos de la persona; si no hay cita, se puede exportar solo la respuesta.
+Se documentó el flujo y su progreso/cancelación en [15 · Bunny](15-bunny-asistente.md). La exportación
+existente no se convirtió en generación PDF server-side.
+
+### Evidencia M365 por mensaje en PDF/XLSX (2026-11-12)
+
+Los expedientes exportados agrupan eventos de correo únicamente por coincidencia exacta de `NetworkMessageId`; si un evento no contiene ese campo, se puede agrupar por `InternetMessageId` exacto. El resumen del grupo incorpora las operaciones, buzones auditados (`MailboxOwnerUPN`), destinatarios que ya figuran en el DTO allowlisted, indicador de lista truncada e IDs de evento. No amplía la consulta ni el conjunto de campos permitidos. Un buzón auditado no se etiqueta como actor humano.
+
+La clasificación es explícita y conservadora: solo `Send`/`SendAs`/`SendOnBehalf` = salida. El feed actual de Microsoft 365 Management Activity/Audit no permite afirmar recepción: Microsoft documenta que recibir mensajes no se audita por defecto y lista las acciones de buzón admitidas ([Microsoft Purview: Audit mailboxes](https://learn.microsoft.com/en-us/purview/audit-mailboxes)). `Receive`, `Deliver`, operaciones desconocidas o ausentes quedan como «Dirección no determinada», salvo que exista un contrato y fuente aprobados que garanticen esa semántica. Una coincidencia de identificador no prueba causalidad ni un hilo. Las pruebas cubren envío explícito, operación ambigua y campos allowlisted en Common y en ambos formatos.

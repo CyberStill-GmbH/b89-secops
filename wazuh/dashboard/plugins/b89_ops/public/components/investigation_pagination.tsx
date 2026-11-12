@@ -42,12 +42,7 @@ export function InvestigationPagination({
   }
 
   return (
-    <EuiButton
-      size="s"
-      isLoading={loading}
-      isDisabled={loading}
-      onClick={() => void onLoadMore()}
-    >
+    <EuiButton size="s" isLoading={loading} isDisabled={loading} onClick={() => void onLoadMore()}>
       {loading ? 'Cargando eventos…' : `Cargar más eventos (${Math.max(0, remaining)} restantes)`}
     </EuiButton>
   );

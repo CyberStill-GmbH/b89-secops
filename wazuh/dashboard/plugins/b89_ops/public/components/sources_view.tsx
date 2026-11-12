@@ -226,16 +226,34 @@ export function ProcessingSummary({ processing }: { processing: SourceHealth['pr
             compressed
             className="b89Facts"
             listItems={[
-              { title: 'Documentos devueltos', description: <span className="b89Tabular">{processing.recordsSeen}</span> },
+              {
+                title: 'Documentos devueltos',
+                description: <span className="b89Tabular">{processing.recordsSeen}</span>,
+              },
               { title: 'Normalizados', description: processingCount(processing.normalized) },
-              { title: 'En cuarentena', description: <span className="b89Tabular">{processing.quarantined}</span> },
-              { title: 'Alertas creadas', description: <span className="b89Tabular">{processing.promoted}</span> },
+              {
+                title: 'En cuarentena',
+                description: <span className="b89Tabular">{processing.quarantined}</span>,
+              },
+              {
+                title: 'Alertas creadas',
+                description: <span className="b89Tabular">{processing.promoted}</span>,
+              },
               { title: 'Duplicados', description: processingCount(processing.duplicates) },
               { title: 'Sin promoción', description: processingCount(processing.notPromoted) },
+              { title: 'Bajo umbral B89', description: processingCount(processing.belowThreshold) },
+              {
+                title: 'Suprimidos por política',
+                description: processingCount(processing.suppressed),
+              },
             ]}
           />
           <EuiText size="xs" color="subdued">
-            <p>“Documentos devueltos” cuenta los resultados del sondeo, no la actividad total de la fuente.</p>
+            <p>
+              “Bajo umbral B89” no alcanzó el puntaje mínimo; “Suprimidos” coincide con una regla
+              benigna o ventana de mantenimiento. “Documentos devueltos” cuenta los resultados del
+              sondeo, no la actividad total de la fuente.
+            </p>
           </EuiText>
         </>
       ) : (

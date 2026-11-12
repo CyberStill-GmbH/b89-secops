@@ -611,6 +611,8 @@ model SourcePollObservation {
   quarantined   Int
   duplicates    Int?
   notPromoted   Int?      @map("not_promoted")
+  belowThreshold Int?     @map("below_threshold")
+  suppressed    Int?
   newestEventAt DateTime? @map("newest_event_at") @db.Timestamptz(3)
   errorClass    String?   @map("error_class") @db.Text
 

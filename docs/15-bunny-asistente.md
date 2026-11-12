@@ -150,6 +150,24 @@ herramientas, no tokens parciales ni bloques internos `thinking`. La ruta JSON `
 
 ## Interfaz
 
+### Exportar una respuesta o un expediente
+
+Cada respuesta de Bunny incorpora **Crear informe**. La persona elige entre exportar solo la respuesta o
+preparar un expediente de investigación a partir de una alerta/evento citado y las páginas relacionadas que
+su propia sesión puede leer. El expediente no se genera parcialmente si la evidencia está denegada o ya no
+existe. Sin una cita de alerta/evento se puede exportar la respuesta, pero no se presenta como expediente
+probatorio.
+
+- **Excel (.xlsx):** descarga un libro con resumen, fuentes, eventos y actividad agrupada disponible.
+- **PDF:** abre una vista A4 lista para imprimir; la persona elige **Guardar como PDF** en el diálogo del
+  navegador. No es un PDF renderizado en servidor ni una descarga que Bunny pueda disparar desde el chat.
+- La preparación muestra el avance de lectura y serialización y permite cancelar. Revisar el documento antes
+  de compartirlo; el archivo se prepara localmente en la sesión y no queda como trabajo reanudable del servidor.
+
+El asistente debe orientar a la persona al botón **Crear informe** debajo de su respuesta cuando le pidan
+exportarla. Bunny no afirma que ya descargó el archivo: la exportación se completa desde ese control y requiere
+una acción explícita de la persona.
+
 Botón con Remi en la cabecera (atajo Alt+Shift+B), panel lateral con saludo, ejemplos según la página
 (alertas, incidentes, fuentes, auditoría), estado «consultando…», lista plegable de lo que consultó,
 fuentes citadas con enlace a la consola, copiar, nueva conversación y aviso permanente de IA generativa
@@ -256,3 +274,12 @@ adaptador elimina credenciales evidentes (Bearer/Basic, JWT, claves AWS/GitHub/S
 privadas, `password=`/`token:`/`api_key=`) de todo texto saliente (`apps/api/src/assistant/outbound-scrub.ts`).
 Los bloques internos firmados del proveedor se reenvían intactos solo entre rondas del mismo turno
 cuando se usan herramientas; nunca llegan a la respuesta, historial, auditoría ni logs.
+
+
+### Evidencia de correo M365 en informes
+
+En un expediente con eventos de Exchange/Microsoft 365, la sección de coincidencias agrupa eventos solo si comparten un identificador exacto: se prefiere `NetworkMessageId` y se usa `InternetMessageId` cuando el evento no trae el primero. La proximidad temporal o el mismo buzón no crean por sí solos un grupo de mensaje.
+
+El PDF imprimible y el libro XLSX muestran buzones auditados (`MailboxOwnerUPN`), destinatarios presentes en el DTO allowlisted, operaciones de auditoría e IDs de evento. `MailboxOwnerUPN` identifica el buzón de la operación; no necesariamente a la persona que actuó. Si el contrato indica que la lista de destinatarios fue truncada, el informe lo marca. No se recuperan ni se inventan destinatarios ausentes.
+
+La dirección se clasifica de forma conservadora: solo `Send`, `SendAs` y `SendOnBehalf` indican salida. El feed actual de Microsoft 365 Management Activity/Audit no permite afirmar recepción: Microsoft indica que recibir mensajes no se audita por defecto y sus acciones documentadas para el buzón incluyen acciones de envío ([Microsoft Purview: Audit mailboxes](https://learn.microsoft.com/en-us/purview/audit-mailboxes)). Por ello `Receive`, `Deliver`, otras operaciones o la operación ausente se muestran como «Dirección no determinada», salvo que exista un contrato y fuente aprobados que garanticen esa semántica. Una coincidencia por ID no demuestra causalidad ni un hilo de correo; revisar la cronología, los eventos fuente y el contexto antes de comunicar conclusiones.

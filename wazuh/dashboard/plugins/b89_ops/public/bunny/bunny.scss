@@ -542,9 +542,9 @@ $bunnyEase: cubic-bezier(0.16, 1, 0.3, 1);
 .b89Bunny__thinking {
   width: min(100%, 520px);
   padding: 12px 14px;
-  border: 1px solid rgba(93, 168, 221, .22);
+  border: 1px solid rgba(93, 168, 221, 0.22);
   border-radius: 12px;
-  background: linear-gradient(145deg, rgba(35, 48, 65, .78), rgba(23, 24, 32, .96));
+  background: linear-gradient(145deg, rgba(35, 48, 65, 0.78), rgba(23, 24, 32, 0.96));
   color: $bunnyText2;
 }
 
@@ -564,7 +564,7 @@ $bunnyEase: cubic-bezier(0.16, 1, 0.3, 1);
   strong {
     color: $bunnyText;
     font-size: 13px;
-    letter-spacing: .01em;
+    letter-spacing: 0.01em;
   }
 
   span:not(.b89Bunny__thinkingPulse) {
@@ -581,7 +581,7 @@ $bunnyEase: cubic-bezier(0.16, 1, 0.3, 1);
   height: 9px;
   border-radius: 50%;
   background: $bunnyBlue;
-  box-shadow: 0 0 0 4px rgba(17, 156, 255, .12);
+  box-shadow: 0 0 0 4px rgba(17, 156, 255, 0.12);
   animation: b89BunnyPulse 1.8s ease-in-out infinite;
 }
 
@@ -614,12 +614,28 @@ $bunnyEase: cubic-bezier(0.16, 1, 0.3, 1);
     content: '';
   }
 
-  li[data-status='running'] .b89Bunny__timelineMark { border-color: $bunnyBlue; background: $bunnyBlue; box-shadow: 0 0 0 3px rgba(17, 156, 255, .13); }
-  li[data-status='complete'] .b89Bunny__timelineMark { border-color: #48c78e; background: #48c78e; }
-  li[data-status='no-result'] .b89Bunny__timelineMark { border-color: #e4a63c; background: #e4a63c; }
-  li[data-status='running'] .b89Bunny__timelineStatus { color: #8fd0ff; }
-  li[data-status='complete'] .b89Bunny__timelineStatus { color: #78d9a9; }
-  li[data-status='no-result'] .b89Bunny__timelineStatus { color: #f0c16c; }
+  li[data-status='running'] .b89Bunny__timelineMark {
+    border-color: $bunnyBlue;
+    background: $bunnyBlue;
+    box-shadow: 0 0 0 3px rgba(17, 156, 255, 0.13);
+  }
+  li[data-status='complete'] .b89Bunny__timelineMark {
+    border-color: #48c78e;
+    background: #48c78e;
+  }
+  li[data-status='no-result'] .b89Bunny__timelineMark {
+    border-color: #e4a63c;
+    background: #e4a63c;
+  }
+  li[data-status='running'] .b89Bunny__timelineStatus {
+    color: #8fd0ff;
+  }
+  li[data-status='complete'] .b89Bunny__timelineStatus {
+    color: #78d9a9;
+  }
+  li[data-status='no-result'] .b89Bunny__timelineStatus {
+    color: #f0c16c;
+  }
 }
 
 .b89Bunny__timelineMark {
@@ -632,19 +648,41 @@ $bunnyEase: cubic-bezier(0.16, 1, 0.3, 1);
   background: #20212a;
 }
 
-.b89Bunny__timelineLabel { color: $bunnyText2; font-size: 11px; }
-.b89Bunny__timelineStatus { color: $bunnyMuted; font-size: 10px; white-space: nowrap; }
+.b89Bunny__timelineLabel {
+  color: $bunnyText2;
+  font-size: 11px;
+}
+.b89Bunny__timelineStatus {
+  color: $bunnyMuted;
+  font-size: 10px;
+  white-space: nowrap;
+}
 .b89Bunny__thinkingWaiting,
-.b89Bunny__thinkingNote { margin: 10px 0 0; color: $bunnyMuted; font-size: 10px; line-height: 1.4; }
-.b89Bunny__thinkingNote { padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, .07); }
+.b89Bunny__thinkingNote {
+  margin: 10px 0 0;
+  color: $bunnyMuted;
+  font-size: 10px;
+  line-height: 1.4;
+}
+.b89Bunny__thinkingNote {
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
 
 @keyframes b89BunnyPulse {
-  0%, 100% { opacity: .65; }
-  50% { opacity: 1; }
+  0%,
+  100% {
+    opacity: 0.65;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .b89Bunny__thinkingPulse { animation: none; }
+  .b89Bunny__thinkingPulse {
+    animation: none;
+  }
 }
 
 .b89Bunny__dots {
@@ -1165,34 +1203,92 @@ $bunnyEase: cubic-bezier(0.16, 1, 0.3, 1);
   border: 1px solid $bunnyLine;
   border-radius: 12px;
   background: #17171e;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, .42);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.42);
   color: $bunnyText;
   font-size: 12px;
 
-  h4 { margin: 0 0 6px; font-size: 14px; }
-  p { margin: 6px 0 10px; color: $bunnyText2; line-height: 1.45; }
-  fieldset { display: flex; flex-wrap: wrap; gap: 10px; margin: 10px 0; padding: 8px; border: 1px solid $bunnyLine; border-radius: 8px; }
-  legend { padding: 0 4px; color: $bunnyMuted; }
-  label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
-  input { accent-color: $bunnyBlue; }
-  > button { margin-top: 10px; border-color: $bunnyBlue; color: $bunnyText; }
+  h4 {
+    margin: 0 0 6px;
+    font-size: 14px;
+  }
+  p {
+    margin: 6px 0 10px;
+    color: $bunnyText2;
+    line-height: 1.45;
+  }
+  fieldset {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 10px 0;
+    padding: 8px;
+    border: 1px solid $bunnyLine;
+    border-radius: 8px;
+  }
+  legend {
+    padding: 0 4px;
+    color: $bunnyMuted;
+  }
+  label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+  }
+  input {
+    accent-color: $bunnyBlue;
+  }
+  > button {
+    margin-top: 10px;
+    border-color: $bunnyBlue;
+    color: $bunnyText;
+  }
 }
 
-.b89Bunny__reportHint { font-size: 11px; }
+.b89Bunny__reportHint {
+  font-size: 11px;
+}
 
 .b89Bunny__reportPreview {
   margin-top: 10px;
   padding: 10px;
   border: 1px solid $bunnyLine;
   border-radius: 8px;
-  background: rgba(255, 255, 255, .025);
+  background: rgba(255, 255, 255, 0.025);
 
-  > strong { color: $bunnyText; }
-  small { color: $bunnyMuted; }
+  > strong {
+    color: $bunnyText;
+  }
+  small {
+    color: $bunnyMuted;
+  }
 }
 
-.b89Bunny__chartPreview { display: grid; gap: 6px; margin-top: 10px; }
-.b89Bunny__chartRow { display: grid; grid-template-columns: minmax(75px, 1fr) 2fr auto; align-items: center; gap: 8px; font-size: 10px; }
-.b89Bunny__chartRow span { overflow: hidden; color: $bunnyText2; text-overflow: ellipsis; white-space: nowrap; }
-.b89Bunny__chartRow i { display: block; height: 8px; border-radius: 5px; background: $bunnyBlue; }
-.b89Bunny__chartRow b { color: $bunnyText; font-family: 'Roboto Mono', Menlo, Consolas, monospace; }
+.b89Bunny__chartPreview {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+.b89Bunny__chartRow {
+  display: grid;
+  grid-template-columns: minmax(75px, 1fr) 2fr auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+}
+.b89Bunny__chartRow span {
+  overflow: hidden;
+  color: $bunnyText2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.b89Bunny__chartRow i {
+  display: block;
+  height: 8px;
+  border-radius: 5px;
+  background: $bunnyBlue;
+}
+.b89Bunny__chartRow b {
+  color: $bunnyText;
+  font-family: 'Roboto Mono', Menlo, Consolas, monospace;
+}

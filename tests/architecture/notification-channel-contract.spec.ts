@@ -39,9 +39,13 @@ describe('notification channel API contract adapter', () => {
   });
 
   it('adapts the API test-result wrapper and preserves accepted versus failed', () => {
-    expect(normalizeChannelTest({ result: { outcome: 'accepted', at: '2026-11-12T10:00:00Z' } }))
-      .toMatchObject({ ok: true, at: '2026-11-12T10:00:00Z' });
-    expect(normalizeChannelTest({ result: { outcome: 'failed', at: '2026-11-12T10:01:00Z', reason: 'HTTP_503' } }))
-      .toMatchObject({ ok: false, at: '2026-11-12T10:01:00Z', reason: 'HTTP_503' });
+    expect(
+      normalizeChannelTest({ result: { outcome: 'accepted', at: '2026-11-12T10:00:00Z' } }),
+    ).toMatchObject({ ok: true, at: '2026-11-12T10:00:00Z' });
+    expect(
+      normalizeChannelTest({
+        result: { outcome: 'failed', at: '2026-11-12T10:01:00Z', reason: 'HTTP_503' },
+      }),
+    ).toMatchObject({ ok: false, at: '2026-11-12T10:01:00Z', reason: 'HTTP_503' });
   });
 });

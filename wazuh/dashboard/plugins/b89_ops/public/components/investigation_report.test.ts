@@ -140,7 +140,12 @@ describe('reportes de investigación', () => {
         },
         {
           ...event('event-2'),
-          email: { networkMessageId: 'network-1', operation: 'Receive' },
+          email: {
+            networkMessageId: 'network-1',
+            mailboxOwnerUpn: 'recipient@example.test',
+            recipients: ['archive@example.test'],
+            operation: 'MailItemsAccessed',
+          },
         },
       ],
       totalEvents: 1,
@@ -156,7 +161,12 @@ describe('reportes de investigación', () => {
     expect(content).toContain('name="Eventos"');
     expect(content).toContain('name="Actividad agrupada"');
     expect(content).toContain('name="IDs exactos de mensaje"');
-    expect(content).toContain('Coincidencia por ID exacto; no implica dirección ni hilo');
+    expect(content).toContain('Coincidencia por ID exacto; no prueba causalidad ni hilo');
+    expect(content).toContain('Dirección según operaciones explícitas');
+    expect(content).toContain('Salida; Dirección no determinada');
+    expect(content).toContain('owner@example.test');
+    expect(content).toContain('recipient@example.test');
+    expect(content).toContain('archive@example.test');
     expect(content).toContain('Informe &lt;M365&gt;');
     expect(content).toContain('=SUM(1,1)� 🛡');
     expect(content).toContain('&lt;msg@example.test&gt;');
@@ -266,14 +276,21 @@ describe('reportes de investigación', () => {
           email: {
             internetMessageId: '<m&1>',
             networkMessageId: 'same-network-id',
+            mailboxOwnerUpn: 'owner@example.test',
             recipients: ['a@example.test'],
             recipientCount: 75,
             recipientsTruncated: true,
+            operation: 'Send',
           },
         },
         {
           ...event('event-2'),
-          email: { internetMessageId: '<m&1>', networkMessageId: 'same-network-id' },
+          email: {
+            internetMessageId: '<m&1>',
+            networkMessageId: 'same-network-id',
+            mailboxOwnerUpn: 'recipient@example.test',
+            operation: 'MailItemsAccessed',
+          },
         },
       ],
       totalEvents: 1,
@@ -287,6 +304,11 @@ describe('reportes de investigación', () => {
     expect(html).toContain('Destinatarios: a@example.test (lista truncada; 75 total)');
     expect(html).toContain('same-network-id');
     expect(html).toContain('Coincidencias por identificador exacto de mensaje');
+    expect(html).toContain('Salida; Dirección no determinada');
+    expect(html).toContain('owner@example.test');
+    expect(html).toContain('recipient@example.test');
+    expect(html).toContain('Dirección según operaciones');
+    expect(html).toContain('no prueban causalidad ni un hilo');
     expect(html).not.toContain('Dirección:');
   });
 });

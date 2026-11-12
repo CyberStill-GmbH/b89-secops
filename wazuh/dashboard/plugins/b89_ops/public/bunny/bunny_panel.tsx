@@ -6,11 +6,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import type { CoreStart } from '../../../../src/core/public';
 import type { BunnyAskDetail } from '../../common';
-import {
-  BRAND_ASSETS_PATH,
-  BUNNY_ASK_EVENT,
-  CAPABILITIES,
-} from '../../common';
+import { BRAND_ASSETS_PATH, BUNNY_ASK_EVENT, CAPABILITIES } from '../../common';
 import { B89ApiError } from '../api/client';
 import type { B89ApiClient } from '../api/client';
 import type {
@@ -158,9 +154,9 @@ function errorText(error: unknown): string {
 }
 
 function reportNoteBody(message: Message): string {
-  const citations = (message.citations ?? []).map((citation) =>
-    `- ${citation.kind}: ${citation.label} (ID ${citation.id})`,
-  ).join('\n');
+  const citations = (message.citations ?? [])
+    .map((citation) => `- ${citation.kind}: ${citation.label} (ID ${citation.id})`)
+    .join('\n');
   const body = [
     'BORRADOR PRELIMINAR ASISTIDO POR IA. Requiere revisión humana antes de compartir o decidir.',
     `Generado: ${new Date().toISOString()}`,
@@ -170,7 +166,9 @@ function reportNoteBody(message: Message): string {
     'Fuentes citadas',
     citations || 'Sin fuentes citadas; verificar antes de utilizar.',
   ].join('\n');
-  return body.length <= 10000 ? body : `${body.slice(0, 9950)}\n[Truncado al límite de notas del incidente]`;
+  return body.length <= 10000
+    ? body
+    : `${body.slice(0, 9950)}\n[Truncado al límite de notas del incidente]`;
 }
 
 export function BunnyLauncher({ state, imageUrl }: { state: BunnyState; imageUrl: string }) {
@@ -388,48 +386,45 @@ function HistoryView({
   );
 }
 
-function BunnyUsageView({
-  api,
-  config,
-}: {
-  api: B89ApiClient;
-  config: BunnyConfig | null;
-}) {
+function BunnyUsageView({ api, config }: { api: B89ApiClient; config: BunnyConfig | null }) {
   const [usage, setUsage] = useState<BunnyUsage | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const initialized = useRef(false);
 
-  const load = useCallback(async (cursor?: string) => {
-    setLoading(true);
-    try {
-      const page = await fetchBunnyUsage(api, {
-        ...(usage?.period ? { from: usage.period.from, to: usage.period.to } : {}),
-        ...(cursor ? { cursor } : {}),
-      });
-      setUsage((current) => {
-        if (!cursor || !current) return page;
-        return {
-          ...page,
-          totals: {
-            requests: current.totals.requests + page.totals.requests,
-            succeeded: current.totals.succeeded + page.totals.succeeded,
-            failed: current.totals.failed + page.totals.failed,
-            measured: current.totals.measured + page.totals.measured,
-            inputTokens: current.totals.inputTokens + page.totals.inputTokens,
-            outputTokens: current.totals.outputTokens + page.totals.outputTokens,
-            cacheReadTokens: current.totals.cacheReadTokens + page.totals.cacheReadTokens,
-            cacheWriteTokens: current.totals.cacheWriteTokens + page.totals.cacheWriteTokens,
-          },
-        };
-      });
-      setFailed(false);
-    } catch {
-      setFailed(true);
-    } finally {
-      setLoading(false);
-    }
-  }, [api, usage?.period.from, usage?.period.to]);
+  const load = useCallback(
+    async (cursor?: string) => {
+      setLoading(true);
+      try {
+        const page = await fetchBunnyUsage(api, {
+          ...(usage?.period ? { from: usage.period.from, to: usage.period.to } : {}),
+          ...(cursor ? { cursor } : {}),
+        });
+        setUsage((current) => {
+          if (!cursor || !current) return page;
+          return {
+            ...page,
+            totals: {
+              requests: current.totals.requests + page.totals.requests,
+              succeeded: current.totals.succeeded + page.totals.succeeded,
+              failed: current.totals.failed + page.totals.failed,
+              measured: current.totals.measured + page.totals.measured,
+              inputTokens: current.totals.inputTokens + page.totals.inputTokens,
+              outputTokens: current.totals.outputTokens + page.totals.outputTokens,
+              cacheReadTokens: current.totals.cacheReadTokens + page.totals.cacheReadTokens,
+              cacheWriteTokens: current.totals.cacheWriteTokens + page.totals.cacheWriteTokens,
+            },
+          };
+        });
+        setFailed(false);
+      } catch {
+        setFailed(true);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [api, usage?.period.from, usage?.period.to],
+  );
 
   useEffect(() => {
     if (initialized.current) return;
@@ -445,49 +440,110 @@ function BunnyUsageView({
       </p>
       {config ? (
         <dl>
-          <div><dt>Estado</dt><dd>{config.enabled ? 'Habilitado' : 'Deshabilitado'}</dd></div>
-          <div><dt>Proveedor</dt><dd>{config.provider ?? 'Sin dato'}</dd></div>
-          <div><dt>Modelo</dt><dd>{config.model ?? 'Sin dato'}</dd></div>
-          <div><dt>Esfuerzo</dt><dd>{config.effort ?? 'Sin dato'}</dd></div>
-          <div><dt>Límite por persona</dt><dd>{config.rateLimit ?? 'Sin dato'} preguntas / 10 min</dd></div>
-          <div><dt>Datos personales</dt><dd>{config.redactsPersonalData ? 'Seudonimizados' : 'Redacción desactivada'}</dd></div>
+          <div>
+            <dt>Estado</dt>
+            <dd>{config.enabled ? 'Habilitado' : 'Deshabilitado'}</dd>
+          </div>
+          <div>
+            <dt>Proveedor</dt>
+            <dd>{config.provider ?? 'Sin dato'}</dd>
+          </div>
+          <div>
+            <dt>Modelo</dt>
+            <dd>{config.model ?? 'Sin dato'}</dd>
+          </div>
+          <div>
+            <dt>Esfuerzo</dt>
+            <dd>{config.effort ?? 'Sin dato'}</dd>
+          </div>
+          <div>
+            <dt>Límite por persona</dt>
+            <dd>{config.rateLimit ?? 'Sin dato'} preguntas / 10 min</dd>
+          </div>
+          <div>
+            <dt>Datos personales</dt>
+            <dd>{config.redactsPersonalData ? 'Seudonimizados' : 'Redacción desactivada'}</dd>
+          </div>
         </dl>
-      ) : <p role="status">No se pudo leer la configuración del servicio.</p>}
+      ) : (
+        <p role="status">No se pudo leer la configuración del servicio.</p>
+      )}
       <h4>Consumo · últimos 30 días</h4>
       {loading && !usage && <p role="status">Consultando auditoría…</p>}
       {failed && <p role="alert">No se pudieron cargar todas las métricas.</p>}
-      {failed && !usage && <button type="button" disabled={loading} onClick={() => void load()}>{loading ? 'Cargando…' : 'Reintentar'}</button>}
+      {failed && !usage && (
+        <button type="button" disabled={loading} onClick={() => void load()}>
+          {loading ? 'Cargando…' : 'Reintentar'}
+        </button>
+      )}
       {usage && (
         <>
           <dl>
-            <div><dt>Solicitudes</dt><dd>{usage.totals.requests}</dd></div>
-            <div><dt>Completadas / fallidas</dt><dd>{usage.totals.succeeded} / {usage.totals.failed}</dd></div>
-            <div><dt>Tokens de entrada</dt><dd>{usage.totals.inputTokens.toLocaleString('es-PE')}</dd></div>
-            <div><dt>Tokens de salida</dt><dd>{usage.totals.outputTokens.toLocaleString('es-PE')}</dd></div>
-            <div><dt>Lecturas de caché</dt><dd>{usage.totals.cacheReadTokens.toLocaleString('es-PE')}</dd></div>
-            <div><dt>Solicitudes medidas</dt><dd>{usage.totals.measured} / {usage.totals.requests}</dd></div>
+            <div>
+              <dt>Solicitudes</dt>
+              <dd>{usage.totals.requests}</dd>
+            </div>
+            <div>
+              <dt>Completadas / fallidas</dt>
+              <dd>
+                {usage.totals.succeeded} / {usage.totals.failed}
+              </dd>
+            </div>
+            <div>
+              <dt>Tokens de entrada</dt>
+              <dd>{usage.totals.inputTokens.toLocaleString('es-PE')}</dd>
+            </div>
+            <div>
+              <dt>Tokens de salida</dt>
+              <dd>{usage.totals.outputTokens.toLocaleString('es-PE')}</dd>
+            </div>
+            <div>
+              <dt>Lecturas de caché</dt>
+              <dd>{usage.totals.cacheReadTokens.toLocaleString('es-PE')}</dd>
+            </div>
+            <div>
+              <dt>Solicitudes medidas</dt>
+              <dd>
+                {usage.totals.measured} / {usage.totals.requests}
+              </dd>
+            </div>
           </dl>
           <div className="b89Bunny__usageTableWrap">
             <table>
               <thead>
-                <tr><th>Proveedor / modelo</th><th>Solicitudes</th><th>Tokens entrada/salida</th></tr>
+                <tr>
+                  <th>Proveedor / modelo</th>
+                  <th>Solicitudes</th>
+                  <th>Tokens entrada/salida</th>
+                </tr>
               </thead>
               <tbody>
                 {usage.models.map((item) => (
                   <tr key={`${item.provider}:${item.model}`}>
-                    <td>{item.provider}<small>{item.model}</small></td>
+                    <td>
+                      {item.provider}
+                      <small>{item.model}</small>
+                    </td>
                     <td>{item.requests}</td>
-                    <td>{item.inputTokens.toLocaleString('es-PE')} / {item.outputTokens.toLocaleString('es-PE')}</td>
+                    <td>
+                      {item.inputTokens.toLocaleString('es-PE')} /{' '}
+                      {item.outputTokens.toLocaleString('es-PE')}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
           <p className="b89Bunny__usageNote">
-            El costo facturado no está conectado a este panel. Los datos provienen de eventos de auditoría; usa «Cargar más» para recorrer el periodo completo.
+            El costo facturado no está conectado a este panel. Los datos provienen de eventos de
+            auditoría; usa «Cargar más» para recorrer el periodo completo.
           </p>
           {usage.nextCursor && (
-            <button type="button" disabled={loading} onClick={() => void load(usage.nextCursor ?? undefined)}>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => void load(usage.nextCursor ?? undefined)}
+            >
               {loading ? 'Cargando…' : 'Cargar más uso'}
             </button>
           )}
@@ -522,7 +578,10 @@ export function BunnyPanel({
   const [thinkingStartedAt, setThinkingStartedAt] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [copied, setCopied] = useState<number | null>(null);
-  const [selectedIncident, setSelectedIncident] = useState<{ messageId: number; incidentId: string } | null>(null);
+  const [selectedIncident, setSelectedIncident] = useState<{
+    messageId: number;
+    incidentId: string;
+  } | null>(null);
   const [savingNoteId, setSavingNoteId] = useState<number | null>(null);
   const [noteStatus, setNoteStatus] = useState<{ id: number; text: string } | null>(null);
   /** Contexto recibido de «Preguntar a Bunny» (alerta/incidente) para la siguiente pregunta. */
@@ -533,7 +592,8 @@ export function BunnyPanel({
 
   useEffect(() => {
     if (!pending || thinkingStartedAt === null) return undefined;
-    const updateElapsed = () => setElapsedSeconds(Math.floor((Date.now() - thinkingStartedAt) / 1000));
+    const updateElapsed = () =>
+      setElapsedSeconds(Math.floor((Date.now() - thinkingStartedAt) / 1000));
     updateElapsed();
     const timer = window.setInterval(updateElapsed, 1000);
     return () => window.clearInterval(timer);
@@ -784,7 +844,8 @@ export function BunnyPanel({
           <h3>Bunny está instalado</h3>
           <p>
             La interfaz del asistente está lista. Para activar las respuestas, un administrador debe
-            habilitar y configurar el proveedor de IA en el servicio B89. Con Bedrock, la API usa el rol de AWS.
+            habilitar y configurar el proveedor de IA en el servicio B89. Con Bedrock, la API usa el
+            rol de AWS.
           </p>
           <p>El envío de mensajes está deshabilitado hasta que el servicio confirme la conexión.</p>
         </section>
@@ -834,11 +895,12 @@ export function BunnyPanel({
                   {message.role === 'user' ? (
                     <p>{message.text}</p>
                   ) : (
-                    renderMarkdown(message.text, { citations: message.citations ?? [], onOpen: navigate })
+                    renderMarkdown(message.text, {
+                      citations: message.citations ?? [],
+                      onOpen: navigate,
+                    })
                   )}
-                  {message.role === 'assistant' && (
-                    <Activity steps={message.steps} />
-                  )}
+                  {message.role === 'assistant' && <Activity steps={message.steps} />}
                   {message.citations && <Sources citations={message.citations} open={navigate} />}
                   {message.role === 'assistant' && !message.tone && (
                     <div className="b89Bunny__actions">
@@ -870,57 +932,90 @@ export function BunnyPanel({
                         text={message.text}
                         citations={message.citations ?? []}
                       />
-                      {canWriteNotes && message.citations?.some((citation) => citation.kind === 'incident') && (
-                        <>
-                          <select
-                            aria-label="Incidente donde guardar el borrador"
-                            value={
-                              (selectedIncident?.messageId === message.id ? selectedIncident.incidentId : '') ||
-                              message.citations?.find((citation) => citation.kind === 'incident')?.id || ''
-                            }
-                            onChange={(event) => setSelectedIncident({ messageId: message.id, incidentId: event.target.value })}
-                          >
-                            {(message.citations ?? []).filter((citation) => citation.kind === 'incident').map((citation) => (
-                              <option key={citation.id} value={citation.id}>{citation.label}</option>
-                            ))}
-                          </select>
-                          <button
-                            type="button"
-                            disabled={savingNoteId === message.id}
-                            onClick={async () => {
-                              const incidentId =
-                                (selectedIncident?.messageId === message.id ? selectedIncident.incidentId : '') ||
-                                message.citations?.find((citation) => citation.kind === 'incident')?.id;
-                              if (!incidentId) return;
-                              setSavingNoteId(message.id);
-                              setNoteStatus(null);
-                              try {
-                                await api.post(`/incidents/${encodeURIComponent(incidentId)}/notes`, { body: reportNoteBody(message) });
-                                setNoteStatus({ id: message.id, text: 'Borrador guardado en las notas del incidente.' });
-                              } catch {
-                                setNoteStatus({ id: message.id, text: 'No se pudo guardar. Verifica tu acceso al incidente.' });
-                              } finally {
-                                setSavingNoteId(null);
+                      {canWriteNotes &&
+                        message.citations?.some((citation) => citation.kind === 'incident') && (
+                          <>
+                            <select
+                              aria-label="Incidente donde guardar el borrador"
+                              value={
+                                (selectedIncident?.messageId === message.id
+                                  ? selectedIncident.incidentId
+                                  : '') ||
+                                message.citations?.find((citation) => citation.kind === 'incident')
+                                  ?.id ||
+                                ''
                               }
-                            }}
-                          >
-                            {savingNoteId === message.id ? 'Guardando…' : 'Guardar en incidente'}
-                          </button>
-                        </>
-                      )}
+                              onChange={(event) =>
+                                setSelectedIncident({
+                                  messageId: message.id,
+                                  incidentId: event.target.value,
+                                })
+                              }
+                            >
+                              {(message.citations ?? [])
+                                .filter((citation) => citation.kind === 'incident')
+                                .map((citation) => (
+                                  <option key={citation.id} value={citation.id}>
+                                    {citation.label}
+                                  </option>
+                                ))}
+                            </select>
+                            <button
+                              type="button"
+                              disabled={savingNoteId === message.id}
+                              onClick={async () => {
+                                const incidentId =
+                                  (selectedIncident?.messageId === message.id
+                                    ? selectedIncident.incidentId
+                                    : '') ||
+                                  message.citations?.find(
+                                    (citation) => citation.kind === 'incident',
+                                  )?.id;
+                                if (!incidentId) return;
+                                setSavingNoteId(message.id);
+                                setNoteStatus(null);
+                                try {
+                                  await api.post(
+                                    `/incidents/${encodeURIComponent(incidentId)}/notes`,
+                                    { body: reportNoteBody(message) },
+                                  );
+                                  setNoteStatus({
+                                    id: message.id,
+                                    text: 'Borrador guardado en las notas del incidente.',
+                                  });
+                                } catch {
+                                  setNoteStatus({
+                                    id: message.id,
+                                    text: 'No se pudo guardar. Verifica tu acceso al incidente.',
+                                  });
+                                } finally {
+                                  setSavingNoteId(null);
+                                }
+                              }}
+                            >
+                              {savingNoteId === message.id ? 'Guardando…' : 'Guardar en incidente'}
+                            </button>
+                          </>
+                        )}
                       <button type="button" onClick={() => navigate('/app/b89-respond')}>
                         Abrir B89 Respond
                       </button>
                     </div>
                   )}
-                  {noteStatus?.id === message.id && <p className="b89Bunny__notice" role="status">{noteStatus.text}</p>}
+                  {noteStatus?.id === message.id && (
+                    <p className="b89Bunny__notice" role="status">
+                      {noteStatus.text}
+                    </p>
+                  )}
                 </div>
               </article>
             ))}
             {pending && (
               <article className="b89Bunny__message b89Bunny__message--assistant" aria-busy="true">
                 <img src={imageUrl} alt="" width={24} height={24} />
-                <div className="b89Bunny__bubble"><BunnyThinking events={progressEvents} elapsedSeconds={elapsedSeconds} /></div>
+                <div className="b89Bunny__bubble">
+                  <BunnyThinking events={progressEvents} elapsedSeconds={elapsedSeconds} />
+                </div>
               </article>
             )}
           </div>
@@ -929,7 +1024,11 @@ export function BunnyPanel({
             <p className="b89Bunny__context" role="status">
               Contexto: {askContext.includes('incidents') ? 'incidente' : 'alerta'}{' '}
               <code>{decodeURIComponent(askContext.split('id=')[1] ?? '')}</code>
-              <button type="button" onClick={() => setAskContext(null)} aria-label="Quitar contexto">
+              <button
+                type="button"
+                onClick={() => setAskContext(null)}
+                aria-label="Quitar contexto"
+              >
                 ✕
               </button>
             </p>

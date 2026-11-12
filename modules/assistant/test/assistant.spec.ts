@@ -10,8 +10,18 @@ import {
   type ModelRequest,
   type ModelResponse,
 } from '../src/index.js';
+import { BUNNY_SYSTEM_PROMPT } from '../src/prompt.js';
 
 const CONTEXT = { roles: ['b89.soc.analyst'], capabilities: ['alerts.read', 'incidents.read'] };
+
+describe('exportación guiada de informes', () => {
+  it('describe la acción disponible en la consola sin afirmar que el modelo descarga archivos', () => {
+    expect(BUNNY_SYSTEM_PROMPT).toContain('«Crear informe» debajo de cada respuesta de Bunny');
+    expect(BUNNY_SYSTEM_PROMPT).toContain('Excel (.xlsx)');
+    expect(BUNNY_SYSTEM_PROMPT).toContain('guardar como PDF desde el navegador');
+    expect(BUNNY_SYSTEM_PROMPT).toContain('No digas que generaste o descargaste un archivo');
+  });
+});
 
 function scripted(responses: ModelResponse[]) {
   const requests: ModelRequest[] = [];
@@ -293,9 +303,7 @@ describe('runAssistant', () => {
     });
     expect(result).not.toHaveProperty('reasoning');
     expect(JSON.stringify(result)).not.toContain('ana@b89.example');
-    expect(result.steps).toEqual([
-      { tool: 'list_alerts', label: 'Buscando alertas', ok: true },
-    ]);
+    expect(result.steps).toEqual([{ tool: 'list_alerts', label: 'Buscando alertas', ok: true }]);
     // El bloque firmado solo se reenvía durante este ciclo para cumplir el protocolo del proveedor.
     // No se desenmascara ni forma parte del resultado persistible que recibe la API.
     const echoed = JSON.stringify(requests[1]?.messages);

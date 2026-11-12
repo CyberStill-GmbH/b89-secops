@@ -204,8 +204,7 @@ function OperationsContent({ embedded }: { embedded: boolean }) {
                             {
                               title: `Wazuh origen → recepción API (${data.sections.soc.wazuhPushInbox.sourceToReceiptMs.windowHours} h)`,
                               description: (() => {
-                                const latency =
-                                  data.sections.soc.wazuhPushInbox?.sourceToReceiptMs;
+                                const latency = data.sections.soc.wazuhPushInbox?.sourceToReceiptMs;
                                 if (!latency || latency.sampleCount === 0 || latency.p95 === null) {
                                   return 'Sin muestras válidas en la ventana';
                                 }

@@ -157,7 +157,9 @@ export async function askBunnyStream(
         code as ConstructorParameters<typeof B89ApiError>[0],
         response.status,
         typeof error.correlationId === 'string' ? error.correlationId : null,
-        Array.isArray(error.fields) ? error.fields.filter((item): item is string => typeof item === 'string') : [],
+        Array.isArray(error.fields)
+          ? error.fields.filter((item): item is string => typeof item === 'string')
+          : [],
       );
     }
   };
@@ -308,7 +310,8 @@ export function suggestionsFor(page: string): readonly Suggestion[] {
       { title: 'Tareas pendientes', prompt: '¿Qué tareas pendientes hay en mis incidentes?' },
       {
         title: 'Borrador ejecutivo',
-        prompt: 'Prepara un borrador ejecutivo del incidente abierto, con alcance confirmado, incertidumbres, cronología y fuentes citadas.',
+        prompt:
+          'Prepara un borrador ejecutivo del incidente abierto, con alcance confirmado, incertidumbres, cronología y fuentes citadas.',
       },
     ];
   }
@@ -316,13 +319,18 @@ export function suggestionsFor(page: string): readonly Suggestion[] {
     return [
       {
         title: 'Priorizar cola',
-        prompt: 'Revisa las alertas abiertas recientes y destaca primero las que requieren atención, explicando evidencia y confianza. No cambies su prioridad.',
+        prompt:
+          'Revisa las alertas abiertas recientes y destaca primero las que requieren atención, explicando evidencia y confianza. No cambies su prioridad.',
       },
       {
         title: 'Correlacionar actividad',
-        prompt: 'Investiga la alerta seleccionada y correlaciona actividad de sus entidades en la ventana relevante; separa hechos, hipótesis y brechas de telemetría.',
+        prompt:
+          'Investiga la alerta seleccionada y correlaciona actividad de sus entidades en la ventana relevante; separa hechos, hipótesis y brechas de telemetría.',
       },
-      { title: 'Fuentes degradadas', prompt: '¿Hay fuentes degradadas que limiten esta investigación?' },
+      {
+        title: 'Fuentes degradadas',
+        prompt: '¿Hay fuentes degradadas que limiten esta investigación?',
+      },
     ];
   }
   if (page.includes('b89-sources')) {
@@ -346,7 +354,8 @@ export function suggestionsFor(page: string): readonly Suggestion[] {
   return [
     {
       title: 'Triage de la P1 más reciente',
-      prompt: 'Haz el triage de la alerta P1 abierta más reciente: evidencia, severidad, MITRE y acciones.',
+      prompt:
+        'Haz el triage de la alerta P1 abierta más reciente: evidencia, severidad, MITRE y acciones.',
     },
     {
       title: 'Resumen semanal del SOC',
@@ -355,12 +364,17 @@ export function suggestionsFor(page: string): readonly Suggestion[] {
     },
     {
       title: 'Alertas por proveedor',
-      prompt: '¿Qué alertas abiertas hay de Snyk, Bitdefender, Cloudflare y AWS, y cuál atiendo primero?',
+      prompt:
+        '¿Qué alertas abiertas hay de Snyk, Bitdefender, Cloudflare y AWS, y cuál atiendo primero?',
     },
-    { title: 'Salud de fuentes', prompt: '¿Qué fuentes de datos están degradadas o sin eventos recientes?' },
+    {
+      title: 'Salud de fuentes',
+      prompt: '¿Qué fuentes de datos están degradadas o sin eventos recientes?',
+    },
     {
       title: 'Runbook aplicable',
-      prompt: 'Bitdefender detectó malware en un equipo: ¿qué runbook sigo y qué reviso en los primeros 10 minutos?',
+      prompt:
+        'Bitdefender detectó malware en un equipo: ¿qué runbook sigo y qué reviso en los primeros 10 minutos?',
     },
   ];
 }

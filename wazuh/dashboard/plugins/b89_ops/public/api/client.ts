@@ -146,7 +146,10 @@ export class B89ApiClient {
       }
       throw error;
     }
-    if (!response.headers.get('content-type')?.toLowerCase().includes('text/event-stream') || !response.body) {
+    if (
+      !response.headers.get('content-type')?.toLowerCase().includes('text/event-stream') ||
+      !response.body
+    ) {
       throw new B89ApiError('DEPENDENCY_DEGRADED', response.status, null);
     }
     return response;

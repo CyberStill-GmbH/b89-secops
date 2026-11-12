@@ -49,7 +49,10 @@ function makeSignature(body: WazuhPushHint, timestamp: string) {
     },
     ip: '127.0.0.1',
   };
-  return { request, body: { alertId: body.alertId, managerName: body.managerName, occurredAt: body.occurredAt } };
+  return {
+    request,
+    body: { alertId: body.alertId, managerName: body.managerName, occurredAt: body.occurredAt },
+  };
 }
 
 function syntheticRecord(alertId: string, managerName: string, occurredAt: string): ProviderRecord {
@@ -65,7 +68,12 @@ function syntheticRecord(alertId: string, managerName: string, occurredAt: strin
       id: alertId,
       manager: { name: managerName },
       agent: { id: '000', name: managerName },
-      rule: { id: '100510', level: 12, description: 'Synthetic load benchmark event', groups: ['office365'] },
+      rule: {
+        id: '100510',
+        level: 12,
+        description: 'Synthetic load benchmark event',
+        groups: ['office365'],
+      },
       data: { integration: 'office365', office365: { Operation: 'SyntheticOperation' } },
     },
   };
@@ -79,7 +87,9 @@ function databaseName(connectionString: string): string {
 function readProfile(): Profile {
   const argument = process.argv[2] ?? 'smoke';
   if (argument !== 'smoke' && argument !== 'acceptance') {
-    throw new Error('Usage: pnpm --filter @b89/api exec tsx --conditions=development scripts/measure-wazuh-push-load.ts [smoke|acceptance]');
+    throw new Error(
+      'Usage: pnpm --filter @b89/api exec tsx --conditions=development scripts/measure-wazuh-push-load.ts [smoke|acceptance]',
+    );
   }
   return argument;
 }
@@ -87,13 +97,18 @@ function readProfile(): Profile {
 async function main() {
   const profile = readProfile();
   const connectionString = process.env['DATABASE_URL'];
-  if (!connectionString) throw new Error('DATABASE_URL must point to a dedicated, migrated benchmark database.');
+  if (!connectionString)
+    throw new Error('DATABASE_URL must point to a dedicated, migrated benchmark database.');
   if (process.env['B89_WAZUH_BENCHMARK_ALLOW_DATABASE_MUTATION'] !== '1') {
-    throw new Error('Set B89_WAZUH_BENCHMARK_ALLOW_DATABASE_MUTATION=1 only after selecting a disposable database.');
+    throw new Error(
+      'Set B89_WAZUH_BENCHMARK_ALLOW_DATABASE_MUTATION=1 only after selecting a disposable database.',
+    );
   }
   const name = databaseName(connectionString);
   if (!/(?:^|[_-])(bench|benchmark)(?:$|[_-])/iu.test(name)) {
-    throw new Error(`Refusing to write to database "${name}": its name must contain a benchmark marker.`);
+    throw new Error(
+      `Refusing to write to database "${name}": its name must contain a benchmark marker.`,
+    );
   }
 
   const client = createDatabaseClient({ connectionString, maxConnections: 12 });
@@ -102,7 +117,8 @@ async function main() {
     await store.ready();
     const initial = await store.metrics();
     const existing = Object.values(initial.counts).reduce((sum, count) => sum + count, 0);
-    if (existing !== 0) throw new Error('Benchmark inbox is not empty; use a fresh dedicated benchmark database.');
+    if (existing !== 0)
+      throw new Error('Benchmark inbox is not empty; use a fresh dedicated benchmark database.');
 
     const controllerRuntime = {
       wazuhPushSecret: SECRET,
@@ -138,7 +154,8 @@ async function main() {
         try {
           while (true) {
             const counts = await store.metrics();
-            if (producerDone && counts.counts.pending === 0 && counts.counts.processing === 0) break;
+            if (producerDone && counts.counts.pending === 0 && counts.counts.processing === 0)
+              break;
             const claimed = await consumeBatch();
             if (claimed === 0) await delay(10);
           }
@@ -175,7 +192,8 @@ async function main() {
         const { request, body } = makeSignature(hint, timestamp);
         const started = performance.now();
         const accepted = controller.wake(request, body).then((result) => {
-          if (result.accepted !== true) throw new Error('Unexpected non-accepted controller response.');
+          if (result.accepted !== true)
+            throw new Error('Unexpected non-accepted controller response.');
           acknowledgements.push({ phase: phase.name, milliseconds: performance.now() - started });
         });
         allAcknowledgements.push(accepted);
@@ -188,12 +206,16 @@ async function main() {
     await consumerControl.finish();
 
     const final = await store.metrics();
-    const ackP95 = percentile(acknowledgements.map((sample) => sample.milliseconds), 0.95);
+    const ackP95 = percentile(
+      acknowledgements.map((sample) => sample.milliseconds),
+      0.95,
+    );
     const processed = final.counts.processed;
     const expected = acknowledgements.length;
     const receiptToProcessedP95 = final.receiptToHandlerMs.p95;
     const ackPass = ackP95 !== null && ackP95 < 1_000;
-    const consumerDrained = processed === expected && final.counts.pending === 0 && final.counts.processing === 0;
+    const consumerDrained =
+      processed === expected && final.counts.pending === 0 && final.counts.processing === 0;
     const syntheticLatencyPass = receiptToProcessedP95 !== null && receiptToProcessedP95 < 10_000;
     const result = {
       profile,
@@ -207,19 +229,28 @@ async function main() {
           const samples = acknowledgements
             .filter((sample) => sample.phase === phase.name)
             .map((sample) => sample.milliseconds);
-          return [phase.name, {
-            sampleCount: samples.length,
-            p50: percentile(samples, 0.50),
-            p95: percentile(samples, 0.95),
-            p99: percentile(samples, 0.99),
-          }];
+          return [
+            phase.name,
+            {
+              sampleCount: samples.length,
+              p50: percentile(samples, 0.5),
+              p95: percentile(samples, 0.95),
+              p99: percentile(samples, 0.99),
+            },
+          ];
         }),
       ),
       authenticatedControllerToDurableCommitMs: {
         sampleCount: acknowledgements.length,
-        p50: percentile(acknowledgements.map((sample) => sample.milliseconds), 0.50),
+        p50: percentile(
+          acknowledgements.map((sample) => sample.milliseconds),
+          0.5,
+        ),
         p95: ackP95,
-        p99: percentile(acknowledgements.map((sample) => sample.milliseconds), 0.99),
+        p99: percentile(
+          acknowledgements.map((sample) => sample.milliseconds),
+          0.99,
+        ),
         targetP95Ms: 1_000,
         result: ackPass ? 'PASS' : 'FAIL',
       },
@@ -234,7 +265,10 @@ async function main() {
         result: consumerDrained && syntheticLatencyPass ? 'PASS' : 'FAIL',
       },
       endToEndIndexerSocSlo: 'NOT_MEASURED',
-      overall: ackPass && consumerDrained && syntheticLatencyPass ? 'PASS_LOCAL_COMPONENT_BENCHMARK' : 'FAIL',
+      overall:
+        ackPass && consumerDrained && syntheticLatencyPass
+          ? 'PASS_LOCAL_COMPONENT_BENCHMARK'
+          : 'FAIL',
     };
     console.log(JSON.stringify(result, null, 2));
     if (result.overall === 'FAIL') process.exitCode = 1;

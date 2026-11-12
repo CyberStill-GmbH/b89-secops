@@ -158,6 +158,10 @@ export interface SourceHealth {
     readonly duplicates: number | null;
     /** Null for historic rows predating these counters. */
     readonly notPromoted: number | null;
+    /** Subset of notPromoted below the B89 promotion score threshold. */
+    readonly belowThreshold: number | null;
+    /** Subset of notPromoted suppressed by a benign rule or maintenance window. */
+    readonly suppressed: number | null;
     readonly errorClass: string | null;
   } | null;
   readonly consecutiveFailures: number;
@@ -427,7 +431,8 @@ export interface NotificationSubject {
  * de notificaciones; ver COORDINACION-CLAUDE-CODEX.md). El secreto nunca viaja completo:
  * `target` es el webhook o buzón ya enmascarado por la API.
  */
-export type NotificationChannelState = 'active' | 'inactive' | 'failing' | 'unconfigured' | 'unknown';
+export type NotificationChannelState =
+  'active' | 'inactive' | 'failing' | 'unconfigured' | 'unknown';
 
 export interface NotificationChannelView {
   readonly id: NotificationChannel;

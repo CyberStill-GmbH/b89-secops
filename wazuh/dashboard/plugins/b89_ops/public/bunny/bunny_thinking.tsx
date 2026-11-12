@@ -30,26 +30,38 @@ export function bunnyProgressTimeline(events: readonly BunnyProgressEvent[]): Bu
 
   events.forEach((event, index) => {
     if (event.type === 'model_started') {
-      const activeModel = findLastIndex(steps, (step) => step.key.startsWith('model:') && step.status === 'running');
+      const activeModel = findLastIndex(
+        steps,
+        (step) => step.key.startsWith('model:') && step.status === 'running',
+      );
       if (activeModel >= 0) setStatus(activeModel, 'complete');
-      steps.push({ key: `model:${event.round}:${index}`, label: `Consulta al modelo · ronda ${event.round}`, status: 'running' });
+      steps.push({
+        key: `model:${event.round}:${index}`,
+        label: `Consulta al modelo · ronda ${event.round}`,
+        status: 'running',
+      });
       return;
     }
     if (event.type === 'tool_started') {
-      const activeModel = findLastIndex(steps, (step) => step.key.startsWith('model:') && step.status === 'running');
+      const activeModel = findLastIndex(
+        steps,
+        (step) => step.key.startsWith('model:') && step.status === 'running',
+      );
       if (activeModel >= 0) setStatus(activeModel, 'complete');
       steps.push({ key: `tool:${event.label}:${index}`, label: event.label, status: 'running' });
       return;
     }
-    const activeTool = findLastIndex(steps,
+    const activeTool = findLastIndex(
+      steps,
       (step) => step.key.startsWith(`tool:${event.label}:`) && step.status === 'running',
     );
     if (activeTool >= 0) setStatus(activeTool, event.ok ? 'complete' : 'no-result');
-    else steps.push({
-      key: `tool:${event.label}:${index}`,
-      label: event.label,
-      status: event.ok ? 'complete' : 'no-result',
-    });
+    else
+      steps.push({
+        key: `tool:${event.label}:${index}`,
+        label: event.label,
+        status: event.ok ? 'complete' : 'no-result',
+      });
   });
   return steps;
 }
@@ -67,7 +79,10 @@ const STATUS_LABEL: Record<BunnyProgressStatus, string> = {
   'no-result': 'Sin resultado',
 };
 
-export function BunnyThinking({ events, elapsedSeconds }: {
+export function BunnyThinking({
+  events,
+  elapsedSeconds,
+}: {
   readonly events: readonly BunnyProgressEvent[];
   readonly elapsedSeconds: number;
 }) {
@@ -88,7 +103,13 @@ export function BunnyThinking({ events, elapsedSeconds }: {
           Esperando la primera actualización de actividad del servidor…
         </p>
       ) : (
-        <ol className="b89Bunny__timeline" aria-label="Actividad recibida del servidor" role="log" aria-live="polite" aria-relevant="additions text">
+        <ol
+          className="b89Bunny__timeline"
+          aria-label="Actividad recibida del servidor"
+          role="log"
+          aria-live="polite"
+          aria-relevant="additions text"
+        >
           {steps.map((step) => (
             <li key={step.key} data-status={step.status}>
               <span className="b89Bunny__timelineMark" aria-hidden="true" />
@@ -98,7 +119,10 @@ export function BunnyThinking({ events, elapsedSeconds }: {
           ))}
         </ol>
       )}
-      <p className="b89Bunny__thinkingNote">La consola muestra las actualizaciones que envía Bunny; no estima porcentaje ni pasos pendientes.</p>
+      <p className="b89Bunny__thinkingNote">
+        La consola muestra las actualizaciones que envía Bunny; no estima porcentaje ni pasos
+        pendientes.
+      </p>
     </div>
   );
 }

@@ -78,6 +78,41 @@ beforeEach(() => {
 });
 
 describe('C-20 · despacho de críticos', () => {
+  it('despacha concurrentemente una tanda acotada y conserva el resultado de cada aviso', async () => {
+    let active = 0;
+    let maximumActive = 0;
+    const transport: NotificationTransport = {
+      destinationRef: 'teams:canal-soc',
+      async send() {
+        active += 1;
+        maximumActive = Math.max(maximumActive, active);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        active -= 1;
+        return { delivered: true, httpStatus: 202 };
+      },
+    };
+    const messages = [
+      criticalMessage({
+        messageId: 'urgent-1',
+        aggregateId: 'incident-1',
+        idempotencyKey: 'key-urgent-1',
+      }),
+      criticalMessage({
+        messageId: 'urgent-2',
+        aggregateId: 'incident-2',
+        idempotencyKey: 'key-urgent-2',
+      }),
+    ];
+    messages.forEach((message) => outbox.enqueue(message));
+
+    const results = await drainOutbox(dependencies(transport), 2, 2);
+
+    expect(maximumActive).toBe(2);
+    expect(results.map((result) => result.code)).toEqual(['delivered', 'delivered']);
+    expect(outbox.rows.get('urgent-1')?.status).toBe('published');
+    expect(outbox.rows.get('urgent-2')?.status).toBe('published');
+  });
+
   it('entrega el crítico, marca el outbox y audita el envío', async () => {
     const transport = new ScriptedTransport([{ delivered: true, httpStatus: 202 }]);
     const message = criticalMessage();
@@ -87,6 +122,11 @@ describe('C-20 · despacho de críticos', () => {
 
     expect(result.code).toBe('delivered');
     expect(result.attempt?.status).toBe('sent');
+    expect(result.attempt?.delivery?.[0]).toMatchObject({
+      channel: 'teams',
+      outcome: 'accepted',
+      responseAt: AT.toISOString(),
+    });
     expect(outbox.rows.get('msg-1')?.status).toBe('published');
     expect((await audit.range('tenant-1', 1n, 10)).map((event) => event.action)).toEqual([
       'soar.notification.sent',

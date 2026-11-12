@@ -514,6 +514,7 @@ describe('C-16/C-17 · recorrido operativo sobre HTTP', () => {
     const ingested = await ingest('01890f47-7abc-7def-8abc-00000000a002', 'low');
 
     expect(JSON.parse(ingested.body).outcome).toBe('not_promoted');
+    expect(JSON.parse(ingested.body).reason).toBe('BELOW_THRESHOLD');
     expect(memorySoc().alertRows.size).toBe(0);
   });
 
@@ -1395,7 +1396,10 @@ describe('Observabilidad · GET /api/operations/health por rol', () => {
     } finally {
       const current = await runtime.sessions.byId(sessionId);
       if (current && current.tenantId !== session!.tenantId) {
-        await runtime.sessions.update({ ...current, tenantId: session!.tenantId }, current.revision);
+        await runtime.sessions.update(
+          { ...current, tenantId: session!.tenantId },
+          current.revision,
+        );
       }
       readMetrics.mockRestore();
     }
@@ -1968,6 +1972,8 @@ describe('Sprint 5 · fase 2 · GET /api/sources/health', () => {
       quarantined: 1,
       duplicates: null,
       notPromoted: null,
+      belowThreshold: 1,
+      suppressed: 2,
       newestEventAt: null,
       errorClass: null,
     });
@@ -1980,6 +1986,8 @@ describe('Sprint 5 · fase 2 · GET /api/sources/health', () => {
       quarantined: 1,
       duplicates: null,
       notPromoted: null,
+      belowThreshold: 1,
+      suppressed: 2,
     });
   });
 });

@@ -132,7 +132,7 @@ export function socSection(input: SocSectionInput, at: Date) {
       p95: input.providerAcceptanceLatency?.p95 ?? null,
       p99: input.providerAcceptanceLatency?.p99 ?? null,
       acceptanceMeans:
-        'HTTP 2xx means the provider accepted the request; it does not mean a person read it or that a workflow posted a card.',
+        'Percentiles use the outbox creation time to the Teams HTTP 2xx response time. Historical records without a response timestamp are excluded. HTTP 2xx means Microsoft accepted the request; it does not mean a person read it or that a workflow posted a card.',
     },
     wazuhPushInbox: input.wazuhPushInbox
       ? {

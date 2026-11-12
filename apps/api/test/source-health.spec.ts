@@ -33,6 +33,8 @@ describe('registro de la salud por fuente', () => {
       quarantined: 0,
       duplicates: 0,
       notPromoted: 0,
+      belowThreshold: 0,
+      suppressed: 0,
       errorClass: null,
     };
     const summary = sourceEventLagSummary([
@@ -81,6 +83,8 @@ describe('registro de la salud por fuente', () => {
         quarantined: 0,
         duplicates: 0,
         notPromoted: 0,
+        belowThreshold: 0,
+        suppressed: 0,
         newestEventAt: null,
         errorClass: outcome === 'success' ? null : 'PROVIDER_AUTHENTICATION_FAILED',
       });
