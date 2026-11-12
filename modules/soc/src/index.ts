@@ -107,6 +107,14 @@ export {
   type SourcePollObservation,
   type StreamActivityRecord,
 } from './ingestion.js';
+export {
+  assertWazuhPushHint,
+  type ClaimedWazuhPushHint,
+  type WazuhPushHint,
+  type WazuhPushHintStatus,
+  type WazuhPushInboxMetrics,
+  type WazuhPushInboxStore,
+} from './wazuh-push-inbox.js';
 export type {
   AlertQuery,
   AlertStore,
@@ -116,6 +124,7 @@ export type {
   IncidentStore,
   IncidentTaskStore,
   OutboxHealth,
+  OutboxLane,
   OutboxStore,
   QueryResult,
   SocHealthQuery,

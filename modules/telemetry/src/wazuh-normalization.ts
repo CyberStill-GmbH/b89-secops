@@ -45,11 +45,13 @@ import {
  *   Bitdefender GravityZone, Snyk, Cloudflare y AWS. Sus grupos (`bitdefender`, `snyk`,
  *   `cloudflare`, `b89_*`) tienen categoría, y el proveedor de origen viaja como primer salto
  *   `origin` de `provenance.ingestionPath`. Aditivo, como 1.1.0.
+ * - 1.3.0: Office 365 proyecta metadatos opcionales de correo bajo allowlist, con tope de
+ *   50 destinatarios y sin Parameters, ModifiedProperties, cuerpo o adjuntos.
  */
 
 export const WAZUH_MAPPING_ID = 'wazuh.alerts' as const;
-export const WAZUH_MAPPING_VERSION = '1.2.0' as const;
-export const WAZUH_PARSER_VERSION = '1.2.0' as const;
+export const WAZUH_MAPPING_VERSION = '1.3.0' as const;
+export const WAZUH_PARSER_VERSION = '1.3.0' as const;
 export const WAZUH_SEVERITY_MAPPING_ID = 'wazuh.alerts.severity' as const;
 export const WAZUH_SEVERITY_SCALE = 'provider-level-0-15' as const;
 
@@ -515,7 +517,13 @@ export function normalizeWazuhAlert(
 
   const event: SecurityEvent = {
     schemaVersion: SECURITY_EVENT_SCHEMA_VERSION,
-    recordId: deterministicUuid7(raw.sha256, `event:${record.sourceRecordId}`, context.receivedAt),
+    // Keep identity and UUIDv7 ordering tied to source occurrence time. The true ingestion
+    // timestamp can differ across push, pull and replay without changing event idempotency.
+    recordId: deterministicUuid7(
+      raw.sha256,
+      `event:${record.sourceRecordId}`,
+      new Date(occurredAt),
+    ),
     eventUid: `${context.instanceId}:${record.dataset}:${record.sourceRecordId}`,
     eventUidType: 'native',
     kind: 'alert',

@@ -56,6 +56,30 @@ reinicia solo el manager. Estado: `systemctl list-timers 'b89-*'`.
 - **Estado:** solo el propio nodo está enrolado. Cobertura de endpoints reales: brecha
   [19 #1](19-brechas-y-roadmap.md).
 
+## Metadatos de mensaje para investigación correlada
+
+- El schema oficial de Microsoft define `MailboxOwnerUPN` y `recipientList` como campos opcionales del
+  schema de Exchange Mailbox; `InternetMessageId` y `NetworkMessageId` aparecen en determinados tipos
+  de registro y no son universales. `recipientList` puede contener hasta 1000 direcciones, pero B89
+  proyecta como máximo 50 direcciones únicas por evento e incluye `recipientCount` y
+  `recipientsTruncated` para que el analista vea cuándo el resumen quedó limitado. Véase el
+  [schema de Office 365 Management Activity API](https://learn.microsoft.com/en-us/office/office-365-management-api/office-365-management-activity-api-schema).
+- El parser B89 solo permite esos campos expresamente declarados; no copia `Parameters`,
+  `ModifiedProperties`, cuerpos ni adjuntos. Las direcciones son datos personales: quedan sujetas a
+  los controles y retención del índice de auditoría. La versión local del mapping pasa a `1.3.0`.
+- La investigación puede pivotar de remitente/propietario a destinatarios y agrupar eventos solo cuando
+  comparten un `NetworkMessageId` o `InternetMessageId` explícito. Una coincidencia temporal o de usuario
+  sigue siendo contexto correlado, no evidencia de que sea el mismo mensaje. La proyección local tiene
+  fixtures sintéticos; falta validar que el tenant y el parser Wazuh entreguen estos campos en los
+  eventos reales aprobados.
+- El template estándar Wazuh 4.14.8 mapea strings dinámicos como `keyword`, lo que permite el pivot
+  `term` sobre `data.office365.recipientList.Address` en índices creados con ese template; el mapping de
+  los índices existentes del entorno aún debe comprobarse. Véase el
+  [template oficial Wazuh 4.14.8](https://raw.githubusercontent.com/wazuh/wazuh/v4.14.8/extensions/elasticsearch/7.x/wazuh-template.json).
+- La consulta de investigación limita cada grupo a ocho entidades seleccionadas. Aunque la proyección
+  admite hasta 50 destinatarios en un evento, un expediente grande puede requerir seleccionar/pivotar
+  varios destinatarios en consultas separadas; no se anuncia una expansión ilimitada de la búsqueda.
+
 ## Microsoft 365 / Entra ID
 
 - **Recoge:** `Audit.AzureActiveDirectory`, `Audit.Exchange`, `Audit.SharePoint`, `Audit.General`
@@ -66,14 +90,13 @@ reinicia solo el manager. Estado: `systemctl list-timers 'b89-*'`.
 - **Permisos necesarios:** app de Entra con **Office 365 Management APIs › `ActivityFeed.Read`**
   (aplicación, consentimiento de administrador). Unified Audit Log activo. Salida HTTPS a
   `login.microsoftonline.com` y `manage.office.com`.
-- **Bloqueado:** la app «Soc Interno» obtiene un token **sin roles** para `manage.office.com`
-  (`AF10001` en `subscriptions/list`). Tampoco tiene `SecurityAlert.Read.All` ni
-  `SecurityIncident.Read.All` para el módulo `ms-graph`. Diagnóstico sin secretos:
+- **Estado actual (2026-11-10):** `ActivityFeed.Read` fue concedido y se documentaron eventos de auditoria recibidos.
+  Comprueba la salud de la fuente y la hora del ultimo evento antes de interpretar que no hay actividad.
+  `SecurityAlert.Read.All` y `SecurityIncident.Read.All` siguen siendo permisos separados para el modulo
+  `ms-graph`; su ausencia no implica que el feed `Audit.*` este bloqueado. Diagnostico sin secretos:
   `python3 wazuh/office365/check_entra_app.py`.
-- **Habilitar:** en Entra ID → Registros de aplicaciones → Permisos de API → agregar
-  `ActivityFeed.Read` (aplicación) → conceder consentimiento; esperar hasta 12 h a que Microsoft active
-  las suscripciones; en el host `sudo bash wazuh/office365/apply-office365-docker.sh`; cambiar
-  `b89_ops.integrations.office365.state` a `auto` y redesplegar el dashboard.
+- **Operar:** si la fuente aparece degradada, revisar salud, suscripciones activas y errores del modulo
+  en el host; no volver a conceder permisos ni cambiar el estado del dashboard sin validar la causa.
 
 
 ## Microsoft 365 · SharePoint y OneDrive
@@ -170,6 +193,13 @@ reinicia solo el manager. Estado: `systemctl list-timers 'b89-*'`.
 
 - `custom-b89`, `custom-b89-shuffle`, `custom-b89-teams` en `/var/ossec/integrations` (sin bloque
   `<integration>`): necesitan URL y clave de destino.
+- Para `custom-b89`, el código local del punto 1 envía un hint HMAC minimizado y espera aceptación
+  durable de `POST /api/ingest/wazuh`; el API lo busca en Indexer antes de promoverlo. Aún falta
+  cablear/verificar URL y secreto coincidentes en Manager y API, aplicar la migración PostgreSQL,
+  habilitar el bloque `<integration>` y ejecutar un canario sintético. Hasta completar esas etapas,
+  la ruta no se considera activa ni casi en tiempo real; el pull periódico sigue como recuperación.
+  Estado y gates: [07](07-deteccion-ml-y-soar.md#ingesta-push-mas-reconciliacion) y
+  [25](25-programa-confiabilidad-e-investigacion.md#punto-1--ingesta-push-durable-en-el-perfil-vigente).
 - Sophos Central y Cato: código en `wazuh/provider-ingestion` (copiado a
   `/opt/b89/provider-ingestion` sin timers). No son fuentes contratadas por B89; su rango
   101550–101599 está reservado.

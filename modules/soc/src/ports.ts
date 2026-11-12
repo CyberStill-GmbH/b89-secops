@@ -130,7 +130,12 @@ export interface SocReadModel {
  * reprogramar solo actúa sobre mensajes en `processing`.
  */
 export interface SocOutboxQueue {
-  claimOutbox(at: Date, limit: number, leaseMs: number): Promise<readonly ClaimedOutboxMessage[]>;
+  claimOutbox(
+    at: Date,
+    limit: number,
+    leaseMs: number,
+    lane?: OutboxLane,
+  ): Promise<readonly ClaimedOutboxMessage[]>;
   /** `false` si el claim ya no es el vigente (lease vencido y reclamado por otro). */
   markOutboxPublished(messageId: string, claimToken: string, at: Date): Promise<boolean>;
   scheduleOutboxRetry(
@@ -140,6 +145,9 @@ export interface SocOutboxQueue {
     errorCode: string,
   ): Promise<boolean>;
 }
+
+/** Carril SQL del outbox. `all` conserva el contrato para consumidores/manual drain antiguos. */
+export type OutboxLane = 'all' | 'urgent' | 'normal';
 
 /**
  * Mensaje reclamado. `claimToken` es el fencing token del claim: solo quien lo tiene puede

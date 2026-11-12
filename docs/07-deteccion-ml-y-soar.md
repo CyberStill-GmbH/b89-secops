@@ -11,7 +11,7 @@
 | 1. Regla | **Wazuh** (`wazuh/office365/rules`, `wazuh/manager/rules`) | Evento → alerta con nivel y MITRE | Login sin MFA, regla de reenvío en buzón (reglas Office 365 B89) | Reglas en el repo [sin verificar en AWS] |
 | 1b. Secuencia simple | **Wazuh** (`if_matched_sid`/`if_matched_group`, `same_field`, `timeframe`) | N eventos relacionados → alerta compuesta | Éxito tras fuerza bruta (M365 100505, AWS 101713, SSH 101750), rol/MFA/reenvío tras compromiso (101700–101703), CloudTrail apagado tras IAM (101710) | [verificado] en AWS con logtest; programa en [17](17-ingenieria-de-deteccion.md) |
 | 2. Anomalía (ML) | **OpenSearch Anomaly Detection** (RCF, en el Indexer) | Desvío del comportamiento por entidad | Volumen de descargas de SharePoint por usuario | Detectores en el repo [sin verificar] |
-| 3. Contexto e incidente | **B89 API** (`modules/detection`, TS, en Lambda) | Agrupa alertas y anomalías por entidad, aplica la cadena de compromiso M365 y asigna prioridad P1–P4 con razones | Credenciales, persistencia y exfiltración del mismo usuario en 24 h → P1 | Código existente [sin verificar en Lambda] |
+| 3. Contexto e incidente | **B89 API** (`modules/detection`, TS, EC2 vigente; Lambda propuesto) | Agrupa alertas y anomalías por entidad, aplica la cadena de compromiso M365 y asigna prioridad P1–P4 con razones | Credenciales, persistencia y exfiltración del mismo usuario en 24 h → P1 | Código existente [sin verificar en Lambda] |
 
 Regla práctica: si se puede expresar sobre un solo flujo de eventos, va en Wazuh (capas 1 y 1b). Si
 necesita estado de casos, varias fuentes o explicación para el analista, va en TS (capa 3).
@@ -29,7 +29,7 @@ Detectores versionados en `wazuh/indexer/anomaly-detection/`, aplicados por `app
 
 **Integración con B89 [propuesto]:**
 1. `modules/connectors` lee `.opendistro-anomaly-results*` con `anomaly_grade ≥ 0.7`, con la misma
-   credencial de solo lectura ampliada a ese índice. El lector corre en una Lambda dentro de la VPC
+   credencial de solo lectura ampliada a ese índice. El lector corre hoy dentro del API del perfil EC2; Lambda corresponde al perfil objetivo
    (ruta privada al Indexer).
 2. `modules/telemetry` lo normaliza a `SecurityEvent` con `kind: anomaly`, conservando detector,
    grado, confianza y entidad.
@@ -45,14 +45,24 @@ de log. B89 consumiría sus *findings* igual que los de AD.
 
 | Vía | Mecanismo | Rol | Estado |
 | --- | --- | --- | --- |
-| **Push** | Integración `custom-b89` del Manager (`wazuh/manager/integrations/custom-b89.py`): firma HMAC-SHA256 y envía por alerta de nivel ≥ 7 a `POST /api/ingest/wazuh` | Latencia baja, best-effort (integratord no reintenta) | Script y plantilla en el repo [sin verificar]. El endpoint **no existe aún** en `apps/api` |
-| **Pull** | Poller con cursor y lease con fencing sobre `wazuh-alerts-*` (`modules/soc/src/ingestion.ts`, `apps/api/src/runtime/ingestion-poller.ts`) | Reconciliación: no se pierde nada. Deduplica por `_id` | Código existente; hoy corre en proceso dentro de la API [sin verificar] |
+| **Push** | Integracion `custom-b89` del Manager (`wazuh/manager/integrations/custom-b89.py`): firma HMAC-SHA256 y envia solo `alertId`, `managerName` y `occurredAt` a `POST /api/ingest/wazuh`; API persiste el hint en inbox PostgreSQL y el worker consulta el documento original del Indexer | Fast path durable en el API local; el emisor `integratord` sigue siendo best-effort y no reintenta | Implementacion local; faltan pruebas ejecutadas de Vitest/PostgreSQL, fixture/mapping autorizado del Indexer, sincronizacion de secreto/URL y canario. No desplegado ni medido en producción |
+| **Pull** | Poller con cursor y lease con fencing sobre `wazuh-alerts-*` (`modules/soc/src/ingestion.ts`, `apps/api/src/runtime/ingestion-poller.ts`) | Reconciliacion durable e idempotente por documento | Codigo existente; corre en proceso dentro de la API |
 
 En el camino serverless [propuesto]: el endpoint `ingest/wazuh` valida la firma y un timestamp de
 no más de 5 minutos, y **encola en SQS** en vez de procesar en línea; el pull pasa a ser una
 ejecución de EventBridge Scheduler cada pocos minutos ([11](11-cache-y-colas.md)). Las fuentes AWS
 (CloudTrail, GuardDuty, Security Hub, WAF) entran por reglas de EventBridge hacia la misma cola y
 se normalizan en `modules/telemetry`.
+
+El endpoint no promueve el cuerpo recibido: confirma la recepción durable y el consumidor busca el
+documento original en Indexer. Así conserva evidencia y reutiliza la identidad/deduplicación del pull.
+Una búsqueda aún no visible se reintenta con backoff; los fallos terminales quedan registrados y el
+pull con lease/cursor continúa como reconciliación. El controller valida `Content-Length` y limita
+el hint canónico a 64 KiB; el parser Fastify aún tiene un máximo global de 1 MiB antes de esa
+validación, por lo que queda pendiente imponer el límite de 64 KiB antes del parseo. Se valida HMAC
+con ventana temporal de cinco minutos y se aplica 100 solicitudes/s por instancia. Esta
+implementación no demuestra por sí sola una entrega casi instantánea: falta medir latencia real y
+comprobar el mapping del Indexer y la configuración de ambos extremos. Ver [25](25-programa-confiabilidad-e-investigacion.md#punto-1--ingesta-push-durable-en-el-perfil-vigente).
 
 ## Respuesta: B89 Respond sobre Step Functions
 
@@ -73,7 +83,7 @@ El diseño detallado está en [13](13-b89-respond.md) y [14](14-b89-respond-cone
 ```mermaid
 sequenceDiagram
   participant A as Analista
-  participant API as B89 API (Lambda)
+  participant API as B89 API (EC2 vigente; Lambda objetivo)
   participant SF as Step Functions (B89 Respond)
   participant L as Líder SOC
   participant W as Wazuh API (Active Response)

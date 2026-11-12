@@ -113,6 +113,45 @@ export class B89ApiClient {
     return this.request<T>('POST', path, body, session.csrfToken);
   }
 
+  /** POST with CSRF for APIs that return a streaming body instead of JSON. */
+  public async postStream(path: string, body: unknown, signal?: AbortSignal): Promise<Response> {
+    const session = await this.session();
+    let response: Response;
+    try {
+      response = await this.fetchImpl(`${this.options.apiPrefix}${path}`, {
+        method: 'POST',
+        headers: {
+          accept: 'text/event-stream',
+          'content-type': 'application/json',
+          'x-csrf-token': session.csrfToken,
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify(body),
+        ...(signal ? { signal } : {}),
+      });
+    } catch {
+      throw new B89ApiError('DEPENDENCY_DEGRADED', 0, null);
+    }
+    if (!response.ok) {
+      let parsed: unknown = null;
+      try {
+        parsed = await response.json();
+      } catch {
+        parsed = null;
+      }
+      const error = errorFrom(response.status, parsed);
+      if (error.code === 'AUTH_REQUIRED' || error.code === 'SESSION_EXPIRED') {
+        this.sessionPromise = null;
+        this.options.redirect?.(this.loginUrl());
+      }
+      throw error;
+    }
+    if (!response.headers.get('content-type')?.toLowerCase().includes('text/event-stream') || !response.body) {
+      throw new B89ApiError('DEPENDENCY_DEGRADED', response.status, null);
+    }
+    return response;
+  }
+
   public async patch<T>(path: string, body: unknown): Promise<T> {
     const session = await this.session();
     return this.request<T>('PATCH', path, body, session.csrfToken);

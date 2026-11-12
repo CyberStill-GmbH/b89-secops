@@ -9,6 +9,15 @@ set -euo pipefail
 # secretos quedan protegidos por /opt/b89/secrets (0700) y chmod 600 explícito.
 umask 022
 
+# A single node must never run two B89 deployments at once. `ship.sh` holds this same lock while
+# switching /opt/b89/src and running this script. Direct host invocations acquire it themselves.
+DEPLOY_LOCK=/run/lock/b89-wazuh-deploy.lock
+if [[ ${B89_DEPLOY_LOCK_HELD:-0} != 1 ]]; then
+  command -v flock >/dev/null || { echo 'flock is required to serialize B89 deployments' >&2; exit 69; }
+  exec 9>"$DEPLOY_LOCK"
+  flock -n 9 || { echo 'another B89 deployment is active on this host' >&2; exit 75; }
+fi
+
 : "${SOC_HOSTNAME:?}"
 WAZUH_DOCKER_TAG="${WAZUH_DOCKER_TAG:-v4.14.8}"
 ROOT=/opt/b89
@@ -255,6 +264,13 @@ fi
 log 'arrancando Wazuh y PostgreSQL'
 "${COMPOSE[@]}" up -d wazuh.indexer wazuh.manager postgres --wait
 
+# The aws-events receiver must not write until its JSONL target and Wazuh localfile are ready.
+# The installer validates and rolls back an invalid ossec.conf before restarting only Manager.
+log 'instalando localfile y reglas AWS en Wazuh'
+B89_RESTART=true bash "$SRC/wazuh/aws-events/install-aws-events.sh"
+log 'arrancando receptor AWS después de preparar el localfile'
+"${COMPOSE[@]}" up -d --wait aws-events
+
 log 'roles de base de datos'
 # Las contraseñas viajan por variables de entorno del exec (\getenv), no por argumentos.
 {
@@ -295,5 +311,6 @@ if [[ ${SKIP_API_BUILD:-0} != 1 ]]; then
   "${COMPOSE[@]}" up -d --force-recreate --wait correlator
 fi
 bash "$SRC/infra/aws-poweruser/scripts/bootstrap-wazuh-app.sh"
+bash "$SRC/infra/aws-poweruser/scripts/bootstrap-detection-content.sh"
 "${COMPOSE[@]}" ps --format 'table {{.Name}}\t{{.Status}}'
 log 'listo'

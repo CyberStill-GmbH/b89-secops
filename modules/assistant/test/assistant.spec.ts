@@ -75,7 +75,16 @@ describe('Pseudonymizer', () => {
 
 describe('runAssistant', () => {
   it('mantiene acotados rondas de herramientas y tokens de salida para contener consumo', () => {
-    expect(DEFAULT_ASSISTANT_LIMITS).toMatchObject({ maxToolRounds: 4, maxTokensPerCall: 4096 });
+    expect(DEFAULT_ASSISTANT_LIMITS).toMatchObject({
+      maxToolRounds: 4,
+      maxToolCalls: 8,
+      maxTokensPerCall: 4096,
+      maxTotalOutputTokens: 8192,
+      maxToolResultChars: 14_000,
+      maxTotalToolResultChars: 24_000,
+      maxHistoryMessages: 12,
+      maxHistoryChars: 12_000,
+    });
   });
 
   it('responde sin herramientas y devuelve el uso', async () => {
@@ -92,6 +101,111 @@ describe('runAssistant', () => {
       cacheReadTokens: 0,
       cacheWriteTokens: 0,
     });
+  });
+
+  it('emite progreso operativo sin incluir bloques de pensamiento ni datos de herramientas', async () => {
+    const alerts = tool({
+      async run() {
+        return { ok: true, data: { secret: 'dato crudo' } };
+      },
+    });
+    const { model } = scripted([
+      {
+        content: [
+          { type: 'thinking', thinking: 'razonamiento privado', signature: 'sig-1' },
+          { type: 'tool_use', id: 'tu_1', name: 'list_alerts', input: {} },
+        ],
+        stopReason: 'tool_use',
+        usage,
+      },
+      say('Respuesta final.'),
+    ]);
+    const events: unknown[] = [];
+    await runAssistant({
+      model,
+      tools: [alerts],
+      turn: { message: 'investiga', history: [], context: CONTEXT },
+      onProgress: (event) => events.push(event),
+    });
+    expect(events).toEqual([
+      { type: 'model_started', round: 1 },
+      { type: 'tool_started', label: 'Buscando alertas' },
+      { type: 'tool_finished', label: 'Buscando alertas', ok: true },
+      { type: 'model_started', round: 2 },
+    ]);
+    expect(JSON.stringify(events)).not.toContain('razonamiento privado');
+    expect(JSON.stringify(events)).not.toContain('dato crudo');
+  });
+
+  it('aborta la llamada al modelo y no empieza herramientas si el cliente se desconecta', async () => {
+    const controller = new AbortController();
+    let receivedSignal: AbortSignal | undefined;
+    let modelCalls = 0;
+    let toolCalls = 0;
+    const model: AssistantModel = {
+      async complete(_request, signal) {
+        modelCalls += 1;
+        receivedSignal = signal;
+        return new Promise<ModelResponse>((_resolve, reject) => {
+          signal?.addEventListener('abort', () => reject(new Error('provider abort')), {
+            once: true,
+          });
+        });
+      },
+    };
+    const pending = runAssistant({
+      model,
+      tools: [
+        tool({
+          async run() {
+            toolCalls += 1;
+            return { ok: true, data: {} };
+          },
+        }),
+      ],
+      turn: { message: 'investiga', history: [], context: CONTEXT },
+      signal: controller.signal,
+    });
+    await Promise.resolve();
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({
+      name: 'AssistantCancelledError',
+      usage: { inputTokens: 0, outputTokens: 0 },
+    });
+    expect(receivedSignal?.aborted).toBe(true);
+    expect(modelCalls).toBe(1);
+    expect(toolCalls).toBe(0);
+  });
+
+  it('conserva solo usage devuelto y no inicia otra ronda tras cancelar una herramienta', async () => {
+    const controller = new AbortController();
+    let modelCalls = 0;
+    const model: AssistantModel = {
+      async complete() {
+        modelCalls += 1;
+        return call('list_alerts', {});
+      },
+    };
+    await expect(
+      runAssistant({
+        model,
+        tools: [
+          tool({
+            async run(_input, signal) {
+              expect(signal).toBe(controller.signal);
+              controller.abort();
+              return { ok: true, data: { private: 'never persisted' } };
+            },
+          }),
+        ],
+        turn: { message: 'investiga', history: [], context: CONTEXT },
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({
+      name: 'AssistantCancelledError',
+      usage: { inputTokens: 100, outputTokens: 20, cacheReadTokens: 0, cacheWriteTokens: 0 },
+    });
+    expect(modelCalls).toBe(1);
   });
 
   it('ejecuta la herramienta con los valores reales y enmascara lo que vuelve al modelo', async () => {
@@ -137,7 +251,10 @@ describe('runAssistant', () => {
         };
       },
     });
-    const { model } = scripted([call('list_alerts', {}), say('La cuenta está comprometida y debe aislarse.')]);
+    const { model } = scripted([
+      call('list_alerts', {}),
+      say('La cuenta está comprometida y debe aislarse.'),
+    ]);
     const result = await runAssistant({
       model,
       tools: [alerts],
@@ -149,7 +266,7 @@ describe('runAssistant', () => {
     expect(result.reply).not.toContain('La cuenta está comprometida');
   });
 
-  it('muestra el razonamiento en orden y devuelve el pensamiento intacto mientras usa herramientas', async () => {
+  it('no expone los bloques de pensamiento y conserva solo pasos curados de herramientas', async () => {
     const t = tool({
       async run() {
         return { ok: true, data: {} };
@@ -174,11 +291,13 @@ describe('runAssistant', () => {
       pseudonymizer,
       turn: { message: 'q', history: [], context: CONTEXT },
     });
-    expect(result.reasoning).toEqual([
-      { kind: 'thought', text: 'Reviso a ana@b89.example primero.' },
-      { kind: 'tool', label: 'Buscando alertas', ok: true },
+    expect(result).not.toHaveProperty('reasoning');
+    expect(JSON.stringify(result)).not.toContain('ana@b89.example');
+    expect(result.steps).toEqual([
+      { tool: 'list_alerts', label: 'Buscando alertas', ok: true },
     ]);
-    // El bloque de pensamiento vuelve intacto (con su firma) en la siguiente llamada.
+    // El bloque firmado solo se reenvía durante este ciclo para cumplir el protocolo del proveedor.
+    // No se desenmascara ni forma parte del resultado persistible que recibe la API.
     const echoed = JSON.stringify(requests[1]?.messages);
     expect(echoed).toContain('"signature":"sig-1"');
     expect(echoed).toContain('Reviso a <usuario_1> primero.');
@@ -246,10 +365,14 @@ describe('runAssistant', () => {
       turn: { message: 'investiga', history: [], context: CONTEXT },
       limits: {
         maxToolRounds: 2,
+        maxToolCalls: 8,
         maxTokensPerCall: 1000,
+        maxTotalOutputTokens: 8192,
         maxToolResultChars: 1000,
+        maxTotalToolResultChars: 4000,
         deadlineMs: 24_000,
         maxHistoryMessages: 12,
+        maxHistoryChars: 12_000,
         maxMessageChars: 4000,
       },
     });
@@ -272,6 +395,146 @@ describe('runAssistant', () => {
     const content = JSON.stringify(requests[1]?.messages);
     expect(content).toContain('resultado truncado');
     expect(content.length).toBeLessThan(20_000);
+  });
+
+  it('compacta el historial conservando el turno más reciente completo', async () => {
+    const { model, requests } = scripted([say('ok')]);
+    const history = [
+      { role: 'user' as const, content: 'pregunta antigua uno' },
+      { role: 'assistant' as const, content: 'respuesta antigua uno' },
+      { role: 'user' as const, content: 'pregunta antigua dos' },
+      { role: 'assistant' as const, content: 'respuesta antigua dos' },
+      { role: 'user' as const, content: 'pregunta reciente tres' },
+      { role: 'assistant' as const, content: 'respuesta reciente tres' },
+    ];
+    await runAssistant({
+      model,
+      tools: [],
+      turn: { message: 'continúa', history, context: CONTEXT },
+      limits: { ...DEFAULT_ASSISTANT_LIMITS, maxHistoryChars: 45 },
+    });
+    const sent = requests[0]?.messages.slice(0, -1) ?? [];
+    expect(sent).toHaveLength(2);
+    expect(sent[0]?.role).toBe('user');
+    expect(sent[1]?.role).toBe('assistant');
+    expect(sent[0]?.content).toContain('pregunta reciente');
+    expect(sent[1]?.content).toContain('respuesta reciente');
+    expect(sent.reduce((n, item) => n + String(item.content).length, 0)).toBeLessThanOrEqual(45);
+  });
+
+  it('limita consultas por turno sin ejecutar las sobrantes y fuerza la respuesta final', async () => {
+    let executions = 0;
+    const alerts = tool({
+      async run() {
+        executions += 1;
+        return { ok: true, data: { id: `alert-${executions}` } };
+      },
+    });
+    const requests: ModelRequest[] = [];
+    const model: AssistantModel = {
+      async complete(request) {
+        requests.push(request);
+        if (requests.length === 1) {
+          return {
+            content: [
+              { type: 'tool_use', id: 'one', name: 'list_alerts', input: {} },
+              { type: 'tool_use', id: 'two', name: 'list_alerts', input: {} },
+              { type: 'tool_use', id: 'three', name: 'list_alerts', input: {} },
+            ],
+            stopReason: 'tool_use',
+            usage,
+          };
+        }
+        return say('Consulté dos alertas; la tercera consulta no se ejecutó por presupuesto.');
+      },
+    };
+    const result = await runAssistant({
+      model,
+      tools: [alerts],
+      turn: { message: 'investiga', history: [], context: CONTEXT },
+      limits: { ...DEFAULT_ASSISTANT_LIMITS, maxToolCalls: 2 },
+    });
+    expect(executions).toBe(2);
+    expect(result.steps.map((step) => step.ok)).toEqual([true, true, false]);
+    expect(requests[1]?.allowTools).toBe(false);
+    expect(requests[1]?.messages.at(-1)?.content).toEqual(
+      expect.arrayContaining([expect.objectContaining({ tool_use_id: 'three', is_error: true })]),
+    );
+  });
+
+  it('comparte un límite de tokens de salida entre rondas del mismo turno', async () => {
+    const requests: ModelRequest[] = [];
+    let calls = 0;
+    const model: AssistantModel = {
+      async complete(request) {
+        requests.push(request);
+        calls += 1;
+        if (calls === 1) {
+          return { ...call('list_alerts', {}), usage: { inputTokens: 100, outputTokens: 1000 } };
+        }
+        return {
+          ...say('Respuesta breve.'),
+          usage: { inputTokens: 100, outputTokens: 200 },
+        };
+      },
+    };
+    const result = await runAssistant({
+      model,
+      tools: [
+        tool({
+          async run() {
+            return { ok: true, data: {} };
+          },
+        }),
+      ],
+      turn: { message: 'investiga', history: [], context: CONTEXT },
+      limits: { ...DEFAULT_ASSISTANT_LIMITS, maxTotalOutputTokens: 1200 },
+    });
+    expect(requests.map((request) => request.maxTokens)).toEqual([1200, 200]);
+    expect(result.usage.outputTokens).toBeLessThanOrEqual(1200);
+    expect(result.reply).toBe('Respuesta breve.');
+  });
+
+  it('aplica un presupuesto agregado a resultados de varias herramientas en orden estable', async () => {
+    const alerts = tool({
+      async run(input) {
+        return { ok: true, data: { id: input['id'], blob: 'x'.repeat(500) } };
+      },
+    });
+    const { model, requests } = scripted([
+      {
+        content: ['a', 'b', 'c'].map((id) => ({
+          type: 'tool_use' as const,
+          id,
+          name: 'list_alerts',
+          input: { id },
+        })),
+        stopReason: 'tool_use',
+        usage,
+      },
+      say('Resultados consultados con truncamiento explícito.'),
+    ]);
+    await runAssistant({
+      model,
+      tools: [alerts],
+      turn: { message: 'investiga', history: [], context: CONTEXT },
+      limits: {
+        ...DEFAULT_ASSISTANT_LIMITS,
+        maxToolCalls: 3,
+        maxToolResultChars: 1000,
+        maxTotalToolResultChars: 300,
+      },
+    });
+    const resultBlocks =
+      requests[1]?.messages.flatMap((message) =>
+        Array.isArray(message.content)
+          ? message.content.filter((block) => block.type === 'tool_result')
+          : [],
+      ) ?? [];
+    expect(resultBlocks).toHaveLength(3);
+    expect(resultBlocks.reduce((n, block) => n + block.content.length, 0)).toBeLessThanOrEqual(300);
+    expect(resultBlocks[0]?.content).toContain('resultado truncado');
+    expect(resultBlocks.map((block) => block.tool_use_id)).toEqual(['a', 'b', 'c']);
   });
 
   it('una negativa del modelo se informa sin inventar contenido', async () => {

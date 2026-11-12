@@ -205,7 +205,10 @@ write("monitor.json", {
                         "query": {"term": {"rule.groups": "bitdefender"}}},
         "aws": {"mode": "heartbeat", "heartbeat": {"container": "b89-aws-events-1"}, "max_silence_minutes": 15, "event_window_hours": 72,
                 "query": {"term": {"rule.groups": "aws"}}},
-        "wazuh-agents": {"mode": "events", "max_silence_minutes": 30,
+        # Alertas de seguridad no son un heartbeat: un entorno sin alertas se marcaba falso en silencio.
+        # El manager vivo se comprueba aquí; cada agente se vigila por lastKeepAlive en agent_disconnected.
+        "wazuh-agents": {"mode": "heartbeat", "heartbeat": {"container": "b89-wazuh.manager-1"},
+                         "max_silence_minutes": 15, "event_window_hours": 0,
                          "query": {"bool": {"must_not": [{"terms": {"rule.groups": ["b89_provider", "office365", "aws", "b89_platform"]}}]}}},
         "office365": {"enabled": False, "mode": "events", "max_silence_minutes": 360, "query": {"term": {"rule.groups": "office365"}},
                       "disabled_reason": "Office 365 bloqueado: falta ActivityFeed.Read (docs/20)."},

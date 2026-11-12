@@ -49,6 +49,19 @@ describe('Sprint 5 · configuración de ingesta', () => {
     ).toMatchObject({ intervalMs: 30_000, initialLookbackMs: 86_400_000 });
   });
 
+  it('guarda la clave HMAC push como secreto y exige longitud suficiente', () => {
+    const secret = '0123456789abcdef0123456789abcdef';
+    const config = loadIngestionConfig({ ...WAZUH, B89_WAZUH_PUSH_SECRET: secret });
+    expect(config.source === 'wazuh' && config.pushSecret?.reveal()).toBe(secret);
+    expect(JSON.stringify(config)).not.toContain(secret);
+    expect(String(config.source === 'wazuh' ? config.pushSecret : undefined)).toBe('[REDACTED]');
+    for (const invalid of ['short', 'x'.repeat(513)]) {
+      expect(
+        rejectedPath(() => loadIngestionConfig({ ...WAZUH, B89_WAZUH_PUSH_SECRET: invalid })),
+      ).toBe('B89_WAZUH_PUSH_SECRET');
+    }
+  });
+
   it('wazuh sin gateway o sin scope no arranca', () => {
     // `production` no trae URL de gateway por defecto (dev y test apuntan al local).
     const { B89_WAZUH_GATEWAY_BASE_URL: _url, ...rest } = WAZUH;

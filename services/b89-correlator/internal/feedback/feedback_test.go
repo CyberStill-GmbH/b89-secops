@@ -37,6 +37,27 @@ func TestBelowThresholdNoProposal(t *testing.T) {
 	}
 }
 
+func TestCorrelatorAdjudicationCountsOnlyItsOwnLabeledAlerts(t *testing.T) {
+	alerts := []model.B89Alert{
+		{ID: "c-fp", RuleID: model.CorrelatorRulePrefix + "edge-to-ssh", Verdict: "false_positive", OccurredAt: now.Add(-time.Hour)},
+		{ID: "c-tp", RuleID: model.CorrelatorRulePrefix + "ssh-bruteforce-then-access", Verdict: "true_positive", OccurredAt: now.Add(-time.Hour)},
+		{ID: "c-open", RuleID: model.CorrelatorRulePrefix + "edge-to-ssh", OccurredAt: now.Add(-time.Hour)},
+		{ID: "c-future", RuleID: model.CorrelatorRulePrefix + "edge-to-ssh", Verdict: "false_positive", OccurredAt: now.Add(time.Hour)},
+		{ID: "other-fp", RuleID: "100530", Verdict: "false_positive", OccurredAt: now.Add(-time.Hour)},
+		{ID: "old-fp", RuleID: model.CorrelatorRulePrefix + "edge-to-ssh", Verdict: "false_positive", OccurredAt: now.Add(-31 * 24 * time.Hour)},
+		{ID: "old-reviewed", RuleID: model.CorrelatorRulePrefix + "edge-to-ssh", Verdict: "false_positive", OccurredAt: now.Add(-31 * 24 * time.Hour), UpdatedAt: now.Add(-time.Hour)},
+	}
+	res := Evaluate(alerts, nil, DefaultPolicy(), now)
+	if res.WindowSeconds != int64((30*24*time.Hour).Seconds()) ||
+		res.CorrelatorAlerts != 3 ||
+		res.CorrelatorAdjudicated != 2 ||
+		res.CorrelatorUnreviewed != 1 ||
+		res.CorrelatorFalsePos != 1 ||
+		res.CorrelatorTruePos != 1 {
+		t.Fatalf("correlator adjudication counts: %+v", res)
+	}
+}
+
 func TestRepeatedFalsePositivesProposeAllowlist(t *testing.T) {
 	start := now.Add(-48 * time.Hour)
 	res := Evaluate(verdicts("101501", "P3", "ip:192.0.2.200", "false_positive", 4, start), nil, DefaultPolicy(), now)

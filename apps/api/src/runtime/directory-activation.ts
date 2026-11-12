@@ -16,7 +16,7 @@
  * Solo registra códigos (`DirectoryError.code`), nunca tokens ni respuestas de Graph.
  */
 
-import { DirectoryError } from '@b89/access';
+import { DirectoryError, type DirectoryDiagnostic } from '@b89/access';
 
 export interface DirectoryGroupActivationOptions {
   /** Grupo ya conocido (`B89_DIRECTORY_GROUP_ID`): queda resuelto desde el inicio. */
@@ -36,6 +36,7 @@ export interface DirectoryActivationState {
   readonly groupId: string | undefined;
   /** Código del último intento fallido (`DIRECTORY_FORBIDDEN`…); `null` si no hubo fallo. */
   readonly lastErrorCode: string | null;
+  readonly diagnostic: DirectoryDiagnostic | null;
   readonly lastAttemptAt: Date | null;
   readonly nextAttemptAt: Date | null;
 }
@@ -52,6 +53,7 @@ export function directoryErrorCode(error: unknown): string {
 export class DirectoryGroupActivation {
   #groupId: string | undefined;
   #lastErrorCode: string | null = null;
+  #diagnostic: DirectoryDiagnostic | null = null;
   #lastAttemptAt: Date | null = null;
   #nextAttemptAt: Date | null = null;
   #delayMs: number;
@@ -72,6 +74,7 @@ export class DirectoryGroupActivation {
     return {
       groupId: this.#groupId,
       lastErrorCode: this.#lastErrorCode,
+      diagnostic: this.#diagnostic,
       lastAttemptAt: this.#lastAttemptAt,
       nextAttemptAt: this.#nextAttemptAt,
     };
@@ -101,6 +104,7 @@ export class DirectoryGroupActivation {
         ]);
         this.#groupId = groupId.toLowerCase();
         this.#lastErrorCode = null;
+        this.#diagnostic = null;
         this.#nextAttemptAt = null;
         try {
           this.options.onResolved?.(this.#groupId);
@@ -110,6 +114,7 @@ export class DirectoryGroupActivation {
         return true;
       } catch (error) {
         this.#lastErrorCode = directoryErrorCode(error);
+        this.#diagnostic = error instanceof DirectoryError ? (error.diagnostic ?? null) : null;
         this.options.onError?.(error);
         return false;
       } finally {

@@ -31,7 +31,6 @@ function turn(text: string, when: Date): StoredMessage[] {
       id: id(),
       role: 'assistant',
       text: `respuesta a ${text}`,
-      reasoning: [{ kind: 'tool', label: 'Buscando alertas', ok: true }],
       steps: [{ tool: 'list_alerts', label: 'Buscando alertas', ok: true }],
       citations: [{ kind: 'alert', id: 'a1', label: 'Alerta 1' }],
       createdAt: when,

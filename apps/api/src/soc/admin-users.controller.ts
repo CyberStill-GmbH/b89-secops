@@ -30,8 +30,8 @@ const SESSION_WINDOW_MS = 7 * 86_400_000;
 const SESSION_LIMIT = 2_000;
 /** Un padrón sin éxito durante tres intervalos se declara viejo. */
 const STALE_AFTER_INTERVALS = 3;
-/** Código de Graph cuando la app no tiene GroupMember.Read.All con consentimiento. */
-const DIRECTORY_PERMISSION_MISSING = 'DIRECTORY_FORBIDDEN';
+/** El 403 Authorization_RequestDenied de Graph señala un app role/permiso no concedido. */
+const DIRECTORY_PERMISSION_MISSING = 'DIRECTORY_PERMISSION_MISSING';
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
 interface UserRow {
@@ -153,7 +153,7 @@ export class AdminUsersController {
 
   private async syncView() {
     const directory = this.runtime.directory;
-    // Graph configurado pero el grupo aún no se resolvió (p. ej. falta GroupMember.Read.All):
+    // Graph configurado pero el grupo aún no se resolvió (p. ej. falta permiso de lectura del grupo):
     // no es un error de la consola, es un permiso pendiente que se reintenta solo.
     if (directory?.mode === 'pending') {
       return {
@@ -162,6 +162,7 @@ export class AdminUsersController {
         lastAttemptAt: directory.lastAttemptAt?.toISOString() ?? null,
         lastSuccessAt: null,
         lastErrorClass: directory.lastErrorCode,
+        diagnostic: directory.diagnostic,
         stale: true,
         groupResolved: false,
         permissionMissing: directory.lastErrorCode === DIRECTORY_PERMISSION_MISSING,
@@ -175,6 +176,7 @@ export class AdminUsersController {
         lastAttemptAt: null,
         lastSuccessAt: null,
         lastErrorClass: null,
+        diagnostic: null,
         stale: false,
         groupResolved: false,
         permissionMissing: false,
@@ -194,6 +196,7 @@ export class AdminUsersController {
       lastAttemptAt: state?.lastAttemptAt?.toISOString() ?? null,
       lastSuccessAt: lastSuccessAt?.toISOString() ?? null,
       lastErrorClass: state?.lastErrorClass ?? null,
+      diagnostic: null,
       stale,
       groupResolved: true,
       // Graph puede retirar el consentimiento después: la falta de permiso se nombra igual.

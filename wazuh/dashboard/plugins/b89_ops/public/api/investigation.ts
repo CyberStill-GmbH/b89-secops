@@ -22,6 +22,7 @@ async function getJson<T>(
   path: string,
   params: URLSearchParams,
   fetchImpl: typeof fetch,
+  signal?: AbortSignal,
 ): Promise<T> {
   let response: Response;
   try {
@@ -29,8 +30,10 @@ async function getJson<T>(
       credentials: 'same-origin',
       headers: { accept: 'application/json', 'osd-xsrf': 'true' },
       cache: 'no-store',
+      ...(signal ? { signal } : {}),
     });
   } catch {
+    if (signal?.aborted) throw new DOMException('Solicitud cancelada', 'AbortError');
     throw new B89ApiError('DEPENDENCY_DEGRADED', 0, null);
   }
   if (!response.ok) {
@@ -77,15 +80,18 @@ export function fetchRelated(
     at: string;
     window: RelatedWindow;
     exclude?: string;
+    cursor?: string;
   },
   fetchImpl: typeof fetch = defaultFetch,
+  signal?: AbortSignal,
 ): Promise<RelatedResponse> {
   const params = new URLSearchParams();
   for (const entity of query.entities) params.append('e', entityKey(entity));
   params.set('at', query.at);
   params.set('window', query.window);
   if (query.exclude) params.set('exclude', query.exclude);
-  return getJson(basePath, INVESTIGATION_ROUTES.related, params, fetchImpl);
+  if (query.cursor) params.set('cursor', query.cursor);
+  return getJson(basePath, INVESTIGATION_ROUTES.related, params, fetchImpl, signal);
 }
 
 /** Riesgo de entidad del motor de correlación (opcional). */
@@ -98,7 +104,10 @@ export interface EntityRisk {
 
 /** Tipos de entidad del correlador B89 (`apps/api/src/soc/risk.controller.ts`). */
 const RISK_TYPES: Partial<Record<EntityKind, string>> = { user: 'user', host: 'host', ip: 'ip' };
-const riskLists = new Map<string, { at: number; items: Promise<ReadonlyArray<Record<string, unknown>>> }>();
+const riskLists = new Map<
+  string,
+  { at: number; items: Promise<ReadonlyArray<Record<string, unknown>>> }
+>();
 const RISK_TTL_MS = 60000;
 
 async function riskList(

@@ -1,6 +1,6 @@
 # 19 · Brechas y roadmap
 
-> Estado al 2026-11-08. Análisis de brechas del SOC B89 frente a un SOC de referencia, con el estado
+> Estado al 2026-11-11. Análisis de brechas del SOC B89 frente a un SOC de referencia, con el estado
 > de cada línea de trabajo. «En curso» significa que otro agente la está construyendo y **aún no hay
 > código fusionado** en la rama; se actualiza cuando aterriza. Postura y límites estructurales en
 > [21](21-postura-de-seguridad.md).
@@ -15,7 +15,7 @@
 | 6 | **Silencio de fuentes y salud de la plataforma** | Una fuente que deja de enviar pasa inadvertida | En curso (Python). Hoy: «Salud de fuentes» para la ingesta del motor y «Integraciones» con último evento por proveedor | Otro agente; enlace pendiente |
 | 7 | **Priorización de vulnerabilidades** con CISA KEV y EPSS | Snyk y Wazuh priorizan solo por CVSS/severidad | En curso (Python) | Otro agente; enlace pendiente |
 | 8 | **Respaldos sin IAM y riesgo de nodo único** | Sin DLM ni subida automática a S3; un fallo del nodo o del disco detiene todo el SOC | Abierta. Respaldo manual documentado en [06 §6](06-operacion.md#6-respaldos-y-restauración), sin ensayo de restauración | Plataforma; requiere rol IAM o tarea programada desde una estación |
-| 9 | **Cobertura de M365 bloqueada** por permisos de Entra | Sin auditoría de M365/Entra: la fuente de identidad principal queda ciega | Bloqueada: faltan `ActivityFeed.Read` (y `SecurityAlert.Read.All`/`SecurityIncident.Read.All` para `ms-graph`); `Mail.Send` bloquea el correo | Administrador de Entra de B89; [18](18-integraciones.md#microsoft-365--entra-id) |
+| 9 | **Cobertura M365 y correo** | ActivityFeed.Read consta como concedido desde 2026-11-10; falta vigilar frescura y validar que el feed cubra cada caso de investigacion | Parcial: auditoria Office 365 activa segun docs/18; permisos Graph de seguridad y lectura de buzones son capacidades separadas | Platform + admin de Entra; [18](18-integraciones.md), [25](25-programa-confiabilidad-e-investigacion.md) |
 | 10 | **Deception / canary tokens** | Sin señales de alta fidelidad ante intrusión | Abierta | Por asignar |
 | 11 | **Ciclo cerrado Respond ↔ incidentes** | Las ejecuciones de B89 Respond no quedan en el incidente ni en la auditoría B89 | Abierta. Playbooks exportables con puerta de aprobación (`b84562e`); contención deshabilitada por defecto (decisión B12) | Por asignar; [13](13-b89-respond.md), [14](14-b89-respond-conexion-b89.md) |
 
@@ -33,3 +33,55 @@
 Cada agente que fusione trabajo de una brecha cambia su fila (estado, enlace al documento o al
 código) en el mismo commit. Una brecha se cierra solo con evidencia: prueba automatizada o
 verificación en el nodo con fecha.
+
+## Entrega push durable de Wazuh (2026-11-11)
+
+El punto 1 de [25](25-programa-confiabilidad-e-investigacion.md#punto-1--ingesta-push-durable-en-el-perfil-vigente)
+está en implementación local: API y adapter PostgreSQL para hints minimizados, reintentos con
+leases/fencing, lookup del documento original en Indexer y promoción compartida con pull. No se
+declara cerrado. La suite unitaria reportó 77 pruebas en 5 archivos y las 8 pruebas Python del emisor
+pasaron. Falta la integración PostgreSQL real, validar el mapping con una muestra autorizada redactada,
+sincronizar secreto/URL del Manager, canario sintético y medición origen-a-alerta; el
+despliegue sigue pendiente.
+
+## Investigación, frescura y entrega de notificaciones (2026-11-11)
+
+- **Frescura (#6):** cambios locales separan `occurredAt`, `observedAt` y `receivedAt`, calculan
+  lag de evento fuente a fin de poll y muestran percentiles con tamaño de muestra y skew en la UI.
+  La vista Operaciones también muestra lag receipt→handler de la inbox. Aún en pruebas; no mide
+  cada etapa de Indexer ni Manager→alerta, no hay canario ni SLO validado y falta ejecutar la
+  integración PostgreSQL.
+- **Notificaciones:** Web Push contempla todos los destinatarios; la cuota de 12/h aplica a P2 y
+  reserva plazas atómicamente entre réplicas. P1 queda fuera de ese cupo. Sigue abierto un fallo de
+  ciclo de vida ya corregido localmente: delivered/fallback confirma una hora; un fallo transitorio
+  conocido libera; un resultado ambiguo retiene un lease de 2 min y los reintentos usan la misma key.
+  Migración `20261111143000_notification_p2_reservation_leases`; 51/51 pruebas SOAR y validaciones
+  de build/typecheck/Prisma reportadas como aprobadas. Falta PostgreSQL multi-réplica (`DATABASE_URL`),
+  canario y proveedor autorizado. Ver [25](25-programa-confiabilidad-e-investigacion.md).
+- **Investigación UX (#4):** los pivotes visibles ahora coinciden con la selección/query, con límite
+  de ocho entidades; el test del plugin pasó 20/20 casos en dos archivos con configuración temporal.
+  Timeline/CSV siguen en 100 eventos sin paginación; PDF es impresión del navegador. Los grupos
+  temporales no prueban hilo, dirección de correo ni causalidad. Si falta `_id`, el origen se busca
+  heurísticamente por regla/descripción/tiempo sin exigir unicidad. Sigue pendiente validar el feed
+  y el análisis contra M365 autorizado; ver [08](08-frontend-unificado.md) y [25](25-programa-confiabilidad-e-investigacion.md).
+
+
+## Actualizacion de correlacion, acceso, privacidad e informes (2026-11-11)
+
+- **Correlador:** conteos TP/FP/revisados/no revisados, ventana y truncamiento del feed se exponen en
+  API, Prometheus y reportes. La cohorte de alertas usa `OccurredAt`; veredictos por fecha de
+  adjudicacion/ventana y filtro de futuro. No hubo Go/gofmt para validar. No hay evidencia de
+  precision/recall ni reduccion de FP. El matcher admite empates de timestamp por resolucion de
+  segundos; imponer orden estricto puede descartar senales. No modificarlo sin corpus de evaluacion.
+- **Owners SOC:** `directoryOwnerSource` dejo la cache local y consulta el roster durable en cada
+  autenticacion tras el primer sync confirmado; Graph solo resuelve el bootstrap previo. API build
+  PASS y 18/18 tests `directory-sync`/`directory-activation` reportados. PostgreSQL/replicas,
+  permisos/entorno y despliegue siguen pendientes.
+- **Privacidad M365:** `eventOf` sanitiza Parameters/ModifiedProperties/response y related excluye esos
+  campos; tests de plugin comun + servidor 21/21. Falta fixture autorizado redactado, revision de
+  contrato y retencion. No afirmar cobertura de buzon ni despliegue.
+- **Informes:** la UI local pagina hasta 10.000 eventos, muestra progreso, permite cancelar y genera
+  CSV, XLSX OOXML y HTML imprimible como PDF. Sigue pendiente el job durable PostgreSQL, worker,
+  artefacto con ACL y PDF server-side; no se afirma reanudación ni progreso tras cerrar sesión. Ver
+  [04](04-identidad-y-acceso.md),
+  [08](08-frontend-unificado.md) y [25](25-programa-confiabilidad-e-investigacion.md).

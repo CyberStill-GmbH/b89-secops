@@ -8,8 +8,9 @@
  *   usan `temperature`, prefill ni `tool_choice` forzado (no soportados en estos modelos).
  * - Una negativa del modelo (`refusal`) se devuelve como tal; el dominio la comunica sin inventar.
  * - Minimización: además de la seudonimización del dominio, todo texto saliente (sistema, preguntas,
- *   resultados de herramientas) pasa por `scrubCredentials`. El razonamiento firmado (`thinking`) se
- *   reenvía intacto: alterarlo invalidaría su firma.
+ *   resultados de herramientas) pasa por `scrubCredentials`. Los bloques firmados del proveedor
+ *   (`thinking`) solo se reenvían intactos dentro del turno que necesita continuar herramientas;
+ *   el dominio no los guarda ni los devuelve a la persona.
  * - Robustez: `timeout` por intento (`B89_BUNNY_TIMEOUT_MS`) y 2 reintentos con backoff exponencial
  *   del SDK ante 408/409/429/5xx o error de red. Nunca se registran prompts ni respuestas.
  * - Caché de prompt: herramientas + sistema forman un prefijo estable (orden determinista, sin datos
@@ -144,7 +145,7 @@ export function createClaudeModel(
           input_schema: tool.inputSchema as Anthropic.Tool.InputSchema,
         })),
         ...(request.allowTools ? {} : { tool_choice: { type: 'none' as const } }),
-        // Resúmenes de razonamiento visibles para la persona (por omisión vienen vacíos).
+        // El proveedor puede incluir bloques internos; el dominio no los persiste ni los expone.
         thinking: { type: 'adaptive' as const, display: 'summarized' as const },
         output_config: { effort: config.effort },
       };

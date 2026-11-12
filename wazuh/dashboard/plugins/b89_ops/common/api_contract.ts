@@ -136,6 +136,30 @@ export interface SourceHealth {
   readonly lastAttemptAt: string | null;
   readonly lastSuccessAt: string | null;
   readonly lastEventAt: string | null;
+  readonly eventLag: {
+    readonly sampleWindow: number;
+    readonly sampleCount: number;
+    readonly clockSkewSamples: number;
+    readonly measuredAt: string | null;
+    readonly p50Ms: number | null;
+    readonly p95Ms: number | null;
+    readonly p99Ms: number | null;
+  };
+  readonly processing: {
+    readonly attemptedAt: string;
+    readonly completedAt: string;
+    readonly outcome: 'success' | 'retryable_error' | 'permanent_error';
+    readonly recordsSeen: number;
+    /** Null for historic rows predating this counter. */
+    readonly normalized: number | null;
+    readonly quarantined: number;
+    readonly promoted: number;
+    /** Null for historic rows predating these counters. */
+    readonly duplicates: number | null;
+    /** Null for historic rows predating these counters. */
+    readonly notPromoted: number | null;
+    readonly errorClass: string | null;
+  } | null;
   readonly consecutiveFailures: number;
   readonly lastErrorClass: string | null;
   readonly policy: {
@@ -258,11 +282,19 @@ export interface RoleRequestView {
 }
 
 /** Estado del padrón cuando todavía no hay solicitudes posibles (sin grupo resuelto). */
+export interface DirectoryDiagnostic {
+  readonly status: number;
+  readonly errorCode: string | null;
+  readonly requestId: string | null;
+  readonly operation: 'resolveGroupId' | 'memberDelta' | 'owners' | 'userProfile';
+}
+
 export interface RoleRequestDirectoryState {
   readonly status: 'pending' | 'disabled';
   readonly lastErrorClass: string | null;
   /** Falta `GroupMember.Read.All` (consentimiento de administrador) en la app de Entra. */
   readonly permissionMissing: boolean;
+  readonly diagnostic?: DirectoryDiagnostic | null;
   readonly nextAttemptAt: string | null;
 }
 
@@ -310,6 +342,7 @@ export interface DirectorySync {
   readonly lastAttemptAt: string | null;
   readonly lastSuccessAt: string | null;
   readonly lastErrorClass: string | null;
+  readonly diagnostic?: DirectoryDiagnostic | null;
   readonly stale: boolean;
   /** `false` mientras el grupo Accesos_SOC no se ha podido resolver en Graph. */
   readonly groupResolved?: boolean;
@@ -394,10 +427,12 @@ export interface NotificationSubject {
  * de notificaciones; ver COORDINACION-CLAUDE-CODEX.md). El secreto nunca viaja completo:
  * `target` es el webhook o buzón ya enmascarado por la API.
  */
-export type NotificationChannelState = 'active' | 'inactive' | 'failing' | 'unconfigured';
+export type NotificationChannelState = 'active' | 'inactive' | 'failing' | 'unconfigured' | 'unknown';
 
 export interface NotificationChannelView {
   readonly id: NotificationChannel;
+  /** ID wire del API (por compatibilidad con los nombres visibles de la UI). */
+  readonly apiId?: 'teams' | 'email' | 'push';
   readonly enabled: boolean;
   readonly configured: boolean;
   readonly state: NotificationChannelState;
@@ -477,6 +512,47 @@ export interface OperationsHealth {
         readonly windowHours: number;
         readonly byStatus: Readonly<Record<string, number>>;
       };
+      /** Outbox creation to first external provider HTTP 2xx; accepted does not mean read. */
+      readonly outboxToProviderAcceptanceMs: {
+        readonly status: OperationsStatus;
+        readonly windowHours: 24;
+        readonly sampleCount: number;
+        readonly excludedClockSkewCount: number;
+        readonly sampleCapReached: boolean;
+        readonly p50: number | null;
+        readonly p95: number | null;
+        readonly p99: number | null;
+        readonly acceptanceMeans: string;
+      };
+      readonly wazuhPushInbox: {
+        readonly counts: Readonly<
+          Record<'pending' | 'processing' | 'processed' | 'failed-terminal', number>
+        >;
+        readonly oldestPendingAgeSeconds: number | null;
+        readonly oldestProcessingAgeSeconds: number | null;
+        readonly oldestUnresolvedAgeSeconds: number | null;
+        readonly oldestTerminalAgeSeconds: number | null;
+        readonly lastProcessedAt: string | null;
+        readonly expiredProcessing: number;
+        readonly terminalFailuresRecent: number;
+        readonly terminalWindowHours: 24;
+        readonly sourceToReceiptMs: {
+          readonly windowHours: 24;
+          readonly sampleCount: number;
+          readonly clockSkewSamples: number;
+          readonly sampleCapReached: boolean;
+          readonly p50: number | null;
+          readonly p95: number | null;
+          readonly p99: number | null;
+        };
+        readonly receiptToHandlerMs: {
+          readonly windowHours: 24;
+          readonly sampleCount: number;
+          readonly p50: number | null;
+          readonly p95: number | null;
+          readonly p99: number | null;
+        };
+      } | null;
     };
     readonly platform?: {
       readonly status: OperationsStatus;

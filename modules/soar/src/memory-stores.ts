@@ -7,12 +7,14 @@
 
 import type { OutboxMessageDraft } from '@b89/soc';
 
+import type { DeliveryEvidence, NotificationAttempt, NotificationChannel } from './notification.js';
 import type {
-  DeliveryEvidence,
-  NotificationAttempt,
-  NotificationChannel,
-} from './notification.js';
-import type { AttemptStore, FallbackChannel, FallbackNotification, OutboxReader } from './ports.js';
+  AttemptStore,
+  FallbackChannel,
+  FallbackNotification,
+  OutboxReader,
+  ProviderAcceptanceLatency,
+} from './ports.js';
 
 interface OutboxRow {
   readonly message: OutboxMessageDraft;
@@ -72,6 +74,27 @@ export class InMemoryOutbox implements OutboxReader {
 
 export class InMemoryAttemptStore implements AttemptStore {
   public readonly rows = new Map<string, NotificationAttempt>();
+  private readonly groupDispatchReservations = new Map<
+    string,
+    {
+      readonly idempotencyKey: string;
+      readonly attemptId: string;
+      readonly fencingToken: string;
+      readonly state: 'leased' | 'uncertain' | 'confirmed';
+      readonly leaseUntil: Date;
+      readonly quietUntil: Date;
+    }
+  >();
+  private readonly p2ImmediateReservations = new Map<
+    string,
+    {
+      readonly tenantId: string;
+      readonly idempotencyKey: string;
+      readonly at: Date;
+      readonly leaseUntil: Date;
+      readonly confirmedAt: Date | null;
+    }
+  >();
 
   public byIdempotencyKey(
     tenantId: string,
@@ -103,6 +126,24 @@ export class InMemoryAttemptStore implements AttemptStore {
       counts[attempt.status] = (counts[attempt.status] ?? 0) + 1;
     }
     return Promise.resolve(counts);
+  }
+
+  public providerAcceptanceLatencySince(
+    _tenantId: string,
+    _since: Date,
+    _through: Date,
+  ): Promise<ProviderAcceptanceLatency> {
+    // In-memory attempts do not retain the durable outbox creation timestamp. Do not
+    // manufacture latency from attempt.createdAt or from console fallback evidence.
+    return Promise.resolve({
+      windowHours: 24,
+      sampleCount: 0,
+      excludedClockSkewCount: 0,
+      sampleCapReached: false,
+      p50: null,
+      p95: null,
+      p99: null,
+    });
   }
 
   public lastNotifiedInGroup(
@@ -142,16 +183,188 @@ export class InMemoryAttemptStore implements AttemptStore {
     );
   }
 
-  public countNotifiedSince(tenantId: string, since: Date): Promise<number> {
-    return Promise.resolve(
-      [...this.rows.values()].filter(
+  public reserveP2ImmediateSlot(
+    tenantId: string,
+    idempotencyKey: string,
+    at: Date,
+    maximum: number,
+  ): Promise<boolean> {
+    const reservationKey = JSON.stringify([tenantId, idempotencyKey]);
+    const existing = this.p2ImmediateReservations.get(reservationKey);
+    const since = at.getTime() - 3_600_000;
+    if (
+      existing &&
+      existing.at.getTime() >= since &&
+      existing.at.getTime() <= at.getTime() &&
+      (existing.confirmedAt !== null || existing.leaseUntil.getTime() > at.getTime())
+    ) {
+      if (existing.confirmedAt === null) {
+        this.p2ImmediateReservations.set(reservationKey, {
+          ...existing,
+          at,
+          leaseUntil: new Date(at.getTime() + 120_000),
+        });
+      }
+      return Promise.resolve(true);
+    }
+    for (const [key, reservation] of this.p2ImmediateReservations) {
+      if (reservation.confirmedAt === null && reservation.leaseUntil.getTime() <= at.getTime()) {
+        this.p2ImmediateReservations.delete(key);
+      } else if (reservation.confirmedAt !== null && reservation.confirmedAt.getTime() < since) {
+        this.p2ImmediateReservations.delete(key);
+      }
+    }
+    const slots = new Set<string>();
+    for (const reservation of this.p2ImmediateReservations.values()) {
+      if (
+        reservation.tenantId === tenantId &&
+        reservation.at.getTime() >= since &&
+        reservation.at.getTime() <= at.getTime() &&
+        (reservation.confirmedAt !== null || reservation.leaseUntil.getTime() > at.getTime())
+      ) {
+        slots.add(reservation.idempotencyKey);
+      }
+    }
+    // Preserve the cap for P2 notifications sent before reservations were introduced.
+    for (const attempt of this.rows.values()) {
+      if (
+        attempt.tenantId === tenantId &&
+        attempt.context?.['priority'] === 'P2' &&
+        attempt.sentAt !== null &&
+        attempt.sentAt.getTime() >= since &&
+        attempt.sentAt.getTime() <= at.getTime()
+      ) {
+        slots.add(attempt.idempotencyKey);
+      }
+    }
+    if (maximum <= 0 || slots.size >= maximum) return Promise.resolve(false);
+    this.p2ImmediateReservations.set(reservationKey, {
+      tenantId,
+      idempotencyKey,
+      at,
+      leaseUntil: new Date(at.getTime() + 120_000),
+      confirmedAt: null,
+    });
+    return Promise.resolve(true);
+  }
+
+  public settleP2ImmediateSlot(
+    tenantId: string,
+    idempotencyKey: string,
+    at: Date,
+    result: 'delivered' | 'failed' | 'uncertain',
+  ): Promise<void> {
+    const key = JSON.stringify([tenantId, idempotencyKey]);
+    const reservation = this.p2ImmediateReservations.get(key);
+    if (reservation) {
+      if (result === 'failed') this.p2ImmediateReservations.delete(key);
+      else if (result === 'delivered') {
+        this.p2ImmediateReservations.set(key, {
+          ...reservation,
+          at,
+          leaseUntil: at,
+          confirmedAt: at,
+        });
+      } else {
+        this.p2ImmediateReservations.set(key, {
+          ...reservation,
+          leaseUntil: new Date(at.getTime() + 120_000),
+        });
+      }
+    }
+    return Promise.resolve();
+  }
+
+  public reserveGroupDispatchSlot(
+    tenantId: string,
+    groupKey: string,
+    idempotencyKey: string,
+    attemptId: string,
+    fencingToken: string,
+    at: Date,
+    quietPeriodMs: number,
+    leaseMs: number,
+  ): Promise<{ readonly granted: boolean; readonly coveredBy: string | null }> {
+    const key = JSON.stringify([tenantId, groupKey]);
+    const since = at.getTime() - quietPeriodMs;
+    const previous = [...this.rows.values()]
+      .filter(
         (attempt) =>
           attempt.tenantId === tenantId &&
+          attempt.groupKey === groupKey &&
+          attempt.idempotencyKey !== idempotencyKey &&
           attempt.sentAt !== null &&
-          !(attempt.groupKey ?? '').startsWith('digest:') &&
-          attempt.sentAt.getTime() >= since.getTime(),
-      ).length,
-    );
+          attempt.sentAt.getTime() >= since &&
+          attempt.sentAt.getTime() <= at.getTime() &&
+          ['sent', 'fallback', 'acknowledged', 'superseded'].includes(attempt.status),
+      )
+      .sort((left, right) => right.sentAt!.getTime() - left.sentAt!.getTime())[0];
+    if (previous) return Promise.resolve({ granted: false, coveredBy: previous.id });
+
+    const existing = this.groupDispatchReservations.get(key);
+    if (existing) {
+      const active =
+        existing.state === 'confirmed'
+          ? existing.quietUntil.getTime() > at.getTime()
+          : existing.leaseUntil.getTime() > at.getTime();
+      if (active && existing.state === 'leased') {
+        return Promise.resolve({ granted: false, coveredBy: existing.attemptId });
+      }
+      if (active && existing.state === 'uncertain' && existing.idempotencyKey !== idempotencyKey) {
+        return Promise.resolve({ granted: false, coveredBy: existing.attemptId });
+      }
+      if (active && existing.state === 'confirmed') {
+        return Promise.resolve({ granted: false, coveredBy: existing.attemptId });
+      }
+    }
+
+    this.groupDispatchReservations.set(key, {
+      idempotencyKey,
+      attemptId,
+      fencingToken,
+      state: 'leased',
+      leaseUntil: new Date(at.getTime() + leaseMs),
+      quietUntil: new Date(at.getTime() + quietPeriodMs),
+    });
+    return Promise.resolve({ granted: true, coveredBy: null });
+  }
+
+  public settleGroupDispatchSlot(
+    tenantId: string,
+    groupKey: string,
+    idempotencyKey: string,
+    fencingToken: string,
+    at: Date,
+    quietPeriodMs: number,
+    leaseMs: number,
+    result: 'delivered' | 'failed' | 'uncertain',
+  ): Promise<void> {
+    const key = JSON.stringify([tenantId, groupKey]);
+    const current = this.groupDispatchReservations.get(key);
+    if (
+      !current ||
+      current.idempotencyKey !== idempotencyKey ||
+      current.fencingToken !== fencingToken
+    ) {
+      return Promise.resolve();
+    }
+    if (result === 'failed') {
+      this.groupDispatchReservations.delete(key);
+    } else if (result === 'delivered') {
+      this.groupDispatchReservations.set(key, {
+        ...current,
+        state: 'confirmed',
+        leaseUntil: at,
+        quietUntil: new Date(at.getTime() + quietPeriodMs),
+      });
+    } else {
+      this.groupDispatchReservations.set(key, {
+        ...current,
+        state: 'uncertain',
+        leaseUntil: new Date(at.getTime() + leaseMs),
+      });
+    }
+    return Promise.resolve();
   }
 
   public listUndigested(tenantId: string, limit: number): Promise<readonly NotificationAttempt[]> {
@@ -188,9 +401,7 @@ export class InMemoryAttemptStore implements AttemptStore {
 export class ConsoleFallbackChannel implements FallbackChannel {
   public readonly delivered: FallbackNotification[] = [];
 
-  public notify(
-    notification: FallbackNotification,
-  ): Promise<{
+  public notify(notification: FallbackNotification): Promise<{
     readonly channel: NotificationChannel;
     readonly reference: string;
     readonly evidence: readonly DeliveryEvidence[];

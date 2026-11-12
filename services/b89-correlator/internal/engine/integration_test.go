@@ -324,7 +324,7 @@ func TestIntegrationFixtureReplayEmitsAuditsAndServes(t *testing.T) {
 	}
 	m, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	for _, want := range []string{"b89_correlator_observations_total{source=\"aws\"}", "b89_correlator_candidates_emitted_total", "b89_correlator_reduction_factor{stream=\"b89\"}"} {
+	for _, want := range []string{"b89_correlator_observations_total{source=\"aws\"}", "b89_correlator_candidates_emitted_total", "b89_correlator_reduction_factor{stream=\"b89\"}", "b89_correlator_feedback_alerts{verdict=\"false_positive\"}", "b89_correlator_feedback_alert_feed_truncated"} {
 		if !strings.Contains(string(m), want) {
 			t.Errorf("metrics missing %s", want)
 		}

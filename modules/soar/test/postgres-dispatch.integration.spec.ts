@@ -28,9 +28,10 @@ import { candidateId, promotionKey } from '@b89/detection';
 import { ingestCandidate, executeAlertCommand, type SocDependencies } from '@b89/soc';
 import { PostgresSocPersistence } from '@b89/soc/postgres';
 
-import { drainOutbox, type DispatchDependencies } from '../src/dispatcher.js';
+import { dispatchMessage, drainOutbox, type DispatchDependencies } from '../src/dispatcher.js';
 import { ConsoleFallbackChannel } from '../src/memory-stores.js';
 import { PostgresNotificationAttemptStore } from '../src/infrastructure/postgres-attempt-store.js';
+import type { OutboxMessageDraft } from '@b89/soc';
 import type { NotificationTransport } from '../src/teams-adapter.js';
 
 const exec = promisify(execFile);
@@ -98,9 +99,14 @@ describe.skipIf(!databaseUrl)('C-20 · despacho durable sobre PostgreSQL', () =>
 
   const tokens = new Map<string, string>();
 
-  function dispatchDependencies(transport: NotificationTransport, now: Date): DispatchDependencies {
+  function dispatchDependencies(
+    transport: NotificationTransport,
+    now: Date,
+    attemptStore = attempts,
+    outboxReader?: DispatchDependencies['outbox'],
+  ): DispatchDependencies {
     return {
-      outbox: {
+      outbox: outboxReader ?? {
         // Igual que el runtime: guarda el token de cada claim para cerrarlo con fencing.
         claimPending: async (limit, at) => {
           const claimed = await soc.claimOutbox(at, limit, 120_000);
@@ -116,7 +122,7 @@ describe.skipIf(!databaseUrl)('C-20 · despacho durable sobre PostgreSQL', () =>
           if (token) await soc.scheduleOutboxRetry(id, token, availableAt, code);
         },
       },
-      attempts,
+      attempts: attemptStore,
       transport,
       fallback: new ConsoleFallbackChannel(),
       audit: new InMemoryAuditStore(),
@@ -236,5 +242,118 @@ describe.skipIf(!databaseUrl)('C-20 · despacho durable sobre PostgreSQL', () =>
       listed.every((attempt) => attempt.status === 'sent' && attempt.channel === 'teams'),
     ).toBe(true);
     expect(listed.map((attempt) => attempt.attemptCount).sort()).toEqual([1, 2]);
+  });
+
+  it('serializa el cupo P2 entre instancias Postgres y conserva idempotencia', async () => {
+    const replica = PostgresNotificationAttemptStore.connect({
+      connectionString: database!.url,
+      maxConnections: 4,
+    });
+    const tenantId = 'tenant-c20-p2-quota';
+    const at = new Date();
+    try {
+      const results = await Promise.all(
+        Array.from({ length: 32 }, (_, index) =>
+          (index % 2 === 0 ? attempts : replica).reserveP2ImmediateSlot(
+            tenantId,
+            `p2-${index}`,
+            at,
+            10,
+          ),
+        ),
+      );
+      expect(results.filter(Boolean)).toHaveLength(10);
+      await expect(attempts.reserveP2ImmediateSlot(tenantId, 'p2-0', at, 10)).resolves.toBe(true);
+      await expect(replica.reserveP2ImmediateSlot(tenantId, 'p2-overflow', at, 10)).resolves.toBe(
+        false,
+      );
+    } finally {
+      await replica.close();
+    }
+  });
+
+  it('serializa el mismo grupo entre réplicas y deja el perdedor en la bandeja de digest', async () => {
+    const replica = PostgresNotificationAttemptStore.connect({
+      connectionString: database!.url,
+      maxConnections: 4,
+    });
+    const tenantId = 'tenant-c20-group-window';
+    const at = new Date('2026-10-12T10:00:00.000Z');
+    const messages: OutboxMessageDraft[] = [
+      {
+        messageId: randomUUID(),
+        tenantId,
+        aggregateType: 'alert',
+        aggregateId: randomUUID(),
+        messageType: 'soc.alert.created',
+        schemaVersion: '1.0.0',
+        idempotencyKey: randomUUID(),
+        payload: { title: 'Alerta regla 101701', priority: 'P1', ruleId: '101701' },
+        availableAt: at,
+      },
+      {
+        messageId: randomUUID(),
+        tenantId,
+        aggregateType: 'alert',
+        aggregateId: randomUUID(),
+        messageType: 'soc.alert.created',
+        schemaVersion: '1.0.0',
+        idempotencyKey: randomUUID(),
+        payload: { title: 'Alerta regla 101701', priority: 'P1', ruleId: '101701' },
+        availableAt: at,
+      },
+    ];
+    let startedResolve!: () => void;
+    const started = new Promise<void>((resolve) => (startedResolve = resolve));
+    let releaseResolve!: () => void;
+    const release = new Promise<void>((resolve) => (releaseResolve = resolve));
+    let sends = 0;
+    const blockedTransport: NotificationTransport = {
+      destinationRef: 'teams:group-race-spec',
+      async send() {
+        sends += 1;
+        startedResolve();
+        await release;
+        return { delivered: true, httpStatus: 202 };
+      },
+    };
+    const published: string[] = [];
+    const outboxReader: DispatchDependencies['outbox'] = {
+      claimPending: async () => [],
+      markPublished: async (messageId) => {
+        published.push(messageId);
+      },
+      scheduleRetry: async () => undefined,
+    };
+    try {
+      const firstTask = dispatchMessage(
+        dispatchDependencies(blockedTransport, at, attempts, outboxReader),
+        messages[0]!,
+      );
+      await started;
+      const second = await dispatchMessage(
+        dispatchDependencies(blockedTransport, at, replica, outboxReader),
+        messages[1]!,
+      );
+      expect(second.code).toBe('suppressed');
+      expect(second.attempt).toMatchObject({ status: 'suppressed', suppressionReason: 'grouped' });
+      expect(second.attempt?.supersededBy).toBeTruthy();
+      expect(sends).toBe(1);
+      releaseResolve();
+      const first = await firstTask;
+      expect(first.code).toBe('delivered');
+      const undigested = await replica.listUndigested(tenantId, 10);
+      expect(undigested).toHaveLength(1);
+      expect(undigested[0]).toMatchObject({
+        idempotencyKey: messages[1]!.idempotencyKey,
+        status: 'suppressed',
+        suppressionReason: 'grouped',
+        digestId: null,
+      });
+      expect(published).toContain(messages[1]!.messageId);
+    } finally {
+      releaseResolve();
+      await replica.close();
+    }
   });
 });

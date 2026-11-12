@@ -41,8 +41,14 @@ export interface SourcePollObservation {
   readonly outcome: PollOutcome;
   /** Documentos leídos; 0 en un poll exitoso vacío. */
   readonly recordsSeen: number;
+  /** Documents that converted to canonical SecurityEvent records. */
+  readonly normalized: number | null;
   readonly promoted: number;
   readonly quarantined: number;
+  /** Existing alert/event identity; null only for observations written before this metric existed. */
+  readonly duplicates: number | null;
+  /** Normalized events below the promotion threshold or otherwise suppressed by policy. */
+  readonly notPromoted: number | null;
   /** Hora del evento más reciente visto en esta pasada; `null` si no vio ninguno. */
   readonly newestEventAt: Date | null;
   /** Código neutral del catálogo de errores; nunca el mensaje del proveedor. */

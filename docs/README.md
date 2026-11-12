@@ -68,6 +68,7 @@ diseño, no la plataforma vigente:
 
 ## Referencia y archivo
 
+- [25 · Programa de confiabilidad e investigación SOC](25-programa-confiabilidad-e-investigacion.md): auditoría, secuencia, criterios de aceptación, privacidad y gates de liberación.
 - [23 · Claude y Wazuh MCP para operaciones SOC](23-claude-wazuh-mcp-soc.md): propuesta de triaje asistido, MCP privado, UX de administración, respuesta gobernada y control de costos.
 - [24 · Operación gobernada de Bunny](24-bunny-operacion-gobernada.md): contratos pendientes para sugerencias revisables, configuración, presupuesto compartido y documentos versionados.
 

@@ -37,6 +37,7 @@ http = dict(ours['config']['dynamic']['http'])
 http['xff'] = dict(http['xff'])
 http['xff']['internalProxies'] = os.environ['DASHBOARD_IP']
 dyn.setdefault('http', {}).update(http)
+dyn.setdefault('kibana', {}).update(ours['config']['dynamic']['kibana'])
 authc = dyn.setdefault('authc', {})
 authc['b89_proxy_auth_domain'] = ours['config']['dynamic']['authc']['b89_proxy_auth_domain']
 if 'basic_internal_auth_domain' in authc:

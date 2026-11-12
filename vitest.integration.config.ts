@@ -6,6 +6,7 @@ export default defineConfig({
   test: {
     include: [
       'platform/testing/test/**/*.spec.ts',
+      'platform/database/test/**/*.integration.spec.ts',
       'modules/telemetry/test/**/*.integration.spec.ts',
       'modules/soc/test/**/*.integration.spec.ts',
       'modules/soar/test/**/*.integration.spec.ts',

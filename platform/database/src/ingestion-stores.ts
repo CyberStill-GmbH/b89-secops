@@ -26,8 +26,11 @@ export interface SourcePollObservationRow {
   readonly completedAt: Date;
   readonly outcome: string;
   readonly recordsSeen: number;
+  readonly normalized: number | null;
   readonly promoted: number;
   readonly quarantined: number;
+  readonly duplicates: number | null;
+  readonly notPromoted: number | null;
   readonly newestEventAt: Date | null;
   readonly errorClass: string | null;
 }

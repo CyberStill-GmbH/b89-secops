@@ -7,6 +7,7 @@ import {
   EuiBadge,
   EuiButton,
   EuiButtonEmpty,
+  EuiCallOut,
   EuiFlexGroup,
   EuiFlexItem,
   EuiFlyout,
@@ -87,16 +88,9 @@ function NotificationsContent() {
   const [open, setOpen] = useState<string | null>(null);
   const [alerts, setAlerts] = useState<Record<string, Alert | null>>({});
   const [tab, setTab] = useState<'inbox' | 'channels'>('inbox');
-  // «Canales» solo aparece cuando la API de canales está publicada (sin 404 ni errores).
-  const channelsApi = useAsync(
-    () =>
-      api.get<{ channels?: unknown[] }>('/notifications/channels').then(
-        (body) => Array.isArray(body.channels),
-        () => false,
-      ),
-    [api],
-  );
-  const showChannels = channelsApi.data === true;
+  // La pestaña permanece visible aunque la API falle: ocultarla hacía parecer que
+  // la configuración de Teams no existía. ChannelsPanel presenta el error real.
+  const showChannels = true;
   const page = useAsync(
     () => api.get<Page<NotificationAttempt>>('/notifications', { pageSize: 100 }),
     [api],
@@ -210,6 +204,20 @@ function NotificationsContent() {
         <ChannelsPanel />
       ) : (
         <>
+          <EuiCallOut
+            size="s"
+            color="primary"
+            iconType="iInCircle"
+            title="Tiempos y estado de los avisos"
+          >
+            <p>
+              P1 genera un intento inmediato; P2 recientes también. Las P2 procesadas con más de
+              una hora de atraso y los avisos agrupados aparecen en resúmenes; P3 y P4 se
+              consolidan cada seis horas. Revisa «Canales» para confirmar la configuración y «Salud
+              de fuentes» para ver la última actividad recibida.
+            </p>
+          </EuiCallOut>
+          <EuiSpacer size="m" />
           {error != null && (
             <>
               <ErrorCallout error={error} />

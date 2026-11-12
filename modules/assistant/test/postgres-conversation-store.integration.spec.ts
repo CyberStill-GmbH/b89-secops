@@ -7,6 +7,7 @@
  */
 
 import { execFile } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
@@ -19,6 +20,15 @@ import { PostgresConversationStore } from '../src/infrastructure/postgres-conver
 const exec = promisify(execFile);
 const databaseUrl = process.env['DATABASE_URL'];
 const databaseRoot = fileURLToPath(new URL('../../../platform/database/', import.meta.url));
+const removeThinkingMigration = readFileSync(
+  fileURLToPath(
+    new URL(
+      '../../../platform/database/prisma/migrations/20261112120000_remove_bunny_thinking/migration.sql',
+      import.meta.url,
+    ),
+  ),
+  'utf8',
+);
 const ANA = { tenantId: 'tenant-bunny', ownerId: 'ana' };
 const LUIS = { tenantId: 'tenant-bunny', ownerId: 'luis' };
 const BASE = Date.UTC(2026, 10, 1, 12);
@@ -36,7 +46,6 @@ function turn(text: string, at: Date): StoredMessage[] {
       id: uuid(),
       role: 'assistant',
       text: `r: ${text}`,
-      reasoning: [{ kind: 'thought', text: 'pienso' }],
       steps: [{ tool: 'list_alerts', label: 'Buscando alertas', ok: true }],
       citations: [{ kind: 'alert', id: 'a1', label: 'Alerta' }],
       tone: 'notice',
@@ -98,6 +107,46 @@ describe.skipIf(!databaseUrl)('Bunny · historial en PostgreSQL', () => {
     expect(await store.rename(LUIS, conversation.id, 'mío')).toBe(false);
     expect(await store.delete(LUIS, conversation.id)).toBe(false);
     expect(await store.get(ANA, 'no-es-uuid')).toBeUndefined();
+  });
+
+  it('borra reasoning heredado en la migración y nunca lo devuelve desde filas antiguas', async () => {
+    const at = new Date(BASE + 60_000);
+    const { conversation } = await store.create(ANA, {
+      id: uuid(),
+      title: 'legado',
+      createdAt: at,
+      messages: turn('legado', at),
+    });
+    const admin = new Client(url);
+    await admin.connect();
+    try {
+      await admin.query(
+        `UPDATE assistant_conversations
+         SET messages = jsonb_set(messages, '{1,reasoning}', $1::jsonb, true)
+         WHERE id = $2`,
+        [
+          JSON.stringify([
+            { kind: 'thought', text: 'PENSAMIENTO PRIVADO' },
+            { kind: 'tool', label: 'Buscando alertas', ok: true },
+          ]),
+          conversation.id,
+        ],
+      );
+      await admin.query(removeThinkingMigration);
+      const row = await admin.query<{ messages: Record<string, unknown>[] }>(
+        'SELECT messages FROM assistant_conversations WHERE id = $1',
+        [conversation.id],
+      );
+      expect(row.rows[0]?.messages[1]).not.toHaveProperty('reasoning');
+    } finally {
+      await admin.end();
+    }
+
+    const reopened = await store.get(ANA, conversation.id);
+    expect(reopened?.messages[1]).not.toHaveProperty('reasoning');
+    expect(reopened?.messages[1]?.steps).toEqual([
+      { tool: 'list_alerts', label: 'Buscando alertas', ok: true },
+    ]);
   });
 
   it('el compare-and-set no pierde turnos con escrituras concurrentes', async () => {

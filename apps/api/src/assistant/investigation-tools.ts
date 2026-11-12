@@ -109,7 +109,7 @@ function withLima(value: unknown, depth = 0): unknown {
   const out: Row = {};
   for (const [key, field] of Object.entries(value as Row)) {
     out[key] = withLima(field, depth + 1);
-    if ((/At$/u.test(key) || /Seen$/u.test(key)) && typeof field === 'string') {
+    if ((key.endsWith('At') || key.endsWith('Seen')) && typeof field === 'string') {
       const label = limaLabel(field);
       if (label) out[`${key}Lima`] = label;
     }

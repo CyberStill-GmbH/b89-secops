@@ -49,6 +49,43 @@ CloudTrail (trail de organización, ya existente)
 
 `bash wazuh/aws-events/tests/run-aws-logtest.sh b89-wazuh.manager-1` → 50/50 casos.
 
+## Despliegue PowerUser y push de alertas
+
+`infra/aws-poweruser/scripts/deploy-host.sh` espera que Manager esté arriba, instala el localfile y
+las reglas con `install-aws-events.sh`, valida/reinicia el Manager y recién después arranca el servicio
+Compose `aws-events`. El instalador mantiene copia de `ossec.conf`, revierte config/reglas si falla la
+validación o el reinicio y persiste el archivo host con reemplazo atómico. Si falla cualquier gate,
+el despliegue se detiene antes del edge; SNS conserva sus reintentos de entrega. El flujo no se ha
+ejecutado aquí contra un host AWS.
+
+El fast path `custom-b89` sigue separado del despliegue normal. Tras aprobar el canario y sincronizar
+el HMAC, el operador debe ejecutar explícitamente `activate-wazuh-push.sh`; hace backup, valida con
+`wazuh-analysisd -t` y `wazuh-integratord -t`, reinicia Manager y revierte si falla. No forma parte de
+`deploy-host.sh`.
+
+Filtro de salida: nivel mínimo 3 y grupos `b89_provider,office365`. Wazuh 4.14.8 comprueba nivel y
+grupo como condiciones sucesivas (AND); los nombres dentro de `<group>` son alternativas (OR). Los
+roots de reglas AWS B89 ya heredan `b89_provider`; el root de reglas B89 M365 lo incorpora. El grupo
+`office365` añade las alertas base oficiales de M365 3–6, evitando reenviar reglas Wazuh ajenas a esos
+providers. Contrato contrastado con el [manual de integración externo de Wazuh](https://documentation.wazuh.com/current/user-manual/manager/integration-with-external-apis.html)
+y el [código del integrator fijado a v4.14.8](https://github.com/wazuh/wazuh/blob/v4.14.8/src/os_integrator/integrator.c#L187-L226).
+
+### Gate de latencia y volumen
+
+Objetivo propuesto, todavía no medido: p95 desde el `aws.time` del evento hasta la recepción durable
+de su hint en la inbox B89 ≤10 segundos bajo 10 mensajes/segundo sostenidos durante 10 minutos en un
+entorno de canario autorizado, sin pérdidas en el conjunto sintético y con duplicados identificados.
+Separar además el p95 de visibilidad en Indexer para distinguir entrega del webhook, lectura JSONL,
+decodificación y escritura de Wazuh. Ejecutar 50/50 reglas de `wazuh-logtest`, tests del receptor,
+tests estáticos de orden/config y después medir el canario con timestamps/IDs correlables antes de
+activar `custom-b89`.
+
+Riesgo de volumen: `office365` también incluye los eventos base de M365 de nivel 3–6; al habilitar
+push puede elevar mucho la tasa y `integratord` lanza el script por alerta. El emisor es best-effort,
+no reintenta, y la API aplica límites de entrada; ante picos, errores o duplicados, el pull de Indexer
+continúa siendo la reconciliación obligatoria. No declarar p95 ni completitud a partir de tests
+sintéticos o del hecho de arrancar los servicios.
+
 ## Límites (sin IAM)
 
 - Reenviar a un bus central exige rol IAM: cada región tiene su propio tema/regla (centinela).

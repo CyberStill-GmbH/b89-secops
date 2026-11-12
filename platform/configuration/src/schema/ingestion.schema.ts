@@ -58,11 +58,15 @@ export type IngestionConfig =
       readonly gatewayAuth: 'entra';
       /** Scope de client credentials, p. ej. `api://<client-id>/.default`. */
       readonly gatewayScope: string;
+      /** Optional HMAC secret for durable manager push receipts; requires PostgreSQL persistence. */
+      readonly pushSecret?: SecretValue;
     })
   | (WazuhIngestionBase & {
       readonly gatewayAuth: 'static-token';
       /** Bearer compartido con el gateway; `reveal()` solo al armar la cabecera. */
       readonly gatewayAccessToken: SecretValue;
+      /** Optional HMAC secret for durable manager push receipts; requires PostgreSQL persistence. */
+      readonly pushSecret?: SecretValue;
     });
 
 const SOURCE_ID_PATTERN = /^[a-z0-9][a-z0-9-]{2,63}$/u;
@@ -199,10 +203,17 @@ export function parseIngestionConfig(
 
   if (gatewayAuth === 'static-token') {
     requireStaticTokenTransport(gatewayBaseUrl, profile);
+    const pushSecret = environment['B89_WAZUH_PUSH_SECRET'];
+    if (pushSecret !== undefined && (pushSecret.length < 32 || pushSecret.length > 512)) {
+      throw configurationError('CONFIG_VALUE_INVALID', 'B89_WAZUH_PUSH_SECRET', profile.name, {
+        minimumLength: 32,
+      });
+    }
     return {
       ...base,
       gatewayAuth: 'static-token',
       gatewayAccessToken: readStaticGatewayToken(environment, profile),
+      ...(pushSecret ? { pushSecret: new SecretValue(pushSecret) } : {}),
     };
   }
 
@@ -217,5 +228,16 @@ export function parseIngestionConfig(
   if (!SCOPE_PATTERN.test(gatewayScope)) {
     throw configurationError('CONFIG_VALUE_INVALID', 'B89_INGESTION_GATEWAY_SCOPE', profile.name);
   }
-  return { ...base, gatewayAuth: 'entra', gatewayScope };
+  const pushSecret = environment['B89_WAZUH_PUSH_SECRET'];
+  if (pushSecret !== undefined && (pushSecret.length < 32 || pushSecret.length > 512)) {
+    throw configurationError('CONFIG_VALUE_INVALID', 'B89_WAZUH_PUSH_SECRET', profile.name, {
+      minimumLength: 32,
+    });
+  }
+  return {
+    ...base,
+    gatewayAuth: 'entra',
+    gatewayScope,
+    ...(pushSecret ? { pushSecret: new SecretValue(pushSecret) } : {}),
+  };
 }

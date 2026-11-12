@@ -13,7 +13,9 @@ opensearch_security.proxycache.user_header: 'x-proxy-user'
 opensearch_security.proxycache.roles_header: 'x-proxy-roles'
 # Logout = página del plugin, que obtiene el CSRF y hace POST /api/auth/logout.
 opensearch_security.auth.logout_url: '/b89/logout'
-opensearch_security.multitenancy.enabled: false
+opensearch_security.multitenancy.enabled: true
+opensearch_security.multitenancy.tenants.enable_private: true
+opensearch_security.multitenancy.tenants.preferred: ['Global', 'Private']
 opensearch.requestHeadersAllowlist:
   ['securitytenant', 'x-forwarded-for', 'x-proxy-user', 'x-proxy-roles']
 

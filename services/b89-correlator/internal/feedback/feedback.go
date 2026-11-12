@@ -72,12 +72,18 @@ type Proposal struct {
 
 // Result is the evaluated feedback state.
 type Result struct {
-	EvaluatedAt time.Time  `json:"evaluatedAt"`
-	Verdicts    int        `json:"verdicts"`
-	FalsePos    int        `json:"falsePositiveVerdicts"`
-	TruePos     int        `json:"truePositiveVerdicts"`
-	Proposals   []Proposal `json:"proposals"`
-	active      map[string]Proposal
+	EvaluatedAt           time.Time  `json:"evaluatedAt"`
+	WindowSeconds         int64      `json:"windowSeconds"`
+	Verdicts              int        `json:"verdicts"`
+	FalsePos              int        `json:"falsePositiveVerdicts"`
+	TruePos               int        `json:"truePositiveVerdicts"`
+	CorrelatorAlerts      int        `json:"correlatorAlerts"`
+	CorrelatorAdjudicated int        `json:"correlatorAdjudicated"`
+	CorrelatorUnreviewed  int        `json:"correlatorUnreviewed"`
+	CorrelatorFalsePos    int        `json:"correlatorFalsePositiveVerdicts"`
+	CorrelatorTruePos     int        `json:"correlatorTruePositiveVerdicts"`
+	Proposals             []Proposal `json:"proposals"`
+	active                map[string]Proposal
 }
 
 type pair struct {
@@ -113,7 +119,11 @@ func Evaluate(alerts []model.B89Alert, canonical func(string) string, p Policy, 
 	if canonical == nil {
 		canonical = func(k string) string { return k }
 	}
-	res := Result{EvaluatedAt: now, active: map[string]Proposal{}}
+	res := Result{EvaluatedAt: now, WindowSeconds: int64(p.Window.Seconds()), active: map[string]Proposal{}}
+	withinWindow := func(at time.Time) bool {
+		age := now.Sub(at)
+		return age >= 0 && age <= p.Window
+	}
 	pairs := map[string]*pair{}
 	highest := map[string]string{} // rule -> highest priority ever seen
 	sorted := append([]model.B89Alert(nil), alerts...)
@@ -122,10 +132,24 @@ func Evaluate(alerts []model.B89Alert, canonical func(string) string, p Policy, 
 		if a.RuleID == "" {
 			continue
 		}
+		// The alert cohort uses occurrence time; verdict time is tracked separately for
+		// feedback-driven suppression below.
+		if strings.HasPrefix(a.RuleID, model.CorrelatorRulePrefix) && withinWindow(a.OccurredAt) {
+			res.CorrelatorAlerts++
+			if a.IsFalsePositive() {
+				res.CorrelatorAdjudicated++
+				res.CorrelatorFalsePos++
+			} else if a.IsTruePositive() {
+				res.CorrelatorAdjudicated++
+				res.CorrelatorTruePos++
+			} else {
+				res.CorrelatorUnreviewed++
+			}
+		}
 		if cur, ok := highest[a.RuleID]; !ok || priorityRank(a.Priority) < priorityRank(cur) {
 			highest[a.RuleID] = a.Priority
 		}
-		if a.Verdict == "" || now.Sub(verdictTime(a)) > p.Window {
+		if a.Verdict == "" || !withinWindow(verdictTime(a)) {
 			continue
 		}
 		fp, tp := a.IsFalsePositive(), a.IsTruePositive()

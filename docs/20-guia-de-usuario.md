@@ -1,9 +1,10 @@
 # 20 · Guía de usuario (analistas, líderes y auditores)
 
-> Estado (2026-11-08): describe la consola desplegada en `https://dev.security.b89.io`. Hay trabajo
-> en curso de otros agentes sobre la interfaz (logos reales de servicios, reportes PDF con marca,
-> vista de investigación y limpieza de la navegación); las secciones afectadas se actualizarán al
-> fusionarse. Esta guía no contiene credenciales.
+> Estado (base desplegada 2026-11-08): describe la consola de `https://dev.security.b89.io` en esa
+> fecha. Las mejoras locales de investigación progresiva, grupos de actividad, exportación CSV/XLSX,
+> impresión PDF, cambios en vivo y cancelación de Bunny se documentan en [08](08-frontend-unificado.md)
+> y [15](15-bunny-asistente.md), pero no se presentan aquí como desplegadas. Esta guía no contiene
+> credenciales.
 
 ## Entrar
 
@@ -42,8 +43,9 @@ Capacidades exactas: `modules/access/src/capabilities.ts`. Separación de funcio
 | --- | --- |
 | **Resumen del SOC** | Portada: alertas de las últimas 24 h por severidad, tendencia, estado de cada integración (eventos 24 h, último evento) y accesos a los dashboards por proveedor |
 | **Monitoreo › Cola de alertas** | La vigilancia en vivo. Estados: Nueva → Reconocida → Triada → Escalada → Cerrada. «Registrar triaje» exige veredicto (verdadero positivo, falso positivo, benigna, duplicada) y nota; un verdadero positivo se puede convertir en incidente. «Ver eventos en Discover (±1 h)» abre la búsqueda por usuario, IP o agente |
+| **Investigar alerta o entidad** | Abre el evento de origen, pivotes por entidad, MITRE, el riesgo disponible y eventos relacionados. «Exportar Excel (CSV)» descarga la alerta y los eventos devueltos por la línea de tiempo; «Guardar como PDF» abre la impresión del navegador con formato para papel. El CSV no incluye páginas adicionales de resultados ni mensajes de correo de buzón. |
 | **Incidentes** | Casos: estado (Abierto, Contenido, Erradicado, Resuelto, Cerrado), severidad, alertas vinculadas, tareas, notas y línea de tiempo. Cerrar exige rol Líder |
-| **Notificaciones** | Avisos P1 y su acuse. El aviso P1 aparece además en la cabecera de todo el dashboard |
+| **Notificaciones** | Historial de avisos y acuses. La política agrupa repeticiones P1/P2; P3/P4 y P2 antiguos se incorporan a resúmenes. Revisa el estado del canal y el motivo de entrega antes de interpretar la ausencia de una tarjeta como pérdida del evento. |
 | **Integraciones** | Una tarjeta por fuente: qué recoge, cada cuánto, reglas, permisos que faltan y siguiente paso. Detalle en [18](18-integraciones.md) |
 | **Políticas** | Políticas vigentes por grupo de agentes, del manager (vulnerabilidades, SCA, Active Response apagada, umbral de correo) y retención (alertas 90 d, monitoreo 15 d, archivos 7 d). Detalle en [16](16-politicas.md) |
 | **Auditoría e integridad** | Quién hizo qué y cuándo; «Verificar» comprueba la cadena hash completa. Solo Líder, Auditor y Admin |
@@ -51,6 +53,14 @@ Capacidades exactas: `modules/access/src/capabilities.ts`. Separación de funcio
 | **Salud de fuentes** | Estado de la ingesta (p. ej. «Wazuh Indexer · alertas») y salud operativa |
 | **Mi sesión** | Tu usuario, rol, capacidades y vencimiento de la sesión |
 | **SOAR** | B89 Respond embebido (ver abajo) |
+
+La política predeterminada (puede cambiar por configuración de despliegue) envía P1 al instante, salvo
+que el mismo grupo ya tenga un aviso dentro de 30 minutos; para P2 el período de agrupación es de 2 horas,
+los eventos con más de 1 hora de atraso pasan al resumen y hay un tope de 12 tarjetas P2 por hora. P3/P4
+se resumen cada 6 horas; los avisos suprimidos se agregan al digest con una espera de hasta 15 minutos.
+La política vive en `modules/soar/src/notification-policy.ts`. Para diagnosticar una alerta faltante,
+consulta Salud de fuentes/Operaciones, la pestaña Canales y el historial de notificaciones; el resumen no
+sustituye la evidencia del proveedor ni confirma que el canal externo haya entregado un mensaje.
 
 Severidad de las alertas (escala B89 sobre el nivel Wazuh): baja 0–3, media 4–7, alta 8–11, crítica
 12–15. Las reglas, runbooks y el modelo operativo (turnos, SLA por prioridad) están en
@@ -99,7 +109,7 @@ lectura:
 | Integridad de archivos (FIM) | Cambios en rutas vigiladas |
 | Detección de malware / rootcheck | Hallazgos de rootcheck |
 | Inventario (IT Hygiene) | Paquetes, puertos, procesos, usuarios |
-| Office 365 | Actividad de M365 (sin datos hasta concederse `ActivityFeed.Read`) |
+| Office 365 | Actividad de M365 mediante el feed de auditoria; confirma salud y ultimo evento en Fuentes antes de interpretar ausencia de alertas |
 | MITRE ATT&CK y caza de amenazas | Alertas por técnica y búsqueda |
 | Agentes | Estado de los agentes (hoy solo el nodo del SOC) |
 

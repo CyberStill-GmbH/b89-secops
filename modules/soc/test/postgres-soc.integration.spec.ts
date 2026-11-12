@@ -228,6 +228,130 @@ describe.skipIf(!databaseUrl)('C-17 · persistencia SOC sobre PostgreSQL', () =>
     }
   });
 
+  it('PostgreSQL filtra los claims por carril sin mezclar P2 con P1/críticos', async () => {
+    const admin = new Client(database!.url);
+    await admin.connect();
+    const at = new Date('2026-10-11T14:00:00.000Z');
+    const rows = [
+      {
+        id: randomUUID(),
+        aggregate: 'alert',
+        type: 'soc.alert.created',
+        payload: { priority: 'P2' },
+        offset: -3_000,
+      },
+      {
+        id: randomUUID(),
+        aggregate: 'alert',
+        type: 'soc.alert.escalated',
+        payload: { priority: 'P1' },
+        offset: -2_000,
+      },
+      {
+        id: randomUUID(),
+        aggregate: 'incident',
+        type: 'soc.incident.opened',
+        payload: { severity: 'critical' },
+        offset: -1_000,
+      },
+    ];
+    try {
+      // This temporary database is shared by earlier specs. Finish stale urgent fixtures
+      // before asserting this test's exact claim set; leave normal-lane fixtures intact for
+      // the following lease recovery spec.
+      await admin.query(
+        `UPDATE soc_outbox_messages
+            SET status = 'published', published_at = $1, lease_until = NULL, claim_id = NULL
+          WHERE status <> 'published'
+            AND COALESCE((
+              (aggregate_type = 'alert'
+                AND message_type IN ('soc.alert.created', 'soc.alert.escalated')
+                AND payload->>'priority' = 'P1')
+              OR (aggregate_type = 'incident'
+                AND message_type = 'soc.incident.opened'
+                AND payload->>'severity' = 'critical')
+            ), false)`,
+        [at],
+      );
+      await admin.query(
+        `INSERT INTO soc_outbox_messages
+          (message_id, tenant_id, aggregate_type, aggregate_id, message_type, schema_version,
+           idempotency_key, payload, available_at)
+         SELECT gen_random_uuid(), $1, 'alert', gen_random_uuid(), 'soc.alert.created', '1.0.0',
+                'urgent-lane-noise-' || n::text, '{"priority":"P2"}'::jsonb, $2
+           FROM generate_series(1, 5000) AS n`,
+        [TENANT, new Date(at.getTime() - 10_000)],
+      );
+      for (const row of rows) {
+        await admin.query(
+          `INSERT INTO soc_outbox_messages
+            (message_id, tenant_id, aggregate_type, aggregate_id, message_type, schema_version,
+             idempotency_key, payload, available_at)
+           VALUES ($1, $2, $3, $4, $5, '1.0.0', $6, $7::jsonb, $8)`,
+          [
+            row.id,
+            TENANT,
+            row.aggregate,
+            randomUUID(),
+            row.type,
+            `urgent-lane-${row.id}`,
+            JSON.stringify(row.payload),
+            new Date(at.getTime() + row.offset),
+          ],
+        );
+      }
+      await admin.query('ANALYZE soc_outbox_messages');
+
+      const explain = await admin.query<{ 'QUERY PLAN': unknown }>(
+        `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
+         SELECT candidate.message_id
+           FROM soc_outbox_messages AS candidate
+          WHERE ((candidate.status = 'pending' AND candidate.available_at <= $1)
+              OR (candidate.status = 'processing' AND candidate.lease_until < $1))
+            AND candidate.status <> 'published'
+            AND COALESCE((
+              (candidate.aggregate_type = 'alert'
+                AND candidate.message_type IN ('soc.alert.created', 'soc.alert.escalated')
+                AND candidate.payload->>'priority' = 'P1')
+              OR (candidate.aggregate_type = 'incident'
+                AND candidate.message_type = 'soc.incident.opened'
+                AND candidate.payload->>'severity' = 'critical')
+            ), false)
+          ORDER BY candidate.available_at, candidate.message_id
+          LIMIT 2`,
+        [at],
+      );
+      expect(JSON.stringify(explain.rows[0]?.['QUERY PLAN'])).toContain(
+        'soc_outbox_messages_urgent_claim_idx',
+      );
+      // The 5,000 P2 rows exercise planner selectivity only. Remove them before the
+      // two-lane claims so the tiny fixture tests membership rather than batch truncation.
+      await admin.query(
+        "DELETE FROM soc_outbox_messages WHERE idempotency_key LIKE 'urgent-lane-noise-%'",
+      );
+
+      const urgent = await persistence.claimOutbox(at, 100, 60_000, 'urgent');
+      const normal = await persistence.claimOutbox(at, 100, 60_000, 'normal');
+      const urgentIds = new Set(urgent.map((message) => message.messageId));
+      const normalIds = new Set(normal.map((message) => message.messageId));
+
+      expect(urgentIds).toEqual(new Set(rows.slice(1).map((row) => row.id)));
+      expect(urgent.map((message) => message.messageId)).toEqual(
+        rows.slice(1).map((row) => row.id),
+      );
+      expect(normalIds.has(rows[0]!.id)).toBe(true);
+      expect([...urgentIds].every((id) => !normalIds.has(id))).toBe(true);
+      for (const message of [...urgent, ...normal]) {
+        await persistence.markOutboxPublished(message.messageId, message.claimToken, at);
+      }
+    } finally {
+      await admin.query(
+        "DELETE FROM soc_outbox_messages WHERE idempotency_key LIKE 'urgent-lane-%'",
+      );
+      await admin.end();
+    }
+  });
+
   it('el lease vencido devuelve el mensaje a la cola; publicar lo cierra para siempre', async () => {
     const expired = new Date('2026-10-11T14:05:00.000Z');
     const reclaimed = await persistence.claimOutbox(expired, 100, 60_000);
@@ -484,8 +608,11 @@ describe.skipIf(!databaseUrl)('C-17 · persistencia SOC sobre PostgreSQL', () =>
       completedAt: at,
       outcome: 'success' as const,
       recordsSeen: 0,
+      normalized: 0,
       promoted: 0,
       quarantined: 0,
+      duplicates: 0,
+      notPromoted: 0,
       newestEventAt: null,
       errorClass: null,
     };

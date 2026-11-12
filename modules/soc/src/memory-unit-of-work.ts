@@ -24,6 +24,7 @@ import type { Incident } from './incident.js';
 import type { IncidentNote, IncidentTask } from './incident-work.js';
 import { InMemoryIngestionState } from './memory-ingestion.js';
 import type { OutboxMessageDraft } from './events.js';
+import type { OutboxLane } from './ports.js';
 import type {
   AlertQuery,
   AlertStore,
@@ -399,10 +400,14 @@ export class InMemorySoc implements SocPersistence {
     at: Date,
     limit: number,
     leaseMs: number,
+    lane: OutboxLane = 'all',
   ): Promise<readonly ClaimedOutboxMessage[]> {
     const now = at.getTime();
     const claimable = [...this.outboxRows.values()]
       .filter((message) => {
+        const urgent = isUrgentOutboxMessage(message);
+        if (lane === 'urgent' && !urgent) return false;
+        if (lane === 'normal' && urgent) return false;
         const state = this.stateOf(message);
         if (state.status === 'pending') return state.availableAt.getTime() <= now;
         return state.status === 'processing' && (state.leaseUntil?.getTime() ?? 0) < now;
@@ -494,4 +499,18 @@ export class InMemorySoc implements SocPersistence {
   public close(): Promise<void> {
     return Promise.resolve();
   }
+}
+
+function isUrgentOutboxMessage(message: OutboxMessageDraft): boolean {
+  if (
+    message.aggregateType === 'alert' &&
+    (message.messageType === 'soc.alert.created' || message.messageType === 'soc.alert.escalated')
+  ) {
+    return message.payload['priority'] === 'P1';
+  }
+  return (
+    message.aggregateType === 'incident' &&
+    message.messageType === 'soc.incident.opened' &&
+    message.payload['severity'] === 'critical'
+  );
 }

@@ -95,6 +95,10 @@ type B89Alert struct {
 	UpdatedAt  time.Time `json:"updatedAt"`
 }
 
+// CorrelatorRulePrefix identifies alerts emitted by the risk correlator. Keep this on the
+// shared model so feedback can measure adjudication without importing the risk package.
+const CorrelatorRulePrefix = "b89-correlator:"
+
 // IsFalsePositive reports a benign/false-positive analyst verdict.
 func (a B89Alert) IsFalsePositive() bool {
 	return a.Verdict == "false_positive" || a.Verdict == "benign"
@@ -154,28 +158,28 @@ type Explanation struct {
 
 // Candidate is a correlated "risk incident" proposal: one entity, one stage window.
 type Candidate struct {
-	ID             string     `json:"id"`
-	IdempotencyKey string     `json:"idempotencyKey"`
-	Kind           string     `json:"kind"` // "pattern" or "threshold"
-	PatternID      string     `json:"patternId"`
-	Title          string     `json:"title"`
-	Summary        string     `json:"summary"`
-	Entity         Entity     `json:"entity"`
-	RelatedKeys    []string   `json:"relatedEntityKeys"`
-	Score          int        `json:"score"`
-	RiskScore      float64    `json:"riskScore"`
-	Priority       string     `json:"priority"`
-	Signal         string     `json:"signal"`
-	Stages         []StageHit `json:"stages"`
-	MemberCount    int        `json:"memberCount"`
-	B89AlertIDs    []string   `json:"b89AlertIds"`
-	Sources        []string   `json:"sources"`
-	Tactics        []string   `json:"tactics"`
-	FirstSeen      time.Time  `json:"firstSeen"`
-	LastSeen       time.Time  `json:"lastSeen"`
-	CreatedAt      time.Time  `json:"createdAt"`
-	Status         string     `json:"status"`
-	AlertID        string     `json:"alertId,omitempty"`
-	StatusDetail   string     `json:"statusDetail,omitempty"`
+	ID             string      `json:"id"`
+	IdempotencyKey string      `json:"idempotencyKey"`
+	Kind           string      `json:"kind"` // "pattern" or "threshold"
+	PatternID      string      `json:"patternId"`
+	Title          string      `json:"title"`
+	Summary        string      `json:"summary"`
+	Entity         Entity      `json:"entity"`
+	RelatedKeys    []string    `json:"relatedEntityKeys"`
+	Score          int         `json:"score"`
+	RiskScore      float64     `json:"riskScore"`
+	Priority       string      `json:"priority"`
+	Signal         string      `json:"signal"`
+	Stages         []StageHit  `json:"stages"`
+	MemberCount    int         `json:"memberCount"`
+	B89AlertIDs    []string    `json:"b89AlertIds"`
+	Sources        []string    `json:"sources"`
+	Tactics        []string    `json:"tactics"`
+	FirstSeen      time.Time   `json:"firstSeen"`
+	LastSeen       time.Time   `json:"lastSeen"`
+	CreatedAt      time.Time   `json:"createdAt"`
+	Status         string      `json:"status"`
+	AlertID        string      `json:"alertId,omitempty"`
+	StatusDetail   string      `json:"statusDetail,omitempty"`
 	Explanation    Explanation `json:"explanation"`
 }

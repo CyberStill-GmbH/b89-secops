@@ -1,8 +1,9 @@
 # 09 · Plan de lanzamiento (serverless en AWS)
 
-> Todo este plan es **propuesto**. Hoy no hay Terraform serverless en `infra/aws/` ni nada
-> desplegado en las cuentas B89; lo que existe es código de dominio (`apps/`, `modules/`,
-> `platform/`) y el overlay `wazuh/`, **sin verificar en AWS**. Arquitectura: [02](02-arquitectura.md).
+> Este plan describe la arquitectura serverless **propuesta**; no representa el entorno dev actual.
+> El dev vigente usa una EC2 y un ALB administrados por `infra/aws-poweruser/`; la release y sus
+> límites de verificación están en [22](22-registro-de-cambios.md). No hay que interpretar este
+> plan como evidencia de que la arquitectura serverless ya existe. Arquitectura: [02](02-arquitectura.md).
 > El camino Azure (EUS2) queda **archivado**, sin valor de plan: [`docs/archive/azure`](archive/azure/README.md).
 
 Cada fase termina con evidencia (SHA, comando, versiones y resultados redactados) en el PR del
@@ -45,7 +46,7 @@ adaptador** (un punto de entrada nuevo en `apps/api`; el dominio en `modules/*` 
 | Conexión a Aurora desde Lambda con RDS Proxy o equivalente | Una ráfaga de invocaciones no agota las conexiones |
 | Colas: SQS + DLQ en lugar de BullMQ; Scheduler en lugar de los loops del worker ([11](11-cache-y-colas.md)) | Notificaciones y sondeo de ingesta funcionan sin proceso persistente; un mensaje fallido llega a la DLQ |
 | Ingesta cloud-native: EventBridge → SQS → Lambda normaliza a `SecurityEvent` | Un hallazgo de GuardDuty de prueba crea una alerta en B89 |
-| Push `custom-b89` y endpoint `POST /api/ingest/wazuh` (nuevo) | Una alerta de nivel ≥ 7 llega a B89 en ≤ 5 s y el pull no la duplica |
+| Push `custom-b89` + endpoint `POST /api/ingest/wazuh` (wake-up local existe; entrega durable para serverless pendiente) | En el perfil serverless propuesto, el evento autenticado queda en SQS antes de aceptar; medir p95 <=5 s desde la aceptacion durable hasta alerta B89 y confirmar una sola alerta entre push y pull. El objetivo distinto del perfil EC2 actual esta en [25](25-programa-confiabilidad-e-investigacion.md) |
 | CloudFront + WAF con `/` al Dashboard y `/api` a API Gateway | `curl` sin sesión da 302 al login; con sesión abre el dashboard con su rol |
 | Auditoría: anclaje periódico del hash en S3 Object Lock (modo compliance) con réplica a `b89-log-archive` | Un manifiesto firmado se verifica; nadie en la cuenta de carga puede borrarlo |
 | Lectura API → Indexer por ruta privada VPC sin KrakenD | La fuente «Wazuh Indexer · alertas» se pone en verde |

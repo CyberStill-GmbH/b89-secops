@@ -8,17 +8,20 @@ import workspaceManifest from '../../package.json' with { type: 'json' };
 
 const root = resolve(import.meta.dirname, '../..');
 const environment = new IntegrationEnvironment({ profile: 'postgres', repositoryRoot: root });
-const command = 'pnpm --filter @b89/database test';
-let suiteExitCode: number | null = null;
+const databaseCommand = 'pnpm --filter @b89/database test';
+const socCommand =
+  'pnpm exec vitest run --config vitest.integration.config.ts modules/soc/test/postgres-soc.integration.spec.ts';
+let databaseExitCode: number | null = null;
+let socExitCode: number | null = null;
 let failure = '';
 let failureDetail = '';
 let cleanupStatus: 'PASS' | 'FAIL' = 'PASS';
 
-function runSuite(connectionString: string): Promise<number> {
+function runSuite(args: readonly string[], connectionString: string): Promise<number> {
   return new Promise((done, reject) => {
     const child = spawn(
       process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm',
-      ['--filter', '@b89/database', 'test'],
+      args,
       {
         cwd: root,
         env: { ...process.env, DATABASE_URL: connectionString },
@@ -47,8 +50,25 @@ try {
     failure = 'POSTGRES_UNHEALTHY';
     throw new Error(failure);
   }
-  suiteExitCode = await runSuite(runtime.postgres.connectionString);
-  if (suiteExitCode !== 0) failure = 'Suite PostgreSQL C-04 falló';
+  databaseExitCode = await runSuite(
+    ['--filter', '@b89/database', 'test'],
+    runtime.postgres.connectionString,
+  );
+  if (databaseExitCode !== 0) failure = 'Suite PostgreSQL C-04/C-24 falló';
+  if (!failure) {
+    socExitCode = await runSuite(
+      [
+        'exec',
+        'vitest',
+        'run',
+        '--config',
+        'vitest.integration.config.ts',
+        'modules/soc/test/postgres-soc.integration.spec.ts',
+      ],
+      runtime.postgres.connectionString,
+    );
+    if (socExitCode !== 0) failure = 'Suite PostgreSQL SOC C-16/C-17 falló';
+  }
 } catch (error) {
   failure = failure || 'EXECUTION_FAILED';
   const message = error instanceof Error ? `${error.name}: ${error.message}` : 'unknown';
@@ -64,7 +84,8 @@ try {
     cleanupStatus = 'FAIL';
   }
   const complete =
-    suiteExitCode === 0 &&
+    databaseExitCode === 0 &&
+    socExitCode === 0 &&
     !failure &&
     cleanupStatus === 'PASS' &&
     evidence.result === 'PASS' &&
@@ -74,9 +95,19 @@ try {
     cleanup: { status: cleanupStatus, remainingOwnedResources: [] },
     result: complete ? 'PASS' : evidence.result === 'BLOCKED' ? 'BLOCKED' : 'FAIL',
     suite: {
-      name: 'C-04/C-24 PostgreSQL',
-      status: suiteExitCode === null ? 'NOT_RUN' : suiteExitCode === 0 ? 'PASS' : 'FAIL',
-      checks: [command, `exitCode=${suiteExitCode ?? 'NOT_RUN'}`],
+      name: 'C-04/C-16/C-17/C-24 PostgreSQL',
+      status:
+        databaseExitCode === null || socExitCode === null
+          ? 'NOT_RUN'
+          : databaseExitCode === 0 && socExitCode === 0
+            ? 'PASS'
+            : 'FAIL',
+      checks: [
+        databaseCommand,
+        `exitCode=${databaseExitCode ?? 'NOT_RUN'}`,
+        socCommand,
+        `exitCode=${socExitCode ?? 'NOT_RUN'}`,
+      ],
     },
     versions: {
       node: process.version,

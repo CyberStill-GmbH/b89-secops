@@ -97,6 +97,7 @@ export interface DispatchResult {
 /** Ventana máxima hacia atrás para encontrar el último aviso de un grupo (re-aviso). */
 const GROUP_LOOKBACK_MS = 24 * 3_600_000;
 const GROUP_SUPPRESSED_LIMIT = 500;
+const GROUP_DISPATCH_LEASE_MS = 120_000;
 
 async function auditDelivery(
   dependencies: DispatchDependencies,
@@ -114,7 +115,9 @@ async function auditDelivery(
     action: `soar.notification.${status}`,
     resource: { type: 'notification', id: attempt.id },
     outcome:
-      status === 'sent' || status === 'fallback' || status === 'suppressed' ? 'succeeded' : 'failed',
+      status === 'sent' || status === 'fallback' || status === 'suppressed'
+        ? 'succeeded'
+        : 'failed',
     correlationId: attempt.idempotencyKey,
     ...(reason === undefined ? {} : { reason }),
     metadata: {
@@ -237,6 +240,9 @@ export async function dispatchMessage(
       entityKeys,
       title: context.title,
     });
+  const effectivePriority = message.aggregateType === 'incident' ? 'P1' : context.priority;
+  const quietPeriodMs =
+    effectivePriority === 'P2' ? policy.quietPeriodMs.P2 : policy.quietPeriodMs.P1;
 
   const base =
     existing ??
@@ -249,6 +255,8 @@ export async function dispatchMessage(
     });
 
   let notice = existing ? noticeOf(existing) : undefined;
+  const usesP2Slot = context.priority === 'P2';
+  let p2SlotReserved = false;
   if (!notice) {
     const last = await dependencies.attempts.lastNotifiedInGroup(
       message.tenantId,
@@ -264,7 +272,7 @@ export async function dispatchMessage(
           GROUP_SUPPRESSED_LIMIT,
         )
       : [];
-    const decision = decideNotification({
+    let decision = decideNotification({
       priority: context.priority,
       incident: message.aggregateType === 'incident',
       occurredAt,
@@ -272,13 +280,21 @@ export async function dispatchMessage(
       history: {
         lastNotified: last && since ? { id: last.id, at: since } : null,
         suppressedSinceLast: suppressed.length,
-        immediateLastHour: await dependencies.attempts.countNotifiedSince(
-          message.tenantId,
-          new Date(at.getTime() - 3_600_000),
-        ),
+        // P2 quota is reserved atomically below; a count-then-send check races across replicas.
+        immediateLastHour: 0,
       },
       config: policy,
     });
+    if (decision.kind === 'notify' && context.priority === 'P2') {
+      const reserved = await dependencies.attempts.reserveP2ImmediateSlot(
+        message.tenantId,
+        message.idempotencyKey,
+        at,
+        policy.maxImmediatePerHour,
+      );
+      if (!reserved) decision = { kind: 'suppress', reason: 'rate_limited', coveredBy: null };
+      else p2SlotReserved = true;
+    }
     if (decision.kind === 'suppress') {
       const held: NotificationAttempt = {
         ...base,
@@ -307,6 +323,80 @@ export async function dispatchMessage(
     };
   }
 
+  // Los reintentos ya tienen notice/context persistidos; renuevan la misma plaza antes de enviar.
+  if (usesP2Slot && !p2SlotReserved) {
+    const reserved = await dependencies.attempts.reserveP2ImmediateSlot(
+      message.tenantId,
+      message.idempotencyKey,
+      at,
+      policy.maxImmediatePerHour,
+    );
+    if (!reserved) {
+      const held: NotificationAttempt = {
+        ...base,
+        status: 'suppressed',
+        suppressionReason: 'rate_limited',
+        supersededBy: null,
+        groupKey,
+        context: { ...context },
+        updatedAt: at,
+      };
+      await dependencies.attempts.save(held);
+      await dependencies.outbox.markPublished(message.messageId, at);
+      await auditDelivery(dependencies, held, 'suppressed', at, 'rate_limited');
+      return { code: 'suppressed', attempt: held };
+    }
+    p2SlotReserved = true;
+  }
+
+  // The group check and its reservation are one cross-replica decision. Without this lease, two
+  // different outbox rows for the same incident/rule can both observe no recent sent attempt.
+  const groupFence = dependencies.ids.next();
+  const groupReservation = await dependencies.attempts.reserveGroupDispatchSlot(
+    message.tenantId,
+    groupKey,
+    message.idempotencyKey,
+    base.id,
+    groupFence,
+    at,
+    quietPeriodMs,
+    GROUP_DISPATCH_LEASE_MS,
+  );
+  if (!groupReservation.granted) {
+    if (p2SlotReserved) {
+      await dependencies.attempts.settleP2ImmediateSlot(
+        message.tenantId,
+        message.idempotencyKey,
+        at,
+        'failed',
+      );
+    }
+    const held: NotificationAttempt = {
+      ...base,
+      status: 'suppressed',
+      suppressionReason: 'grouped',
+      supersededBy: groupReservation.coveredBy,
+      groupKey,
+      context: { ...context, ...(notice ? { notice } : {}) },
+      updatedAt: at,
+    };
+    await dependencies.attempts.save(held);
+    await dependencies.outbox.markPublished(message.messageId, at);
+    await auditDelivery(dependencies, held, 'suppressed', at, 'grouped');
+    return { code: 'suppressed', attempt: held };
+  }
+  const settleGroup = (result: 'delivered' | 'failed' | 'uncertain') =>
+    dependencies.attempts.settleGroupDispatchSlot(
+      message.tenantId,
+      groupKey,
+      message.idempotencyKey,
+      groupFence,
+      dependencies.clock.now(),
+      quietPeriodMs,
+      GROUP_DISPATCH_LEASE_MS,
+      result,
+    );
+
   const sending: NotificationAttempt = {
     ...base,
     status: 'sending',
@@ -318,17 +408,15 @@ export async function dispatchMessage(
   await dependencies.attempts.save(sending);
 
   // Un directorio caído no bloquea el aviso: sale sin menciones antes que no salir.
-  let mentions: readonly NotificationRecipient[] = [];
+  let allRecipients: readonly NotificationRecipient[] = [];
   try {
-    mentions = dependencies.recipients
-      ? (await dependencies.recipients.recipientsFor(message.tenantId, roles)).slice(
-          0,
-          MAXIMUM_MENTIONS,
-        )
+    allRecipients = dependencies.recipients
+      ? await dependencies.recipients.recipientsFor(message.tenantId, roles)
       : [];
   } catch {
-    mentions = [];
+    allRecipients = [];
   }
+  const mentions = allRecipients.slice(0, MAXIMUM_MENTIONS);
   const firstAttempt = sending.attemptCount === 1;
   // Dispositivos: una vez por mensaje (primer intento), en paralelo con Teams. Se espera antes
   // de terminar la pasada (el apagado ordenado lo incluye) y nunca cambia el resultado.
@@ -337,7 +425,9 @@ export async function dispatchMessage(
       ? dependencies.devices
           .notify(
             message.tenantId,
-            mentions.flatMap((recipient) => (recipient.subjectKey ? [recipient.subjectKey] : [])),
+            allRecipients.flatMap((recipient) =>
+              recipient.subjectKey ? [recipient.subjectKey] : [],
+            ),
           )
           .catch(() => 0)
       : Promise.resolve(0);
@@ -392,6 +482,15 @@ export async function dispatchMessage(
       delivery,
     };
     await dependencies.attempts.save(sent);
+    await settleGroup('delivered');
+    if (usesP2Slot) {
+      await dependencies.attempts.settleP2ImmediateSlot(
+        message.tenantId,
+        message.idempotencyKey,
+        at,
+        'delivered',
+      );
+    }
     await dependencies.outbox.markPublished(message.messageId, at);
     await auditDelivery(dependencies, sent, 'sent', at);
     return { code: 'delivered', attempt: sent };
@@ -413,6 +512,15 @@ export async function dispatchMessage(
       delivery,
     };
     await dependencies.attempts.save(retrying);
+    await settleGroup(failure.class === 'ambiguous' ? 'uncertain' : 'failed');
+    if (usesP2Slot) {
+      await dependencies.attempts.settleP2ImmediateSlot(
+        message.tenantId,
+        message.idempotencyKey,
+        at,
+        failure.class === 'ambiguous' ? 'uncertain' : 'failed',
+      );
+    }
     await dependencies.outbox.scheduleRetry(message.messageId, retrying.availableAt, failure.code);
     return {
       code: failure.class === 'ambiguous' ? 'indeterminate_retry' : 'retry_scheduled',
@@ -443,6 +551,15 @@ export async function dispatchMessage(
     delivery: [...delivery, ...(fallbackRef.evidence ?? [])],
   };
   await dependencies.attempts.save(fallen);
+  await settleGroup('delivered');
+  if (usesP2Slot) {
+    await dependencies.attempts.settleP2ImmediateSlot(
+      message.tenantId,
+      message.idempotencyKey,
+      at,
+      'delivered',
+    );
+  }
   await dependencies.outbox.markPublished(message.messageId, at);
   await auditDelivery(dependencies, fallen, 'fallback', at, failure.code);
   return { code: 'fallback_used', attempt: fallen, failure };

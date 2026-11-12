@@ -7,6 +7,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import {
+  DEFAULT_ASSISTANT_LIMITS,
   InMemoryConversationStore,
   type AssistantModel,
   type ConversationStore,
@@ -64,6 +65,24 @@ describe('configuración del historial de Bunny', () => {
     expect(await assistantConversationStoreFor(off)).toBeUndefined();
     expect(createAssistantService(off, model, store)?.history).toBeUndefined();
     expect(await assistantConversationStoreFor({})).toBeUndefined();
+  });
+
+  it('selecciona el presupuesto del turno desde el entorno validado por el entrypoint', () => {
+    const model = () => ({}) as AssistantModel;
+    const ec2 = createAssistantService(
+      { B89_BUNNY_ENABLED: 'true', AWS_REGION: 'us-east-1' },
+      model,
+    );
+    const lambda = createAssistantService(
+      {
+        B89_BUNNY_ENABLED: 'true',
+        AWS_REGION: 'us-east-1',
+        AWS_LAMBDA_FUNCTION_NAME: 'b89-api',
+      },
+      model,
+    );
+    expect(ec2?.limits.deadlineMs).toBe(55_000);
+    expect(lambda?.limits).toBe(DEFAULT_ASSISTANT_LIMITS);
   });
 });
 
@@ -158,7 +177,11 @@ const model: AssistantModel = {
   },
 };
 
-function enableBunny(store: ConversationStore | undefined, retentionDays = 90) {
+function enableBunny(
+  store: ConversationStore | undefined,
+  retentionDays = 90,
+  selectedModel: AssistantModel = model,
+) {
   runtime.assistant = {
     config: {
       enabled: true,
@@ -170,7 +193,7 @@ function enableBunny(store: ConversationStore | undefined, retentionDays = 90) {
       rateLimit: { max: 100, windowMs: 60_000 },
     },
     limiter: new SlidingWindowLimiter(100, 60_000),
-    model,
+    model: selectedModel,
     ...(store ? { history: new ConversationHistory(store, retentionDays, 0) } : {}),
   };
 }
@@ -212,6 +235,65 @@ beforeEach(() => {
 });
 
 describe('Bunny · historial de conversaciones', () => {
+  const privateThinking = 'PRIVATE_MODEL_THINKING_SENTINEL ana@b89.example';
+  const modelWithThinking: AssistantModel = {
+    async complete() {
+      return {
+        content: [
+          { type: 'thinking', thinking: privateThinking, signature: 'private-signature' },
+          { type: 'text', text: 'Respuesta revisable con evidencia.' },
+        ],
+        stopReason: 'end_turn',
+        usage: { inputTokens: 1, outputTokens: 1 },
+      };
+    },
+  };
+
+  it('no expone ni persiste thinking en POST ni en el historial', async () => {
+    const store = new InMemoryConversationStore();
+    enableBunny(store, 90, modelWithThinking);
+    const analyst = await signIn('analista@b89.example');
+
+    const posted = await ask(analyst, 'Revisa a ana@b89.example');
+    expect(posted.statusCode).toBe(200);
+    const response = JSON.parse(posted.body);
+    expect(response).not.toHaveProperty('reasoning');
+    expect(posted.body).not.toContain(privateThinking);
+    expect(posted.body).not.toContain('private-signature');
+
+    const owner = { tenantId: runtime.tenantId, ownerId: 'local-analyst-1' };
+    const saved = await store.get(owner, response.conversationId);
+    expect(saved?.messages[1]).not.toHaveProperty('reasoning');
+    expect(JSON.stringify(saved?.messages)).not.toContain(privateThinking);
+
+    const history = await request(
+      analyst,
+      'GET',
+      `/api/assistant/conversations/${response.conversationId}`,
+    );
+    expect(history.statusCode).toBe(200);
+    expect(history.body).not.toContain(privateThinking);
+    expect(JSON.parse(history.body).messages[1]).not.toHaveProperty('reasoning');
+  });
+
+  it('el SSE expone progreso curado y resultado, nunca bloques thinking', async () => {
+    enableBunny(undefined, 90, modelWithThinking);
+    const analyst = await signIn('analista@b89.example');
+
+    const streamed = await request(analyst, 'POST', '/api/assistant/chat/stream', {
+      message: 'Revisa a ana@b89.example',
+    });
+    expect(streamed.statusCode).toBe(200);
+    expect(streamed.headers['content-type']).toContain('text/event-stream');
+    expect(streamed.body).toContain('event: progress');
+    expect(streamed.body).toContain('"type":"model_started"');
+    expect(streamed.body).toContain('event: complete');
+    expect(streamed.body).toContain('Respuesta revisable con evidencia.');
+    expect(streamed.body).not.toContain(privateThinking);
+    expect(streamed.body).not.toContain('private-signature');
+    expect(streamed.body).not.toContain('"reasoning"');
+  });
+
   it('crea, continúa, lista, lee, renombra y borra; el guardado reemplaza al historial del cliente', async () => {
     enableBunny(new InMemoryConversationStore());
     const analyst = await signIn('analista@b89.example');
@@ -269,11 +351,11 @@ describe('Bunny · historial de conversaciones', () => {
     ]);
     expect(body.messages[1]).toMatchObject({
       text: 'Respuesta 1',
-      reasoning: [],
       steps: [],
       citations: [],
       createdAt: expect.any(String),
     });
+    expect(body.messages[1]).not.toHaveProperty('reasoning');
 
     const renamed = await request(
       analyst,
@@ -329,14 +411,17 @@ describe('Bunny · historial de conversaciones', () => {
     expect(rated.statusCode).toBe(200);
     expect(JSON.parse(rated.body)).toMatchObject({ rating: 'down' });
     const detail = JSON.parse(
-      (await request(analyst, 'GET', `/api/assistant/conversations/${created.conversationId}`)).body,
+      (await request(analyst, 'GET', `/api/assistant/conversations/${created.conversationId}`))
+        .body,
     );
     expect(detail.messages[1]).toMatchObject({ id: created.messageId, feedback: 'down' });
     const stranger = await signIn('lider@b89.example');
     expect((await request(stranger, 'PUT', url, { rating: 'up' })).statusCode).toBe(404);
     const audited = await auditActions('assistant.feedback');
     expect(audited.at(-1)).toMatchObject({ metadata: { rating: 'down' } });
-    expect(JSON.stringify(audited, (_key, value) => (typeof value === 'bigint' ? String(value) : value))).not.toContain('¿Hay alertas P1?');
+    expect(
+      JSON.stringify(audited, (_key, value) => (typeof value === 'bigint' ? String(value) : value)),
+    ).not.toContain('¿Hay alertas P1?');
   });
 
   it('nadie más que el dueño ve, continúa, renombra o borra una conversación, ni un administrador', async () => {

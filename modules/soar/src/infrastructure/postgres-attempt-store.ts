@@ -17,7 +17,7 @@ import {
   type DeliveryEvidence,
   type NotificationAttempt,
 } from '../notification.js';
-import type { AttemptStore } from '../ports.js';
+import type { AttemptStore, ProviderAcceptanceLatency } from '../ports.js';
 import { CHANNEL_IDS, type ChannelRecord, type ChannelStore } from '../notification-channels.js';
 
 function toAttempt(
@@ -59,7 +59,10 @@ export class PostgresNotificationAttemptStore implements AttemptStore {
       if (!row) return undefined;
       const channelId = CHANNEL_IDS.find((id) => id === row.channelId);
       if (!channelId) return undefined;
-      const outcome = row.lastTestOutcome === 'accepted' || row.lastTestOutcome === 'failed' ? row.lastTestOutcome : null;
+      const outcome =
+        row.lastTestOutcome === 'accepted' || row.lastTestOutcome === 'failed'
+          ? row.lastTestOutcome
+          : null;
       return { ...row, channelId, lastTestOutcome: outcome } satisfies ChannelRecord;
     };
     this.channels = {
@@ -104,6 +107,23 @@ export class PostgresNotificationAttemptStore implements AttemptStore {
     return this.store.countByStatusSince(tenantId, since);
   }
 
+  public async providerAcceptanceLatencySince(
+    tenantId: string,
+    since: Date,
+    through: Date,
+  ): Promise<ProviderAcceptanceLatency> {
+    const metric = await this.store.providerAcceptanceLatencySince(tenantId, since, through);
+    return {
+      windowHours: 24,
+      sampleCount: Number(metric.sampleCount),
+      excludedClockSkewCount: Number(metric.excludedClockSkewCount),
+      sampleCapReached: metric.sampleCapReached,
+      p50: metric.p50 === null ? null : Math.round(metric.p50),
+      p95: metric.p95 === null ? null : Math.round(metric.p95),
+      p99: metric.p99 === null ? null : Math.round(metric.p99),
+    };
+  }
+
   public async lastNotifiedInGroup(
     tenantId: string,
     groupKey: string,
@@ -122,8 +142,66 @@ export class PostgresNotificationAttemptStore implements AttemptStore {
     return rows.map((row) => toAttempt(row)!);
   }
 
-  public countNotifiedSince(tenantId: string, since: Date): Promise<number> {
-    return this.store.countNotifiedSince(tenantId, since);
+  public reserveP2ImmediateSlot(
+    tenantId: string,
+    idempotencyKey: string,
+    at: Date,
+    maximum: number,
+  ): Promise<boolean> {
+    return this.store.reserveP2ImmediateSlot(tenantId, idempotencyKey, at, maximum);
+  }
+
+  public settleP2ImmediateSlot(
+    tenantId: string,
+    idempotencyKey: string,
+    at: Date,
+    result: 'delivered' | 'failed' | 'uncertain',
+  ): Promise<void> {
+    return this.store.settleP2ImmediateSlot(tenantId, idempotencyKey, at, result);
+  }
+
+  public reserveGroupDispatchSlot(
+    tenantId: string,
+    groupKey: string,
+    idempotencyKey: string,
+    attemptId: string,
+    fencingToken: string,
+    at: Date,
+    quietPeriodMs: number,
+    leaseMs: number,
+  ) {
+    return this.store.reserveGroupDispatchSlot(
+      tenantId,
+      groupKey,
+      idempotencyKey,
+      attemptId,
+      fencingToken,
+      at,
+      quietPeriodMs,
+      leaseMs,
+    );
+  }
+
+  public settleGroupDispatchSlot(
+    tenantId: string,
+    groupKey: string,
+    idempotencyKey: string,
+    fencingToken: string,
+    at: Date,
+    quietPeriodMs: number,
+    leaseMs: number,
+    result: 'delivered' | 'failed' | 'uncertain',
+  ): Promise<void> {
+    return this.store.settleGroupDispatchSlot(
+      tenantId,
+      groupKey,
+      idempotencyKey,
+      fencingToken,
+      at,
+      quietPeriodMs,
+      leaseMs,
+      result,
+    );
   }
 
   public async listUndigested(

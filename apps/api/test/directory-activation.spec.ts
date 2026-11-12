@@ -9,7 +9,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DirectoryError, InMemoryDirectoryStore } from '@b89/access';
 
 import { DirectoryGroupActivation } from '../src/runtime/directory-activation.js';
-import { cachedOwnerSource, lazyOwnerSource } from '../src/runtime/directory-sync.js';
+import { directoryOwnerSource, lazyOwnerSource } from '../src/runtime/directory-sync.js';
 import { createRoleGrantResolver } from '../src/runtime/role-grants.js';
 
 const GROUP = '99999999-9999-4999-8999-999999999999';
@@ -72,6 +72,30 @@ describe('DirectoryGroupActivation', () => {
     await activation.stop();
   });
 
+  it('retiene el diagnóstico Graph seguro mientras el nombre del grupo no se resuelve', async () => {
+    const activation = new DirectoryGroupActivation({
+      groupName: 'Accesos_SOC',
+      resolve: async () => {
+        throw new DirectoryError('DIRECTORY_PERMISSION_MISSING', undefined, {
+          status: 403,
+          errorCode: 'Authorization_RequestDenied',
+          requestId: 'graph-request-789',
+          operation: 'resolveGroupId',
+        });
+      },
+    });
+    expect(await activation.attempt()).toBe(false);
+    expect(activation.state).toMatchObject({
+      lastErrorCode: 'DIRECTORY_PERMISSION_MISSING',
+      diagnostic: {
+        status: 403,
+        errorCode: 'Authorization_RequestDenied',
+        requestId: 'graph-request-789',
+        operation: 'resolveGroupId',
+      },
+    });
+  });
+
   it('un intento colgado vence con DIRECTORY_UNAVAILABLE: el arranque no espera más', async () => {
     vi.useFakeTimers();
     const activation = new DirectoryGroupActivation({
@@ -131,7 +155,7 @@ describe('dueños de Accesos_SOC leídos de Graph: b89.platform.admin', () => {
     let groupId: string | undefined;
     const owners = lazyOwnerSource(
       () => groupId,
-      (id) => cachedOwnerSource(store, TENANT, id),
+      (id) => directoryOwnerSource(store, TENANT, id),
     );
     const resolveRoles = createRoleGrantResolver(
       { bindings: {}, groupOwnerOids: [], adminGroupIds: [] },

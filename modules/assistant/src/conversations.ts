@@ -15,7 +15,7 @@
  */
 
 import type { Citation } from './ports.js';
-import type { AssistantStep, ReasoningEntry } from './run.js';
+import type { AssistantStep } from './run.js';
 
 export const CONVERSATION_LIMITS = Object.freeze({
   maxConversationsPerOwner: 100,
@@ -23,7 +23,7 @@ export const CONVERSATION_LIMITS = Object.freeze({
   maxMessageChars: 20_000,
   autoTitleChars: 60,
   maxTitleChars: 80,
-  /** Entradas de razonamiento, pasos y citas que se guardan por mensaje. */
+  /** Pasos y citas curados que se guardan por mensaje. */
   maxEntriesPerMessage: 100,
 });
 
@@ -42,7 +42,6 @@ export interface StoredMessage {
   readonly id: string;
   readonly role: 'user' | 'assistant';
   readonly text: string;
-  readonly reasoning?: readonly ReasoningEntry[];
   readonly steps?: readonly AssistantStep[];
   readonly citations?: readonly Citation[];
   readonly tone?: MessageTone;
@@ -181,14 +180,9 @@ function validMessage(message: StoredMessage): void {
   if (message.text.length > CONVERSATION_LIMITS.maxMessageChars) {
     throw new ConversationError('TEXT_TOO_LONG');
   }
-  for (const list of [message.reasoning, message.steps, message.citations]) {
+  for (const list of [message.steps, message.citations]) {
     if (list !== undefined && list.length > CONVERSATION_LIMITS.maxEntriesPerMessage) {
       throw new ConversationError('INVALID_MESSAGE');
-    }
-  }
-  for (const entry of message.reasoning ?? []) {
-    if (entry.kind === 'thought' && entry.text.length > CONVERSATION_LIMITS.maxMessageChars) {
-      throw new ConversationError('TEXT_TOO_LONG');
     }
   }
 }

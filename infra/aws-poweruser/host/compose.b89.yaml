@@ -17,6 +17,10 @@ networks:
 services:
   wazuh.manager:
     image: wazuh/wazuh-manager:4.14.8
+    # Wazuh push uses the public certificate name but resolves it to this private edge address.
+    # The signed ingestion endpoint therefore traverses the same TLS gateway as other API calls.
+    extra_hosts:
+      - '${SOC_HOSTNAME}:172.30.89.11'
     environment:
       - INDEXER_URL=https://wazuh.indexer:9200
       - INDEXER_USERNAME=admin

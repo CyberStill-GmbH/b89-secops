@@ -1,0 +1,97 @@
+.b89ReportActions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px 20px;
+  align-items: center;
+  margin: 20px 0;
+  padding: 16px;
+  border: 1px solid #364453;
+  border-radius: 4px;
+  background: #1a222b;
+}
+
+.b89ReportActions__copy h3 {
+  margin: 0 0 4px;
+  color: #edf2f7;
+  font-size: 14px;
+}
+
+.b89ReportActions__copy p,
+.b89ReportActions__message {
+  margin: 0;
+  color: #aab6c2;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.b89ReportActions__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.b89ReportActions__buttons button {
+  min-height: 34px;
+  padding: 6px 11px;
+  border: 1px solid #566576;
+  border-radius: 3px;
+  background: #273443;
+  color: #f2f5f8;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.b89ReportActions__buttons button:hover:not(:disabled) {
+  border-color: #e49a38;
+  background: #334151;
+}
+
+.b89ReportActions__buttons button:focus-visible {
+  outline: 2px solid #e49a38;
+  outline-offset: 2px;
+}
+
+.b89ReportActions__buttons button:disabled {
+  cursor: not-allowed;
+  opacity: .58;
+}
+
+.b89ReportActions__buttons .b89ReportActions__cancel {
+  background: transparent;
+  color: #ffb4a9;
+}
+
+.b89ReportActions__progress,
+.b89ReportActions__message {
+  grid-column: 1 / -1;
+}
+
+.b89ReportActions__progress {
+  display: grid;
+  grid-template-columns: auto minmax(120px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  color: #d7e0e8;
+  font-size: 12px;
+}
+
+.b89ReportActions__progress progress {
+  width: 100%;
+  height: 8px;
+  accent-color: #e49a38;
+}
+
+@media (max-width: 720px) {
+  .b89ReportActions {
+    grid-template-columns: 1fr;
+  }
+
+  .b89ReportActions__buttons {
+    justify-content: flex-start;
+  }
+
+  .b89ReportActions__progress {
+    grid-template-columns: 1fr;
+  }
+}

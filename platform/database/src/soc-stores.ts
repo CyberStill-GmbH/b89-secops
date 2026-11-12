@@ -715,23 +715,25 @@ export class PrismaSocQueries {
     at: Date,
     limit: number,
     leaseMs: number,
+    lane: 'all' | 'urgent' | 'normal' = 'all',
   ): Promise<readonly ClaimedSocOutboxRow[]> {
     const take = Math.min(Math.max(limit, 1), SOC_QUERY_LIMITS.maximumOutboxBatch);
     const leaseUntil = new Date(at.getTime() + Math.max(leaseMs, 1_000));
-    const rows = await this.client.$queryRaw<
-      {
-        message_id: string;
-        tenant_id: string;
-        aggregate_type: 'alert' | 'incident';
-        aggregate_id: string;
-        message_type: string;
-        schema_version: string;
-        idempotency_key: string;
-        payload: Readonly<Record<string, string | number | boolean | null>>;
-        available_at: Date;
-        claim_id: string;
-      }[]
-    >`
+    type RawClaimedRow = {
+      message_id: string;
+      tenant_id: string;
+      aggregate_type: 'alert' | 'incident';
+      aggregate_id: string;
+      message_type: string;
+      schema_version: string;
+      idempotency_key: string;
+      payload: Readonly<Record<string, string | number | boolean | null>>;
+      available_at: Date;
+      claim_id: string;
+    };
+    const rows =
+      lane === 'urgent'
+        ? await this.client.$queryRaw<RawClaimedRow[]>`
       UPDATE "soc_outbox_messages" AS target
          SET "status" = 'processing',
              "lease_until" = ${leaseUntil},
@@ -740,8 +742,51 @@ export class PrismaSocQueries {
        WHERE target."message_id" IN (
          SELECT candidate."message_id"
            FROM "soc_outbox_messages" AS candidate
-          WHERE (candidate."status" = 'pending' AND candidate."available_at" <= ${at})
-             OR (candidate."status" = 'processing' AND candidate."lease_until" < ${at})
+          WHERE (
+                (candidate."status" = 'pending' AND candidate."available_at" <= ${at})
+                OR (candidate."status" = 'processing' AND candidate."lease_until" < ${at})
+              )
+            AND candidate."status" <> 'published'
+            AND COALESCE((
+                (candidate."aggregate_type" = 'alert'
+                  AND candidate."message_type" IN ('soc.alert.created', 'soc.alert.escalated')
+                  AND candidate."payload"->>'priority' = 'P1')
+                OR (candidate."aggregate_type" = 'incident'
+                  AND candidate."message_type" = 'soc.incident.opened'
+                  AND candidate."payload"->>'severity' = 'critical')
+              ), false)
+          ORDER BY candidate."available_at", candidate."message_id"
+          LIMIT ${take}
+          FOR UPDATE SKIP LOCKED
+       )
+      RETURNING target."message_id", target."tenant_id", target."aggregate_type",
+                target."aggregate_id", target."message_type", target."schema_version",
+                target."idempotency_key", target."payload", target."available_at",
+                target."claim_id"`
+        : await this.client.$queryRaw<RawClaimedRow[]>`
+      UPDATE "soc_outbox_messages" AS target
+         SET "status" = 'processing',
+             "lease_until" = ${leaseUntil},
+             "claim_id" = gen_random_uuid(),
+             "attempt_count" = target."attempt_count" + 1
+       WHERE target."message_id" IN (
+         SELECT candidate."message_id"
+           FROM "soc_outbox_messages" AS candidate
+          WHERE (
+                (candidate."status" = 'pending' AND candidate."available_at" <= ${at})
+                OR (candidate."status" = 'processing' AND candidate."lease_until" < ${at})
+              )
+            AND (
+              ${lane} = 'all'
+              OR NOT COALESCE((
+                (candidate."aggregate_type" = 'alert'
+                  AND candidate."message_type" IN ('soc.alert.created', 'soc.alert.escalated')
+                  AND candidate."payload"->>'priority' = 'P1')
+                OR (candidate."aggregate_type" = 'incident'
+                  AND candidate."message_type" = 'soc.incident.opened'
+                  AND candidate."payload"->>'severity' = 'critical')
+              ), false)
+            )
           ORDER BY candidate."available_at", candidate."message_id"
           LIMIT ${take}
           FOR UPDATE SKIP LOCKED

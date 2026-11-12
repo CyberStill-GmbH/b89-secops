@@ -49,7 +49,7 @@ flowchart LR
   GRAPH[Microsoft Graph<br/>sendMail]
   U((Analista)) -->|HTTPS| R53 --> ALB --> EDGE
   AG -->|TCP 1514/1515| MGR
-  M365 -.->|bloqueado: falta ActivityFeed.Read| MGR
+  M365 -->|Audit.* activo; revisar frescura| MGR
   BD & SN & CF --> COL -->|JSONL| MGR
   CT --> EB --> SNS -->|HTTPS /hooks/aws-sns| ALB
   CT --> S3

@@ -19,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: b89-wazuh-archives
+  group: b89-secops-demo-wazuh-host-mutations
   cancel-in-progress: false
 
 jobs:

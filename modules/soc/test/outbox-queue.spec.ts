@@ -93,4 +93,29 @@ describe('C-20 · cola del outbox con lease', () => {
 
     expect(batch.map((claimed) => claimed.messageId)).toEqual(['1', '2']);
   });
+
+  it('separa P1 y crÃ­ticos del carril normal y ordena cada carril por disponibilidad', async () => {
+    const p2 = { ...message('1', after(1)), payload: { priority: 'P2' } };
+    const p1 = message('2', after(2));
+    const critical = {
+      ...message('3', after(3)),
+      aggregateType: 'incident' as const,
+      messageType: 'soc.incident.opened' as const,
+      payload: { severity: 'critical' },
+    };
+    const highIncident = {
+      ...message('4', after(0)),
+      aggregateType: 'incident' as const,
+      messageType: 'soc.incident.opened' as const,
+      payload: { severity: 'high' },
+    };
+    const soc = queueWith(p2, p1, critical, highIncident);
+
+    const urgent = await soc.claimOutbox(after(10), 10, LEASE_MS, 'urgent');
+    const normal = await soc.claimOutbox(after(10), 10, LEASE_MS, 'normal');
+
+    expect(urgent.map((claimed) => claimed.messageId)).toEqual(['2', '3']);
+    expect(normal.map((claimed) => claimed.messageId)).toEqual(['4', '1']);
+    expect(new Set([...urgent, ...normal].map((claimed) => claimed.claimToken)).size).toBe(4);
+  });
 });

@@ -23,6 +23,7 @@ import {
   PrismaAuditStore,
   PrismaIncidentWorkQueries,
   PrismaIngestionStateStore,
+  PrismaWazuhPushInboxStore,
   PrismaSocQueries,
   PrismaSocUnitOfWork,
   PrismaStandaloneAuditStore,
@@ -47,6 +48,12 @@ import {
 } from '@b89/detection';
 
 import { ALERT_STATUSES, TRIAGE_VERDICTS, type Alert } from '../alert.js';
+import type {
+  ClaimedWazuhPushHint,
+  WazuhPushHint,
+  WazuhPushInboxMetrics,
+  WazuhPushInboxStore,
+} from '../wazuh-push-inbox.js';
 import { INCIDENT_SEVERITIES, INCIDENT_STATUSES, type Incident } from '../incident.js';
 import {
   POLL_OUTCOMES,
@@ -71,6 +78,7 @@ import type {
   IncidentQuery,
   IncidentStore,
   IncidentTaskStore,
+  OutboxLane,
   OutboxStore,
   QueryResult,
   SocPersistence,
@@ -427,8 +435,9 @@ export class PostgresSocPersistence implements SocPersistence {
     at: Date,
     limit: number,
     leaseMs: number,
+    lane: OutboxLane = 'all',
   ): Promise<readonly ClaimedOutboxMessage[]> {
-    return (await this.queries.claimOutbox(at, limit, leaseMs)).map((row) => ({
+    return (await this.queries.claimOutbox(at, limit, leaseMs, lane)).map((row) => ({
       ...toOutboxDraft(row),
       claimToken: row.claimToken,
     }));
@@ -476,5 +485,54 @@ export class PostgresSocPersistence implements SocPersistence {
 
   public close(): Promise<void> {
     return closeDatabaseClient(this.client);
+  }
+}
+
+/** PostgreSQL adapter for the durable Wazuh push hint port. */
+export class PostgresWazuhPushInboxStore implements WazuhPushInboxStore {
+  private constructor(private readonly store: PrismaWazuhPushInboxStore) {}
+
+  public static connect(options: DatabaseConnectionOptions): PostgresWazuhPushInboxStore {
+    return new PostgresWazuhPushInboxStore(PrismaWazuhPushInboxStore.connect(options));
+  }
+
+  public ready(): Promise<void> {
+    return this.store.ready();
+  }
+
+  public close(): Promise<void> {
+    return this.store.close();
+  }
+
+  public enqueue(hint: WazuhPushHint): Promise<'inserted' | 'duplicate' | 'reopened-terminal'> {
+    return this.store.enqueue(hint);
+  }
+
+  public claimBatch(
+    at: Date,
+    limit: number,
+    leaseMs: number,
+  ): Promise<readonly ClaimedWazuhPushHint[]> {
+    return this.store.claimBatch(at, limit, leaseMs);
+  }
+
+  public complete(claim: ClaimedWazuhPushHint): Promise<boolean> {
+    return this.store.complete(claim);
+  }
+
+  public scheduleRetry(
+    claim: ClaimedWazuhPushHint,
+    availableAt: Date,
+    safeCode: string,
+  ): Promise<boolean> {
+    return this.store.scheduleRetry(claim, availableAt, safeCode);
+  }
+
+  public failTerminal(claim: ClaimedWazuhPushHint, safeCode: string): Promise<boolean> {
+    return this.store.failTerminal(claim, safeCode);
+  }
+
+  public metrics(at?: Date): Promise<WazuhPushInboxMetrics> {
+    return this.store.metrics(at);
   }
 }

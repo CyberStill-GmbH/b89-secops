@@ -75,7 +75,7 @@ describe('C-12 normalización de alertas Wazuh', () => {
     expect(outcome.event.occurredAt).toBe('2026-11-03T18:52:19.984Z');
   });
 
-  it('las alertas de los collectors B89 llevan categoría y proveedor de origen (1.2.0)', () => {
+  it('las alertas de los collectors B89 llevan categoría y proveedor de origen (1.3.0)', () => {
     const cases = [
       {
         groups: ['b89_provider', 'snyk', 'b89_vulnerability'],

@@ -107,6 +107,7 @@ export type {
   FallbackNotification,
   MailChannel,
   OutboxReader,
+  ProviderAcceptanceLatency,
 } from './ports.js';
 export {
   MAXIMUM_MENTIONS,

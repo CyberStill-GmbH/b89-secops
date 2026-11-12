@@ -7,7 +7,7 @@
  * la frontera HTTP no relaje ninguna decisión.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SecurityEventProviderError } from '@b89/connectors';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
@@ -1325,11 +1325,80 @@ describe('Observabilidad · GET /api/operations/health por rol', () => {
 
     expect(Object.keys(body.sections).sort()).toEqual(['soc', 'summary']);
     expect(body.sections.soc).toMatchObject({ persistence: 'memory', dispatcherRunning: false });
+    expect(body.sections.soc.outboxToProviderAcceptanceMs).toMatchObject({
+      status: 'NO_DATA',
+      sampleCount: 0,
+      p50: null,
+      p95: null,
+      p99: null,
+    });
     expect(body.sections.soc.outbox.pending).toBeGreaterThan(0);
     // El harness no arranca el bucle y usa memoria: se reporta, no se oculta.
     expect(body.sections.soc.degradedReasons).toEqual(
       expect.arrayContaining(['DISPATCHER_STOPPED', 'PERSISTENCE_EPHEMERAL']),
     );
+  });
+
+  it('no expone métricas de la inbox Wazuh a un actor de otro tenant', async () => {
+    const lead = await signIn('lider@b89.example');
+    const sessionId = decodeURIComponent(lead.cookie.slice('b89_session='.length));
+    const session = await runtime.sessions.byId(sessionId);
+    expect(session).toBeDefined();
+    expect(session?.tenantId).toBe(runtime.sourceHealth?.key.tenantId);
+
+    const metrics = {
+      counts: { pending: 1, processing: 0, processed: 2, 'failed-terminal': 0 },
+      oldestPendingAt: new Date('2026-11-12T09:00:00.000Z'),
+      oldestProcessingAt: null,
+      oldestUnresolvedAt: new Date('2026-11-12T09:00:00.000Z'),
+      oldestTerminalAt: null,
+      lastProcessedAt: new Date('2026-11-12T09:00:01.000Z'),
+      expiredProcessing: 0,
+      terminalFailuresRecent: 0,
+      terminalWindowHours: 24 as const,
+      sourceToReceiptMs: {
+        windowHours: 24 as const,
+        sampleCount: 2,
+        clockSkewSamples: 0,
+        sampleCapReached: false,
+        p50: 10,
+        p95: 20,
+        p99: 20,
+      },
+      receiptToHandlerMs: {
+        windowHours: 24 as const,
+        sampleCount: 1,
+        p50: 5,
+        p95: 5,
+        p99: 5,
+      },
+    };
+    const readMetrics = vi.spyOn(runtime, 'wazuhPushInboxMetrics').mockResolvedValue(metrics);
+
+    try {
+      const ownTenantResponse = await health(lead.cookie);
+      expect(JSON.parse(ownTenantResponse.body).sections.soc.wazuhPushInbox.counts.pending).toBe(1);
+
+      readMetrics.mockClear();
+      const currentBeforeTenantChange = await runtime.sessions.byId(sessionId);
+      expect(currentBeforeTenantChange).toBeDefined();
+      expect(
+        await runtime.sessions.update(
+          { ...currentBeforeTenantChange!, tenantId: 'tenant-outside-wazuh-source' },
+          currentBeforeTenantChange!.revision,
+        ),
+      ).toBe(true);
+
+      const otherTenantResponse = await health(lead.cookie);
+      expect(JSON.parse(otherTenantResponse.body).sections.soc.wazuhPushInbox).toBeNull();
+      expect(readMetrics).not.toHaveBeenCalled();
+    } finally {
+      const current = await runtime.sessions.byId(sessionId);
+      if (current && current.tenantId !== session!.tenantId) {
+        await runtime.sessions.update({ ...current, tenantId: session!.tenantId }, current.revision);
+      }
+      readMetrics.mockRestore();
+    }
   });
 
   it('el administrador de plataforma ve las tres secciones', async () => {
@@ -1338,6 +1407,9 @@ describe('Observabilidad · GET /api/operations/health por rol', () => {
 
     expect(Object.keys(body.sections).sort()).toEqual(['platform', 'soc', 'summary']);
     expect(body.sections.platform.databaseLatencyMs).toBeGreaterThanOrEqual(0);
+    expect(body.sections.soc.outboxToProviderAcceptanceMs.acceptanceMeans).toContain(
+      'does not mean a person read it',
+    );
   });
 
   it('el auditor no tiene acceso y no se revela la existencia de la ruta', async () => {
@@ -1880,6 +1952,36 @@ describe('Sprint 5 · fase 2 · GET /api/sources/health', () => {
     expect((await health((await signIn('auditor@b89.example')).cookie)).status).toBe(200);
     expect((await health((await signIn('analista@b89.example')).cookie)).status).toBe(404);
   });
+
+  it('expone el desglose del último sondeo y conserva null en métricas históricas', async () => {
+    const key = runtime.sourceHealth!.key;
+    const attemptedAt = runtime.now();
+    await runtime.soc.ingestion.recordObservation({
+      id: '11111111-1111-4111-8111-111111111111',
+      ...key,
+      attemptedAt,
+      completedAt: attemptedAt,
+      outcome: 'success',
+      recordsSeen: 4,
+      normalized: 2,
+      promoted: 1,
+      quarantined: 1,
+      duplicates: null,
+      notPromoted: null,
+      newestEventAt: null,
+      errorClass: null,
+    });
+    const response = await health((await signIn('lider@b89.example')).cookie);
+    expect(response.body.sources[0].processing).toMatchObject({
+      outcome: 'success',
+      recordsSeen: 4,
+      normalized: 2,
+      promoted: 1,
+      quarantined: 1,
+      duplicates: null,
+      notPromoted: null,
+    });
+  });
 });
 
 describe('Sprint 5 · fase 3 · GET /api/admin/users', () => {
@@ -1903,7 +2005,13 @@ describe('Sprint 5 · fase 3 · GET /api/admin/users', () => {
     const pending: RuntimeDirectory = {
       mode: 'pending',
       intervalMs: 900_000,
-      lastErrorCode: 'DIRECTORY_FORBIDDEN',
+      lastErrorCode: 'DIRECTORY_PERMISSION_MISSING',
+      diagnostic: {
+        status: 403,
+        errorCode: 'Authorization_RequestDenied',
+        requestId: 'graph-request-123',
+        operation: 'resolveGroupId',
+      },
       lastAttemptAt: new Date(),
       nextAttemptAt: new Date(Date.now() + 60_000),
     };
@@ -1922,9 +2030,15 @@ describe('Sprint 5 · fase 3 · GET /api/admin/users', () => {
       expect(JSON.parse(users.body).sync).toMatchObject({
         mode: 'graph',
         status: 'failed',
-        lastErrorClass: 'DIRECTORY_FORBIDDEN',
+        lastErrorClass: 'DIRECTORY_PERMISSION_MISSING',
         groupResolved: false,
         permissionMissing: true,
+        diagnostic: {
+          status: 403,
+          errorCode: 'Authorization_RequestDenied',
+          requestId: 'graph-request-123',
+          operation: 'resolveGroupId',
+        },
         stale: true,
       });
       const requests = await call('/api/admin/role-requests');
@@ -2232,16 +2346,16 @@ describe('Bunny · asistente de IA', () => {
 
   it('lee el SOC con la sesión de la persona y ve solo las herramientas de su rol', async () => {
     await ingest('01890f47-7abc-7def-8abc-00000000b001');
-    const seen = fakeAssistant('list_alerts', { priority: 'P1' });
+    const seen = fakeAssistant('find_alerts', { priority: 'P1' });
     const analyst = await signIn('analista@b89.example');
     const response = await ask(analyst, '¿Qué alertas P1 hay?');
     expect(response.statusCode).toBe(200);
     const body = JSON.parse(response.body);
     expect(body.reply).toContain('DATOS DEL SOC');
-    expect(body.steps).toEqual([{ tool: 'list_alerts', label: 'Buscando alertas', ok: true }]);
-    expect(body.citations.length).toBeGreaterThan(0);
+    expect(body.steps).toEqual([{ tool: 'find_alerts', label: 'Buscando alertas', ok: true }]);
+    expect(body.citations).toEqual([]);
     // Un analista no tiene permisos de auditoría ni de administración de usuarios.
-    expect(seen).toContain('list_alerts');
+    expect(seen).toContain('find_alerts');
     expect(seen).not.toContain('audit_events');
     expect(seen).not.toContain('list_users');
   });
@@ -2257,7 +2371,7 @@ describe('Bunny · asistente de IA', () => {
   });
 
   it('exige el token CSRF y valida el cuerpo', async () => {
-    fakeAssistant('list_alerts');
+    fakeAssistant('find_alerts');
     const analyst = await signIn('analista@b89.example');
     const noCsrf = await server().inject({
       method: 'POST',

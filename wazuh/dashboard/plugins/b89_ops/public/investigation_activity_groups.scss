@@ -1,0 +1,132 @@
+// Compact, printable temporal clusters for SOC investigation.
+.b89ActivityGroups {
+  margin-top: $ouiSize;
+  border-top: 1px solid $ouiBorderColor;
+  padding-top: $ouiSize;
+}
+
+.b89ActivityGroups__header,
+.b89ActivityGroups__header > div,
+.b89ActivityGroups__list > li > details > summary,
+.b89ActivityGroups__events > li {
+  display: flex;
+  align-items: flex-start;
+  gap: $ouiSizeS;
+}
+
+.b89ActivityGroups__header {
+  justify-content: space-between;
+
+  h3 {
+    margin: 0;
+    font-size: $ouiFontSizeS;
+    font-weight: 700;
+  }
+
+  p {
+    max-width: 900px;
+    margin: 4px 0 0;
+    color: $ouiTextSubduedColor;
+    font-size: $ouiFontSizeXS;
+  }
+}
+
+.b89ActivityGroups__count {
+  flex-shrink: 0;
+  color: $ouiTextSubduedColor;
+  font-size: $ouiFontSizeXS;
+  white-space: nowrap;
+}
+
+.b89ActivityGroups__list,
+.b89ActivityGroups__events {
+  display: grid;
+  gap: 6px;
+  margin: $ouiSizeS 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.b89ActivityGroups__list > li > details {
+  border: 1px solid $ouiBorderColor;
+  border-radius: 6px;
+  background: $ouiColorEmptyShade;
+
+  > summary {
+    align-items: center !important;
+    flex-wrap: wrap;
+    padding: 6px 8px;
+    cursor: pointer;
+    list-style-position: inside;
+  }
+}
+
+.b89ActivityGroups__list > li.is-collapsed {
+  display: none;
+}
+
+.b89ActivityGroups__entity {
+  min-width: 100px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.b89ActivityGroups__range {
+  color: $ouiTextSubduedColor;
+  font-size: $ouiFontSizeXS;
+}
+
+.b89ActivityGroups__events {
+  margin: 0;
+  padding: 0 8px 8px 24px;
+
+  > li {
+    flex-wrap: wrap;
+    border-top: 1px solid $ouiBorderColor;
+    padding: 6px 0;
+    font-size: $ouiFontSizeXS;
+  }
+}
+
+.b89ActivityGroups__description {
+  flex: 1 1 220px;
+  overflow-wrap: anywhere;
+}
+
+.b89ActivityGroups__rule,
+.b89ActivityGroups__id {
+  color: $ouiTextSubduedColor;
+}
+
+.b89ActivityGroups__toggle {
+  margin-top: 8px;
+  border: 0;
+  background: transparent;
+  color: $ouiColorPrimary;
+  cursor: pointer;
+  font: inherit;
+  font-size: $ouiFontSizeXS;
+}
+
+@media print {
+  .b89ActivityGroups__list > li.is-collapsed {
+    display: list-item !important;
+  }
+
+  .b89ActivityGroups__toggle {
+    display: none !important;
+  }
+
+  .b89ActivityGroups__list > li > details > summary {
+    font-weight: 700;
+  }
+
+  .b89ActivityGroups__list > li > details:not([open]) > .b89ActivityGroups__events {
+    display: block !important;
+  }
+
+  .b89ActivityGroups__list > li,
+  .b89ActivityGroups__events > li {
+    break-inside: avoid;
+  }
+}

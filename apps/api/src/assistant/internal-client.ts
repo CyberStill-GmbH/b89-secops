@@ -21,10 +21,15 @@ function single(value: string | readonly string[] | undefined): string | undefin
   return Array.isArray(value) ? (value[0] as string | undefined) : (value as string | undefined);
 }
 
-export function createInternalGet(server: InjectingServer, request: IncomingRequest): InternalGet {
+export function createInternalGet(
+  server: InjectingServer,
+  request: IncomingRequest,
+  signal?: AbortSignal,
+): InternalGet {
   const cookie = single(request.headers.cookie);
   const forwarded = single(request.headers['x-forwarded-for']);
   return async (pathWithQuery): Promise<InternalResponse> => {
+    if (signal?.aborted) throw new DOMException('Request aborted', 'AbortError');
     if (
       !pathWithQuery.startsWith('/api/') ||
       pathWithQuery.includes('//') ||

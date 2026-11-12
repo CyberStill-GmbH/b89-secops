@@ -5,7 +5,7 @@ import type { SocKnowledge } from './soc-knowledge.js';
 
 export const SOC_KNOWLEDGE: SocKnowledge = {
  "attackVersion": "Enterprise v16",
- "runbookIndex": "# Runbooks de triage e investigación B89\n\nParte de [17 · Ingeniería de detección](../../17-ingenieria-de-deteccion.md). Cada runbook sigue el mismo\nesquema: **alcance** (reglas), **triage en 10 minutos**, **investigación**, **contención** (siempre por B89\nRespond con aprobación del Líder SOC), **recuperación**, **cierre y evidencia** y **consultas** (KQL para\nDiscover sobre `wazuh-alerts-*`).\n\n| Runbook | Casos de uso | Prioridad típica |\n| --- | --- | --- |\n| [Ataques de credenciales](credenciales.md) | M365 fuerza bruta/spray y cadena, BEC, Kerberos, consola AWS, SSH | P1–P2 |\n| [Escalada de privilegios](escalada-de-privilegios.md) | Roles de Entra y tier 0, IAM/Identity Center, grupos de AD, sudo/grupos y persistencia Linux | P1–P2 |\n| [Malware y EDR](malware-edr.md) | Bitdefender (malware, cuarentena, protección deshabilitada), Sophos, Outlook → proceso | P1–P2 |\n| [Vulnerabilidad expuesta](vulnerabilidad-expuesta.md) | Snyk crítica/alta con exploit maduro y expuesta, Wazuh VD | P1–P3 |\n| [Oleada en el WAF](oleada-waf.md) | Cloudflare 101513 y 101740, cambios de control | P2 |\n| [CloudTrail y auditoría](cloudtrail-y-auditoria.md) | CloudTrail/GuardDuty/Config apagados, auditoría de M365 desactivada | P1 |\n\nReglas comunes a todos:\n\n- **Evidencia primero:** antes de contener, exportar la alerta B89 (id, prioridad, razones) y los documentos\n  Wazuh (`_id`, índice). La auditoría B89 con cadena hash registra cada transición.\n- **Sin datos personales en canales abiertos:** en Teams/correo solo referencias; el detalle vive en B89 (N2).\n- **Nada se suprime sin registro:** un falso positivo se documenta en el incidente y se convierte en afinamiento\n  (lista CDB, ventana de mantenimiento en B89 o PR de la regla).\n- **Cierre:** clasificación VP/FP/benigno, causa raíz, acciones y lección para el backlog de detección.",
+ "runbookIndex": "# Runbooks de triage e investigación B89\n\nParte de [17 · Ingeniería de detección](../../17-ingenieria-de-deteccion.md). Cada runbook sigue el mismo\nesquema: **alcance** (reglas), **triage en 10 minutos**, **investigación**, **contención** (siempre por B89\nRespond con aprobación del Líder SOC), **recuperación**, **cierre y evidencia** y **consultas** (KQL para\nDiscover sobre `wazuh-alerts-*`).\n\n| Runbook | Casos de uso | Prioridad típica |\n| --- | --- | --- |\n| [Ataques de credenciales](credenciales.md) | M365 fuerza bruta/spray y cadena, BEC, Kerberos, consola AWS, SSH | P1–P2 |\n| [Escalada de privilegios](escalada-de-privilegios.md) | Roles de Entra y tier 0, IAM/Identity Center, grupos de AD, sudo/grupos y persistencia Linux | P1–P2 |\n| [Malware y EDR](malware-edr.md) | Bitdefender (malware, cuarentena, protección deshabilitada), Sophos, Outlook → proceso | P1–P2 |\n| [Vulnerabilidad expuesta](vulnerabilidad-expuesta.md) | Snyk crítica/alta con exploit maduro y expuesta, Wazuh VD | P1–P3 |\n| [Oleada en el WAF](oleada-waf.md) | Cloudflare 101513 y 101740, cambios de control | P2 |\n| [CloudTrail y auditoría](cloudtrail-y-auditoria.md) | CloudTrail/GuardDuty/Config apagados, auditoría de M365 desactivada | P1 |\n| [Exfiltración desde SharePoint](exfiltracion-sharepoint.md) | SharePoint/OneDrive: descarga masiva, borrado, uso compartido externo, política, etiquetas, postura | P1–P3 |\n\nReglas comunes a todos:\n\n- **Evidencia primero:** antes de contener, exportar la alerta B89 (id, prioridad, razones) y los documentos\n  Wazuh (`_id`, índice). La auditoría B89 con cadena hash registra cada transición.\n- **Sin datos personales en canales abiertos:** en Teams/correo solo referencias; el detalle vive en B89 (N2).\n- **Nada se suprime sin registro:** un falso positivo se documenta en el incidente y se convierte en afinamiento\n  (lista CDB, ventana de mantenimiento en B89 o PR de la regla).\n- **Cierre:** clasificación VP/FP/benigno, causa raíz, acciones y lección para el backlog de detección.",
  "playbooks": "# 04 · Playbooks de B89 Respond\n\nParte de [17 · Ingeniería de detección](../17-ingenieria-de-deteccion.md). Archivos:\n[`b89-respond/playbooks/`](../../b89-respond/playbooks/) (exportables de Shuffle 2.3.0, el motor heredado que\ncorre hoy en AWS con la marca B89 Respond). Contrato verificado por `node --test b89-respond/playbooks/playbooks.test.mjs`.\n\n> **Requieren aprobación de B89.** Ninguno está importado en la instancia. Los de contención llevan la compuerta\n> `b89_contencion_habilitada = false`: encenderla es una decisión que se registra en\n> [10](../10-decisiones.md) (A13, N5) junto con los permisos de proveedor que exige. El destino de diseño sigue\n> siendo Step Functions ([13](../13-b89-respond.md)); estos flujos documentan la lógica para portarla.\n\n| Archivo | Catálogo | Riesgo | Aprobación | Efectos |\n| --- | --- | --- | --- | --- |\n| `b89-triage-enriquecimiento.json` | `b89.triage-enrichment` | Bajo | No (solo lectura) | Nota en el incidente B89 y aviso por correo |\n| `b89-contencion-identidad-aprobada.json` | `b89.identity-containment` | Alto | Líder SOC + step-up, SoD | Revocar sesiones y deshabilitar la cuenta de Entra |\n| `b89-contencion-endpoint-aprobada.json` | `b89.endpoint-containment` | Medio | Líder SOC, SoD | `firewall-drop` 600 s en el agente (Wazuh Active Response) |\n\n## Triage y enriquecimiento\n\nDisparo: webhook del adaptador `infra/wazuh/shuffle` (alertas nivel ≥ 12, payload v1 **sin** usuario, IP ni\n`full_log`). Pasos: `validar_y_deduplicar` (contrato v1, `executionKey = alert.id`, clasifica la fuente y elige\nel runbook) → `buscar_alerta_b89` (prioridad P1–P4 y razones, API B89 de solo lectura) y\n`contexto_agente_wazuh` (estado, SO y grupo) → `resumen_triage` (texto en español) → `nota_en_incidente_b89`\n(solo si la alerta ya está en un incidente) y `aviso_correo_b89`.\n\n**Correo:** usa el mismo contrato que el servicio de correo B89 (`wazuh/alert-mail`): Graph `sendMail` desde el\nbuzón del SOC, asunto `B89 SOC · <SEVERIDAD> · <título>`, contenido mínimo y enlace a la consola. Hoy la app no\ntiene `Mail.Send`; hasta concederlo (acotado al buzón con Application Access Policy), el paso falla cerrado y la\nnota en B89 se conserva. Que B89 Respond tenga esa credencial es una excepción a «Respond no guarda credenciales\nde proveedor» y debe aprobarse; la alternativa es encolar la intención de aviso en el outbox de B89 (contrato\npendiente en [14](../14-b89-respond-conexion-b89.md)).\n\n## Contención con aprobación\n\nDisparo: solicitud de B89 Core (`incidentRef`, `executionKey`, `requestedBy`, `targetRef`, `actionId`; nunca\ncontraseñas ni tokens). Flujo: `validar_solicitud` → `contexto_para_aprobar` → **User Input**\n`aprobacion_lider_soc` → `verificar_compuerta` (aprobador ≠ solicitante **y** `b89_contencion_habilitada = true`)\n→ acción → `resultado_en_incidente_b89` (ejecutada, rechazada o bloqueada; sin reintento ciego, ADR-028).\n\n| Playbook | Prerrequisitos antes de habilitar |\n| --- | --- |\n| Identidad (Entra) | Permisos Graph `User.RevokeSessions.All` y `User.EnableDisableAccount.All` en una app dedicada; step-up para aprobar (docs/07, gate 2); prueba sobre una cuenta sintética |\n| Endpoint (Wazuh AR) | Usuario de la API de Wazuh con solo `active-response:command` (docs/07, gate 3); `firewall-drop` solo existe en agentes Linux; allowlist de IPs administrativas (`B89_AR_WHITELIST`) |\n\nLas autenticaciones se referencian por nombre (`b89-api-lectura`, `b89-graph-contencion`,\n`wazuh-api-active-response`, …) y se crean en el almacén cifrado de B89 Respond; el JSON no contiene secretos\n(lo comprueba el test).",
  "runbooks": [
   {
@@ -130,6 +130,83 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
     "B89-DET-LNX-002"
    ],
    "markdown": "# Runbook · Escalada de privilegios (Entra, AWS, AD y Linux)\n\nAlcance: `entra/privileged-role-assignment` (100520, 100521, 101704), `entra/app-consent-and-credentials`\n(100522, 100523), `entra/auth-methods-and-federation` (100524–100526), reglas IAM/Identity Center/Organizations\ndel paquete AWS (101630–101636), `aws/cloudtrail-tampering` (101710), `ad/privileged-groups-and-policy`\n(101300–101303), `linux/privileged-group-membership` (101752) y `linux/persistence-fim` (101755–101760).\n\n## Triage en 10 minutos\n\n1. **¿Hay un cambio aprobado?** Buscar el ticket de cambio o la ventana de mantenimiento cargada en B89. Sin\n   cambio aprobado → mínimo P2; tier 0 (Global/Privileged Role Admin, `AdministratorAccess`, Domain Admins, root) → P1.\n2. **¿Quién lo hizo y quién lo recibió?** Actor (`UserId`, `aws.principal`, `srcuser`) y objetivo (`ObjectId`,\n   rol, `dstuser`). Un actor que se otorga a sí mismo = P1.\n3. **¿Vino después de un acceso anómalo?** Si hay 101700/101710 ya es cadena (P1).\n\n<a id=\"entra\"></a>\n## Entra\n\n- Ver la asignación en Entra (Roles y administradores → auditoría) y en PIM si es elegible o activa.\n- Consentimientos y credenciales de apps (100522/100523): ¿la app es interna? ¿quién la publicó? Revisar\n  permisos `Mail.Read`, `Files.Read.All`, `offline_access`.\n- Federación (100524): **P1 siempre**; validar con el equipo de identidad en el mismo turno.\n- **Contener:** retirar el rol/consentimiento/credencial (administrador de Entra con el ticket); si el actor está\n  comprometido, playbook de identidad (aprobación).\n\n## AWS\n\n- `data.aws.event_name` y `data.aws.request_parameters`: política adjunta, usuario/rol creado, permission set.\n- Revisar si el mismo principal tocó CloudTrail, GuardDuty o Config (101710/101712) → ver [CloudTrail y auditoría](cloudtrail-y-auditoria.md).\n- **Contener:** quitar la política/rol, desactivar access keys nuevas, SCP de bloqueo si es la organización.\n\n<a id=\"active-directory\"></a>\n## Active Directory\n\n- 4728/4732/4756 sobre grupos integrados: confirmar con el owner del grupo; AdminSDHolder/GPO (101303) con ticket.\n- Borrado de Security (101302): preservar el log del DC y escalar a P1.\n\n<a id=\"linux\"></a>\n## Linux (grupos privilegiados y persistencia por FIM)\n\n- 101752: ¿quién (`srcuser`) agregó a quién (`dstuser`) a `sudo`/`docker`/`lxd`? `docker` y `lxd` equivalen a root.\n- 101755 llaves SSH, 101758 sudoers, 101759 PAM: **P1 fuera de cambio**; comparar con el `diff` de FIM\n  (sin diff en `shadow` ni llaves por privacidad: pedir el archivo al owner del host).\n- 101756/101757 unidad systemd o cron: revisar `ExecStart`/comando; correlacionar con `dpkg` (2902/2904) para\n  descartar instalación de paquetes.\n- **Contener:** retirar la llave/entrada, revertir sudoers/PAM desde configuración versionada, bloquear la IP de\n  origen de la sesión (playbook de endpoint, aprobación) y rotar credenciales del host.\n\n## Consultas\n\n```text\nrule.groups:(b89_privilege_escalation or b89_aws_iam or azure_ad)\nrule.id:(100520 or 100521 or 101704 or 101700)\nrule.id:(101755 or 101756 or 101757 or 101758 or 101759 or 101760)\nrule.id:(2960 or 2961 or 101752)\n```"
+  },
+  {
+   "id": "exfiltracion-sharepoint",
+   "title": "Exfiltración desde SharePoint y OneDrive",
+   "path": "docs/detection-engineering/runbooks/exfiltracion-sharepoint.md",
+   "sections": [
+    "Triage en 10 minutos",
+    "Investigación",
+    "Contención (con aprobación del Líder SOC)",
+    "Recuperación y cierre",
+    "Consultas"
+   ],
+   "ruleIds": [
+    "101900",
+    "101901",
+    "101902",
+    "101903",
+    "101904",
+    "101905",
+    "101906",
+    "101907",
+    "101908",
+    "101909",
+    "101910",
+    "101911",
+    "101912",
+    "101913",
+    "101914",
+    "101915",
+    "101916",
+    "101917",
+    "101918",
+    "101919",
+    "101920",
+    "101925",
+    "101926",
+    "101927",
+    "101928",
+    "101929",
+    "101930",
+    "101935",
+    "101936",
+    "101937",
+    "101938",
+    "101939",
+    "101940",
+    "101941",
+    "101945",
+    "101946",
+    "101947",
+    "101948",
+    "101949",
+    "101950",
+    "101951",
+    "101960",
+    "101961",
+    "101962",
+    "101963",
+    "101964",
+    "101965",
+    "101966",
+    "101967",
+    "101968",
+    "101969",
+    "101970",
+    "101971",
+    "101972"
+   ],
+   "useCases": [
+    "B89-DET-SP-001",
+    "B89-DET-SP-003",
+    "B89-DET-SP-005",
+    "B89-DET-SP-002",
+    "B89-DET-SP-006",
+    "B89-DET-SP-004"
+   ],
+   "markdown": "# Runbook · Exfiltración desde SharePoint y OneDrive\n\nAlcance: `sharepoint/exfiltration` (101900–101911), `sharepoint/mass-deletion` (101915–101920),\n`sharepoint/external-sharing` (101925–101930), `sharepoint/sharing-policy-and-admins` (101935–101941),\n`sharepoint/labels-and-dlp` (101945–101951), `sharepoint/posture` (101960–101972) y la regla heredada 100515\n(enlace anónimo). Fuente y permisos: [23 · SharePoint y OneDrive](../../23-sharepoint-onedrive.md).\nPlaybook: contención manual en el centro de administración de SharePoint/Entra por un operador con el ticket,\naprobada por el Líder SOC (B89 no escribe en Microsoft 365).\n\n## Triage en 10 minutos\n\n1. **¿Quién y con qué identidad?** `data.office365.UserId`. Invitado (`#ext#`, 101905/101906), cuenta\n   deshabilitada (101907) o cuenta de servicio (lista `b89-m365-service-accounts`: si aparece ahí con nivel ≥ 8, la\n   lista no la cubre → revisar). Mirar en Entra los inicios de sesión de esa cuenta en las 24 h previas: un login\n   tras fuerza bruta (100505) o desde la IP de un spray (101703) convierte cualquier alerta de esta página en **P1**.\n2. **¿Desde dónde?** `data.office365.ClientIP`: en Spamhaus/Feodo (101908) o Tor (101909) → **P1** sin más\n   análisis. Red nueva para el usuario (101904, solo vía Purview) → confirmar con el usuario por un canal distinto\n   del correo.\n3. **¿Cuánto y cuándo?** 101902 (150 en 10 min) es P2; fuera de horario (101903, 40 en 30 min) es P1.\n   Distinguir **sincronización** (`FileSyncDownloadedFull`, cliente OneDrive, un dispositivo) de **descarga web**\n   (`FileDownloaded`, navegador, `UserAgent`): la primera suele ser un equipo nuevo; la segunda, extracción.\n4. **¿Sale de B89?** Enlace anónimo (100515/101926), correo personal (101927/101930), invitado (101928). Si el\n   mismo archivo perdió su etiqueta justo antes (101948) → **P1**, exfiltración preparada.\n5. **¿Destrucción?** 101917/101918/101920: borrado masivo o vaciado de la papelera de segunda etapa → P1 si hay\n   ransomware o salida del empleado; restaurar es urgente (la papelera de la colección conserva 93 días).\n6. **¿Cambió la superficie?** 101936/101937/101963 (Cualquier persona habilitado), 101938–101941 (administradores):\n   ¿hay ticket de TI? Sin ticket → tratar como compromiso de un administrador (runbook de\n   [escalada de privilegios](escalada-de-privilegios.md)).\n\n| Prioridad | Cuándo |\n| --- | --- |\n| P1 | IP maliciosa/Tor, fuera de horario, red nueva + volumen, etiqueta quitada y compartido, destrucción o papelera vaciada, tenant debilitado, administrador invitado |\n| P2 | Volumen en horario, invitado en volumen, cuenta deshabilitada, correo personal, enlaces anónimos en volumen, administrador agregado, DLP alta |\n| P3 | Enlace anónimo aislado, compartición con un socio, DLP media, sitio nuevo, permiso externo encontrado |\n| P4 | Marcas (nivel ≤ 3) y fotos de postura: solo búsqueda y contexto |\n\n## Investigación\n\n- **Alcance de lo descargado:** todos los `ObjectId`/`SourceFileName` del usuario en la ventana (consulta abajo);\n  sitios afectados (`SiteUrl`) y su clasificación; ¿hay archivos con etiqueta o DLP (101949–101951)?\n- **Dispositivo:** `UserAgent`, `Platform`, `DeviceDisplayName`, `IsManagedDevice` (si el registro los trae). Un\n  dispositivo no administrado + volumen sube la prioridad.\n- **Línea de tiempo:** inicio de sesión → acceso → descarga/compartición → borrado. Buscar reglas de bandeja o\n  reenvíos (100510–100512) del mismo usuario: el BEC suele exfiltrar por correo y SharePoint a la vez.\n- **Enlaces creados:** en el sitio, «Administrar acceso» del archivo; en postura, `sharepoint.finding.*`\n  (101966–101968) muestra enlaces anónimos y externos existentes aunque falte la auditoría.\n- **Empleado que se va:** cruzar con RR. HH.; la actividad de una cuenta ya deshabilitada (101907) puede ser\n  registrada antes del bloqueo (comparar `CreationTime` con la hora del bloqueo en Entra).\n\n## Contención (con aprobación del Líder SOC)\n\n- Revocar sesiones y restablecer credenciales en Entra; bloquear el inicio de sesión si hay compromiso.\n- Quitar los enlaces anónimos y los permisos externos del contenido afectado; si hace falta, bajar el uso\n  compartido del sitio a «Solo personas de la organización» mientras dura la investigación.\n- Quitar el administrador de colección agregado sin ticket y revisar los demás.\n- Destrucción: restaurar desde la papelera de la colección de sitios o con «Restaurar este OneDrive/biblioteca».\n- Revertir la configuración del tenant debilitada (`sharingCapability`) y registrar quién la cambió.\n\n## Recuperación y cierre\n\nVerificar que no quedan enlaces del atacante (siguiente pasada de postura, 101966–101968), que la etiqueta volvió\na los archivos afectados y que la cuenta de servicio legítima que causó un falso positivo quedó en la allowlist\npor PR (`detections/lists/b89-m365-service-accounts` o `b89-m365-sharing-approved`). Clasificar VP/FP/benigno,\ncausa raíz y lección para el backlog (umbral, lista o regla).\n\n## Consultas\n\n```text\nrule.groups:b89_sharepoint and rule.level >= 8\nrule.groups:b89_sharepoint and data.office365.UserId:\"<usuario>\"\nrule.id:(101900 or 101902 or 101903 or 101904) and data.office365.UserId:\"<usuario>\"\nrule.groups:b89_external_sharing or rule.id:(100515 or 101926)\nrule.id:(101945 or 101946 or 101948)\nrule.groups:b89_posture and data.sharepoint.finding.kind:anonymous_link\nrule.groups:b89_source_health and data.b89.capability.status:blocked\n```"
   },
   {
    "id": "malware-edr",
@@ -330,6 +407,28 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
    ]
   },
   {
+   "id": "B89-TUNE-AWS-001",
+   "title": "Cambios del propio SOC en el pipeline de monitoreo AWS",
+   "source": "aws",
+   "useCase": "trusted-principals",
+   "status": "testing",
+   "ruleIds": [
+    "101714",
+    "101715",
+    "101716"
+   ],
+   "mitre": [
+    "T1562.008"
+   ],
+   "priorityHint": "P4 / P2",
+   "falsePositives": [
+    "Credenciales del SOC robadas: por eso lo destructivo no baja de 9 y 101710–101712 siguen evaluando la cadena."
+   ],
+   "dataSources": [
+    "CloudTrail vía EventBridge → SNS → receptor B89 (trail de la cuenta, 598294a)"
+   ]
+  },
+  {
    "id": "B89-DET-BD-001",
    "title": "Malware, cuarentena y protección degradada en GravityZone",
    "source": "bitdefender",
@@ -423,6 +522,30 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
    ]
   },
   {
+   "id": "B89-TUNE-CF-001",
+   "title": "Escáneres autorizados, automatización DNS y corroboración por zona crítica",
+   "source": "cloudflare",
+   "useCase": "noise-tuning",
+   "status": "testing",
+   "ruleIds": [
+    "101741",
+    "101742",
+    "101743",
+    "101744"
+   ],
+   "mitre": [
+    "T1190",
+    "T1595"
+   ],
+   "priorityHint": "P1/P2 solo en zona crítica",
+   "falsePositives": [
+    "Zona crítica no listada: el ataque quedaría en 7 (cola, sin correo). Revisar la lista con cada alta de zona."
+   ],
+   "dataSources": [
+    "Cloudflare firewall events y audit logs"
+   ]
+  },
+  {
    "id": "B89-DET-CF-002",
    "title": "Oleada distribuida contra un host del WAF",
    "source": "cloudflare",
@@ -441,6 +564,69 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
    ],
    "dataSources": [
     "Cloudflare firewall events"
+   ]
+  },
+  {
+   "id": "B89-DET-NET-005",
+   "title": "Ataques web contra la consola del SOC (edge nginx)",
+   "source": "edge",
+   "useCase": "http-attacks",
+   "status": "testing",
+   "ruleIds": [
+    "101830",
+    "101831",
+    "101832",
+    "101833",
+    "101834",
+    "101835",
+    "101836",
+    "101837",
+    "101838",
+    "101839",
+    "101840",
+    "101841"
+   ],
+   "mitre": [
+    "T1190",
+    "T1595.002",
+    "T1595.003",
+    "T1595",
+    "T1499"
+   ],
+   "priorityHint": "P3; P2 si hay campaña o correlación",
+   "falsePositives": [
+    "URLs del dashboard con rison/KQL que contienen comillas y operadores (se probó el caso de Discover).",
+    "Herramientas de monitoreo sintético propias: usar un User-Agent sin nombres de escáner."
+   ],
+   "dataSources": [
+    "bitácora JSON del edge nginx (b89-collectors/edge/access.json), IP real vía X-Forwarded-For del ALB"
+   ]
+  },
+  {
+   "id": "B89-DET-NET-006",
+   "title": "Inicios de sesión en la consola del SOC por IP",
+   "source": "edge",
+   "useCase": "soc-authentication",
+   "status": "testing",
+   "ruleIds": [
+    "101842",
+    "101843",
+    "101844",
+    "101845",
+    "101846"
+   ],
+   "mitre": [
+    "T1110",
+    "T1110.001",
+    "T1078",
+    "T1110.003"
+   ],
+   "priorityHint": "P1 para 13; P2 para 9-10",
+   "falsePositives": [
+    "Usuario que olvidó la contraseña y reintenta (bajo el umbral de 6 en 5 min)."
+   ],
+   "dataSources": [
+    "bitácora JSON del edge: POST /api/auth/password con resultado derivado de Location (authError=)"
    ]
   },
   {
@@ -561,6 +747,126 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
    ]
   },
   {
+   "id": "B89-DET-NET-004",
+   "title": "Ejecución interactiva en contenedores críticos del SOC",
+   "source": "linux",
+   "useCase": "docker-runtime",
+   "status": "testing",
+   "ruleIds": [
+    "101850",
+    "101851",
+    "101852"
+   ],
+   "mitre": [
+    "T1609",
+    "T1610"
+   ],
+   "priorityHint": "P3 (P2 fuera de una ventana de cambio)",
+   "falsePositives": [
+    "Scripts de despliegue y políticas B89 (deploy-detections.sh, apply-*.sh) hacen docker exec en el manager: esperado durante un despliegue."
+   ],
+   "dataSources": [
+    "wodle docker-listener del grupo linux-docker-hosts (agente 001)"
+   ]
+  },
+  {
+   "id": "B89-DET-NET-002",
+   "title": "Llamadas de red auditadas (connect/bind/accept) de sesiones interactivas",
+   "source": "linux",
+   "useCase": "network-auditd",
+   "status": "testing",
+   "ruleIds": [
+    "101810",
+    "101812",
+    "101813",
+    "101814",
+    "101815",
+    "101816",
+    "101818",
+    "101811",
+    "101817"
+   ],
+   "mitre": [
+    "T1059.004",
+    "T1571",
+    "T1046",
+    "T1040",
+    "T1071",
+    "T1505.003"
+   ],
+   "priorityHint": "P2 para 10-12",
+   "falsePositives": [
+    "Administrador que usa nc/nmap/tcpdump para diagnosticar: confirmar con el ticket de cambio; no se suprime.",
+    "IPv6 o claves no enriquecidas (auditd sin log_format ENRICHED): la regla cae a 101810 sin IP."
+   ],
+   "dataSources": [
+    "auditd del host con b89-audit-network.rules (distribuido por el grupo linux-servers), log_format audit"
+   ]
+  },
+  {
+   "id": "B89-DET-NET-001",
+   "title": "Puertos en escucha y conexiones TCP nuevas del host",
+   "source": "linux",
+   "useCase": "network-connections",
+   "status": "testing",
+   "ruleIds": [
+    "101800",
+    "101801",
+    "101802",
+    "101803",
+    "101804",
+    "101805",
+    "101806",
+    "101807",
+    "101808",
+    "101809"
+   ],
+   "mitre": [
+    "T1571",
+    "T1059.004",
+    "T1071",
+    "T1133"
+   ],
+   "priorityHint": "P2 para 10-12; P4 para 3-5 (caza)",
+   "falsePositives": [
+    "Despliegue o actualización que publica un puerto nuevo: agregarlo por PR a infra/wazuh/network/lists/b89-expected-listeners.",
+    "Un servicio SaaS nuevo (destino poco común): agregar el prefijo a infra/wazuh/network/lists/b89-egress-static.",
+    "Conexiones cortas (< 2 min) no se ven en la foto de ss: las cubre auditd (network-auditd) para sesiones interactivas."
+   ],
+   "dataSources": [
+    "command monitoring del grupo linux-servers: b89-netconn.sh (ss) cada 2 min (eventos) y 5 min (foto)",
+    "agente 001 (b89-soc-dev-node)"
+   ]
+  },
+  {
+   "id": "B89-TUNE-LNX-001",
+   "title": "Ruido de sesiones administrativas, SSH por contexto y rootcheck en overlay",
+   "source": "linux",
+   "useCase": "noise-tuning",
+   "status": "testing",
+   "ruleIds": [
+    "101761",
+    "101762",
+    "101763",
+    "101765",
+    "101766",
+    "101767"
+   ],
+   "mitre": [
+    "T1078.003",
+    "T1021.004"
+   ],
+   "priorityHint": "P3 en horario; P2 fuera de horario (P1 si además hay fuerza bruta: 101750)",
+   "falsePositives": [
+    "Operador que entra desde una IP nueva (red móvil, viaje): agregar el prefijo por PR a b89-admin-ips.",
+    "La hora del manager es UTC: el horario B89 se expresa como 01:00–13:00 UTC (20:00–08:00 Lima)."
+   ],
+   "dataSources": [
+    "journald del agente 001 (pam_unix, sshd)",
+    "rootcheck del agente"
+   ]
+  },
+  {
    "id": "B89-DET-LNX-003",
    "title": "Persistencia y debilitamiento de autenticación por FIM en tiempo real",
    "source": "linux",
@@ -634,6 +940,28 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
    ],
    "dataSources": [
     "journald/sshd del agente (grupo linux-servers); datos reales en b89-soc-dev-node"
+   ]
+  },
+  {
+   "id": "B89-DET-NET-003",
+   "title": "Seguimiento de sesiones SSH por cuenta",
+   "source": "linux",
+   "useCase": "ssh-session-tracking",
+   "status": "testing",
+   "ruleIds": [
+    "101820",
+    "101821"
+   ],
+   "mitre": [
+    "T1078.003",
+    "T1021.004"
+   ],
+   "priorityHint": "P2",
+   "falsePositives": [
+    "Operador que cambia de red (VPN, móvil) varias veces en una hora."
+   ],
+   "dataSources": [
+    "journald/sshd del agente (grupo linux-servers)"
    ]
   },
   {
@@ -768,6 +1096,266 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
    ]
   },
   {
+   "id": "B89-DET-NET-008",
+   "title": "Misma IP atacante en Cloudflare WAF, edge del SOC y SSH",
+   "source": "network",
+   "useCase": "cross-source-correlation",
+   "status": "testing",
+   "ruleIds": [
+    "101870",
+    "101871",
+    "101872",
+    "101873",
+    "101874",
+    "101875",
+    "101876"
+   ],
+   "mitre": [
+    "T1190",
+    "T1595",
+    "T1078",
+    "T1110",
+    "T1078.003"
+   ],
+   "priorityHint": "P1 para 13-14",
+   "falsePositives": [
+    "IP compartida (CGNAT, proxy corporativo) entre un atacante y un usuario."
+   ],
+   "dataSources": [
+    "Cloudflare firewall events (vía lista diaria b89-cf-waf-attackers)",
+    "edge nginx",
+    "sshd"
+   ]
+  },
+  {
+   "id": "B89-DET-NET-007",
+   "title": "Conexiones e inicios de sesión con IPs de reputación pública",
+   "source": "network",
+   "useCase": "threat-intel",
+   "status": "testing",
+   "ruleIds": [
+    "101860",
+    "101861",
+    "101865",
+    "101868",
+    "101862",
+    "101863",
+    "101864",
+    "101867",
+    "101866"
+   ],
+   "mitre": [
+    "T1078",
+    "T1090.003",
+    "T1078.003",
+    "T1021.004",
+    "T1595",
+    "T1071",
+    "T1133"
+   ],
+   "priorityHint": "P1 para 12-13 con éxito; P3 el resto",
+   "falsePositives": [
+    "Usuario legítimo detrás de Tor o de una red reasignada recientemente: confirmar con la persona."
+   ],
+   "dataSources": [
+    "listas CDB b89-ti-blocklist y b89-ti-tor (timer diario del host)",
+    "SSH, edge, command monitoring y auditd"
+   ]
+  },
+  {
+   "id": "B89-DET-SP-001",
+   "title": "Exfiltración desde SharePoint/OneDrive (volumen, horario, red nueva, invitados, cuentas deshabilitadas, IP maliciosa)",
+   "source": "sharepoint",
+   "useCase": "exfiltration",
+   "status": "testing",
+   "ruleIds": [
+    "101900",
+    "101901",
+    "101902",
+    "101903",
+    "101904",
+    "101905",
+    "101906",
+    "101907",
+    "101908",
+    "101909",
+    "101910",
+    "101911",
+    "101912",
+    "101913",
+    "101914"
+   ],
+   "mitre": [
+    "T1530",
+    "T1213.002",
+    "T1078.004",
+    "T1090.003"
+   ],
+   "priorityHint": "P1 (12) / P2 (10–11) / P4 marcas",
+   "falsePositives": [
+    "Sincronización del cliente OneDrive (FileSyncDownloadedFull): en datos reales fue el 97 % de las descargas y un equipo resincronizó 6449 archivos en 25 h (41 alertas P2 con el umbral común). Ahora tiene marca y umbral propios (101912/101913, 500/10 min, P3).",
+    "Migraciones o respaldos con cuenta de servicio: registrarla en b89-m365-service-accounts (baja a 2 y no cuenta).",
+    "Viajes: red nueva legítima; confirmar con el usuario y con los inicios de sesión de Entra."
+   ],
+   "dataSources": [
+    "Office 365 Management Activity API, Audit.SharePoint (módulo office365 de Wazuh; ActivityFeed.Read)",
+    "Microsoft Graph Purview Audit Search /security/auditLog/queries (collector b89-sharepoint-audit; AuditLogsQuery-SharePoint.Read.All / AuditLogsQuery-OneDrive.Read.All)"
+   ]
+  },
+  {
+   "id": "B89-DET-SP-003",
+   "title": "Uso compartido externo: enlaces anónimos en volumen y correos personales",
+   "source": "sharepoint",
+   "useCase": "external-sharing",
+   "status": "testing",
+   "ruleIds": [
+    "101925",
+    "101926",
+    "101927",
+    "101928",
+    "101929",
+    "101930"
+   ],
+   "mitre": [
+    "T1567",
+    "T1537"
+   ],
+   "priorityHint": "P1 (12) / P2 (9–11) / P3 (4)",
+   "falsePositives": [
+    "Marketing y comunicaciones publican con enlaces anónimos (b89-m365-sharing-approved).",
+    "Proveedores con correo gratuito (documentar y aprobar por PR)."
+   ],
+   "dataSources": [
+    "Office 365 Management Activity API, Audit.SharePoint (módulo office365 de Wazuh; ActivityFeed.Read)",
+    "Microsoft Graph Purview Audit Search /security/auditLog/queries (collector b89-sharepoint-audit; AuditLogsQuery-SharePoint.Read.All / AuditLogsQuery-OneDrive.Read.All)"
+   ]
+  },
+  {
+   "id": "B89-DET-SP-005",
+   "title": "Etiquetas de confidencialidad quitadas o rebajadas y coincidencias DLP",
+   "source": "sharepoint",
+   "useCase": "labels-and-dlp",
+   "status": "testing",
+   "ruleIds": [
+    "101945",
+    "101946",
+    "101947",
+    "101948",
+    "101949",
+    "101950",
+    "101951"
+   ],
+   "mitre": [
+    "T1562",
+    "T1567",
+    "T1213.002"
+   ],
+   "priorityHint": "P1 (12–13) / P2 (8–11) / P3 (7)",
+   "falsePositives": [
+    "Reclasificación aprobada con justificación (JustificationText).",
+    "Políticas DLP en modo prueba (revisar la severidad en Purview)."
+   ],
+   "dataSources": [
+    "Office 365 Management Activity API, Audit.SharePoint (módulo office365 de Wazuh; ActivityFeed.Read)",
+    "Microsoft Graph Purview Audit Search /security/auditLog/queries (collector b89-sharepoint-audit; AuditLogsQuery-SharePoint.Read.All / AuditLogsQuery-OneDrive.Read.All)"
+   ]
+  },
+  {
+   "id": "B89-DET-SP-002",
+   "title": "Borrado masivo y vaciado de la papelera en SharePoint/OneDrive",
+   "source": "sharepoint",
+   "useCase": "mass-deletion",
+   "status": "testing",
+   "ruleIds": [
+    "101915",
+    "101916",
+    "101917",
+    "101918",
+    "101919",
+    "101920"
+   ],
+   "mitre": [
+    "T1485",
+    "T1490"
+   ],
+   "priorityHint": "P1 (12–13) / P2 (10)",
+   "falsePositives": [
+    "Reorganización de bibliotecas por el dueño del sitio (con aviso previo).",
+    "Retención o limpieza automatizada con cuenta de servicio (registrar en la allowlist)."
+   ],
+   "dataSources": [
+    "Office 365 Management Activity API, Audit.SharePoint (módulo office365 de Wazuh; ActivityFeed.Read)",
+    "Microsoft Graph Purview Audit Search /security/auditLog/queries (collector b89-sharepoint-audit; AuditLogsQuery-SharePoint.Read.All / AuditLogsQuery-OneDrive.Read.All)"
+   ]
+  },
+  {
+   "id": "B89-DET-SP-006",
+   "title": "Postura de SharePoint y salud de la fuente",
+   "source": "sharepoint",
+   "useCase": "posture",
+   "status": "pending-provider-evidence",
+   "ruleIds": [
+    "101960",
+    "101961",
+    "101962",
+    "101963",
+    "101964",
+    "101965",
+    "101966",
+    "101967",
+    "101968",
+    "101969",
+    "101970",
+    "101971",
+    "101972"
+   ],
+   "mitre": [
+    "T1484",
+    "T1567",
+    "T1537"
+   ],
+   "priorityHint": "P1 (12) / P2 (8–10) / P3",
+   "falsePositives": [
+    "Sitios de proyectos con socios: permisos externos esperados (revisión trimestral de accesos)."
+   ],
+   "dataSources": [
+    "Microsoft Graph /admin/sharepoint/settings (SharePointTenantSettings.Read.All)",
+    "Microsoft Graph /sites/getAllSites, /drives, /permissions (Sites.Read.All)",
+    "Collector b89-sharepoint-posture y b89-sharepoint-audit (eventos de capacidad)"
+   ]
+  },
+  {
+   "id": "B89-DET-SP-004",
+   "title": "Política de uso compartido debilitada y administradores de colección de sitios",
+   "source": "sharepoint",
+   "useCase": "sharing-policy-and-admins",
+   "status": "testing",
+   "ruleIds": [
+    "101935",
+    "101936",
+    "101937",
+    "101938",
+    "101939",
+    "101940",
+    "101941"
+   ],
+   "mitre": [
+    "T1484",
+    "T1098",
+    "T1078.004",
+    "T1530"
+   ],
+   "priorityHint": "P1 (12) / P2 (8–11)",
+   "falsePositives": [
+    "Cambio aprobado por TI (ticket).",
+    "Acceso al OneDrive de un empleado que se va (proceso de RR. HH.: documentarlo en el caso)."
+   ],
+   "dataSources": [
+    "Office 365 Management Activity API, Audit.SharePoint (módulo office365 de Wazuh; ActivityFeed.Read)",
+    "Microsoft Graph Purview Audit Search /security/auditLog/queries (collector b89-sharepoint-audit; AuditLogsQuery-SharePoint.Read.All / AuditLogsQuery-OneDrive.Read.All)"
+   ]
+  },
+  {
    "id": "B89-DET-SNYK-002",
    "title": "Crítica con exploit maduro en proyecto expuesto por Cloudflare",
    "source": "snyk",
@@ -788,6 +1376,29 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
    "dataSources": [
     "Snyk issues",
     "Inventario B89: lista CDB b89-internet-facing-projects (proyecto Snyk → zona/host Cloudflare)"
+   ]
+  },
+  {
+   "id": "B89-TUNE-SNYK-001",
+   "title": "Calibración de severidad de Snyk por exposición y explotabilidad",
+   "source": "snyk",
+   "useCase": "severity-calibration",
+   "status": "testing",
+   "ruleIds": [
+    "101732",
+    "101733",
+    "101734"
+   ],
+   "mitre": [
+    "T1190"
+   ],
+   "priorityHint": "P3/P4",
+   "falsePositives": [
+    "Proyecto expuesto que falta en la lista: quedaría degradado. La lista es parte del cambio de cada servicio publicado."
+   ],
+   "dataSources": [
+    "Snyk issues",
+    "Lista b89-internet-facing-projects"
    ]
   },
   {
@@ -816,6 +1427,39 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
    ],
    "dataSources": [
     "Snyk REST API de issues (collector b89-collector-snyk, cada 15 min)"
+   ]
+  },
+  {
+   "id": "B89-DET-NET-009",
+   "title": "Conexiones de red de endpoints Windows (Sysmon 3/22, WFP, firewall)",
+   "source": "windows",
+   "useCase": "network-connections",
+   "status": "testing",
+   "ruleIds": [
+    "101880",
+    "101881",
+    "101882",
+    "101883",
+    "101884",
+    "101885",
+    "101886",
+    "101887",
+    "101888"
+   ],
+   "mitre": [
+    "T1046",
+    "T1071",
+    "T1595",
+    "T1105",
+    "T1572"
+   ],
+   "priorityHint": "P2 para 10-12",
+   "falsePositives": [
+    "Instaladores legítimos que usan msiexec/bitsadmin contra CDNs públicas."
+   ],
+   "dataSources": [
+    "grupo opt-in windows-telemetry-extended (gate de privacidad): Sysmon 3/22, Security 5156/5157 y pfirewall.log",
+    "sin agentes Windows hoy: fixtures en el manager desechable"
    ]
   },
   {
@@ -3085,6 +3729,52 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
     "credenciales"
    ]
   },
+  "101714": {
+   "id": "101714",
+   "level": 3,
+   "description": "B89 AWS: cambio en el pipeline de monitoreo B89 por principal de confianza $(aws.principal) ($(aws.event_name)).",
+   "mitre": [],
+   "groups": [
+    "b89_aws_api",
+    "b89_audit",
+    "b89_trusted_principal"
+   ],
+   "file": "detections/aws/trusted-principals/rule.xml",
+   "useCases": [
+    "B89-TUNE-AWS-001"
+   ]
+  },
+  "101715": {
+   "id": "101715",
+   "level": 9,
+   "description": "B89 AWS: principal de confianza $(aws.principal) modificó de forma destructiva el pipeline de monitoreo ($(aws.event_name)); confirmar el cambio.",
+   "mitre": [
+    "T1562.008"
+   ],
+   "groups": [
+    "b89_audit",
+    "b89_trusted_principal"
+   ],
+   "file": "detections/aws/trusted-principals/rule.xml",
+   "useCases": [
+    "B89-TUNE-AWS-001"
+   ]
+  },
+  "101716": {
+   "id": "101716",
+   "level": 5,
+   "description": "B89 AWS: security group modificado ($(aws.event_name)) por principal de confianza $(aws.principal) en $(aws.region).",
+   "mitre": [],
+   "groups": [
+    "b89_aws_network",
+    "b89_audit",
+    "b89_trusted_principal"
+   ],
+   "file": "detections/aws/trusted-principals/rule.xml",
+   "useCases": [
+    "B89-TUNE-AWS-001"
+   ]
+  },
   "101720": {
    "id": "101720",
    "level": 14,
@@ -3202,6 +3892,43 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
     "vulnerabilidad-expuesta"
    ]
   },
+  "101732": {
+   "id": "101732",
+   "level": 2,
+   "description": "B89 Snyk: vulnerabilidad baja sin exploit maduro $(snyk.issue.title) en $(snyk.project.name) (backlog de AppSec).",
+   "mitre": [],
+   "groups": [],
+   "file": "detections/snyk/severity-calibration/rule.xml",
+   "useCases": [
+    "B89-TUNE-SNYK-001"
+   ]
+  },
+  "101733": {
+   "id": "101733",
+   "level": 7,
+   "description": "B89 Snyk: vulnerabilidad ALTA sin exposición ni exploit maduro $(snyk.issue.title) en $(snyk.project.name).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [],
+   "file": "detections/snyk/severity-calibration/rule.xml",
+   "useCases": [
+    "B89-TUNE-SNYK-001"
+   ]
+  },
+  "101734": {
+   "id": "101734",
+   "level": 10,
+   "description": "B89 Snyk: vulnerabilidad CRÍTICA sin exposición ni exploit maduro $(snyk.issue.title) en $(snyk.project.name).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [],
+   "file": "detections/snyk/severity-calibration/rule.xml",
+   "useCases": [
+    "B89-TUNE-SNYK-001"
+   ]
+  },
   "101740": {
    "id": "101740",
    "level": 12,
@@ -3219,6 +3946,66 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
    ],
    "runbooks": [
     "oleada-waf"
+   ]
+  },
+  "101741": {
+   "id": "101741",
+   "level": 11,
+   "description": "B89 Cloudflare: ataque sostenido de $(cloudflare.firewall.client_ip) contra la zona crítica $(cloudflare.zone_name).",
+   "mitre": [
+    "T1190",
+    "T1595"
+   ],
+   "groups": [
+    "b89_waf",
+    "b89_attack"
+   ],
+   "file": "detections/cloudflare/noise-tuning/rule.xml",
+   "useCases": [
+    "B89-TUNE-CF-001"
+   ]
+  },
+  "101742": {
+   "id": "101742",
+   "level": 7,
+   "description": "B89 Cloudflare: 20+ bloqueos de $(cloudflare.firewall.client_ip) en la zona no crítica $(cloudflare.zone_name); el WAF contuvo el ataque.",
+   "mitre": [
+    "T1595"
+   ],
+   "groups": [
+    "b89_waf"
+   ],
+   "file": "detections/cloudflare/noise-tuning/rule.xml",
+   "useCases": [
+    "B89-TUNE-CF-001"
+   ]
+  },
+  "101743": {
+   "id": "101743",
+   "level": 2,
+   "description": "B89 Cloudflare: bloqueo a escáner autorizado $(cloudflare.firewall.client_ip) en $(cloudflare.firewall.host).",
+   "mitre": [],
+   "groups": [
+    "b89_waf"
+   ],
+   "file": "detections/cloudflare/noise-tuning/rule.xml",
+   "useCases": [
+    "B89-TUNE-CF-001"
+   ]
+  },
+  "101744": {
+   "id": "101744",
+   "level": 3,
+   "description": "B89 Cloudflare: cambio DNS ($(cloudflare.audit.action)) en $(cloudflare.audit.zone_name) por la automatización aprobada $(cloudflare.audit.actor_email).",
+   "mitre": [],
+   "groups": [
+    "b89_audit",
+    "b89_dns_change",
+    "b89_trusted_principal"
+   ],
+   "file": "detections/cloudflare/noise-tuning/rule.xml",
+   "useCases": [
+    "B89-TUNE-CF-001"
    ]
   },
   "101750": {
@@ -3371,6 +4158,2088 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
    "runbooks": [
     "escalada-de-privilegios"
    ]
+  },
+  "101761": {
+   "id": "101761",
+   "level": 8,
+   "description": "B89 Linux: acceso SSH exitoso de $(dstuser) desde $(srcip), IP no registrada como administrativa.",
+   "mitre": [
+    "T1078.003",
+    "T1021.004"
+   ],
+   "groups": [
+    "b89_initial_access"
+   ],
+   "file": "detections/linux/noise-tuning/rule.xml",
+   "useCases": [
+    "B89-TUNE-LNX-001"
+   ]
+  },
+  "101762": {
+   "id": "101762",
+   "level": 11,
+   "description": "B89 Linux: acceso SSH de $(dstuser) desde IP no registrada $(srcip) fuera del horario del SOC.",
+   "mitre": [
+    "T1078.003",
+    "T1021.004"
+   ],
+   "groups": [
+    "b89_initial_access",
+    "b89_off_hours"
+   ],
+   "file": "detections/linux/noise-tuning/rule.xml",
+   "useCases": [
+    "B89-TUNE-LNX-001"
+   ]
+  },
+  "101763": {
+   "id": "101763",
+   "level": 11,
+   "description": "B89 Linux: acceso SSH de $(dstuser) desde IP no registrada $(srcip) en fin de semana.",
+   "mitre": [
+    "T1078.003",
+    "T1021.004"
+   ],
+   "groups": [
+    "b89_initial_access",
+    "b89_off_hours"
+   ],
+   "file": "detections/linux/noise-tuning/rule.xml",
+   "useCases": [
+    "B89-TUNE-LNX-001"
+   ]
+  },
+  "101765": {
+   "id": "101765",
+   "level": 0,
+   "description": "B89 Linux: anomalía de rootcheck en capa overlay de contenedores (falso positivo conocido de 521).",
+   "mitre": [],
+   "groups": [
+    "rootcheck"
+   ],
+   "file": "detections/linux/noise-tuning/rule.xml",
+   "useCases": [
+    "B89-TUNE-LNX-001"
+   ]
+  },
+  "101766": {
+   "id": "101766",
+   "level": 0,
+   "description": "B89 Linux: sesión PAM de cuenta administrativa ($(srcuser) a $(dstuser)); ya auditada por sudo/SSH.",
+   "mitre": [],
+   "groups": [],
+   "file": "detections/linux/noise-tuning/rule.xml",
+   "useCases": [
+    "B89-TUNE-LNX-001"
+   ]
+  },
+  "101767": {
+   "id": "101767",
+   "level": 0,
+   "description": "B89 Linux: cierre de sesión PAM de cuenta administrativa $(dstuser).",
+   "mitre": [],
+   "groups": [],
+   "file": "detections/linux/noise-tuning/rule.xml",
+   "useCases": [
+    "B89-TUNE-LNX-001"
+   ]
+  },
+  "101800": {
+   "id": "101800",
+   "level": 7,
+   "description": "B89 Linux: cambiaron los puertos en escucha del host (se abrió o se cerró uno).",
+   "mitre": [
+    "T1571"
+   ],
+   "groups": [
+    "b89_listening_ports"
+   ],
+   "file": "detections/linux/network-connections/rule.xml",
+   "useCases": [
+    "B89-DET-NET-001"
+   ]
+  },
+  "101801": {
+   "id": "101801",
+   "level": 0,
+   "description": "B89 Linux: evento de red del host ($(b89.net.type) $(b89.net.direction)).",
+   "mitre": [],
+   "groups": [
+    "b89_netconn"
+   ],
+   "file": "detections/linux/network-connections/rule.xml",
+   "useCases": [
+    "B89-DET-NET-001"
+   ]
+  },
+  "101802": {
+   "id": "101802",
+   "level": 0,
+   "description": "B89 Linux: nueva escucha solo en loopback ($(dstip):$(dstport), $(b89.net.process)).",
+   "mitre": [],
+   "groups": [
+    "b89_netconn"
+   ],
+   "file": "detections/linux/network-connections/rule.xml",
+   "useCases": [
+    "B89-DET-NET-001"
+   ]
+  },
+  "101803": {
+   "id": "101803",
+   "level": 12,
+   "description": "B89 Linux: shell, netcat o intérprete $(b89.net.process) escucha en $(dstip):$(dstport)/$(protocol) (posible bind shell o túnel).",
+   "mitre": [
+    "T1059.004",
+    "T1571"
+   ],
+   "groups": [
+    "b89_netconn",
+    "b89_attack"
+   ],
+   "file": "detections/linux/network-connections/rule.xml",
+   "useCases": [
+    "B89-DET-NET-001"
+   ]
+  },
+  "101804": {
+   "id": "101804",
+   "level": 0,
+   "description": "B89 Linux: escucha esperada $(dstip):$(dstport)/$(protocol) ($(b89.net.process)).",
+   "mitre": [],
+   "groups": [
+    "b89_netconn"
+   ],
+   "file": "detections/linux/network-connections/rule.xml",
+   "useCases": [
+    "B89-DET-NET-001"
+   ]
+  },
+  "101805": {
+   "id": "101805",
+   "level": 8,
+   "description": "B89 Linux: nuevo puerto en escucha no esperado $(dstip):$(dstport)/$(protocol) de $(b89.net.process) (uid $(b89.net.uid)).",
+   "mitre": [
+    "T1571"
+   ],
+   "groups": [
+    "b89_netconn"
+   ],
+   "file": "detections/linux/network-connections/rule.xml",
+   "useCases": [
+    "B89-DET-NET-001"
+   ]
+  },
+  "101806": {
+   "id": "101806",
+   "level": 0,
+   "description": "B89 Linux: conexión TCP interna $(b89.net.direction) $(srcip) → $(dstip):$(dstport) ($(b89.net.process)).",
+   "mitre": [],
+   "groups": [
+    "b89_netconn"
+   ],
+   "file": "detections/linux/network-connections/rule.xml",
+   "useCases": [
+    "B89-DET-NET-001"
+   ]
+  },
+  "101807": {
+   "id": "101807",
+   "level": 10,
+   "description": "B89 Linux: $(b89.net.process) abrió conexión saliente a $(dstip):$(dstport) (uid $(b89.net.uid)); patrón de reverse shell.",
+   "mitre": [
+    "T1059.004",
+    "T1071"
+   ],
+   "groups": [
+    "b89_netconn",
+    "b89_attack"
+   ],
+   "file": "detections/linux/network-connections/rule.xml",
+   "useCases": [
+    "B89-DET-NET-001"
+   ]
+  },
+  "101808": {
+   "id": "101808",
+   "level": 5,
+   "description": "B89 Linux: conexión saliente a destino poco común $(dstip):$(dstport) desde $(b89.net.process) (uid $(b89.net.uid)).",
+   "mitre": [
+    "T1071"
+   ],
+   "groups": [
+    "b89_netconn",
+    "b89_rare_destination"
+   ],
+   "file": "detections/linux/network-connections/rule.xml",
+   "useCases": [
+    "B89-DET-NET-001"
+   ]
+  },
+  "101809": {
+   "id": "101809",
+   "level": 3,
+   "description": "B89 Linux: conexión entrante desde $(srcip) al puerto $(dstport) ($(b89.net.process)).",
+   "mitre": [
+    "T1133"
+   ],
+   "groups": [
+    "b89_netconn"
+   ],
+   "file": "detections/linux/network-connections/rule.xml",
+   "useCases": [
+    "B89-DET-NET-001"
+   ]
+  },
+  "101810": {
+   "id": "101810",
+   "level": 0,
+   "description": "B89 Linux: llamada de red auditada ($(audit.key)) de $(audit.exe).",
+   "mitre": [],
+   "groups": [
+    "b89_audit_net"
+   ],
+   "file": "detections/linux/network-auditd/rule.xml",
+   "useCases": [
+    "B89-DET-NET-002"
+   ]
+  },
+  "101811": {
+   "id": "101811",
+   "level": 1,
+   "description": "B89 Linux: llamada de red de sesión interactiva a destino interno $(dstip):$(dstport) ($(audit.exe)).",
+   "mitre": [],
+   "groups": [
+    "b89_audit_net"
+   ],
+   "file": "detections/linux/network-auditd/rule.xml",
+   "useCases": [
+    "B89-DET-NET-002"
+   ]
+  },
+  "101812": {
+   "id": "101812",
+   "level": 12,
+   "description": "B89 Linux: $(audit.exe) de una sesión interactiva (auid $(audit.auid)) abrió o aceptó una escucha de red (posible bind shell).",
+   "mitre": [
+    "T1059.004",
+    "T1571"
+   ],
+   "groups": [
+    "b89_audit_net",
+    "b89_attack"
+   ],
+   "file": "detections/linux/network-auditd/rule.xml",
+   "useCases": [
+    "B89-DET-NET-002"
+   ]
+  },
+  "101813": {
+   "id": "101813",
+   "level": 10,
+   "description": "B89 Linux: ejecución de herramienta de red o captura $(audit.exe) por auid $(audit.auid) (uid $(audit.uid)).",
+   "mitre": [
+    "T1046",
+    "T1040"
+   ],
+   "groups": [
+    "b89_audit_net"
+   ],
+   "file": "detections/linux/network-auditd/rule.xml",
+   "useCases": [
+    "B89-DET-NET-002"
+   ]
+  },
+  "101814": {
+   "id": "101814",
+   "level": 12,
+   "description": "B89 Linux: $(audit.exe) (auid $(audit.auid)) se conectó a $(dstip):$(dstport); patrón de reverse shell.",
+   "mitre": [
+    "T1059.004",
+    "T1071"
+   ],
+   "groups": [
+    "b89_audit_net",
+    "b89_attack"
+   ],
+   "file": "detections/linux/network-auditd/rule.xml",
+   "useCases": [
+    "B89-DET-NET-002"
+   ]
+  },
+  "101815": {
+   "id": "101815",
+   "level": 10,
+   "description": "B89 Linux: escáner de red $(audit.exe) (auid $(audit.auid)) conectando a $(dstip):$(dstport).",
+   "mitre": [
+    "T1046"
+   ],
+   "groups": [
+    "b89_audit_net",
+    "b89_attack"
+   ],
+   "file": "detections/linux/network-auditd/rule.xml",
+   "useCases": [
+    "B89-DET-NET-002"
+   ]
+  },
+  "101816": {
+   "id": "101816",
+   "level": 10,
+   "description": "B89 Linux: la cuenta de servicio web (uid $(audit.uid), $(audit.exe)) abrió conexión a $(dstip):$(dstport) (posible webshell o C2).",
+   "mitre": [
+    "T1505.003",
+    "T1071"
+   ],
+   "groups": [
+    "b89_audit_net",
+    "b89_attack"
+   ],
+   "file": "detections/linux/network-auditd/rule.xml",
+   "useCases": [
+    "B89-DET-NET-002"
+   ]
+  },
+  "101817": {
+   "id": "101817",
+   "level": 3,
+   "description": "B89 Linux: $(audit.exe) de una sesión interactiva (auid $(audit.auid)) se conectó a $(dstip):$(dstport).",
+   "mitre": [],
+   "groups": [
+    "b89_audit_net"
+   ],
+   "file": "detections/linux/network-auditd/rule.xml",
+   "useCases": [
+    "B89-DET-NET-002"
+   ]
+  },
+  "101818": {
+   "id": "101818",
+   "level": 5,
+   "description": "B89 Linux: proceso de sesión interactiva $(audit.exe) (auid $(audit.auid)) abrió o aceptó una escucha de red en $(dstip):$(dstport).",
+   "mitre": [
+    "T1571"
+   ],
+   "groups": [
+    "b89_audit_net"
+   ],
+   "file": "detections/linux/network-auditd/rule.xml",
+   "useCases": [
+    "B89-DET-NET-002"
+   ]
+  },
+  "101820": {
+   "id": "101820",
+   "level": 10,
+   "description": "B89 Linux: la cuenta $(dstuser) inició sesión SSH desde 3 o más IPs no administrativas distintas en 1 h (última: $(srcip)).",
+   "mitre": [
+    "T1078.003",
+    "T1021.004"
+   ],
+   "groups": [
+    "b89_ssh_session"
+   ],
+   "file": "detections/linux/ssh-session-tracking/rule.xml",
+   "useCases": [
+    "B89-DET-NET-003"
+   ]
+  },
+  "101821": {
+   "id": "101821",
+   "level": 12,
+   "description": "B89 Linux: inicio de sesión SSH directo como root desde $(srcip) (la política B89 exige cuenta nominal + sudo).",
+   "mitre": [
+    "T1078.003",
+    "T1021.004"
+   ],
+   "groups": [
+    "b89_ssh_session"
+   ],
+   "file": "detections/linux/ssh-session-tracking/rule.xml",
+   "useCases": [
+    "B89-DET-NET-003"
+   ]
+  },
+  "101830": {
+   "id": "101830",
+   "level": 0,
+   "description": "B89 Edge: $(method) $(url) → $(http_status) desde $(srcip).",
+   "mitre": [],
+   "groups": [],
+   "file": "detections/edge/http-attacks/rule.xml",
+   "useCases": [
+    "B89-DET-NET-005"
+   ]
+  },
+  "101831": {
+   "id": "101831",
+   "level": 8,
+   "description": "B89 Edge: intento de inyección SQL contra la consola del SOC desde $(srcip): $(url).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [
+    "b89_edge_attack",
+    "attack",
+    "sql_injection"
+   ],
+   "file": "detections/edge/http-attacks/rule.xml",
+   "useCases": [
+    "B89-DET-NET-005"
+   ]
+  },
+  "101832": {
+   "id": "101832",
+   "level": 8,
+   "description": "B89 Edge: intento de XSS contra la consola del SOC desde $(srcip): $(url).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [
+    "b89_edge_attack",
+    "attack"
+   ],
+   "file": "detections/edge/http-attacks/rule.xml",
+   "useCases": [
+    "B89-DET-NET-005"
+   ]
+  },
+  "101833": {
+   "id": "101833",
+   "level": 8,
+   "description": "B89 Edge: path traversal / lectura de archivos locales contra la consola del SOC desde $(srcip): $(url).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [
+    "b89_edge_attack",
+    "attack"
+   ],
+   "file": "detections/edge/http-attacks/rule.xml",
+   "useCases": [
+    "B89-DET-NET-005"
+   ]
+  },
+  "101834": {
+   "id": "101834",
+   "level": 10,
+   "description": "B89 Edge: intento de ejecución remota de comandos (RCE/inyección/Log4Shell) desde $(srcip): $(url).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [
+    "b89_edge_attack",
+    "attack"
+   ],
+   "file": "detections/edge/http-attacks/rule.xml",
+   "useCases": [
+    "B89-DET-NET-005"
+   ]
+  },
+  "101835": {
+   "id": "101835",
+   "level": 6,
+   "description": "B89 Edge: escáner de vulnerabilidades ($(user_agent)) contra la consola del SOC desde $(srcip).",
+   "mitre": [
+    "T1595.002"
+   ],
+   "groups": [
+    "b89_edge_attack",
+    "recon"
+   ],
+   "file": "detections/edge/http-attacks/rule.xml",
+   "useCases": [
+    "B89-DET-NET-005"
+   ]
+  },
+  "101836": {
+   "id": "101836",
+   "level": 5,
+   "description": "B89 Edge: sondeo de rutas sensibles o de tecnologías ajenas a la consola del SOC desde $(srcip): $(url) → $(http_status).",
+   "mitre": [
+    "T1595.003"
+   ],
+   "groups": [
+    "b89_edge_attack",
+    "recon"
+   ],
+   "file": "detections/edge/http-attacks/rule.xml",
+   "useCases": [
+    "B89-DET-NET-005"
+   ]
+  },
+  "101837": {
+   "id": "101837",
+   "level": 10,
+   "description": "B89 Edge: campaña de ataque/escaneo contra la consola del SOC: 10+ peticiones maliciosas desde $(srcip) en 5 min.",
+   "mitre": [
+    "T1595",
+    "T1190"
+   ],
+   "groups": [
+    "b89_edge_campaign",
+    "attack"
+   ],
+   "file": "detections/edge/http-attacks/rule.xml",
+   "useCases": [
+    "B89-DET-NET-005"
+   ]
+  },
+  "101838": {
+   "id": "101838",
+   "level": 1,
+   "description": "B89 Edge: respuesta $(http_status) a $(srcip) para $(url).",
+   "mitre": [],
+   "groups": [
+    "b89_edge_4xx"
+   ],
+   "file": "detections/edge/http-attacks/rule.xml",
+   "useCases": [
+    "B89-DET-NET-005"
+   ]
+  },
+  "101839": {
+   "id": "101839",
+   "level": 1,
+   "description": "B89 Edge: error $(http_status) del backend para $(url).",
+   "mitre": [],
+   "groups": [
+    "b89_edge_5xx"
+   ],
+   "file": "detections/edge/http-attacks/rule.xml",
+   "useCases": [
+    "B89-DET-NET-005"
+   ]
+  },
+  "101840": {
+   "id": "101840",
+   "level": 7,
+   "description": "B89 Edge: pico de respuestas 4xx para $(srcip): 40+ en 2 min (enumeración o cliente roto).",
+   "mitre": [
+    "T1595.003"
+   ],
+   "groups": [
+    "b89_edge_spike"
+   ],
+   "file": "detections/edge/http-attacks/rule.xml",
+   "useCases": [
+    "B89-DET-NET-005"
+   ]
+  },
+  "101841": {
+   "id": "101841",
+   "level": 9,
+   "description": "B89 Edge: pico de errores 5xx en la consola del SOC: 30+ en 2 min (caída de un backend o denegación de servicio).",
+   "mitre": [
+    "T1499"
+   ],
+   "groups": [
+    "b89_edge_spike",
+    "service_availability"
+   ],
+   "file": "detections/edge/http-attacks/rule.xml",
+   "useCases": [
+    "B89-DET-NET-005"
+   ]
+  },
+  "101842": {
+   "id": "101842",
+   "level": 5,
+   "description": "B89 Edge: inicio de sesión fallido en la consola del SOC desde $(srcip).",
+   "mitre": [
+    "T1110"
+   ],
+   "groups": [
+    "b89_edge_auth_failure"
+   ],
+   "file": "detections/edge/soc-authentication/rule.xml",
+   "useCases": [
+    "B89-DET-NET-006"
+   ]
+  },
+  "101843": {
+   "id": "101843",
+   "level": 3,
+   "description": "B89 Edge: inicio de sesión exitoso en la consola del SOC desde $(srcip).",
+   "mitre": [],
+   "groups": [
+    "authentication_success",
+    "b89_edge_auth_success"
+   ],
+   "file": "detections/edge/soc-authentication/rule.xml",
+   "useCases": [
+    "B89-DET-NET-006"
+   ]
+  },
+  "101844": {
+   "id": "101844",
+   "level": 10,
+   "description": "B89 Edge: fuerza bruta contra el login de la consola del SOC: 6+ fallos desde $(srcip) en 5 min.",
+   "mitre": [
+    "T1110.001"
+   ],
+   "groups": [
+    "b89_edge_auth_failure",
+    "b89_attack"
+   ],
+   "file": "detections/edge/soc-authentication/rule.xml",
+   "useCases": [
+    "B89-DET-NET-006"
+   ]
+  },
+  "101845": {
+   "id": "101845",
+   "level": 13,
+   "description": "B89 Edge: inicio de sesión exitoso en la consola del SOC desde $(srcip) tras fuerza bruta desde la misma IP.",
+   "mitre": [
+    "T1110.001",
+    "T1078"
+   ],
+   "groups": [
+    "b89_attack_chain",
+    "b89_attack"
+   ],
+   "file": "detections/edge/soc-authentication/rule.xml",
+   "useCases": [
+    "B89-DET-NET-006"
+   ]
+  },
+  "101846": {
+   "id": "101846",
+   "level": 9,
+   "description": "B89 Edge: 20+ inicios de sesión fallidos en la consola del SOC desde IPs distintas en 10 min (password spraying distribuido).",
+   "mitre": [
+    "T1110.003"
+   ],
+   "groups": [
+    "b89_edge_auth_failure",
+    "b89_attack"
+   ],
+   "file": "detections/edge/soc-authentication/rule.xml",
+   "useCases": [
+    "B89-DET-NET-006"
+   ]
+  },
+  "101850": {
+   "id": "101850",
+   "level": 10,
+   "description": "B89 Linux: shell interactiva abierta dentro del contenedor crítico del SOC $(docker.Actor.Attributes.name).",
+   "mitre": [
+    "T1609"
+   ],
+   "groups": [
+    "b89_container"
+   ],
+   "file": "detections/linux/docker-runtime/rule.xml",
+   "useCases": [
+    "B89-DET-NET-004"
+   ]
+  },
+  "101851": {
+   "id": "101851",
+   "level": 6,
+   "description": "B89 Linux: comando ejecutado dentro del contenedor crítico del SOC $(docker.Actor.Attributes.name): $(docker.Action).",
+   "mitre": [
+    "T1609"
+   ],
+   "groups": [
+    "b89_container"
+   ],
+   "file": "detections/linux/docker-runtime/rule.xml",
+   "useCases": [
+    "B89-DET-NET-004"
+   ]
+  },
+  "101852": {
+   "id": "101852",
+   "level": 8,
+   "description": "B89 Linux: se creó un contenedor de propósito general o de herramientas ($(docker.Actor.Attributes.image)) en el nodo del SOC: $(docker.Actor.Attributes.name).",
+   "mitre": [
+    "T1610"
+   ],
+   "groups": [
+    "b89_container"
+   ],
+   "file": "detections/linux/docker-runtime/rule.xml",
+   "useCases": [
+    "B89-DET-NET-004"
+   ]
+  },
+  "101860": {
+   "id": "101860",
+   "level": 12,
+   "description": "B89 Red: inicio de sesión exitoso desde $(srcip), IP en listas de reputación (Spamhaus DROP / abuse.ch).",
+   "mitre": [
+    "T1078"
+   ],
+   "groups": [
+    "b89_ti_hit"
+   ],
+   "file": "detections/network/threat-intel/rule.xml",
+   "useCases": [
+    "B89-DET-NET-007"
+   ]
+  },
+  "101861": {
+   "id": "101861",
+   "level": 12,
+   "description": "B89 Red: inicio de sesión exitoso desde $(srcip), nodo de salida de Tor.",
+   "mitre": [
+    "T1090.003",
+    "T1078"
+   ],
+   "groups": [
+    "b89_ti_hit"
+   ],
+   "file": "detections/network/threat-intel/rule.xml",
+   "useCases": [
+    "B89-DET-NET-007"
+   ]
+  },
+  "101862": {
+   "id": "101862",
+   "level": 8,
+   "description": "B89 Red: petición a la consola del SOC desde $(srcip), IP en listas de reputación: $(method) $(url) → $(http_status).",
+   "mitre": [
+    "T1595"
+   ],
+   "groups": [
+    "b89_ti_hit"
+   ],
+   "file": "detections/network/threat-intel/rule.xml",
+   "useCases": [
+    "B89-DET-NET-007"
+   ]
+  },
+  "101863": {
+   "id": "101863",
+   "level": 6,
+   "description": "B89 Red: petición a la consola del SOC desde un nodo de salida de Tor ($(srcip)): $(method) $(url).",
+   "mitre": [
+    "T1090.003"
+   ],
+   "groups": [
+    "b89_ti_hit"
+   ],
+   "file": "detections/network/threat-intel/rule.xml",
+   "useCases": [
+    "B89-DET-NET-007"
+   ]
+  },
+  "101864": {
+   "id": "101864",
+   "level": 12,
+   "description": "B89 Red: el host abrió una conexión a $(dstip):$(dstport) ($(b89.net.process)), IP en listas de reputación (posible C2).",
+   "mitre": [
+    "T1071"
+   ],
+   "groups": [
+    "b89_ti_hit"
+   ],
+   "file": "detections/network/threat-intel/rule.xml",
+   "useCases": [
+    "B89-DET-NET-007"
+   ]
+  },
+  "101865": {
+   "id": "101865",
+   "level": 13,
+   "description": "B89 Red: acceso SSH exitoso de $(dstuser) desde $(srcip), IP en listas de reputación.",
+   "mitre": [
+    "T1078.003",
+    "T1021.004"
+   ],
+   "groups": [
+    "b89_ti_hit"
+   ],
+   "file": "detections/network/threat-intel/rule.xml",
+   "useCases": [
+    "B89-DET-NET-007"
+   ]
+  },
+  "101866": {
+   "id": "101866",
+   "level": 12,
+   "description": "B89 Red: $(audit.exe) (auid $(audit.auid)) se conectó a $(dstip):$(dstport), IP en listas de reputación.",
+   "mitre": [
+    "T1071"
+   ],
+   "groups": [
+    "b89_ti_hit"
+   ],
+   "file": "detections/network/threat-intel/rule.xml",
+   "useCases": [
+    "B89-DET-NET-007"
+   ]
+  },
+  "101867": {
+   "id": "101867",
+   "level": 10,
+   "description": "B89 Red: conexión TCP establecida desde $(srcip) (listas de reputación) al puerto $(dstport) del host.",
+   "mitre": [
+    "T1133"
+   ],
+   "groups": [
+    "b89_ti_hit"
+   ],
+   "file": "detections/network/threat-intel/rule.xml",
+   "useCases": [
+    "B89-DET-NET-007"
+   ]
+  },
+  "101868": {
+   "id": "101868",
+   "level": 13,
+   "description": "B89 Red: acceso SSH exitoso de $(dstuser) desde $(srcip), nodo de salida de Tor.",
+   "mitre": [
+    "T1090.003",
+    "T1021.004"
+   ],
+   "groups": [
+    "b89_ti_hit"
+   ],
+   "file": "detections/network/threat-intel/rule.xml",
+   "useCases": [
+    "B89-DET-NET-007"
+   ]
+  },
+  "101870": {
+   "id": "101870",
+   "level": 12,
+   "description": "B89 Red: $(srcip), ya bloqueada por el WAF de Cloudflare, ataca ahora la consola del SOC: $(url).",
+   "mitre": [
+    "T1190",
+    "T1595"
+   ],
+   "groups": [
+    "b89_attack_chain"
+   ],
+   "file": "detections/network/cross-source-correlation/rule.xml",
+   "useCases": [
+    "B89-DET-NET-008"
+   ]
+  },
+  "101871": {
+   "id": "101871",
+   "level": 13,
+   "description": "B89 Red: inicio de sesión exitoso desde $(srcip), IP que el WAF de Cloudflare bloqueó en los últimos 7 días.",
+   "mitre": [
+    "T1078",
+    "T1190"
+   ],
+   "groups": [
+    "b89_attack_chain"
+   ],
+   "file": "detections/network/cross-source-correlation/rule.xml",
+   "useCases": [
+    "B89-DET-NET-008"
+   ]
+  },
+  "101872": {
+   "id": "101872",
+   "level": 8,
+   "description": "B89 Red: $(srcip), bloqueada por el WAF de Cloudflare, intenta autenticarse en el SOC (SSH).",
+   "mitre": [
+    "T1110"
+   ],
+   "groups": [
+    "b89_attack_chain"
+   ],
+   "file": "detections/network/cross-source-correlation/rule.xml",
+   "useCases": [
+    "B89-DET-NET-008"
+   ]
+  },
+  "101873": {
+   "id": "101873",
+   "level": 10,
+   "description": "B89 Red: $(srcip) atacó la consola web del SOC y ahora intenta SSH al mismo nodo (1 h).",
+   "mitre": [
+    "T1110",
+    "T1190"
+   ],
+   "groups": [
+    "b89_attack_chain"
+   ],
+   "file": "detections/network/cross-source-correlation/rule.xml",
+   "useCases": [
+    "B89-DET-NET-008"
+   ]
+  },
+  "101874": {
+   "id": "101874",
+   "level": 14,
+   "description": "B89 Red: acceso SSH exitoso de $(dstuser) desde $(srcip), que atacó la consola web del SOC en la última hora.",
+   "mitre": [
+    "T1078.003",
+    "T1190"
+   ],
+   "groups": [
+    "b89_attack_chain"
+   ],
+   "file": "detections/network/cross-source-correlation/rule.xml",
+   "useCases": [
+    "B89-DET-NET-008"
+   ]
+  },
+  "101875": {
+   "id": "101875",
+   "level": 12,
+   "description": "B89 Red: inicio de sesión en la consola del SOC desde $(srcip), que intentó SSH con usuarios inexistentes en la última hora.",
+   "mitre": [
+    "T1110",
+    "T1078"
+   ],
+   "groups": [
+    "b89_attack_chain"
+   ],
+   "file": "detections/network/cross-source-correlation/rule.xml",
+   "useCases": [
+    "B89-DET-NET-008"
+   ]
+  },
+  "101876": {
+   "id": "101876",
+   "level": 12,
+   "description": "B89 Red: inicio de sesión en la consola del SOC desde $(srcip), que falló contraseñas SSH de una cuenta real en la última hora.",
+   "mitre": [
+    "T1110",
+    "T1078"
+   ],
+   "groups": [
+    "b89_attack_chain"
+   ],
+   "file": "detections/network/cross-source-correlation/rule.xml",
+   "useCases": [
+    "B89-DET-NET-008"
+   ]
+  },
+  "101880": {
+   "id": "101880",
+   "level": 0,
+   "description": "B89 Windows: WFP permitió $(win.eventdata.application) → $(win.eventdata.destAddress):$(win.eventdata.destPort).",
+   "mitre": [],
+   "groups": [
+    "b89_wfp"
+   ],
+   "file": "detections/windows/network-connections/rule.xml",
+   "useCases": [
+    "B89-DET-NET-009"
+   ]
+  },
+  "101881": {
+   "id": "101881",
+   "level": 1,
+   "description": "B89 Windows: WFP bloqueó $(win.eventdata.sourceAddress) → $(win.eventdata.destAddress):$(win.eventdata.destPort).",
+   "mitre": [],
+   "groups": [
+    "b89_wfp"
+   ],
+   "file": "detections/windows/network-connections/rule.xml",
+   "useCases": [
+    "B89-DET-NET-009"
+   ]
+  },
+  "101882": {
+   "id": "101882",
+   "level": 10,
+   "description": "B89 Windows: 20+ conexiones bloqueadas desde $(win.eventdata.sourceAddress) a puertos distintos en 2 min (escaneo de puertos).",
+   "mitre": [
+    "T1046"
+   ],
+   "groups": [
+    "b89_wfp"
+   ],
+   "file": "detections/windows/network-connections/rule.xml",
+   "useCases": [
+    "B89-DET-NET-009"
+   ]
+  },
+  "101883": {
+   "id": "101883",
+   "level": 12,
+   "description": "B89 Windows: $(win.eventdata.application) se conectó a $(win.eventdata.destAddress):$(win.eventdata.destPort), IP en listas de reputación.",
+   "mitre": [
+    "T1071"
+   ],
+   "groups": [
+    "b89_ti_hit"
+   ],
+   "file": "detections/windows/network-connections/rule.xml",
+   "useCases": [
+    "B89-DET-NET-009"
+   ]
+  },
+  "101884": {
+   "id": "101884",
+   "level": 6,
+   "description": "B89 Windows: WFP bloqueó a $(win.eventdata.sourceAddress) (listas de reputación) hacia el puerto $(win.eventdata.destPort).",
+   "mitre": [
+    "T1595"
+   ],
+   "groups": [
+    "b89_ti_hit"
+   ],
+   "file": "detections/windows/network-connections/rule.xml",
+   "useCases": [
+    "B89-DET-NET-009"
+   ]
+  },
+  "101885": {
+   "id": "101885",
+   "level": 12,
+   "description": "B89 Windows: $(win.eventdata.image) se conectó a $(win.eventdata.destinationIp):$(win.eventdata.destinationPort), IP en listas de reputación.",
+   "mitre": [
+    "T1071"
+   ],
+   "groups": [
+    "b89_ti_hit"
+   ],
+   "file": "detections/windows/network-connections/rule.xml",
+   "useCases": [
+    "B89-DET-NET-009"
+   ]
+  },
+  "101886": {
+   "id": "101886",
+   "level": 8,
+   "description": "B89 Windows: binario del sistema abusable $(win.eventdata.image) se conectó a $(win.eventdata.destinationIp):$(win.eventdata.destinationPort) (descarga o C2 con LOLBin).",
+   "mitre": [
+    "T1105"
+   ],
+   "groups": [
+    "b89_attack"
+   ],
+   "file": "detections/windows/network-connections/rule.xml",
+   "useCases": [
+    "B89-DET-NET-009"
+   ]
+  },
+  "101887": {
+   "id": "101887",
+   "level": 6,
+   "description": "B89 Windows: $(win.eventdata.image) resolvió $(win.eventdata.queryName) (DNS dinámico o túnel inverso).",
+   "mitre": [
+    "T1071",
+    "T1572"
+   ],
+   "groups": [
+    "b89_dns"
+   ],
+   "file": "detections/windows/network-connections/rule.xml",
+   "useCases": [
+    "B89-DET-NET-009"
+   ]
+  },
+  "101888": {
+   "id": "101888",
+   "level": 10,
+   "description": "B89 Windows: el firewall descartó tráfico de $(srcip) (listas de reputación) hacia $(dstip):$(dstport).",
+   "mitre": [
+    "T1595"
+   ],
+   "groups": [
+    "b89_ti_hit",
+    "firewall_drop"
+   ],
+   "file": "detections/windows/network-connections/rule.xml",
+   "useCases": [
+    "B89-DET-NET-009"
+   ]
+  },
+  "101900": {
+   "id": "101900",
+   "level": 3,
+   "description": "B89 SharePoint: $(office365.UserId) descargó $(office365.SourceFileName).",
+   "mitre": [],
+   "groups": [
+    "b89_download"
+   ],
+   "file": "detections/sharepoint/exfiltration/rule.xml",
+   "useCases": [
+    "B89-DET-SP-001"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101901": {
+   "id": "101901",
+   "level": 2,
+   "description": "B89 SharePoint: descarga de la cuenta de servicio/sincronización aprobada $(office365.UserId).",
+   "mitre": [],
+   "groups": [
+    "b89_tuning"
+   ],
+   "file": "detections/sharepoint/exfiltration/rule.xml",
+   "useCases": [
+    "B89-DET-SP-001"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101902": {
+   "id": "101902",
+   "level": 10,
+   "description": "B89 SharePoint: descarga masiva de $(office365.UserId) (150 archivos en 10 min por web o API).",
+   "mitre": [
+    "T1530",
+    "T1213.002"
+   ],
+   "groups": [
+    "b89_collection",
+    "b89_exfiltration"
+   ],
+   "file": "detections/sharepoint/exfiltration/rule.xml",
+   "useCases": [
+    "B89-DET-SP-001"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101903": {
+   "id": "101903",
+   "level": 12,
+   "description": "B89 SharePoint: $(office365.UserId) descargó 40 archivos en 30 min fuera del horario B89 (hora local $(b89.local_hour)).",
+   "mitre": [
+    "T1530",
+    "T1213.002"
+   ],
+   "groups": [
+    "b89_collection",
+    "b89_exfiltration",
+    "b89_off_hours"
+   ],
+   "file": "detections/sharepoint/exfiltration/rule.xml",
+   "useCases": [
+    "B89-DET-SP-001"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101904": {
+   "id": "101904",
+   "level": 12,
+   "description": "B89 SharePoint: descarga masiva de $(office365.UserId) desde una red nueva para el usuario ($(office365.ClientIP)).",
+   "mitre": [
+    "T1530",
+    "T1078.004"
+   ],
+   "groups": [
+    "b89_collection",
+    "b89_exfiltration"
+   ],
+   "file": "detections/sharepoint/exfiltration/rule.xml",
+   "useCases": [
+    "B89-DET-SP-001"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101905": {
+   "id": "101905",
+   "level": 3,
+   "description": "B89 SharePoint: el invitado $(office365.UserId) accedió a $(office365.SourceFileName).",
+   "mitre": [],
+   "groups": [
+    "b89_guest_access"
+   ],
+   "file": "detections/sharepoint/exfiltration/rule.xml",
+   "useCases": [
+    "B89-DET-SP-001"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101906": {
+   "id": "101906",
+   "level": 10,
+   "description": "B89 SharePoint: el invitado $(office365.UserId) accedió o descargó 30 archivos en 10 min.",
+   "mitre": [
+    "T1530",
+    "T1078.004"
+   ],
+   "groups": [
+    "b89_collection",
+    "b89_guest_access"
+   ],
+   "file": "detections/sharepoint/exfiltration/rule.xml",
+   "useCases": [
+    "B89-DET-SP-001"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101907": {
+   "id": "101907",
+   "level": 10,
+   "description": "B89 SharePoint: actividad de archivos de la cuenta deshabilitada $(office365.UserId) ($(office365.Operation) en $(office365.ObjectId)).",
+   "mitre": [
+    "T1078.004"
+   ],
+   "groups": [
+    "b89_initial_access"
+   ],
+   "file": "detections/sharepoint/exfiltration/rule.xml",
+   "useCases": [
+    "B89-DET-SP-001"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101908": {
+   "id": "101908",
+   "level": 12,
+   "description": "B89 SharePoint: $(office365.UserId) hizo $(office365.Operation) desde $(office365.ClientIP), IP en listas de amenazas (Spamhaus DROP/Feodo).",
+   "mitre": [
+    "T1078.004",
+    "T1213.002"
+   ],
+   "groups": [
+    "b89_initial_access",
+    "b89_threat_intel"
+   ],
+   "file": "detections/sharepoint/exfiltration/rule.xml",
+   "useCases": [
+    "B89-DET-SP-001"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101909": {
+   "id": "101909",
+   "level": 11,
+   "description": "B89 SharePoint: $(office365.UserId) hizo $(office365.Operation) desde $(office365.ClientIP), nodo de salida de Tor.",
+   "mitre": [
+    "T1090.003",
+    "T1078.004"
+   ],
+   "groups": [
+    "b89_initial_access",
+    "b89_threat_intel"
+   ],
+   "file": "detections/sharepoint/exfiltration/rule.xml",
+   "useCases": [
+    "B89-DET-SP-001"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101910": {
+   "id": "101910",
+   "level": 3,
+   "description": "B89 SharePoint: enlace anónimo usado desde $(office365.ClientIP) sobre $(office365.ObjectId).",
+   "mitre": [],
+   "groups": [
+    "b89_anonymous_link"
+   ],
+   "file": "detections/sharepoint/exfiltration/rule.xml",
+   "useCases": [
+    "B89-DET-SP-001"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101911": {
+   "id": "101911",
+   "level": 10,
+   "description": "B89 SharePoint: 50 usos de enlaces anónimos desde $(office365.ClientIP) en 10 min (descarga masiva sin identidad).",
+   "mitre": [
+    "T1530"
+   ],
+   "groups": [
+    "b89_collection",
+    "b89_anonymous_link"
+   ],
+   "file": "detections/sharepoint/exfiltration/rule.xml",
+   "useCases": [
+    "B89-DET-SP-001"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101912": {
+   "id": "101912",
+   "level": 3,
+   "description": "B89 SharePoint: el cliente de sincronización de $(office365.UserId) descargó $(office365.SourceFileName).",
+   "mitre": [],
+   "groups": [
+    "b89_sync"
+   ],
+   "file": "detections/sharepoint/exfiltration/rule.xml",
+   "useCases": [
+    "B89-DET-SP-001"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101913": {
+   "id": "101913",
+   "level": 7,
+   "description": "B89 SharePoint: sincronización masiva de $(office365.UserId) (500 archivos en 10 min, cliente OneDrive).",
+   "mitre": [
+    "T1530"
+   ],
+   "groups": [
+    "b89_collection",
+    "b89_sync"
+   ],
+   "file": "detections/sharepoint/exfiltration/rule.xml",
+   "useCases": [
+    "B89-DET-SP-001"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101914": {
+   "id": "101914",
+   "level": 11,
+   "description": "B89 SharePoint: sincronización masiva de $(office365.UserId) desde una red nueva para el usuario ($(office365.ClientIP)).",
+   "mitre": [
+    "T1530",
+    "T1078.004"
+   ],
+   "groups": [
+    "b89_collection",
+    "b89_sync"
+   ],
+   "file": "detections/sharepoint/exfiltration/rule.xml",
+   "useCases": [
+    "B89-DET-SP-001"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101915": {
+   "id": "101915",
+   "level": 3,
+   "description": "B89 SharePoint: $(office365.UserId) borró $(office365.ObjectId).",
+   "mitre": [],
+   "groups": [
+    "b89_deletion"
+   ],
+   "file": "detections/sharepoint/mass-deletion/rule.xml",
+   "useCases": [
+    "B89-DET-SP-002"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101916": {
+   "id": "101916",
+   "level": 2,
+   "description": "B89 SharePoint: borrado de la cuenta de servicio aprobada $(office365.UserId).",
+   "mitre": [],
+   "groups": [
+    "b89_tuning"
+   ],
+   "file": "detections/sharepoint/mass-deletion/rule.xml",
+   "useCases": [
+    "B89-DET-SP-002"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101917": {
+   "id": "101917",
+   "level": 10,
+   "description": "B89 SharePoint: borrado masivo, $(office365.UserId) borró 100 archivos o carpetas en 10 min.",
+   "mitre": [
+    "T1485"
+   ],
+   "groups": [
+    "b89_impact"
+   ],
+   "file": "detections/sharepoint/mass-deletion/rule.xml",
+   "useCases": [
+    "B89-DET-SP-002"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101918": {
+   "id": "101918",
+   "level": 13,
+   "description": "B89 SharePoint: destrucción masiva, $(office365.UserId) borró 300 archivos o carpetas en 15 min.",
+   "mitre": [
+    "T1485"
+   ],
+   "groups": [
+    "b89_impact"
+   ],
+   "file": "detections/sharepoint/mass-deletion/rule.xml",
+   "useCases": [
+    "B89-DET-SP-002"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101919": {
+   "id": "101919",
+   "level": 3,
+   "description": "B89 SharePoint: $(office365.UserId) eliminó de la papelera de segunda etapa $(office365.ObjectId).",
+   "mitre": [],
+   "groups": [
+    "b89_deletion"
+   ],
+   "file": "detections/sharepoint/mass-deletion/rule.xml",
+   "useCases": [
+    "B89-DET-SP-002"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101920": {
+   "id": "101920",
+   "level": 12,
+   "description": "B89 SharePoint: $(office365.UserId) vació 25 elementos de la papelera de segunda etapa en 15 min (impide la recuperación).",
+   "mitre": [
+    "T1490",
+    "T1485"
+   ],
+   "groups": [
+    "b89_impact"
+   ],
+   "file": "detections/sharepoint/mass-deletion/rule.xml",
+   "useCases": [
+    "B89-DET-SP-002"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101925": {
+   "id": "101925",
+   "level": 3,
+   "description": "B89 SharePoint: enlace anónimo de la cuenta aprobada para publicar $(office365.UserId).",
+   "mitre": [],
+   "groups": [
+    "b89_tuning",
+    "b89_anonymous_link"
+   ],
+   "file": "detections/sharepoint/external-sharing/rule.xml",
+   "useCases": [
+    "B89-DET-SP-003"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101926": {
+   "id": "101926",
+   "level": 11,
+   "description": "B89 SharePoint: $(office365.UserId) creó 10 enlaces anónimos en 1 h.",
+   "mitre": [
+    "T1567"
+   ],
+   "groups": [
+    "b89_exfiltration",
+    "b89_anonymous_link"
+   ],
+   "file": "detections/sharepoint/external-sharing/rule.xml",
+   "useCases": [
+    "B89-DET-SP-003"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101927": {
+   "id": "101927",
+   "level": 9,
+   "description": "B89 SharePoint: $(office365.UserId) compartió $(office365.ObjectId) con el correo personal $(office365.TargetUserOrGroupName).",
+   "mitre": [
+    "T1537"
+   ],
+   "groups": [
+    "b89_exfiltration",
+    "b89_external_sharing",
+    "b89_pending_provider_evidence"
+   ],
+   "file": "detections/sharepoint/external-sharing/rule.xml",
+   "useCases": [
+    "B89-DET-SP-003"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101928": {
+   "id": "101928",
+   "level": 4,
+   "description": "B89 SharePoint: $(office365.UserId) compartió $(office365.ObjectId) con el externo $(office365.TargetUserOrGroupName).",
+   "mitre": [
+    "T1537"
+   ],
+   "groups": [
+    "b89_external_sharing",
+    "b89_pending_provider_evidence"
+   ],
+   "file": "detections/sharepoint/external-sharing/rule.xml",
+   "useCases": [
+    "B89-DET-SP-003"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101929": {
+   "id": "101929",
+   "level": 2,
+   "description": "B89 SharePoint: compartición externa de la cuenta aprobada $(office365.UserId).",
+   "mitre": [],
+   "groups": [
+    "b89_tuning",
+    "b89_external_sharing"
+   ],
+   "file": "detections/sharepoint/external-sharing/rule.xml",
+   "useCases": [
+    "B89-DET-SP-003"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101930": {
+   "id": "101930",
+   "level": 12,
+   "description": "B89 SharePoint: $(office365.UserId) compartió 5 elementos con correos personales en 1 h.",
+   "mitre": [
+    "T1537"
+   ],
+   "groups": [
+    "b89_exfiltration",
+    "b89_external_sharing"
+   ],
+   "file": "detections/sharepoint/external-sharing/rule.xml",
+   "useCases": [
+    "B89-DET-SP-003"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101935": {
+   "id": "101935",
+   "level": 8,
+   "description": "B89 SharePoint: $(office365.UserId) cambió la política de uso compartido o de acceso ($(office365.Operation)) en $(office365.ObjectId).",
+   "mitre": [
+    "T1484"
+   ],
+   "groups": [
+    "b89_defense_evasion",
+    "b89_sharing_policy",
+    "b89_pending_provider_evidence"
+   ],
+   "file": "detections/sharepoint/sharing-policy-and-admins/rule.xml",
+   "useCases": [
+    "B89-DET-SP-004"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101936": {
+   "id": "101936",
+   "level": 12,
+   "description": "B89 SharePoint: $(office365.UserId) habilitó el uso compartido con cualquier persona en $(office365.ObjectId).",
+   "mitre": [
+    "T1484"
+   ],
+   "groups": [
+    "b89_defense_evasion",
+    "b89_sharing_policy",
+    "b89_pending_provider_evidence"
+   ],
+   "file": "detections/sharepoint/sharing-policy-and-admins/rule.xml",
+   "useCases": [
+    "B89-DET-SP-004"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101937": {
+   "id": "101937",
+   "level": 12,
+   "description": "B89 SharePoint: $(office365.UserId) habilitó el uso compartido con cualquier persona en $(office365.ObjectId).",
+   "mitre": [
+    "T1484"
+   ],
+   "groups": [
+    "b89_defense_evasion",
+    "b89_sharing_policy",
+    "b89_pending_provider_evidence"
+   ],
+   "file": "detections/sharepoint/sharing-policy-and-admins/rule.xml",
+   "useCases": [
+    "B89-DET-SP-004"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101938": {
+   "id": "101938",
+   "level": 10,
+   "description": "B89 SharePoint: $(office365.UserId) agregó un administrador de colección de sitios en $(office365.ObjectId).",
+   "mitre": [
+    "T1098"
+   ],
+   "groups": [
+    "b89_privilege_escalation",
+    "b89_site_admin",
+    "b89_pending_provider_evidence"
+   ],
+   "file": "detections/sharepoint/sharing-policy-and-admins/rule.xml",
+   "useCases": [
+    "B89-DET-SP-004"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101939": {
+   "id": "101939",
+   "level": 3,
+   "description": "B89 SharePoint: alta de administrador de sitio por la cuenta del sistema $(office365.UserId) (aprovisionamiento).",
+   "mitre": [],
+   "groups": [
+    "b89_tuning",
+    "b89_site_admin"
+   ],
+   "file": "detections/sharepoint/sharing-policy-and-admins/rule.xml",
+   "useCases": [
+    "B89-DET-SP-004"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101940": {
+   "id": "101940",
+   "level": 11,
+   "description": "B89 SharePoint: $(office365.UserId) se agregó o agregó un administrador al OneDrive de otra persona ($(office365.ObjectId)).",
+   "mitre": [
+    "T1098",
+    "T1530"
+   ],
+   "groups": [
+    "b89_privilege_escalation",
+    "b89_site_admin",
+    "b89_pending_provider_evidence"
+   ],
+   "file": "detections/sharepoint/sharing-policy-and-admins/rule.xml",
+   "useCases": [
+    "B89-DET-SP-004"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101941": {
+   "id": "101941",
+   "level": 12,
+   "description": "B89 SharePoint: $(office365.UserId) hizo administrador de $(office365.ObjectId) al invitado $(office365.TargetUserOrGroupName).",
+   "mitre": [
+    "T1098",
+    "T1078.004"
+   ],
+   "groups": [
+    "b89_privilege_escalation",
+    "b89_site_admin",
+    "b89_pending_provider_evidence"
+   ],
+   "file": "detections/sharepoint/sharing-policy-and-admins/rule.xml",
+   "useCases": [
+    "B89-DET-SP-004"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101945": {
+   "id": "101945",
+   "level": 8,
+   "description": "B89 SharePoint: $(office365.UserId) quitó la etiqueta de confidencialidad de $(office365.ObjectId).",
+   "mitre": [
+    "T1562"
+   ],
+   "groups": [
+    "b89_defense_evasion",
+    "b89_sensitivity_label",
+    "b89_pending_provider_evidence"
+   ],
+   "file": "detections/sharepoint/labels-and-dlp/rule.xml",
+   "useCases": [
+    "B89-DET-SP-005"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101946": {
+   "id": "101946",
+   "level": 8,
+   "description": "B89 SharePoint: $(office365.UserId) rebajó o quitó la etiqueta de confidencialidad de $(office365.ObjectId) ($(office365.Operation)).",
+   "mitre": [
+    "T1562"
+   ],
+   "groups": [
+    "b89_defense_evasion",
+    "b89_sensitivity_label",
+    "b89_pending_provider_evidence"
+   ],
+   "file": "detections/sharepoint/labels-and-dlp/rule.xml",
+   "useCases": [
+    "B89-DET-SP-005"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101947": {
+   "id": "101947",
+   "level": 12,
+   "description": "B89 SharePoint: $(office365.UserId) quitó la etiqueta de confidencialidad de 10 archivos en 1 h.",
+   "mitre": [
+    "T1562"
+   ],
+   "groups": [
+    "b89_defense_evasion",
+    "b89_sensitivity_label"
+   ],
+   "file": "detections/sharepoint/labels-and-dlp/rule.xml",
+   "useCases": [
+    "B89-DET-SP-005"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101948": {
+   "id": "101948",
+   "level": 13,
+   "description": "B89 SharePoint: $(office365.UserId) compartió fuera de B89 $(office365.ObjectId) después de quitarle la etiqueta de confidencialidad.",
+   "mitre": [
+    "T1562",
+    "T1567"
+   ],
+   "groups": [
+    "b89_exfiltration",
+    "b89_sensitivity_label",
+    "b89_attack_chain"
+   ],
+   "file": "detections/sharepoint/labels-and-dlp/rule.xml",
+   "useCases": [
+    "B89-DET-SP-005"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101949": {
+   "id": "101949",
+   "level": 7,
+   "description": "B89 SharePoint: DLP detectó información sensible en $(office365.ObjectId) ($(office365.UserId)).",
+   "mitre": [
+    "T1213.002"
+   ],
+   "groups": [
+    "b89_dlp"
+   ],
+   "file": "detections/sharepoint/labels-and-dlp/rule.xml",
+   "useCases": [
+    "B89-DET-SP-005"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101950": {
+   "id": "101950",
+   "level": 11,
+   "description": "B89 SharePoint: DLP de severidad alta en $(office365.ObjectId) ($(office365.UserId)).",
+   "mitre": [
+    "T1213.002"
+   ],
+   "groups": [
+    "b89_dlp"
+   ],
+   "file": "detections/sharepoint/labels-and-dlp/rule.xml",
+   "useCases": [
+    "B89-DET-SP-005"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101951": {
+   "id": "101951",
+   "level": 9,
+   "description": "B89 SharePoint: $(office365.UserId) anuló la política DLP sobre $(office365.ObjectId).",
+   "mitre": [
+    "T1562",
+    "T1213.002"
+   ],
+   "groups": [
+    "b89_dlp",
+    "b89_pending_provider_evidence"
+   ],
+   "file": "detections/sharepoint/labels-and-dlp/rule.xml",
+   "useCases": [
+    "B89-DET-SP-005"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101960": {
+   "id": "101960",
+   "level": 0,
+   "description": "B89 SharePoint: evento del collector de postura y salud.",
+   "mitre": [],
+   "groups": [],
+   "file": "detections/sharepoint/posture/rule.xml",
+   "useCases": [
+    "B89-DET-SP-006"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101961": {
+   "id": "101961",
+   "level": 3,
+   "description": "B89 SharePoint: foto de la configuración de uso compartido del tenant ($(sharepoint.tenant.sharing_capability)).",
+   "mitre": [],
+   "groups": [
+    "b89_posture"
+   ],
+   "file": "detections/sharepoint/posture/rule.xml",
+   "useCases": [
+    "B89-DET-SP-006"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101962": {
+   "id": "101962",
+   "level": 8,
+   "description": "B89 SharePoint: cambió $(sharepoint.change.setting) del tenant: $(sharepoint.change.old) → $(sharepoint.change.new).",
+   "mitre": [
+    "T1484"
+   ],
+   "groups": [
+    "b89_posture",
+    "b89_sharing_policy"
+   ],
+   "file": "detections/sharepoint/posture/rule.xml",
+   "useCases": [
+    "B89-DET-SP-006"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101963": {
+   "id": "101963",
+   "level": 12,
+   "description": "B89 SharePoint: se debilitó $(sharepoint.change.setting) del tenant: $(sharepoint.change.old) → $(sharepoint.change.new).",
+   "mitre": [
+    "T1484"
+   ],
+   "groups": [
+    "b89_posture",
+    "b89_sharing_policy",
+    "b89_defense_evasion"
+   ],
+   "file": "detections/sharepoint/posture/rule.xml",
+   "useCases": [
+    "B89-DET-SP-006"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101964": {
+   "id": "101964",
+   "level": 5,
+   "description": "B89 SharePoint: sitio nuevo $(sharepoint.site.url) (creado $(sharepoint.site.created)).",
+   "mitre": [],
+   "groups": [
+    "b89_posture"
+   ],
+   "file": "detections/sharepoint/posture/rule.xml",
+   "useCases": [
+    "B89-DET-SP-006"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101965": {
+   "id": "101965",
+   "level": 10,
+   "description": "B89 SharePoint: el sitio reciente $(sharepoint.site.url) ya tiene enlaces anónimos o permisos externos.",
+   "mitre": [
+    "T1567",
+    "T1537"
+   ],
+   "groups": [
+    "b89_posture",
+    "b89_external_sharing"
+   ],
+   "file": "detections/sharepoint/posture/rule.xml",
+   "useCases": [
+    "B89-DET-SP-006"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101966": {
+   "id": "101966",
+   "level": 7,
+   "description": "B89 SharePoint: enlace anónimo ($(sharepoint.link.type)) sobre $(sharepoint.item.url).",
+   "mitre": [
+    "T1567"
+   ],
+   "groups": [
+    "b89_posture",
+    "b89_anonymous_link"
+   ],
+   "file": "detections/sharepoint/posture/rule.xml",
+   "useCases": [
+    "B89-DET-SP-006"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101967": {
+   "id": "101967",
+   "level": 10,
+   "description": "B89 SharePoint: enlace anónimo con edición sobre $(sharepoint.item.url) (cualquiera puede modificar o reemplazar el contenido).",
+   "mitre": [
+    "T1567"
+   ],
+   "groups": [
+    "b89_posture",
+    "b89_anonymous_link"
+   ],
+   "file": "detections/sharepoint/posture/rule.xml",
+   "useCases": [
+    "B89-DET-SP-006"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101968": {
+   "id": "101968",
+   "level": 5,
+   "description": "B89 SharePoint: $(sharepoint.grantee.email) (externo) tiene acceso a $(sharepoint.item.url).",
+   "mitre": [
+    "T1537"
+   ],
+   "groups": [
+    "b89_posture",
+    "b89_external_sharing"
+   ],
+   "file": "detections/sharepoint/posture/rule.xml",
+   "useCases": [
+    "B89-DET-SP-006"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101969": {
+   "id": "101969",
+   "level": 3,
+   "description": "B89 SharePoint: función $(b89.capability.feature) $(b89.capability.status) (falta: $(b89.capability.missing)).",
+   "mitre": [],
+   "groups": [
+    "b89_source_health"
+   ],
+   "file": "detections/sharepoint/posture/rule.xml",
+   "useCases": [
+    "B89-DET-SP-006"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101970": {
+   "id": "101970",
+   "level": 7,
+   "description": "B89 SharePoint: la función $(b89.capability.feature) dejó de estar disponible (permiso revocado o credencial vencida; falta $(b89.capability.missing)).",
+   "mitre": [],
+   "groups": [
+    "b89_source_health"
+   ],
+   "file": "detections/sharepoint/posture/rule.xml",
+   "useCases": [
+    "B89-DET-SP-006"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101971": {
+   "id": "101971",
+   "level": 2,
+   "description": "B89 SharePoint: inventario de sitios ($(sharepoint.inventory.sites) sitios, $(sharepoint.inventory.known_findings) hallazgos de uso compartido).",
+   "mitre": [],
+   "groups": [
+    "b89_posture"
+   ],
+   "file": "detections/sharepoint/posture/rule.xml",
+   "useCases": [
+    "B89-DET-SP-006"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
+  },
+  "101972": {
+   "id": "101972",
+   "level": 6,
+   "description": "B89 SharePoint: el tenant permite enlaces \"Cualquier persona\" (sharingCapability=externalUserAndGuestSharing).",
+   "mitre": [
+    "T1567"
+   ],
+   "groups": [
+    "b89_posture"
+   ],
+   "file": "detections/sharepoint/posture/rule.xml",
+   "useCases": [
+    "B89-DET-SP-006"
+   ],
+   "runbooks": [
+    "exfiltracion-sharepoint"
+   ]
   }
  },
  "techniques": {
@@ -3398,6 +6267,28 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
     {
      "id": "TA0005",
      "name": "Evasión de defensas"
+    }
+   ]
+  },
+  "T1040": {
+   "name": "Network Sniffing",
+   "tactics": [
+    {
+     "id": "TA0006",
+     "name": "Acceso a credenciales"
+    },
+    {
+     "id": "TA0007",
+     "name": "Descubrimiento"
+    }
+   ]
+  },
+  "T1046": {
+   "name": "Network Service Discovery",
+   "tactics": [
+    {
+     "id": "TA0007",
+     "name": "Descubrimiento"
     }
    ]
   },
@@ -3470,6 +6361,15 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
     }
    ]
   },
+  "T1059.004": {
+   "name": "Command and Scripting Interpreter: Unix Shell",
+   "tactics": [
+    {
+     "id": "TA0002",
+     "name": "Ejecución"
+    }
+   ]
+  },
   "T1070.001": {
    "name": "Indicator Removal: Clear Windows Event Logs",
    "tactics": [
@@ -3485,6 +6385,27 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
     {
      "id": "TA0011",
      "name": "Comando y control"
+    }
+   ]
+  },
+  "T1078": {
+   "name": "Valid Accounts",
+   "tactics": [
+    {
+     "id": "TA0005",
+     "name": "Evasión de defensas"
+    },
+    {
+     "id": "TA0003",
+     "name": "Persistencia"
+    },
+    {
+     "id": "TA0004",
+     "name": "Escalada de privilegios"
+    },
+    {
+     "id": "TA0001",
+     "name": "Acceso inicial"
     }
    ]
   },
@@ -3527,6 +6448,15 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
     {
      "id": "TA0001",
      "name": "Acceso inicial"
+    }
+   ]
+  },
+  "T1090.003": {
+   "name": "Proxy: Multi-hop Proxy",
+   "tactics": [
+    {
+     "id": "TA0011",
+     "name": "Comando y control"
     }
    ]
   },
@@ -3621,6 +6551,15 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
     }
    ]
   },
+  "T1105": {
+   "name": "Ingress Tool Transfer",
+   "tactics": [
+    {
+     "id": "TA0011",
+     "name": "Comando y control"
+    }
+   ]
+  },
   "T1110": {
    "name": "Brute Force",
    "tactics": [
@@ -3666,6 +6605,19 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
     }
    ]
   },
+  "T1133": {
+   "name": "External Remote Services",
+   "tactics": [
+    {
+     "id": "TA0003",
+     "name": "Persistencia"
+    },
+    {
+     "id": "TA0001",
+     "name": "Acceso inicial"
+    }
+   ]
+  },
   "T1136.003": {
    "name": "Create Account: Cloud Account",
    "tactics": [
@@ -3708,6 +6660,15 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
     {
      "id": "TA0002",
      "name": "Ejecución"
+    }
+   ]
+  },
+  "T1213.002": {
+   "name": "Data from Information Repositories: Sharepoint",
+   "tactics": [
+    {
+     "id": "TA0009",
+     "name": "Recolección"
     }
    ]
   },
@@ -3759,12 +6720,39 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
     }
    ]
   },
+  "T1490": {
+   "name": "Inhibit System Recovery",
+   "tactics": [
+    {
+     "id": "TA0040",
+     "name": "Impacto"
+    }
+   ]
+  },
   "T1496": {
    "name": "Resource Hijacking",
    "tactics": [
     {
      "id": "TA0040",
      "name": "Impacto"
+    }
+   ]
+  },
+  "T1499": {
+   "name": "Endpoint Denial of Service",
+   "tactics": [
+    {
+     "id": "TA0040",
+     "name": "Impacto"
+    }
+   ]
+  },
+  "T1505.003": {
+   "name": "Server Software Component: Web Shell",
+   "tactics": [
+    {
+     "id": "TA0003",
+     "name": "Persistencia"
     }
    ]
   },
@@ -4018,6 +7006,24 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
     }
    ]
   },
+  "T1571": {
+   "name": "Non-Standard Port",
+   "tactics": [
+    {
+     "id": "TA0011",
+     "name": "Comando y control"
+    }
+   ]
+  },
+  "T1572": {
+   "name": "Protocol Tunneling",
+   "tactics": [
+    {
+     "id": "TA0011",
+     "name": "Comando y control"
+    }
+   ]
+  },
   "T1584.002": {
    "name": "Compromise Infrastructure: DNS Server",
    "tactics": [
@@ -4045,12 +7051,43 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
     }
    ]
   },
+  "T1595.003": {
+   "name": "Active Scanning: Wordlist Scanning",
+   "tactics": [
+    {
+     "id": "TA0043",
+     "name": "Reconocimiento"
+    }
+   ]
+  },
   "T1599": {
    "name": "Network Boundary Bridging",
    "tactics": [
     {
      "id": "TA0005",
      "name": "Evasión de defensas"
+    }
+   ]
+  },
+  "T1609": {
+   "name": "Container Administration Command",
+   "tactics": [
+    {
+     "id": "TA0002",
+     "name": "Ejecución"
+    }
+   ]
+  },
+  "T1610": {
+   "name": "Deploy Container",
+   "tactics": [
+    {
+     "id": "TA0005",
+     "name": "Evasión de defensas"
+    },
+    {
+     "id": "TA0002",
+     "name": "Ejecución"
     }
    ]
   }

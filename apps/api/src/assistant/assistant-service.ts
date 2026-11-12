@@ -6,7 +6,12 @@
  * un almacén compartido (DynamoDB) y queda como mejora.
  */
 
-import type { AssistantModel, ConversationStore } from '@b89/assistant';
+import {
+  DEFAULT_ASSISTANT_LIMITS,
+  type AssistantLimits,
+  type AssistantModel,
+  type ConversationStore,
+} from '@b89/assistant';
 
 import {
   loadAssistantConfig,
@@ -47,6 +52,7 @@ export class SlidingWindowLimiter {
 export interface AssistantService {
   readonly config: EnabledConfig;
   readonly model: AssistantModel;
+  readonly limits: AssistantLimits;
   readonly limiter: SlidingWindowLimiter;
   /** Historial de conversaciones; ausente con `B89_BUNNY_HISTORY_ENABLED=false`. */
   readonly history?: ConversationHistory;
@@ -64,6 +70,9 @@ export function createAssistantService(
   return {
     config,
     model: modelFactory(config),
+    limits: environment['AWS_LAMBDA_FUNCTION_NAME']
+      ? DEFAULT_ASSISTANT_LIMITS
+      : Object.freeze({ ...DEFAULT_ASSISTANT_LIMITS, deadlineMs: 55_000 }),
     limiter: new SlidingWindowLimiter(config.rateLimit.max, config.rateLimit.windowMs),
     ...(history.enabled && conversations
       ? { history: new ConversationHistory(conversations, history.retentionDays) }

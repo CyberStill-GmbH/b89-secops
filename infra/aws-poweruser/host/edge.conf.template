@@ -16,6 +16,7 @@ proxy_cache_path /var/cache/nginx/b89_auth levels=1 keys_zone=b89_auth:10m max_s
 
 # Webhook SNS (monitoreo de la cuenta AWS, wazuh/aws-events): límite por IP de origen de SNS.
 limit_req_zone $binary_remote_addr zone=b89_aws_sns:1m rate=50r/s;
+limit_req_zone $binary_remote_addr zone=b89_wazuh_push:1m rate=200r/s;
 
 upstream b89_api {
   server api:3000;
@@ -93,6 +94,28 @@ server {
     proxy_read_timeout 20s;
   }
   # B89:aws-sns:end
+
+  # Wazuh Manager -> durable B89 inbox. This route is intentionally public at the edge but
+  # authenticated by the endpoint's timestamped HMAC; it must not require a browser session.
+  # Keep the body minimal and do not forward browser/session identity headers.
+  location = /api/ingest/wazuh {
+    limit_except POST { deny all; }
+    limit_req zone=b89_wazuh_push burst=400 nodelay;
+    limit_req_status 429;
+    client_max_body_size 64k;
+    client_body_buffer_size 64k;
+    proxy_pass http://b89_api;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header Cookie "";
+    proxy_set_header Authorization "";
+    proxy_set_header x-proxy-user "";
+    proxy_set_header x-proxy-roles "";
+    proxy_buffering off;
+    proxy_connect_timeout 2s;
+    proxy_read_timeout 5s;
+  }
 
   # Inicio y cierre de sesión B89: además de proxyear al API, borran la sesión de B89 Respond
   # (cookies de Shuffle acotadas a /b89-respond). Así una sesión de Shuffle nunca sobrevive a un

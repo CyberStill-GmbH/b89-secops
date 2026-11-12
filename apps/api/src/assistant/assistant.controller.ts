@@ -20,6 +20,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { Readable } from 'node:stream';
 
 import { planAuditQuery, recordAudit } from '@b89/audit';
 
@@ -36,8 +37,10 @@ import {
   Put,
   Query,
   Req,
+  Res,
 } from '@nestjs/common';
 import {
+  AssistantCancelledError,
   AssistantInputError,
   CONVERSATION_LIMITS,
   DEFAULT_ASSISTANT_LIMITS,
@@ -48,6 +51,7 @@ import {
   normalizeConversationTitle,
   type MessageFeedback,
   runAssistant,
+  type AssistantProgressEvent,
   type AssistantResult,
   type ConversationOwner,
   type StoredConversation,
@@ -55,7 +59,7 @@ import {
 } from '@b89/assistant';
 
 import { ApiError } from '../http/api-error.js';
-import type { IncomingRequest } from '../http/http-contracts.js';
+import type { IncomingRequest, OutgoingReply } from '../http/http-contracts.js';
 import { paginate, type PageQuery } from '../http/pagination.js';
 import { mutatingActor, readingActor } from '../soc/session-actor.js';
 import { SECOPS_RUNTIME } from '../soc/tokens.js';
@@ -82,10 +86,6 @@ const READ_CAPABILITIES = [
  * Presupuesto de reloj del turno. En Lambda, API Gateway corta a los 30 s; en el nodo EC2 el
  * proxy de borde admite 65 s para `/api/assistant`, así que Bunny puede investigar más a fondo.
  */
-const TURN_LIMITS = process.env['AWS_LAMBDA_FUNCTION_NAME']
-  ? DEFAULT_ASSISTANT_LIMITS
-  : Object.freeze({ ...DEFAULT_ASSISTANT_LIMITS, deadlineMs: 55_000 });
-
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
 interface ChatBody {
@@ -99,6 +99,57 @@ interface Actor {
   readonly subjectId: string;
   readonly tenantId: string;
   readonly capabilities: ReadonlySet<string>;
+}
+
+class AssistantEventQueue implements AsyncIterable<Buffer> {
+  private readonly items: Buffer[] = [];
+  private ended = false;
+  private wake: (() => void) | undefined;
+
+  public push(event: string, data: unknown): void {
+    if (this.ended) return;
+    this.items.push(Buffer.from(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+    this.wake?.();
+    this.wake = undefined;
+  }
+
+  public close(): void {
+    this.ended = true;
+    this.wake?.();
+    this.wake = undefined;
+  }
+
+  public cancel(): void {
+    this.items.length = 0;
+    this.close();
+  }
+
+  public async *[Symbol.asyncIterator](): AsyncIterator<Buffer> {
+    for (;;) {
+      const next = this.items.shift();
+      if (next) {
+        yield next;
+        continue;
+      }
+      if (this.ended) return;
+      await new Promise<void>((resolve) => {
+        this.wake = resolve;
+      });
+    }
+  }
+}
+
+/** Ata la cancelación al cierre abrupto; un cierre HTTP completado no cancela el turno. */
+export function observeStreamDisconnect(
+  raw: NonNullable<OutgoingReply['raw']> | undefined,
+  abort: () => void,
+): () => void {
+  if (!raw) return () => undefined;
+  const onClose = () => {
+    if (raw.writableFinished !== true) abort();
+  };
+  raw.on('close', onClose);
+  return () => raw.off('close', onClose);
 }
 
 function parseHistory(
@@ -134,7 +185,6 @@ function messageView(message: StoredMessage) {
     id: message.id,
     role: message.role,
     text: message.text,
-    ...(message.reasoning ? { reasoning: message.reasoning } : {}),
     ...(message.steps ? { steps: message.steps } : {}),
     ...(message.citations ? { citations: message.citations } : {}),
     ...(message.tone ? { tone: message.tone } : {}),
@@ -150,11 +200,6 @@ function assistantMessage(result: AssistantResult, at: Date): StoredMessage {
     id: randomUUID(),
     role: 'assistant',
     text: clampStoredText(result.reply),
-    reasoning: result.reasoning
-      .slice(0, max)
-      .map((entry) =>
-        entry.kind === 'thought' ? { kind: 'thought', text: clampStoredText(entry.text) } : entry,
-      ),
     steps: result.steps.slice(0, max),
     citations: result.citations.slice(0, max),
     ...(result.outcome === 'refused' || result.outcome === 'unverified'
@@ -205,7 +250,9 @@ export class AssistantController {
     }
     const now = this.runtime.now();
     const to = query.to ? new Date(query.to) : now;
-    const from = query.from ? new Date(query.from) : new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const from = query.from
+      ? new Date(query.from)
+      : new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
     if (
       Number.isNaN(from.getTime()) ||
       Number.isNaN(to.getTime()) ||
@@ -276,8 +323,9 @@ export class AssistantController {
       const usage = metadata['usage'];
       if (!usage || typeof usage !== 'object' || Array.isArray(usage)) continue;
       const values = usage as Record<string, unknown>;
-      const numeric = ['inputTokens', 'outputTokens', 'cacheReadTokens', 'cacheWriteTokens']
-        .map((key) => values[key]);
+      const numeric = ['inputTokens', 'outputTokens', 'cacheReadTokens', 'cacheWriteTokens'].map(
+        (key) => values[key],
+      );
       if (!numeric.every((value) => typeof value === 'number' && Number.isFinite(value))) continue;
       totals.measured += 1;
       totals.inputTokens += values['inputTokens'] as number;
@@ -306,10 +354,97 @@ export class AssistantController {
   @Post('chat')
   @HttpCode(200)
   public async chat(@Req() request: IncomingRequest, @Body() body: ChatBody | undefined) {
-    const { actor, session, correlationId } = await mutatingActor(this.runtime, request);
+    const context = await mutatingActor(this.runtime, request);
+    return this.executeChat(request, body, context);
+  }
+
+  /**
+   * SSE solo en el runtime EC2 directo. Emite progreso operativo real y el resultado cuando
+   * ya pasó scrub, validación de citas, auditoría y guardado; nunca transmite reasoning ni datos
+   * crudos. El endpoint JSON de arriba permanece como fallback para clientes con proxy bufferizado.
+   */
+  @Post('chat/stream')
+  @HttpCode(200)
+  public async streamChat(
+    @Req() request: IncomingRequest,
+    @Body() body: ChatBody | undefined,
+    @Res() reply: OutgoingReply,
+  ) {
+    const queue = new AssistantEventQueue();
+    const cancellation = new AbortController();
+    const stream = Readable.from(queue);
+    const removeDisconnectObserver = observeStreamDisconnect(reply.raw, () => {
+      cancellation.abort();
+      queue.cancel();
+      stream.destroy();
+    });
+    let context: Awaited<ReturnType<typeof mutatingActor>>;
+    try {
+      context = await mutatingActor(this.runtime, request);
+    } catch (error) {
+      removeDisconnectObserver();
+      throw error;
+    }
+    if (cancellation.signal.aborted) {
+      removeDisconnectObserver();
+      return;
+    }
+    queue.push('started', { correlationId: context.correlationId });
+    reply
+      .status(200)
+      .header('content-type', 'text/event-stream; charset=utf-8')
+      .header('cache-control', 'no-cache, no-transform')
+      .header('x-accel-buffering', 'no')
+      .send(stream);
+    void this.executeChat(
+      request,
+      body,
+      context,
+      (event) => queue.push('progress', event),
+      cancellation.signal,
+    )
+      .then((result) => {
+        queue.push('complete', result);
+      })
+      .catch((error: unknown) => {
+        if (error instanceof AssistantCancelledError || cancellation.signal.aborted) return;
+        if (error instanceof ApiError) {
+          queue.push('error', error.getResponse());
+          return;
+        }
+        queue.push('error', { code: 'DEPENDENCY_DEGRADED', correlationId: context.correlationId });
+      })
+      .finally(() => {
+        removeDisconnectObserver();
+        queue.close();
+      });
+  }
+
+  private async executeChat(
+    request: IncomingRequest,
+    body: ChatBody | undefined,
+    context: Awaited<ReturnType<typeof mutatingActor>>,
+    onProgress?: (event: AssistantProgressEvent) => void,
+    signal?: AbortSignal,
+  ) {
+    const { actor, session, correlationId } = context;
     const service = this.runtime.assistant;
     if (!service || !canUseBunny(service, actor)) {
       throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
+    }
+    if (signal?.aborted) {
+      const usage = {
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+      };
+      await this.runtime.auditAssistant(actor.subjectId, context.correlationId, 'failed', [], {
+        provider: service.config.provider,
+        model: service.config.model,
+        usage,
+      });
+      throw new AssistantCancelledError(usage);
     }
     const message = typeof body?.message === 'string' ? body.message : undefined;
     const clientHistory = parseHistory(body?.history);
@@ -347,7 +482,7 @@ export class AssistantController {
     const server = this.runtime.internalServer;
     if (!server) throw new ApiError('DEPENDENCY_DEGRADED', correlationId);
     const capabilities = [...actor.capabilities].sort();
-    const handlers = buildSocTools(createInternalGet(server, request), {
+    const handlers = buildSocTools(createInternalGet(server, request, signal), {
       roles: actor.roles,
       capabilities,
     });
@@ -379,9 +514,12 @@ export class AssistantController {
           },
         },
         pseudonymizer: new Pseudonymizer(service.config.redactPii),
-        limits: TURN_LIMITS,
+        limits: this.runtime.assistant?.limits ?? DEFAULT_ASSISTANT_LIMITS,
         now: () => this.runtime.now(),
+        ...(onProgress ? { onProgress } : {}),
+        ...(signal ? { signal } : {}),
       });
+      if (signal?.aborted) throw new AssistantCancelledError(result.usage);
       await this.runtime.auditAssistant(
         actor.subjectId,
         correlationId,
@@ -390,6 +528,14 @@ export class AssistantController {
         { provider: service.config.provider, model: service.config.model, usage: result.usage },
       );
     } catch (error) {
+      if (error instanceof AssistantCancelledError) {
+        await this.runtime.auditAssistant(actor.subjectId, correlationId, 'failed', [], {
+          provider: service.config.provider,
+          model: service.config.model,
+          usage: error.usage,
+        });
+        throw error;
+      }
       if (error instanceof AssistantInputError) {
         throw new ApiError('VALIDATION_FAILED', correlationId, ['message']);
       }
@@ -404,7 +550,6 @@ export class AssistantController {
     return {
       correlationId,
       reply: result.reply,
-      reasoning: result.reasoning,
       outcome: result.outcome,
       steps: result.steps,
       citations: result.citations,
@@ -630,6 +775,7 @@ export class AssistantController {
       { id: randomUUID(), role: 'user', text: question.trim(), createdAt: askedAt },
       reply,
     ];
+
     let outcome: { id: string | null; title: string | null; saved: boolean };
     let evicted = 0;
     try {

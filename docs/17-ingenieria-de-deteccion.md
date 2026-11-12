@@ -38,6 +38,73 @@ detección, quién opera las alertas y con qué tiempos, y qué falta para cerra
 - **Vistas:** 73 objetos guardados (6 dashboards `B89 · …`, 10 cazas) importados en el tenant global con
   `infra/aws-poweruser/scripts/bootstrap-detection-content.sh` (proxy auth desde el contenedor del dashboard).
 
+### Metricas de calidad del correlador (2026-11-11)
+
+API, Prometheus y reportes exponen conteos de TP/FP, revisados/no revisados, ventana de evaluación y
+truncamiento del feed. Los conteos generales de veredictos usan `UpdatedAt` (o `OccurredAt` si no
+hay fecha de actualización) dentro de la ventana y excluyen fechas futuras. Las métricas específicas
+del correlador forman una cohorte de alertas por `OccurredAt` y clasifican el veredicto actualmente
+registrado en esos eventos; no significan que el veredicto se adjudicara dentro de esa misma
+ventana. Si el feed llega truncado, los conteos y propuestas humanas permanecen visibles, pero el
+runner desactiva supresiones automáticas para no aplicar ni renovar acciones basadas en evidencia
+parcial, que podría omitir TP o reglas P1. Estos conteos describen estado de revisión, no precisión,
+recall ni reducción medida de falsos positivos: sigue faltando un corpus adjudicado. Se añadió un
+evaluador offline reproducible descrito a continuación; no contiene corpus ni genera resultados de
+calidad por sí mismo. `go test ./...` y `gofmt` pasaron en la imagen local Go 1.23.12. Ver
+[25](25-programa-confiabilidad-e-investigacion.md).
+
+#### Evaluación reproducible sobre corpus adjudicado
+
+`services/b89-correlator/cmd/evaluate-corpus` compara dos versiones congeladas del correlador sobre
+el mismo conjunto de casos con una ventana temporal de evaluación (`[evaluationStart, evaluationEnd)`).
+El formato `b89-correlator-eval/v1` requiere un `corpusId`, hash SHA-256 de snapshot, versión de
+protocolo de adjudicación, familia, número de eventos fuente elegibles, `occurredAt`, etiqueta
+`positive|negative|ambiguous`, predicciones baseline/candidate y prioridad baseline. Los IDs deben
+ser pseudónimos estables; no se admiten cuerpos, logs crudos, entidades ni direcciones de correo.
+
+El informe separa ejemplos anteriores a la ventana (calibración) y ambiguos, calcula matriz de
+confusión, precision, recall, tasa de FP y FP por 1.000 eventos elegibles por familia, y deja `null`
+cuando un denominador no existe. Compara delta baseline/candidate solo con los positivos y negativos
+adjudicados del mismo holdout. La suficiencia por familia requiere al menos 200 etiquetas conocidas,
+20 positivas, 20 negativas y un denominador fuente mayor que cero. Si no se alcanza, los valores son
+descriptivos y no deben usarse como evidencia de calidad.
+
+Una regresión de positivo conocido que el baseline detectaba, o la supresión de una alerta P1 del
+baseline, queda en el JSON con el ID pseudónimo y termina el CLI con código 3; el informe se conserva
+para que la regresión sea visible. Los casos ambiguos no cuentan como TP, FP, TN o FN, pero un P1
+ambiguo todavía activa la protección P1. La herramienta exige filas de ventanas elegibles aun cuando
+ninguna versión emitió una alerta; un export limitado a alertas emitidas no permite estimar recall.
+Si la evidencia no alcanza el mínimo por familia, el CLI conserva el informe y termina con código 4;
+el informe no supera la puerta de calidad. Las filas de cada familia mantienen sus conteos; el resumen
+`overallCandidate` cuenta una sola vez cada ID pseudónimo estable compartido entre familias. Si el mismo
+ID aparece con fecha, etiqueta o predicciones distintas, la validación rechaza el corpus. Los conjuntos
+de eventos elegibles de familias pueden solaparse, por lo que FP/1.000 se informa por familia y queda
+indefinido en el total para evitar un denominador global duplicado.
+
+La comparación estadística usa los mismos casos negativos para ambos builds: cuenta FP que el candidato
+quitó y FP que agregó, y calcula la prueba McNemar exacta bilateral. Por familia se presenta el p-valor
+crudo y se aplica Holm-Bonferroni entre las familias con evidencia suficiente; el total deduplica los
+IDs compartidos y muestra un p-valor sin ajuste para una única comparación global. Los campos de
+significancia quedan `null` si el corpus no alcanza el mínimo de evidencia; con evidencia suficiente
+se marca el umbral `alpha = 0.05`. La prueba evalúa desacuerdos sobre negativos adjudicados; no corrige
+sesgo de selección, errores de etiquetado, deriva temporal ni valida que las predicciones pertenezcan
+a los builds declarados. Sin un corpus real, completo y adjudicado, estas estadísticas no demuestran
+una reducción operativa de FP.
+
+Ejecutar con Go 1.23 o posterior:
+
+```sh
+go run ./cmd/evaluate-corpus -input /ruta-segura/corpus.json -output /ruta-segura/reporte.json
+```
+
+El archivo debe venir de un snapshot autorizado y redactado, cubrir el universo elegible mediante
+un protocolo de adjudicación revisado, conservar un holdout temporal sin usarlo para ajustar el
+matcher y cumplir la retención aprobada. Las pruebas del evaluador usan filas sintéticas y solo
+verifican el cálculo y las guardas; no son datos SOC ni evidencian una reducción real de falsos
+positivos. El matcher, el umbral y la supresión automática permanecen sin cambios por esta herramienta.
+`go test ./...` pasó en `services/b89-correlator`; no se aporta aquí un corpus adjudicado ni resultados
+de comparación, por lo que no se afirma reducción real de falsos positivos.
+
 ## Principios
 
 1. **Una detección es código:** XML + metadatos + fixtures + resultado esperado + runbook, revisados por PR.
@@ -65,3 +132,16 @@ Resumen (detalle, técnicas y registro con fixtures en [detection-engineering/07
   (`detections/tools/apply-anomaly-monitors.sh`).
 - **Histórico:** las 328 alertas B89 de la regla 521 se cerraron como `false_positive` con el script de servicio
   `detections/tools/close-false-positives.mjs` (984 eventos de auditoría con cadena hash, correlación `close-fp-521-*`).
+
+## Correlador de riesgo (código local, 2026-11-11)
+
+`services/b89-correlator` mantiene una correlación determinista por entidad con decaimiento temporal,
+límite a repetición de una misma regla, diversidad de fuentes, secuencia MITRE, agrupación por ventana,
+deduplicación y propuestas de supresión sujetas a revisión humana. Al evaluar una secuencia ordenada,
+`Pattern.Match` ahora selecciona la cadena más reciente que conserva el orden de sus etapas; para una
+secuencia no ordenada usa la evidencia más reciente disponible por etapa. También filtra y ordena una vez
+las observaciones de cada etapa dentro de la ventana antes de probar combinaciones. Esto mejora la
+coherencia de la evidencia explicativa y reduce trabajo repetido; por sí solo no cambia las prioridades
+ni demuestra una reducción medida de falsos positivos. La regresión correspondiente está en
+`services/b89-correlator/internal/risk/risk_test.go`; el código no se ha validado contra tráfico real
+desplegado en esta revisión.

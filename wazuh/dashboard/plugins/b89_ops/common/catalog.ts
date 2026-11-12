@@ -203,6 +203,9 @@ export const OPERATIONS_TONE: Record<OperationsStatus, HealthTone> = {
 export const DEGRADED_REASON_LABEL: Record<string, string> = {
   DISPATCHER_STOPPED: 'El despachador de notificaciones está detenido',
   OUTBOX_BACKLOG: 'Hay notificaciones pendientes desde hace más de 5 min',
+  WAZUH_PUSH_TERMINAL_FAILURES:
+    'El fast path de Wazuh terminó con eventos que requieren reconciliación',
+  WAZUH_PUSH_LEASE_EXPIRED: 'Hay trabajos del push Wazuh con lease vencido',
   PERSISTENCE_EPHEMERAL: 'La persistencia es en memoria (no durable)',
   NOTIFICATION_FAILED: 'Hubo notificaciones fallidas en la ventana',
   NOTIFICATION_INDETERMINATE: 'Hubo notificaciones con entrega incierta',

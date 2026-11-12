@@ -7,6 +7,7 @@ import { SecurityEventProviderError } from '../../application/security-event-pro
 import { WazuhGatewayClient, WazuhGatewayError } from './wazuh-gateway.client.js';
 import {
   WazuhSecurityEventProvider,
+  type WazuhAlertHintLookupProvider,
   type WazuhConnectorTelemetry,
 } from './wazuh-security-event.provider.js';
 
@@ -39,7 +40,7 @@ export interface WazuhProviderConfiguration {
 /** Composition root helper; callers pass C-28 credentials already resolved through C-03. */
 export function createWazuhSecurityEventProvider(
   config: WazuhProviderConfiguration,
-): SecurityEventProvider {
+): SecurityEventProvider & WazuhAlertHintLookupProvider {
   let gateway: WazuhGatewayClient;
   try {
     gateway = new WazuhGatewayClient({

@@ -157,10 +157,17 @@ func (s *Server) candidates(w http.ResponseWriter, r *http.Request) {
 func (s *Server) feedback(w http.ResponseWriter, r *http.Request) {
 	snap := s.Runner.Snapshot()
 	writeJSON(w, http.StatusOK, map[string]any{
-		"evaluatedAt": snap.Feedback.EvaluatedAt, "verdicts": snap.Feedback.Verdicts,
+		"evaluatedAt": snap.Feedback.EvaluatedAt, "windowSeconds": snap.Feedback.WindowSeconds,
+		"verdicts":              snap.Feedback.Verdicts,
 		"falsePositiveVerdicts": snap.Feedback.FalsePos, "truePositiveVerdicts": snap.Feedback.TruePos,
-		"activeSuppressions": snap.Feedback.ActiveCount(s.Now().UTC()),
-		"proposals":          snap.Feedback.Proposals, "cdbListName": "b89-correlator-fp-allowlist",
+		"correlatorAlerts":                snap.Feedback.CorrelatorAlerts,
+		"correlatorAdjudicated":           snap.Feedback.CorrelatorAdjudicated,
+		"correlatorUnreviewed":            snap.Feedback.CorrelatorUnreviewed,
+		"correlatorFalsePositiveVerdicts": snap.Feedback.CorrelatorFalsePos,
+		"correlatorTruePositiveVerdicts":  snap.Feedback.CorrelatorTruePos,
+		"alertFeedTruncated":              snap.AlertsTrunc,
+		"activeSuppressions":              snap.Feedback.ActiveCount(s.Now().UTC()),
+		"proposals":                       snap.Feedback.Proposals, "cdbListName": "b89-correlator-fp-allowlist",
 	})
 }
 
@@ -233,6 +240,18 @@ func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(&b, "b89_correlator_reduction_factor{stream=\"b89\"} %g\n", snap.Dedup.Reduction)
 	gauge("b89_correlator_suppressions_active", "Active temporary suppressions", float64(snap.Feedback.ActiveCount(now)))
 	gauge("b89_correlator_feedback_proposals", "Feedback proposals", float64(len(snap.Feedback.Proposals)))
+	gauge("b89_correlator_feedback_window_seconds", "Lookback window of correlator adjudication counts", float64(snap.Feedback.WindowSeconds))
+	fmt.Fprintf(&b, "# HELP b89_correlator_feedback_alerts Alerts emitted by the correlator in the feedback window, including unreviewed alerts\n# TYPE b89_correlator_feedback_alerts gauge\n")
+	fmt.Fprintf(&b, "b89_correlator_feedback_alerts{verdict=\"all\"} %d\n", snap.Feedback.CorrelatorAlerts)
+	fmt.Fprintf(&b, "b89_correlator_feedback_alerts{verdict=\"unreviewed\"} %d\n", snap.Feedback.CorrelatorUnreviewed)
+	fmt.Fprintf(&b, "b89_correlator_feedback_alerts{verdict=\"false_positive\"} %d\n", snap.Feedback.CorrelatorFalsePos)
+	fmt.Fprintf(&b, "b89_correlator_feedback_alerts{verdict=\"true_positive\"} %d\n", snap.Feedback.CorrelatorTruePos)
+	fmt.Fprintf(&b, "# HELP b89_correlator_feedback_alert_feed_truncated 1 when the API feedback feed was truncated\n# TYPE b89_correlator_feedback_alert_feed_truncated gauge\n")
+	truncated := 0
+	if snap.AlertsTrunc {
+		truncated = 1
+	}
+	fmt.Fprintf(&b, "b89_correlator_feedback_alert_feed_truncated %d\n", truncated)
 	lag := 0.0
 	if !snap.CursorAt.IsZero() {
 		lag = now.Sub(snap.CursorAt).Seconds()

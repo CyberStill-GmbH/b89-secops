@@ -5,15 +5,26 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import type { CoreStart } from '../../../../src/core/public';
+import type { BunnyAskDetail } from '../../common';
 import {
   BRAND_ASSETS_PATH,
   BUNNY_ASK_EVENT,
   CAPABILITIES,
-  type BunnyAskDetail,
 } from '../../common';
-import { B89ApiError, type B89ApiClient } from '../api/client';
+import { B89ApiError } from '../api/client';
+import type { B89ApiClient } from '../api/client';
+import type {
+  BunnyCitation,
+  BunnyConfig,
+  BunnyFeedback,
+  BunnyProgressEvent,
+  BunnyStep,
+  BunnyUsage,
+  BunnyTurn,
+  ConversationSummary,
+} from './chat_client';
 import {
-  askBunny,
+  askBunnyStream,
   citationPath,
   deleteAllConversations,
   deleteConversation,
@@ -24,21 +35,15 @@ import {
   listConversations,
   rateMessage,
   suggestionsFor,
-  type BunnyCitation,
-  type BunnyConfig,
-  type BunnyFeedback,
-  type BunnyReasoning,
-  type BunnyStep,
-  type BunnyUsage,
-  type BunnyTurn,
-  type ConversationSummary,
 } from './chat_client';
 import { renderMarkdown } from './markdown';
+import { BunnyReportActions } from './bunny_report_actions';
+import { BunnyThinking } from './bunny_thinking';
 
 /**
  * Bunny, el asistente de IA de B89 SOC. Panel lateral a la derecha al estilo de Amazon Q en la
  * consola de AWS: se abre desde la cabecera, se ajusta a la pantalla, saluda con
- * ejemplos de la página actual, muestra su razonamiento (lo que pensó y lo que consultó), cita lo
+ * ejemplos de la página actual, muestra las consultas realizadas, cita lo
  * que afirma con enlaces a la consola y guarda las conversaciones en un historial que se puede
  * reabrir y borrar. Es de solo lectura y responde con los permisos de la persona.
  */
@@ -50,7 +55,6 @@ interface Message {
   readonly id: number;
   readonly role: 'user' | 'assistant';
   readonly text: string;
-  readonly reasoning?: readonly BunnyReasoning[];
   readonly steps?: readonly BunnyStep[];
   readonly citations?: readonly BunnyCitation[];
   readonly tone?: 'error' | 'notice';
@@ -153,37 +157,6 @@ function errorText(error: unknown): string {
   return 'No pude responder. Inténtalo de nuevo.';
 }
 
-function downloadReportDraft(message: Message): void {
-  const sources = (message.citations ?? [])
-    .map((citation) => `- ${citation.kind}: ${citation.label} (ID ${citation.id})`)
-    .join('\n');
-  const content = [
-    '# Borrador preliminar para revisión SOC',
-    '',
-    '> Asistido por IA. Requiere revisión y aprobación humana antes de compartir o usar para decisiones.',
-    '',
-    `Generado: ${new Date().toLocaleString('es-PE', { timeZone: 'America/Lima' })} (Lima)`,
-    '',
-    '## Resumen',
-    '',
-    message.text,
-    '',
-    '## Fuentes citadas',
-    '',
-    sources || '- La respuesta no incluyó fuentes citadas. Verificar los datos antes de usar este borrador.',
-    '',
-  ].join('\n');
-  const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `b89-borrador-soc-${new Date().toISOString().slice(0, 10)}.md`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
 function reportNoteBody(message: Message): string {
   const citations = (message.citations ?? []).map((citation) =>
     `- ${citation.kind}: ${citation.label} (ID ${citation.id})`,
@@ -228,41 +201,24 @@ export function BunnyLauncher({ state, imageUrl }: { state: BunnyState; imageUrl
   );
 }
 
-/** Razonamiento visible: lo que pensó Bunny y lo que consultó, en orden (como «Show reasoning» de AWS). */
-function Reasoning({
-  reasoning,
-  steps,
-}: {
-  reasoning?: readonly BunnyReasoning[];
-  steps?: readonly BunnyStep[];
-}) {
+/** Actividad visible limitada a pasos de herramientas que realmente ejecutó el servidor. */
+function Activity({ steps }: { steps?: readonly BunnyStep[] }) {
   const [shown, setShown] = useState(false);
-  const entries: readonly BunnyReasoning[] =
-    reasoning && reasoning.length > 0
-      ? reasoning
-      : (steps ?? []).map((step) => ({ kind: 'tool' as const, label: step.label, ok: step.ok }));
-  if (entries.length === 0) return null;
+  if (!steps || steps.length === 0) return null;
   return (
-    <div className="b89Bunny__reasoning">
+    <div className="b89Bunny__activity">
       <button type="button" aria-expanded={shown} onClick={() => setShown(!shown)}>
         <span aria-hidden="true">{shown ? '▾' : '▸'}</span> {shown ? 'Ocultar' : 'Mostrar'}{' '}
-        razonamiento
+        actividad
       </button>
       {shown && (
         <ol>
-          {entries.map((entry, index) =>
-            entry.kind === 'thought' ? (
-              <li key={index} className="is-thought">
-                <span className="b89Bunny__reasoningLabel">Pensé</span>
-                {renderMarkdown(entry.text)}
-              </li>
-            ) : (
-              <li key={index} className={entry.ok ? 'is-ok' : 'is-failed'}>
-                <span aria-hidden="true">{entry.ok ? '✓' : '✕'}</span> {entry.label}
-                {entry.ok ? '' : ' (sin resultado)'}
-              </li>
-            ),
-          )}
+          {steps.map((step, index) => (
+            <li key={`${step.tool}-${index}`} className={step.ok ? 'is-ok' : 'is-failed'}>
+              <span aria-hidden="true">{step.ok ? '✓' : '✕'}</span> {step.label}
+              {step.ok ? '' : ' (sin resultado)'}
+            </li>
+          ))}
         </ol>
       )}
     </div>
@@ -562,6 +518,9 @@ export function BunnyPanel({
   const [notSaved, setNotSaved] = useState(false);
   const [draft, setDraft] = useState('');
   const [pending, setPending] = useState(false);
+  const [progressEvents, setProgressEvents] = useState<BunnyProgressEvent[]>([]);
+  const [thinkingStartedAt, setThinkingStartedAt] = useState<number | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [copied, setCopied] = useState<number | null>(null);
   const [selectedIncident, setSelectedIncident] = useState<{ messageId: number; incidentId: string } | null>(null);
   const [savingNoteId, setSavingNoteId] = useState<number | null>(null);
@@ -571,6 +530,14 @@ export function BunnyPanel({
   const nextId = useRef(1);
   const listRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    if (!pending || thinkingStartedAt === null) return undefined;
+    const updateElapsed = () => setElapsedSeconds(Math.floor((Date.now() - thinkingStartedAt) / 1000));
+    updateElapsed();
+    const timer = window.setInterval(updateElapsed, 1000);
+    return () => window.clearInterval(timer);
+  }, [pending, thinkingStartedAt]);
 
   useEffect(() => {
     fetchBunnyConfig(api).then(setConfig, () => setConfig({ enabled: false, name: NAME }));
@@ -630,7 +597,6 @@ export function BunnyPanel({
             id: nextId.current++,
             role: message.role,
             text: message.text,
-            ...(message.reasoning ? { reasoning: message.reasoning } : {}),
             ...(message.steps ? { steps: message.steps } : {}),
             ...(message.citations ? { citations: message.citations } : {}),
             ...(message.tone ? { tone: message.tone } : {}),
@@ -659,12 +625,16 @@ export function BunnyPanel({
       setDraft('');
       append({ role: 'user', text });
       setPending(true);
+      setThinkingStartedAt(Date.now());
+      setElapsedSeconds(0);
+      setProgressEvents([]);
       try {
-        const reply = await askBunny(
+        const reply = await askBunnyStream(
           api,
           text,
           history,
           askContext ?? `${window.location.pathname}${window.location.search}`,
+          (event) => setProgressEvents((current) => [...current, event]),
           conversationId ?? undefined,
         );
         setAskContext(null);
@@ -673,7 +643,6 @@ export function BunnyPanel({
         append({
           role: 'assistant',
           text: reply.reply,
-          ...(reply.reasoning ? { reasoning: reply.reasoning } : {}),
           steps: reply.steps,
           citations: reply.citations,
           ...(reply.messageId ? { serverId: reply.messageId } : {}),
@@ -868,7 +837,7 @@ export function BunnyPanel({
                     renderMarkdown(message.text, { citations: message.citations ?? [], onOpen: navigate })
                   )}
                   {message.role === 'assistant' && (
-                    <Reasoning reasoning={message.reasoning} steps={message.steps} />
+                    <Activity steps={message.steps} />
                   )}
                   {message.citations && <Sources citations={message.citations} open={navigate} />}
                   {message.role === 'assistant' && !message.tone && (
@@ -894,9 +863,13 @@ export function BunnyPanel({
                           onRate={(rating) => void rate(message, rating)}
                         />
                       )}
-                      <button type="button" onClick={() => downloadReportDraft(message)}>
-                        Descargar borrador
-                      </button>
+                      <BunnyReportActions
+                        api={api}
+                        basePath={core.http.basePath.get()}
+                        messageId={message.id}
+                        text={message.text}
+                        citations={message.citations ?? []}
+                      />
                       {canWriteNotes && message.citations?.some((citation) => citation.kind === 'incident') && (
                         <>
                           <select
@@ -947,14 +920,7 @@ export function BunnyPanel({
             {pending && (
               <article className="b89Bunny__message b89Bunny__message--assistant" aria-busy="true">
                 <img src={imageUrl} alt="" width={24} height={24} />
-                <div className="b89Bunny__bubble b89Bunny__thinking" role="status">
-                  <span className="b89Bunny__dots" aria-hidden="true">
-                    <i />
-                    <i />
-                    <i />
-                  </span>
-                  {NAME} está pensando y consultando el SOC…
-                </div>
+                <div className="b89Bunny__bubble"><BunnyThinking events={progressEvents} elapsedSeconds={elapsedSeconds} /></div>
               </article>
             )}
           </div>

@@ -22,6 +22,14 @@ describe('operations/health · estados', () => {
     expect(summary).toMatchObject({ status: 'OK', alertFreshnessSeconds: 90 });
   });
 
+  it('usa la salud real de fuente para cobertura y no la antigüedad de una alerta', () => {
+    const summary = summarySection(
+      { lastAlertAt: new Date(AT.getTime() - 30 * 86_400_000), sourceStatus: 'DEGRADED' },
+      AT,
+    );
+    expect(summary).toMatchObject({ status: 'DEGRADED', sourceCoverage: 'DEGRADED' });
+  });
+
   it('degrada el SOC con despacho detenido, backlog viejo o persistencia efímera', () => {
     const base = {
       persistence: 'postgres' as const,
@@ -57,6 +65,108 @@ describe('operations/health · estados', () => {
     );
     expect(section.degradedReasons).toEqual(['NOTIFICATION_FAILED', 'NOTIFICATION_FALLBACK']);
     expect(section.notifications).toMatchObject({ windowHours: 24, byStatus: { sent: 4 } });
+  });
+
+  it('expone percentiles de aceptación HTTP y conserva NO_DATA sin muestras', () => {
+    const base = {
+      persistence: 'postgres' as const,
+      dispatcherRunning: true,
+      outbox: { pending: 0, processing: 0, oldestPendingAt: null },
+      notificationsByStatus: {},
+    };
+    const measured = socSection(
+      {
+        ...base,
+        providerAcceptanceLatency: {
+          windowHours: 24,
+          sampleCount: 3,
+          excludedClockSkewCount: 1,
+          sampleCapReached: false,
+          p50: 120,
+          p95: 220,
+          p99: 230,
+        },
+      },
+      AT,
+    );
+    expect(measured.outboxToProviderAcceptanceMs).toMatchObject({
+      status: 'OK',
+      windowHours: 24,
+      sampleCount: 3,
+      excludedClockSkewCount: 1,
+      p50: 120,
+      p95: 220,
+      p99: 230,
+    });
+    expect(measured.outboxToProviderAcceptanceMs.acceptanceMeans).toContain('does not mean');
+
+    const noData = socSection({ ...base, persistence: 'memory' }, AT);
+    expect(noData.outboxToProviderAcceptanceMs).toMatchObject({
+      status: 'NO_DATA',
+      sampleCount: 0,
+      p50: null,
+      p95: null,
+      p99: null,
+    });
+  });
+
+  it('expone antigüedad y fallos de la inbox Wazuh sin exponer hints', () => {
+    const section = socSection(
+      {
+        persistence: 'postgres',
+        dispatcherRunning: true,
+        outbox: { pending: 0, processing: 0, oldestPendingAt: null },
+        notificationsByStatus: {},
+        wazuhPushInbox: {
+          counts: { pending: 2, processing: 1, processed: 20, 'failed-terminal': 1 },
+          oldestPendingAt: new Date(AT.getTime() - 4_000),
+          oldestProcessingAt: new Date(AT.getTime() - 8_000),
+          oldestUnresolvedAt: new Date(AT.getTime() - 8_000),
+          oldestTerminalAt: new Date(AT.getTime() - 60_000),
+          lastProcessedAt: new Date(AT.getTime() - 1_000),
+          expiredProcessing: 1,
+          terminalFailuresRecent: 1,
+          terminalWindowHours: 24,
+          sourceToReceiptMs: {
+            windowHours: 24,
+            sampleCount: 10,
+            clockSkewSamples: 2,
+            sampleCapReached: false,
+            p50: 400,
+            p95: 900,
+            p99: 980,
+          },
+          receiptToHandlerMs: { windowHours: 24, sampleCount: 12, p50: 250, p95: 800, p99: 950 },
+        },
+      },
+      AT,
+    );
+    expect(section.status).toBe('DEGRADED');
+    expect(section.degradedReasons).toContain('WAZUH_PUSH_TERMINAL_FAILURES');
+    expect(section.degradedReasons).toContain('WAZUH_PUSH_LEASE_EXPIRED');
+    expect(section.wazuhPushInbox).toMatchObject({
+      oldestUnresolvedAgeSeconds: 8,
+      oldestTerminalAgeSeconds: 60,
+      expiredProcessing: 1,
+      terminalFailuresRecent: 1,
+      sourceToReceiptMs: {
+        windowHours: 24,
+        sampleCount: 10,
+        clockSkewSamples: 2,
+        sampleCapReached: false,
+        p50: 400,
+        p95: 900,
+        p99: 980,
+      },
+      receiptToHandlerMs: {
+        windowHours: 24,
+        sampleCount: 12,
+        p50: 250,
+        p95: 800,
+        p99: 950,
+      },
+    });
+    expect(JSON.stringify(section)).not.toContain('alertId');
   });
 
   it('degrada la plataforma si la base no responde o responde lento', () => {

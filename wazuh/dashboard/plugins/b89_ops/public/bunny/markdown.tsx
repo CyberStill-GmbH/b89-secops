@@ -3,7 +3,8 @@
  */
 
 import React, { useState } from 'react';
-import { citationPath, type BunnyCitation } from './chat_client';
+import { citationPath } from './chat_client';
+import type { BunnyCitation } from './chat_client';
 
 /**
  * Markdown seguro para las respuestas de Bunny. Todo se construye como elementos de React: nunca

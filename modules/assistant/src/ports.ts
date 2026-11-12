@@ -23,7 +23,7 @@ export interface AssistantTool {
   readonly inputSchema: Readonly<Record<string, unknown>>;
   /** Etiqueta corta para mostrar a la persona («Buscando alertas»). */
   readonly label: string;
-  run(input: ToolInput): Promise<ToolOutcome>;
+  run(input: ToolInput, signal?: AbortSignal): Promise<ToolOutcome>;
 }
 
 export interface TextBlock {
@@ -42,7 +42,7 @@ export interface ToolResultBlock {
   readonly content: string;
   readonly is_error?: boolean;
 }
-/** Resumen de razonamiento del modelo. Debe devolverse intacto (con `signature`) mientras dura el uso de herramientas. */
+/** Bloque interno firmado del proveedor; solo se conserva transitoriamente durante una ronda con herramientas. */
 export interface ThinkingBlock {
   readonly type: 'thinking';
   readonly thinking: string;
@@ -95,5 +95,9 @@ export interface ModelResponse {
 
 /** Puerto del modelo de lenguaje. */
 export interface AssistantModel {
-  complete(request: ModelRequest, signal?: AbortSignal): Promise<ModelResponse>;
+  complete(
+    request: ModelRequest,
+    signal?: AbortSignal,
+    onTextDelta?: (text: string) => void,
+  ): Promise<ModelResponse>;
 }

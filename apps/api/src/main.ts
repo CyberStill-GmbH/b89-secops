@@ -90,10 +90,47 @@ export async function main(): Promise<void> {
         const code = (error as { code?: unknown } | undefined)?.code;
         log('ingestion.pass.failed', typeof code === 'string' ? code : 'INGESTION_FAILED');
       },
-      // Padrón: solo el código (p. ej. DIRECTORY_FORBIDDEN = falta consentimiento de Graph).
+      // Solo diagnósticos allowlisted de Graph: status, code, request-id y operación.
       (error) => {
         const code = (error as { code?: unknown } | undefined)?.code;
-        log('directory.sync.failed', typeof code === 'string' ? code : 'DIRECTORY_FAILED');
+        const candidate =
+          typeof error === 'object' && error !== null && 'diagnostic' in error
+            ? (error as { diagnostic?: unknown }).diagnostic
+            : undefined;
+        const diagnostic =
+          typeof candidate === 'object' && candidate !== null
+            ? (candidate as {
+                status?: unknown;
+                operation?: unknown;
+                errorCode?: unknown;
+                requestId?: unknown;
+              })
+            : undefined;
+        const safeOperation =
+          typeof diagnostic?.operation === 'string' &&
+          ['resolveGroupId', 'memberDelta', 'owners', 'userProfile'].includes(
+            diagnostic.operation,
+          )
+            ? diagnostic.operation
+            : undefined;
+        const safeErrorCode =
+          typeof diagnostic?.errorCode === 'string' &&
+          /^[A-Za-z0-9_.-]{1,100}$/u.test(diagnostic.errorCode)
+            ? diagnostic.errorCode
+            : undefined;
+        const safeRequestId =
+          typeof diagnostic?.requestId === 'string' &&
+          /^[A-Za-z0-9_.:-]{1,128}$/u.test(diagnostic.requestId)
+            ? diagnostic.requestId
+            : undefined;
+        log('directory.sync.failed', typeof code === 'string' ? code : 'DIRECTORY_FAILED', {
+          ...(typeof diagnostic?.status === 'number' && Number.isInteger(diagnostic.status)
+            ? { graphStatus: String(diagnostic.status) }
+            : {}),
+          ...(safeOperation ? { graphOperation: safeOperation } : {}),
+          ...(safeErrorCode ? { graphErrorCode: safeErrorCode } : {}),
+          ...(safeRequestId ? { graphRequestId: safeRequestId } : {}),
+        });
       },
       demoMfaExceptionUntil,
       // Motivo técnico del rechazo, buscable por el correlationId que ve la persona en la URL.

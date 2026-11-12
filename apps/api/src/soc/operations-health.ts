@@ -7,13 +7,16 @@
  *   fuentes. La cobertura queda `NO_DATA` hasta que exista la salud por dataset (C-5); no
  *   se infiere "sano" de la mera ausencia de alertas.
  * - `soc` (`observability.read_soc`: líder, admin): persistencia, despacho y cola del
- *   outbox, e intentos de notificación por estado.
+ *   outbox e inbox push, e intentos de notificación por estado.
  * - `platform` (`observability.read_platform`: admin): proceso del API y latencia de base.
  *
  * Una sección sin capability no aparece en la respuesta (no viaja como `null`): el cliente
  * no puede distinguir "no autorizado" de "no existe". Todo es agregado: sin UPN, IP,
  * títulos de alerta ni texto de error crudo.
  */
+
+import type { WazuhPushInboxMetrics } from '@b89/soc';
+import type { ProviderAcceptanceLatency } from '@b89/soar';
 
 export const HEALTH_STATUSES = ['OK', 'NO_DATA', 'STALE', 'DEGRADED'] as const;
 export type HealthStatus = (typeof HEALTH_STATUSES)[number];
@@ -22,6 +25,8 @@ export type HealthStatus = (typeof HEALTH_STATUSES)[number];
 export const HEALTH_THRESHOLDS = Object.freeze({
   /** Un pendiente más viejo que esto indica que el despacho no avanza. */
   outboxOldestPendingSeconds: 300,
+  /** Una receipt terminal fue aceptada por API pero no llegó a promoverse por el fast path. */
+  pushInboxTerminalFailureIsDegraded: true,
   /** Latencia de base de datos que ya degrada la operación de la consola. */
   databaseLatencyMs: 1_000,
   /** Ventana fija de los conteos de notificaciones. */
@@ -50,19 +55,21 @@ export function worstStatus(statuses: readonly HealthStatus[]): HealthStatus {
 
 export interface SummaryInput {
   readonly lastAlertAt: Date | null;
+  /** Current source coverage when the caller can read its health; unknown/disabled is NO_DATA. */
+  readonly sourceStatus?: HealthStatus;
 }
 
 export function summarySection(input: SummaryInput, at: Date) {
   return {
     // Sin alertas no hay señal: puede ser un tenant tranquilo o una fuente muda.
-    status: (input.lastAlertAt ? 'OK' : 'NO_DATA') as HealthStatus,
+    status: input.sourceStatus ?? (input.lastAlertAt ? 'OK' : 'NO_DATA'),
     checkedAt: at.toISOString(),
     lastAlertAt: input.lastAlertAt?.toISOString() ?? null,
     alertFreshnessSeconds: input.lastAlertAt
       ? Math.max(0, Math.round((at.getTime() - input.lastAlertAt.getTime()) / 1_000))
       : null,
     // C-5 (salud por dataset) todavía no está implementada: se declara, no se adivina.
-    sourceCoverage: 'NO_DATA' as const,
+    sourceCoverage: input.sourceStatus ?? ('NO_DATA' as const),
   };
 }
 
@@ -75,6 +82,8 @@ export interface SocSectionInput {
     readonly oldestPendingAt: Date | null;
   };
   readonly notificationsByStatus: Readonly<Record<string, number>>;
+  readonly providerAcceptanceLatency?: ProviderAcceptanceLatency | null;
+  readonly wazuhPushInbox?: WazuhPushInboxMetrics | null;
 }
 
 export function socSection(input: SocSectionInput, at: Date) {
@@ -89,6 +98,8 @@ export function socSection(input: SocSectionInput, at: Date) {
     ...(stuck ? ['OUTBOX_BACKLOG'] : []),
     // Memoria en un ambiente que debería ser durable se reporta, no se esconde.
     ...(input.persistence === 'memory' ? ['PERSISTENCE_EPHEMERAL'] : []),
+    ...(input.wazuhPushInbox?.terminalFailuresRecent ? ['WAZUH_PUSH_TERMINAL_FAILURES'] : []),
+    ...(input.wazuhPushInbox?.expiredProcessing ? ['WAZUH_PUSH_LEASE_EXPIRED'] : []),
     ...Object.entries(NOTIFICATION_DEGRADING)
       .filter(([status]) => (input.notificationsByStatus[status] ?? 0) > 0)
       .map(([, reason]) => reason),
@@ -111,7 +122,38 @@ export function socSection(input: SocSectionInput, at: Date) {
       ).toISOString(),
       byStatus: input.notificationsByStatus,
     },
+    outboxToProviderAcceptanceMs: {
+      status: input.providerAcceptanceLatency?.sampleCount ? 'OK' : 'NO_DATA',
+      windowHours: input.providerAcceptanceLatency?.windowHours ?? 24,
+      sampleCount: input.providerAcceptanceLatency?.sampleCount ?? 0,
+      excludedClockSkewCount: input.providerAcceptanceLatency?.excludedClockSkewCount ?? 0,
+      sampleCapReached: input.providerAcceptanceLatency?.sampleCapReached ?? false,
+      p50: input.providerAcceptanceLatency?.p50 ?? null,
+      p95: input.providerAcceptanceLatency?.p95 ?? null,
+      p99: input.providerAcceptanceLatency?.p99 ?? null,
+      acceptanceMeans:
+        'HTTP 2xx means the provider accepted the request; it does not mean a person read it or that a workflow posted a card.',
+    },
+    wazuhPushInbox: input.wazuhPushInbox
+      ? {
+          counts: input.wazuhPushInbox.counts,
+          oldestPendingAgeSeconds: ageSeconds(input.wazuhPushInbox.oldestPendingAt, at),
+          oldestProcessingAgeSeconds: ageSeconds(input.wazuhPushInbox.oldestProcessingAt, at),
+          oldestUnresolvedAgeSeconds: ageSeconds(input.wazuhPushInbox.oldestUnresolvedAt, at),
+          oldestTerminalAgeSeconds: ageSeconds(input.wazuhPushInbox.oldestTerminalAt, at),
+          lastProcessedAt: input.wazuhPushInbox.lastProcessedAt?.toISOString() ?? null,
+          expiredProcessing: input.wazuhPushInbox.expiredProcessing,
+          terminalFailuresRecent: input.wazuhPushInbox.terminalFailuresRecent,
+          terminalWindowHours: input.wazuhPushInbox.terminalWindowHours,
+          sourceToReceiptMs: input.wazuhPushInbox.sourceToReceiptMs,
+          receiptToHandlerMs: input.wazuhPushInbox.receiptToHandlerMs,
+        }
+      : null,
   };
+}
+
+function ageSeconds(value: Date | null, at: Date): number | null {
+  return value ? Math.max(0, Math.round((at.getTime() - value.getTime()) / 1_000)) : null;
 }
 
 /**

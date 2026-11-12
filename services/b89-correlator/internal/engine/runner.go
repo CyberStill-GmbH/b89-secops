@@ -5,9 +5,9 @@ package engine
 
 import (
 	"context"
-	"math"
 	"errors"
 	"log/slog"
+	"math"
 	"sort"
 	"strings"
 	"sync"
@@ -254,7 +254,13 @@ func (r *Runner) RefreshFeedback(ctx context.Context) error {
 		r.C.APIErrors.Add(1)
 		return err
 	}
-	fb := feedback.Evaluate(alerts, r.Res.Canonical, r.Opt.Feedback, now)
+	policy := r.Opt.Feedback
+	if truncated {
+		// Keep counts and human-review proposals visible, but never derive active
+		// suppressions from a partial feed: it may omit a P1 or true-positive alert.
+		policy.AutoSuppress = false
+	}
+	fb := feedback.Evaluate(alerts, r.Res.Canonical, policy, now)
 	r.Eng.SetSuppressor(fb)
 	since := now.Add(-r.Opt.Backfill)
 	recent := make([]model.B89Alert, 0, len(alerts))

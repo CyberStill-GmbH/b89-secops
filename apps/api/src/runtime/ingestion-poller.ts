@@ -74,8 +74,11 @@ export function createIngestionPass(options: IngestionPassOptions): () => Promis
     if (!claim) return 0;
 
     let recordsSeen = 0;
+    let normalized = 0;
     let promoted = 0;
     let quarantined = 0;
+    let duplicates = 0;
+    let notPromoted = 0;
     let newestEventAt: Date | null = null;
     let pending = false;
     let failure: ReturnType<typeof classify> | undefined;
@@ -103,7 +106,11 @@ export function createIngestionPass(options: IngestionPassOptions): () => Promis
               quarantined += 1;
               continue;
             }
-            if ((await options.promote(converted.event)) === 'promoted') promoted += 1;
+            normalized += 1;
+            const outcome = await options.promote(converted.event);
+            if (outcome === 'promoted') promoted += 1;
+            else if (outcome === 'duplicate') duplicates += 1;
+            else notPromoted += 1;
           }
           if (pageNewest) {
             if (!newestEventAt || pageNewest > newestEventAt) newestEventAt = pageNewest;
@@ -143,8 +150,11 @@ export function createIngestionPass(options: IngestionPassOptions): () => Promis
         completedAt: options.now(),
         outcome: failure ? failure.outcome : 'success',
         recordsSeen,
+        normalized,
         promoted,
         quarantined,
+        duplicates,
+        notPromoted,
         newestEventAt,
         errorClass: failure ? failure.errorClass : null,
       });

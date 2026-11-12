@@ -40,6 +40,7 @@ import { correlationIdOf } from '../http/request-context.js';
 import { mutatingActor, readingActor } from './session-actor.js';
 import { SECOPS_RUNTIME } from './tokens.js';
 import type { SecOpsRuntime } from '../runtime/secops-runtime.js';
+import { evaluateMonitor } from '../runtime/source-health.js';
 
 /** Mensajes por pasada manual del despacho. */
 const MANUAL_DRAIN_BATCH = 1;
@@ -115,9 +116,7 @@ export function notificationView(attempt: NotificationAttempt, consoleBaseUrl: s
     coveredBy: attempt.supersededBy ?? null,
     digestId: attempt.digestId ?? null,
     deepLink: investigation ?? incident,
-    links: links
-      ? { investigation, incident, playbook: links.playbook, bunny: links.bunny }
-      : null,
+    links: links ? { investigation, incident, playbook: links.playbook, bunny: links.bunny } : null,
     delivery: attempt.delivery ?? [],
   };
 }
@@ -154,7 +153,14 @@ export class OperationsController {
     }
     // Un solo mensaje por pasada manual: con el timeout del transporte (10 s) la respuesta
     // cabe en el timeout del gateway. El resto lo despacha el bucle automático.
-    const results = await drainOutbox(this.runtime.dispatchDependencies(), MANUAL_DRAIN_BATCH);
+    const urgent = await drainOutbox(
+      this.runtime.dispatchDependencies('urgent'),
+      MANUAL_DRAIN_BATCH,
+    );
+    const results =
+      urgent.length > 0
+        ? urgent
+        : await drainOutbox(this.runtime.dispatchDependencies('normal'), MANUAL_DRAIN_BATCH);
     this.runtime.dispatcher.kick();
     return { correlationId, results: results.map((result) => result.code) };
   }
@@ -256,8 +262,22 @@ export class OperationsController {
       throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
     }
     const at = this.runtime.now();
+    const monitor = this.runtime.sourceHealth;
+    let sourceStatus: HealthStatus | undefined;
+    if (actor.capabilities.has('sources.health.read') && monitor?.key.tenantId === actor.tenantId) {
+      const source = await evaluateMonitor(monitor, this.runtime.soc.ingestion, at);
+      sourceStatus =
+        source.state === 'healthy'
+          ? 'OK'
+          : source.state === 'degraded' || source.state === 'failed'
+            ? 'DEGRADED'
+            : 'NO_DATA';
+    }
     const summary = summarySection(
-      { lastAlertAt: await this.runtime.soc.lastAlertAt(actor.tenantId) },
+      {
+        lastAlertAt: await this.runtime.soc.lastAlertAt(actor.tenantId),
+        ...(sourceStatus ? { sourceStatus } : {}),
+      },
       at,
     );
     const sections: Record<string, { readonly status: HealthStatus }> = { summary };
@@ -268,12 +288,29 @@ export class OperationsController {
         actor.tenantId,
         new Date(at.getTime() - HEALTH_THRESHOLDS.notificationWindowHours * 3_600_000),
       );
+      const notificationWindowStart = new Date(
+        at.getTime() - HEALTH_THRESHOLDS.notificationWindowHours * 3_600_000,
+      );
+      const providerAcceptanceLatency =
+        await this.runtime.notifications.providerAcceptanceLatencySince(
+          actor.tenantId,
+          notificationWindowStart,
+          at,
+        );
+      // The Wazuh inbox is deployment-scoped and has no tenant_id column. Never expose its
+      // aggregate to a principal whose tenant does not own the configured Wazuh source.
+      const wazuhPushInbox =
+        monitor?.key.tenantId === actor.tenantId
+          ? await this.runtime.wazuhPushInboxMetrics(at)
+          : null;
       sections['soc'] = socSection(
         {
           persistence: this.runtime.soc.kind,
           dispatcherRunning: this.runtime.dispatcher.started,
           outbox: await this.runtime.soc.outboxHealth(actor.tenantId),
           notificationsByStatus,
+          providerAcceptanceLatency,
+          wazuhPushInbox,
         },
         at,
       );

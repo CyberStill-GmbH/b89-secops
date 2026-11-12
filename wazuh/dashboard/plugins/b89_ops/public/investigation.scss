@@ -175,6 +175,89 @@ $b89InvGradient: linear-gradient(110deg, #ff5899 0%, #ff5841 55%, #ffc136 100%);
   border-radius: 14px;
 }
 
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+
+  .b89Investigation,
+  .b89Investigation * {
+    visibility: visible !important;
+  }
+
+  .b89Investigation {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+  }
+
+  .b89Investigation__back,
+  .b89Investigation__actions,
+  .b89Chip,
+  .b89Timeline__title button {
+    display: none !important;
+  }
+
+  .b89Investigation {
+    color: #111 !important;
+    font-size: 10pt;
+  }
+
+  .b89Investigation::before {
+    display: block;
+    margin-bottom: 12pt;
+    border-bottom: 2px solid #b44335;
+    padding-bottom: 8pt;
+    content: 'B89 SOC · Informe de investigación';
+    font-size: 17pt;
+    font-weight: 700;
+  }
+
+  .b89Investigation__header,
+  .b89Card {
+    border: 1px solid #aaa !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+  }
+
+  .b89Investigation__header {
+    display: block;
+    padding: 10pt;
+  }
+
+  .b89Investigation__lead,
+  .b89Investigation__facts,
+  .b89Timeline__meta {
+    color: #111 !important;
+  }
+
+  .b89Investigation__main,
+  .b89Investigation__side {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .b89Timeline__item,
+  .b89Entity,
+  .b89Card li {
+    break-inside: avoid;
+  }
+
+  .b89Vendor,
+  .euiBadge {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 15mm;
+  }
+}
+
 // Chips de entidades (filtros) y de coincidencias.
 .b89Chips {
   display: flex;

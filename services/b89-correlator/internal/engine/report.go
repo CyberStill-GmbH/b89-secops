@@ -124,9 +124,16 @@ func (r *Runner) BuildReport(from, to time.Time, top int, redact bool) Report {
 		},
 		TopEntities: topEntities,
 		Feedback: map[string]any{
-			"verdicts": snap.Feedback.Verdicts, "falsePositiveVerdicts": snap.Feedback.FalsePos,
+			"windowSeconds": snap.Feedback.WindowSeconds,
+			"verdicts":      snap.Feedback.Verdicts, "falsePositiveVerdicts": snap.Feedback.FalsePos,
 			"truePositiveVerdicts": snap.Feedback.TruePos, "proposalsByKind": kinds,
-			"activeSuppressions": snap.Feedback.ActiveCount(to), "proposals": shown,
+			"correlatorAlerts":                snap.Feedback.CorrelatorAlerts,
+			"correlatorAdjudicated":           snap.Feedback.CorrelatorAdjudicated,
+			"correlatorUnreviewed":            snap.Feedback.CorrelatorUnreviewed,
+			"correlatorFalsePositiveVerdicts": snap.Feedback.CorrelatorFalsePos,
+			"correlatorTruePositiveVerdicts":  snap.Feedback.CorrelatorTruePos,
+			"alertFeedTruncated":              snap.AlertsTrunc,
+			"activeSuppressions":              snap.Feedback.ActiveCount(to), "proposals": shown,
 		},
 		CDB: cdb,
 	}

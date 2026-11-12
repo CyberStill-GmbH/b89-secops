@@ -49,6 +49,24 @@ SSH_KEY=<clave privada> HOST=$(terraform output -raw public_ip) SOC_HOSTNAME=dev
 `ship.sh` copia el árbol de trabajo (sin `.env*`, `.git` ni `node_modules`) a `/opt/b89/src`
 y ejecuta `scripts/deploy-host.sh`, que es idempotente.
 
+Para conectarse por EC2 Instance Connect Endpoint no hace falta una clave SSH persistente. Con
+credenciales AWS temporales activas y el endpoint Terraform en estado `available`, ejecuta desde
+Git Bash en la raíz del repositorio:
+
+```bash
+EC2_INSTANCE_ID="$(terraform -chdir=infra/aws-poweruser output -raw instance_id)" \
+AWS_REGION=us-east-1 SOC_HOSTNAME=dev.security.b89.io \
+  bash infra/aws-poweruser/scripts/ship.sh
+```
+
+En esta ruta `ship.sh` genera una clave Ed25519 temporal, la publica para el usuario `ubuntu` con
+EC2 Instance Connect inmediatamente antes de cada conexión SSH, usa `open-tunnel` como `ProxyCommand`
+y elimina la clave al salir. El rol AWS necesita `ec2:DescribeInstances`,
+`ec2-instance-connect:SendSSHPublicKey` y `ec2-instance-connect:OpenTunnel`; el endpoint y las reglas
+de red correspondientes los gestiona Terraform. La ruta SSH directo sigue disponible con
+`SSH_KEY` y `HOST`. El envío de código toma el lock no bloqueante del host y falla si otro despliegue
+lo mantiene.
+
 Credenciales generadas (en el host, solo root):
 
 - Login B89 (administrador demo): `admin@b89.io` / `/opt/b89/secrets/demo-admin-password.txt`.

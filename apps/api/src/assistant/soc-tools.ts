@@ -307,7 +307,7 @@ export function buildSocTools(get: InternalGet, actor: ActorSummary): AssistantT
       name: 'sources_health',
       label: 'Revisando la salud de las fuentes',
       description:
-        'Salud de las fuentes de datos: si llegan eventos, última recepción (con hora de Lima), fallas consecutivas y estado. `subscriptions.items` trae la actividad de 24 h por stream: proveedores integrados (`provider.bitdefender`, `provider.snyk`, `provider.cloudflare`, `provider.aws`) y suscripciones de Office 365 (`Audit.*`, hoy bloqueadas por permisos de Entra). Úsala para «¿qué fuentes están degradadas?», resúmenes y para explicar la ausencia de datos.',
+        'Salud de las fuentes de datos: si llegan eventos, última recepción (con hora de Lima), fallas consecutivas y estado. `subscriptions.items` trae la actividad de 24 h por stream: proveedores integrados (`provider.bitdefender`, `provider.snyk`, `provider.cloudflare`, `provider.aws`) y suscripciones de Office 365 (`Audit.*`); comprueba la salud y frescura antes de concluir que no hay actividad. Úsala para «¿qué fuentes están degradadas?», resúmenes y para explicar la ausencia de datos.',
       anyOf: ['sources.health.read'],
       properties: {},
       build: () => '/api/sources/health',

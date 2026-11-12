@@ -55,23 +55,38 @@ const REASON_MIN = 10;
 const REASON_MAX = 500;
 
 /**
- * La app de Entra aún no puede leer Accesos_SOC (falta GroupMember.Read.All con consentimiento).
+ * La identidad de servicio no tiene un app role de lectura de grupos concedido en Microsoft Graph.
  * No es un error: el API reintenta solo y el padrón se activa sin reiniciar al concederse.
  */
-function PermissionMissingCallout({ nextAttemptAt }: { nextAttemptAt: string | null | undefined }) {
+function PermissionMissingCallout({
+  nextAttemptAt,
+  diagnostic,
+}: {
+  nextAttemptAt: string | null | undefined;
+  diagnostic?: DirectorySync['diagnostic'];
+}) {
   return (
     <EuiCallOut
       size="s"
       color="warning"
       iconType="lock"
-      title="Permiso faltante en Microsoft Entra ID: GroupMember.Read.All"
+      title="La identidad de B89 no tiene permiso de lectura de grupos en Microsoft Graph"
     >
       <p>
-        B89 todavía no puede leer los miembros ni los propietarios del grupo Accesos_SOC. Un
-        administrador de Entra debe conceder a la aplicación del SOC el permiso de aplicación
-        GroupMember.Read.All (Microsoft Graph) con consentimiento de administrador. Al concederse,
-        el padrón se activa solo, sin reiniciar.
+        B89 recibió una denegación de Graph al resolver o leer Accesos_SOC. Revisa que la identidad
+        de aplicación configurada en el API tenga GroupMember.Read.All o Group.Read.All como
+        permiso de aplicación de Microsoft Graph, con consentimiento de administrador, en el mismo
+        registro de aplicación que usa B89. El token se renovará automáticamente y el grupo se
+        volverá a resolver sin reiniciar el servicio.
       </p>
+      {diagnostic && (
+        <p>
+          Diagnóstico Graph: HTTP {diagnostic.status}
+          {diagnostic.errorCode ? ` · ${diagnostic.errorCode}` : ''}
+          {diagnostic.operation ? ` · ${diagnostic.operation}` : ''}
+          {diagnostic.requestId ? ` · request-id ${diagnostic.requestId}` : ''}
+        </p>
+      )}
       {nextAttemptAt && (
         <p>
           Próximo intento automático: <Timestamp iso={nextAttemptAt} />
@@ -242,7 +257,7 @@ function UsersPanel() {
       )}
       {sync?.permissionMissing && (
         <>
-          <PermissionMissingCallout nextAttemptAt={sync.nextAttemptAt} />
+          <PermissionMissingCallout nextAttemptAt={sync.nextAttemptAt} diagnostic={sync.diagnostic} />
           <EuiSpacer size="m" />
         </>
       )}
@@ -589,7 +604,10 @@ function RoleRequestsPanel({ canReviewRoles }: { canReviewRoles: boolean }) {
       )}
       {directoryState?.permissionMissing && (
         <>
-          <PermissionMissingCallout nextAttemptAt={directoryState.nextAttemptAt} />
+          <PermissionMissingCallout
+            nextAttemptAt={directoryState.nextAttemptAt}
+            diagnostic={directoryState.diagnostic}
+          />
           <EuiSpacer size="m" />
         </>
       )}
