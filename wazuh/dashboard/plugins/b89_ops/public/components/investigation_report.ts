@@ -11,6 +11,7 @@ import type { EntityKind, RelatedWindow } from '../../common/investigation';
 import { groupInvestigationActivity } from './investigation_activity_grouping';
 
 export const REPORT_EVENT_LIMIT = 10_000;
+export const REPORT_ARTIFACT_LIMIT_BYTES = 50 * 1024 * 1024;
 
 export type ReportEmailMetadata = NonNullable<InvestigationEventSummary['email']>;
 
@@ -194,59 +195,42 @@ function columnName(index: number): string {
 type Cell = string | number;
 type Sheet = {
   readonly name: string;
-  readonly rows: readonly (readonly Cell[])[];
+  readonly rows: readonly (readonly Cell[])[] | (() => Iterable<readonly Cell[]>);
+  readonly rowCount?: number;
+  readonly columnCount?: number;
   readonly autoFilter?: boolean;
 };
+
+type WritableSink = {
+  write(chunk: Uint8Array): Promise<void>;
+  close(): Promise<void>;
+  abort?(reason?: unknown): Promise<void>;
+};
+
+function sheetRows(sheet: Sheet): Iterable<readonly Cell[]> {
+  return typeof sheet.rows === 'function' ? sheet.rows() : sheet.rows;
+}
+
+function sheetRowCount(sheet: Sheet): number {
+  return sheet.rowCount ?? (typeof sheet.rows === 'function' ? 0 : sheet.rows.length);
+}
+
+function sheetColumnCount(sheet: Sheet): number {
+  if (sheet.columnCount) return sheet.columnCount;
+  return typeof sheet.rows === 'function' ? 1 : Math.max(1, ...sheet.rows.map((row) => row.length));
+}
 
 function abortIfNeeded(signal?: AbortSignal): void {
   if (signal?.aborted) throw new DOMException('Generación cancelada', 'AbortError');
 }
 
-async function worksheetXml(
-  sheet: Sheet,
-  sheetIndex: number,
-  signal?: AbortSignal,
-  onProgress?: (progress: ReportProgress) => void,
-): Promise<string> {
-  const rows: string[] = [];
-  for (let rowIndex = 0; rowIndex < sheet.rows.length; rowIndex += 1) {
-    abortIfNeeded(signal);
-    const row = sheet.rows[rowIndex]!;
-    const cells = row
-      .map((value, colIndex) => {
-        const ref = `${columnName(colIndex)}${rowIndex + 1}`;
-        const style = rowIndex === 0 ? ' s="1"' : '';
-        if (typeof value === 'number' && Number.isFinite(value)) {
-          return `<c r="${ref}"${style}><v>${value}</v></c>`;
-        }
-        return `<c r="${ref}" t="inlineStr"${style}><is><t xml:space="preserve">${xml(value)}</t></is></c>`;
-      })
-      .join('');
-    rows.push(`<row r="${rowIndex + 1}">${cells}</row>`);
-    if ((rowIndex + 1) % 500 === 0 || rowIndex + 1 === sheet.rows.length) {
-      onProgress?.({
-        phase: 'render',
-        completed: rowIndex + 1,
-        total: sheet.rows.length,
-        message: `Serializando hoja ${sheetIndex + 1}: ${(rowIndex + 1).toLocaleString('es-PE')} de ${sheet.rows.length.toLocaleString('es-PE')} filas`,
-      });
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    }
-  }
-  const rowXml = rows.join('');
-  const lastRow = Math.max(1, sheet.rows.length);
-  const lastColumn = Math.max(1, ...sheet.rows.map((row) => row.length));
-  const dimension = `A1:${columnName(lastColumn - 1)}${lastRow}`;
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="${dimension}"/><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="18"/><sheetData>${rowXml}</sheetData>${sheet.autoFilter ? `<autoFilter ref="A1:${columnName(lastColumn - 1)}${lastRow}"/>` : ''}</worksheet>`;
-}
-
-function crc32(bytes: Uint8Array): number {
-  let crc = 0xffffffff;
+function crc32Update(initial: number, bytes: Uint8Array): number {
+  let crc = initial;
   for (const byte of bytes) {
     crc ^= byte;
     for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
   }
-  return (crc ^ 0xffffffff) >>> 0;
+  return crc >>> 0;
 }
 
 function u16(view: DataView, offset: number, value: number): void {
@@ -256,85 +240,123 @@ function u32(view: DataView, offset: number, value: number): void {
   view.setUint32(offset, value >>> 0, true);
 }
 
-/** Minimal ZIP32 writer using stored entries, so the XLSX has no runtime dependency. */
-async function zipStored(
-  files: ReadonlyArray<{ path: string; body: string }>,
-  signal?: AbortSignal,
-  onProgress?: (progress: ReportProgress) => void,
-): Promise<Blob> {
-  const encoder = new TextEncoder();
-  const locals: Uint8Array[] = [];
-  const central: Uint8Array[] = [];
-  let offset = 0;
-  let centralBytes = 0;
-  for (let index = 0; index < files.length; index += 1) {
-    abortIfNeeded(signal);
-    const file = files[index]!;
-    const name = encoder.encode(file.path);
-    const data = encoder.encode(file.body);
-    const checksum = crc32(data);
-    const local = new Uint8Array(30 + name.length + data.length);
-    const localView = new DataView(local.buffer);
-    u32(localView, 0, 0x04034b50);
-    u16(localView, 4, 20);
-    u16(localView, 6, 0x0800);
-    u16(localView, 8, 0);
-    u16(localView, 10, 0);
-    u16(localView, 12, 0);
-    u32(localView, 14, checksum);
-    u32(localView, 18, data.length);
-    u32(localView, 22, data.length);
-    u16(localView, 26, name.length);
-    u16(localView, 28, 0);
-    local.set(name, 30);
-    local.set(data, 30 + name.length);
-    locals.push(local);
+type ZipEntry = { name: Uint8Array; crc: number; size: number; offset: number };
 
-    const directory = new Uint8Array(46 + name.length);
-    const dirView = new DataView(directory.buffer);
-    u32(dirView, 0, 0x02014b50);
-    u16(dirView, 4, 20);
-    u16(dirView, 6, 20);
-    u16(dirView, 8, 0x0800);
-    u16(dirView, 10, 0);
-    u16(dirView, 12, 0);
-    u16(dirView, 14, 0);
-    u32(dirView, 16, checksum);
-    u32(dirView, 20, data.length);
-    u32(dirView, 24, data.length);
-    u16(dirView, 28, name.length);
-    u16(dirView, 30, 0);
-    u16(dirView, 32, 0);
-    u16(dirView, 34, 0);
-    u16(dirView, 36, 0);
-    u32(dirView, 38, 0);
-    u32(dirView, 42, offset);
-    directory.set(name, 46);
-    central.push(directory);
-    offset += local.length;
-    centralBytes += directory.length;
-    onProgress?.({
-      phase: 'package',
-      completed: index + 1,
-      total: files.length,
-      percent: 90 + Math.floor(((index + 1) / files.length) * 9),
-      message: `Empaquetando libro XLSX: ${index + 1} de ${files.length} partes`,
-    });
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+/** ZIP32 stored writer. Each entry uses a data descriptor so bytes can be written before CRC/size are known. */
+class ZipStoredWriter {
+  private readonly encoder = new TextEncoder();
+  private readonly entries: ZipEntry[] = [];
+  private offset = 0;
+
+  public constructor(private readonly sink: WritableSink) {}
+
+  private async writeRaw(bytes: Uint8Array): Promise<void> {
+    if (
+      this.offset + bytes.length > REPORT_ARTIFACT_LIMIT_BYTES ||
+      this.offset + bytes.length >= 0xffffffff
+    ) {
+      throw new Error('XLSX export exceeds the 50 MiB local artifact limit.');
+    }
+    await this.sink.write(bytes);
+    this.offset += bytes.length;
   }
-  const end = new Uint8Array(22);
-  const endView = new DataView(end.buffer);
-  u32(endView, 0, 0x06054b50);
-  u16(endView, 4, 0);
-  u16(endView, 6, 0);
-  u16(endView, 8, files.length);
-  u16(endView, 10, files.length);
-  u32(endView, 12, centralBytes);
-  u32(endView, 16, offset);
-  u16(endView, 20, 0);
-  return new Blob([...locals, ...central, end], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  });
+
+  public async writeFile(path: string, body: string, signal?: AbortSignal): Promise<void> {
+    const entry = await this.beginEntry(path, signal);
+    await this.writeEntryText(entry, body, signal);
+    await this.finishEntry(entry, signal);
+  }
+
+  public async beginEntry(path: string, signal?: AbortSignal): Promise<ZipEntry> {
+    abortIfNeeded(signal);
+    if (this.entries.length >= 0xffff)
+      throw new Error('El XLSX excede el límite ZIP32 de archivos.');
+    const name = this.encoder.encode(path);
+    const localOffset = this.offset;
+    const local = new Uint8Array(30 + name.length);
+    const view = new DataView(local.buffer);
+    u32(view, 0, 0x04034b50);
+    u16(view, 4, 20);
+    u16(view, 6, 0x0808); // UTF-8 + data descriptor follows the streamed content.
+    u16(view, 8, 0); // Stored, no compression.
+    u16(view, 10, 0);
+    u16(view, 12, 0);
+    u32(view, 14, 0);
+    u32(view, 18, 0);
+    u32(view, 22, 0);
+    u16(view, 26, name.length);
+    u16(view, 28, 0);
+    local.set(name, 30);
+    await this.writeRaw(local);
+    return { name, crc: 0xffffffff, size: 0, offset: localOffset };
+  }
+
+  public async writeEntryText(entry: ZipEntry, text: string, signal?: AbortSignal): Promise<void> {
+    abortIfNeeded(signal);
+    const bytes = this.encoder.encode(text);
+    if (entry.size + bytes.length > 0xffffffff)
+      throw new Error('Una hoja XLSX excede el límite ZIP32.');
+    entry.crc = crc32Update(entry.crc, bytes);
+    entry.size += bytes.length;
+    await this.writeRaw(bytes);
+  }
+
+  public async finishEntry(entry: ZipEntry, signal?: AbortSignal): Promise<void> {
+    abortIfNeeded(signal);
+    const checksum = (entry.crc ^ 0xffffffff) >>> 0;
+    const descriptor = new Uint8Array(16);
+    const descriptorView = new DataView(descriptor.buffer);
+    u32(descriptorView, 0, 0x08074b50);
+    u32(descriptorView, 4, checksum);
+    u32(descriptorView, 8, entry.size);
+    u32(descriptorView, 12, entry.size);
+    await this.writeRaw(descriptor);
+    this.entries.push({ ...entry, crc: checksum });
+  }
+
+  public async finish(signal?: AbortSignal): Promise<void> {
+    abortIfNeeded(signal);
+    const centralOffset = this.offset;
+    let centralSize = 0;
+    for (const entry of this.entries) {
+      const directory = new Uint8Array(46 + entry.name.length);
+      const view = new DataView(directory.buffer);
+      u32(view, 0, 0x02014b50);
+      u16(view, 4, 20);
+      u16(view, 6, 20);
+      u16(view, 8, 0x0808);
+      u16(view, 10, 0);
+      u16(view, 12, 0);
+      u16(view, 14, 0);
+      u32(view, 16, entry.crc);
+      u32(view, 20, entry.size);
+      u32(view, 24, entry.size);
+      u16(view, 28, entry.name.length);
+      u16(view, 30, 0);
+      u16(view, 32, 0);
+      u16(view, 34, 0);
+      u16(view, 36, 0);
+      u32(view, 38, 0);
+      u32(view, 42, entry.offset);
+      directory.set(entry.name, 46);
+      await this.writeRaw(directory);
+      centralSize += directory.length;
+    }
+    if (centralSize > 0xffffffff || centralOffset > 0xffffffff) {
+      throw new Error('El directorio XLSX excede el límite ZIP32.');
+    }
+    const end = new Uint8Array(22);
+    const view = new DataView(end.buffer);
+    u32(view, 0, 0x06054b50);
+    u16(view, 4, 0);
+    u16(view, 6, 0);
+    u16(view, 8, this.entries.length);
+    u16(view, 10, this.entries.length);
+    u32(view, 12, centralSize);
+    u32(view, 16, centralOffset);
+    u16(view, 20, 0);
+    await this.writeRaw(end);
+  }
 }
 
 function workbookFiles(sheets: readonly Sheet[]): { path: string; body: string }[] {
@@ -354,68 +376,60 @@ function workbookFiles(sheets: readonly Sheet[]): { path: string; body: string }
   ];
 }
 
-export async function createInvestigationXlsx(
+async function buildInvestigationSheets(
   input: InvestigationReportData,
   onProgress?: (progress: ReportProgress) => void,
   signal?: AbortSignal,
-): Promise<Blob> {
-  const eventRows: (readonly Cell[])[] = [
-    [
-      'Fecha y hora UTC',
-      'Nivel',
-      'Origen',
-      'Regla',
-      'Descripción',
-      'Entidades coincidentes',
-      'Internet Message ID',
-      'Network Message ID',
-      'Buzón',
-      'Destinatarios',
-      'Total destinatarios',
-      'Lista de destinatarios truncada',
-      'Operación de auditoría',
-      'ID de evento',
-    ],
+): Promise<Sheet[]> {
+  const eventHeader: readonly Cell[] = [
+    'Fecha y hora UTC',
+    'Nivel',
+    'Origen',
+    'Regla',
+    'Descripci\u00f3n',
+    'Entidades coincidentes',
+    'Internet Message ID',
+    'Network Message ID',
+    'Buz\u00f3n',
+    'Destinatarios',
+    'Total destinatarios',
+    'Lista de destinatarios truncada',
+    'Operaci\u00f3n de auditor\u00eda',
+    'ID de evento',
   ];
   const total = input.events.length;
   onProgress?.({
     phase: 'render',
     completed: 0,
     total,
-    percent: 65,
-    message: 'Preparando el libro XLSX',
+    percent: 0,
+    message: 'Preparando las hojas del libro XLSX',
   });
-  for (let index = 0; index < total; index += 1) {
-    abortIfNeeded(signal);
-    const event = input.events[index]!;
-    const email = emailMetadataOf(event);
-    eventRows.push([
-      event.at,
-      event.level,
-      event.vendor,
-      event.ruleId,
-      event.description,
-      event.matched.join(' | '),
-      email?.internetMessageId ?? '',
-      email?.networkMessageId ?? '',
-      email?.mailboxOwnerUpn ?? '',
-      email?.recipients?.join(' | ') ?? '',
-      email?.recipientCount ?? '',
-      email?.recipientsTruncated ? 'Sí' : 'No',
-      email?.operation ?? '',
-      event.id,
-    ]);
-    if ((index + 1) % 500 === 0 || index + 1 === total) {
-      onProgress?.({
-        phase: 'render',
-        completed: index + 1,
-        total,
-        percent: 65 + (total === 0 ? 10 : Math.floor(((index + 1) / total) * 10)),
-        message: `Preparando hoja de eventos: ${(index + 1).toLocaleString('es-PE')} de ${total.toLocaleString('es-PE')}`,
-      });
-      await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    }
-  }
+  const si = 'S' + String.fromCharCode(237);
+  const eventRows = (): Iterable<readonly Cell[]> =>
+    (function* () {
+      yield eventHeader;
+      for (const event of input.events) {
+        abortIfNeeded(signal);
+        const email = emailMetadataOf(event);
+        yield [
+          event.at,
+          event.level,
+          event.vendor,
+          event.ruleId,
+          event.description,
+          event.matched.join(' | '),
+          email?.internetMessageId ?? '',
+          email?.networkMessageId ?? '',
+          email?.mailboxOwnerUpn ?? '',
+          email?.recipients?.join(' | ') ?? '',
+          email?.recipientCount ?? '',
+          email?.recipientsTruncated ? si : 'No',
+          email?.operation ?? '',
+          event.id,
+        ];
+      }
+    })();
   const groups = groupInvestigationActivity(input.events);
   const exactEmailGroups = groupExactEmailMessages(input.events);
   const investigationSheets: Sheet[] = [
@@ -445,65 +459,79 @@ export async function createInvestigationXlsx(
         ],
       ],
     },
-    { name: 'Eventos', rows: eventRows, autoFilter: true },
+    {
+      name: 'Eventos',
+      rows: eventRows,
+      rowCount: total + 1,
+      columnCount: eventHeader.length,
+      autoFilter: true,
+    },
     {
       name: 'Actividad agrupada',
       autoFilter: true,
-      rows: [
-        [
-          'Entidad coincidente',
-          'Primera actividad UTC',
-          'Última actividad UTC',
-          'Eventos',
-          'Orígenes',
-          'Reglas',
-          'IDs de evento',
-          'Interpretación',
-        ],
-        ...groups.map((group) => [
-          group.entity,
-          group.firstAt,
-          group.lastAt,
-          group.events.length,
-          [...new Set(group.events.map((event) => event.vendor))].sort().join(' | '),
-          [...new Set(group.events.map((event) => event.ruleId))].sort().join(' | '),
-          group.events.map((event) => event.id).join(' | '),
-          'Proximidad temporal; no determina causalidad ni hilo de correo',
-        ]),
-      ],
+      rows: () =>
+        (function* () {
+          yield [
+            'Entidad coincidente',
+            'Primera actividad UTC',
+            '\u00daltima actividad UTC',
+            'Eventos',
+            'Or\u00edgenes',
+            'Reglas',
+            'IDs de evento',
+            'Interpretaci\u00f3n',
+          ];
+          for (const group of groups) {
+            yield [
+              group.entity,
+              group.firstAt,
+              group.lastAt,
+              group.events.length,
+              [...new Set(group.events.map((event) => event.vendor))].sort().join(' | '),
+              [...new Set(group.events.map((event) => event.ruleId))].sort().join(' | '),
+              group.events.map((event) => event.id).join(' | '),
+              'Proximidad temporal; no determina causalidad ni hilo de correo',
+            ];
+          }
+        })(),
+      rowCount: groups.length + 1,
+      columnCount: 8,
     },
     {
       name: 'IDs exactos de mensaje',
       autoFilter: true,
-      rows: [
-        [
-          'Tipo de identificador',
-          'Identificador exacto',
-          'Dirección según operaciones explícitas',
-          'Eventos',
-          'Buzones auditados (MailboxOwnerUPN)',
-          'Destinatarios presentes en el DTO allowlisted',
-          'Lista de destinatarios truncada',
-          'Operaciones auditadas',
-          'IDs de evento',
-          'Interpretación',
-        ],
-        ...exactEmailGroups.map((group) => {
-          const evidence = summarizeExactEmailMessageGroup(group);
-          return [
-            group.idType,
-            group.id,
-            evidence.direction,
-            group.events.length,
-            evidence.auditedMailboxes.join(' | '),
-            evidence.recipients.join(' | '),
-            evidence.recipientsTruncated ? 'Sí' : 'No',
-            evidence.operations.join(' | '),
-            group.events.map((event) => event.id).join(' | '),
-            'Coincidencia por ID exacto; no prueba causalidad ni hilo',
+      rows: () =>
+        (function* () {
+          yield [
+            'Tipo de identificador',
+            'Identificador exacto',
+            'Direcci\u00f3n seg\u00fan operaciones expl\u00edcitas',
+            'Eventos',
+            'Buzones auditados (MailboxOwnerUPN)',
+            'Destinatarios presentes en el DTO allowlisted',
+            'Lista de destinatarios truncada',
+            'Operaciones auditadas',
+            'IDs de evento',
+            'Interpretaci\u00f3n',
           ];
-        }),
-      ],
+          for (const group of exactEmailGroups) {
+            const evidence = summarizeExactEmailMessageGroup(group);
+            yield [
+              group.idType,
+              group.id,
+              evidence.direction,
+              group.events.length,
+              evidence.auditedMailboxes.join(' | '),
+              evidence.recipients.join(' | '),
+              evidence.recipientsTruncated ? 'S\u00ed' : 'No',
+              evidence.operations.join(' | '),
+              group.events.map((event) => event.id).join(' | '),
+              'Coincidencia por ID exacto; no prueba causalidad ni hilo',
+            ];
+          }
+        })(),
+      rowCount: exactEmailGroups.length + 1,
+      columnCount: 10,
     },
   ];
   const sheets: Sheet[] =
@@ -542,27 +570,130 @@ export async function createInvestigationXlsx(
     }
   }
   abortIfNeeded(signal);
-  const files = workbookFiles(sheets);
-  const worksheets: string[] = [];
-  const totalRows = sheets.reduce((sum, sheet) => sum + sheet.rows.length, 0);
-  let rowOffset = 0;
-  for (const [index, sheet] of sheets.entries()) {
-    const body = await worksheetXml(sheet, index + 1, signal, (progress) =>
-      onProgress?.({
-        ...progress,
-        percent: 75 + Math.floor(((rowOffset + progress.completed) / totalRows) * 15),
-        message: `Serializando hojas: ${(rowOffset + progress.completed).toLocaleString('es-PE')} de ${totalRows.toLocaleString('es-PE')} filas`,
-      }),
-    );
-    worksheets.push(body);
-    rowOffset += sheet.rows.length;
+  return sheets;
+}
+
+function worksheetRow(row: readonly Cell[], rowIndex: number): string {
+  const cells = row
+    .map((value, colIndex) => {
+      const ref = `${columnName(colIndex)}${rowIndex}`;
+      const style = rowIndex === 1 ? ' s="1"' : '';
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return `<c r="${ref}"${style}><v>${value}</v></c>`;
+      }
+      return `<c r="${ref}" t="inlineStr"${style}><is><t xml:space="preserve">${xml(value)}</t></is></c>`;
+    })
+    .join('');
+  return `<row r="${rowIndex}">${cells}</row>`;
+}
+
+async function writeWorksheet(
+  zip: ZipStoredWriter,
+  sheet: Sheet,
+  sheetIndex: number,
+  rowOffset: number,
+  totalRows: number,
+  signal?: AbortSignal,
+  onProgress?: (progress: ReportProgress) => void,
+): Promise<void> {
+  const rowsTotal = sheetRowCount(sheet);
+  const columns = sheetColumnCount(sheet);
+  const lastRow = Math.max(1, rowsTotal);
+  const dimension = `A1:${columnName(columns - 1)}${lastRow}`;
+  const entry = await zip.beginEntry(`xl/worksheets/sheet${sheetIndex}.xml`, signal);
+  await zip.writeEntryText(
+    entry,
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="${dimension}"/><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="18"/><sheetData>`,
+    signal,
+  );
+  let rowIndex = 0;
+  let rowParts: string[] = [];
+  const flush = async () => {
+    if (rowParts.length === 0) return;
+    abortIfNeeded(signal);
+    const chunk = rowParts.join('');
+    rowParts = [];
+    await zip.writeEntryText(entry, chunk, signal);
+    onProgress?.({
+      phase: 'render',
+      completed: rowOffset + rowIndex,
+      total: totalRows,
+      percent: 75 + Math.floor(((rowOffset + rowIndex) / Math.max(1, totalRows)) * 15),
+      message: `Escribiendo hoja ${sheetIndex}: ${rowIndex.toLocaleString('es-PE')} de ${rowsTotal.toLocaleString('es-PE')} filas`,
+    });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  };
+  for (const row of sheetRows(sheet)) {
+    abortIfNeeded(signal);
+    rowIndex += 1;
+    rowParts.push(worksheetRow(row, rowIndex));
+    if (rowParts.length >= 250) await flush();
   }
-  abortIfNeeded(signal);
-  const completeFiles = [
-    ...files,
-    ...worksheets.map((body, index) => ({ path: `xl/worksheets/sheet${index + 1}.xml`, body })),
-  ];
-  return zipStored(completeFiles, signal, onProgress);
+  await flush();
+  await zip.writeEntryText(
+    entry,
+    `</sheetData>${sheet.autoFilter ? `<autoFilter ref="A1:${columnName(columns - 1)}${lastRow}"/>` : ''}</worksheet>`,
+    signal,
+  );
+  await zip.finishEntry(entry, signal);
+}
+
+/** Stream the workbook to a file destination. Only ZIP headers and the bounded central directory stay buffered. */
+export async function writeInvestigationXlsx(
+  input: InvestigationReportData,
+  sink: WritableSink,
+  onProgress?: (progress: ReportProgress) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  try {
+    const sheets = await buildInvestigationSheets(input, onProgress, signal);
+    const zip = new ZipStoredWriter(sink);
+    for (const file of workbookFiles(sheets)) await zip.writeFile(file.path, file.body, signal);
+    const totalRows = sheets.reduce((sum, sheet) => sum + sheetRowCount(sheet), 0);
+    let rowOffset = 0;
+    for (const [index, sheet] of sheets.entries()) {
+      await writeWorksheet(zip, sheet, index + 1, rowOffset, totalRows, signal, onProgress);
+      rowOffset += sheetRowCount(sheet);
+    }
+    await zip.finish(signal);
+    await sink.close();
+    onProgress?.({
+      phase: 'package',
+      completed: 1,
+      total: 1,
+      percent: 100,
+      message: 'Libro XLSX escrito en el destino seleccionado',
+    });
+  } catch (error) {
+    try {
+      await sink.abort?.(error);
+    } catch {
+      // Keep the generation/write failure as the primary error.
+    }
+    throw error;
+  }
+}
+
+/** Memory fallback for browsers without File System Access; this deliberately buffers the complete XLSX Blob. */
+export async function createInvestigationXlsx(
+  input: InvestigationReportData,
+  onProgress?: (progress: ReportProgress) => void,
+  signal?: AbortSignal,
+): Promise<Blob> {
+  const parts: Uint8Array[] = [];
+  const sink: WritableSink = {
+    async write(chunk) {
+      parts.push(chunk.slice());
+    },
+    async close() {},
+    async abort() {
+      parts.length = 0;
+    },
+  };
+  await writeInvestigationXlsx(input, sink, onProgress, signal);
+  return new Blob(parts, {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
 }
 
 function html(value: unknown): string {

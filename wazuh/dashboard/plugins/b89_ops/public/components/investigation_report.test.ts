@@ -8,8 +8,68 @@ import {
   createInvestigationXlsx,
   investigationPrintHtml,
   investigationPrintHtmlWithProgress,
+  writeInvestigationXlsx,
 } from './investigation_report';
 import { investigationCsv, investigationCsvWithProgress } from './investigation_export';
+
+function verifyStoredZip(bytes: Uint8Array): string[] {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const read32 = (offset: number) => view.getUint32(offset, true);
+  const read16 = (offset: number) => view.getUint16(offset, true);
+  const end = bytes.length - 22;
+  expect(read32(end)).toBe(0x06054b50);
+  expect(read16(end + 20)).toBe(0);
+  const count = read16(end + 10);
+  const centralOffset = read32(end + 16);
+  const centralSize = read32(end + 12);
+  const decoder = new TextDecoder();
+  const names: string[] = [];
+  let cursor = centralOffset;
+  for (let index = 0; index < count; index += 1) {
+    expect(read32(cursor)).toBe(0x02014b50);
+    expect(read16(cursor + 8)).toBe(0x0808);
+    expect(read16(cursor + 10)).toBe(0);
+    const crc = read32(cursor + 16);
+    const size = read32(cursor + 24);
+    const nameLength = read16(cursor + 28);
+    const extraLength = read16(cursor + 30);
+    const commentLength = read16(cursor + 32);
+    const localOffset = read32(cursor + 42);
+    const name = decoder.decode(bytes.slice(cursor + 46, cursor + 46 + nameLength));
+    names.push(name);
+
+    expect(read32(localOffset)).toBe(0x04034b50);
+    expect(read16(localOffset + 6)).toBe(0x0808);
+    expect(read32(localOffset + 14)).toBe(0);
+    expect(read32(localOffset + 18)).toBe(0);
+    expect(read32(localOffset + 22)).toBe(0);
+    const localNameLength = read16(localOffset + 26);
+    const localExtraLength = read16(localOffset + 28);
+    expect(decoder.decode(bytes.slice(localOffset + 30, localOffset + 30 + localNameLength))).toBe(
+      name,
+    );
+    const dataStart = localOffset + 30 + localNameLength + localExtraLength;
+    const data = bytes.slice(dataStart, dataStart + size);
+    let computed = 0xffffffff;
+    for (const byte of data) {
+      computed ^= byte;
+      for (let bit = 0; bit < 8; bit += 1)
+        computed = (computed >>> 1) ^ (computed & 1 ? 0xedb88320 : 0);
+    }
+    computed = (computed ^ 0xffffffff) >>> 0;
+    const descriptor = dataStart + size;
+    expect(read32(descriptor)).toBe(0x08074b50);
+    expect(read32(descriptor + 4)).toBe(crc);
+    expect(read32(descriptor + 8)).toBe(size);
+    expect(read32(descriptor + 12)).toBe(size);
+    expect(computed).toBe(crc);
+    expect(read32(cursor + 20)).toBe(size);
+    cursor += 46 + nameLength + extraLength + commentLength;
+  }
+  expect(cursor).toBe(centralOffset + centralSize);
+  expect(cursor).toBe(end);
+  return names;
+}
 
 function event(id: string, at = '2026-11-11T12:00:00.000Z'): InvestigationEventSummary {
   return {
@@ -156,6 +216,14 @@ describe('reportes de investigación', () => {
     expect(blob.type).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     const bytes = new Uint8Array(await blob.arrayBuffer());
     expect(new DataView(bytes.buffer).getUint32(0, true)).toBe(0x04034b50);
+    expect(verifyStoredZip(bytes)).toEqual(
+      expect.arrayContaining([
+        '[Content_Types].xml',
+        'xl/workbook.xml',
+        'xl/worksheets/sheet1.xml',
+        'xl/worksheets/sheet2.xml',
+      ]),
+    );
     const content = new TextDecoder().decode(bytes);
     expect(content).toContain('xl/workbook.xml');
     expect(content).toContain('name="Eventos"');
@@ -196,17 +264,83 @@ describe('reportes de investigación', () => {
     expect(progress.every((value, index) => index === 0 || value >= progress[index - 1]!)).toBe(
       true,
     );
-    expect(progress[progress.length - 1]).toBeLessThan(100);
+    expect(progress[progress.length - 1]).toBe(100);
 
     const controller = new AbortController();
     const cancelled = createInvestigationXlsx(
       input,
       (item) => {
-        if (item.phase === 'render' && item.completed === 500) controller.abort();
+        if (item.phase === 'render' && item.completed >= 500) controller.abort();
       },
       controller.signal,
     );
     await expect(cancelled).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('escribe XLSX por partes con backpressure y cancela el destino', async () => {
+    const input = {
+      alert: null,
+      title: 'Stream XLSX',
+      entities: ['user:analyst@example.test'],
+      events: [event('stream-1'), event('stream-2')],
+      totalEvents: 2,
+      generatedAt: new Date('2026-11-11T13:00:00Z'),
+      truncated: false,
+    };
+    const chunks: Uint8Array[] = [];
+    let closed = false;
+    let aborted = false;
+    let writesInFlight = 0;
+    let maximumWritesInFlight = 0;
+    const sink = {
+      async write(chunk: Uint8Array) {
+        writesInFlight += 1;
+        maximumWritesInFlight = Math.max(maximumWritesInFlight, writesInFlight);
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        chunks.push(chunk.slice());
+        writesInFlight -= 1;
+      },
+      async close() {
+        closed = true;
+      },
+      async abort() {
+        aborted = true;
+      },
+    };
+    let completedAfterClose = false;
+    await writeInvestigationXlsx(input, sink, (next) => {
+      if (next.percent === 100) completedAfterClose = closed;
+    });
+    expect(maximumWritesInFlight).toBe(1);
+    expect(aborted).toBe(false);
+    expect(completedAfterClose).toBe(true);
+    const output = new Uint8Array(chunks.reduce((size, chunk) => size + chunk.length, 0));
+    let offset = 0;
+    for (const chunk of chunks) {
+      output.set(chunk, offset);
+      offset += chunk.length;
+    }
+    expect(verifyStoredZip(output)).toContain('xl/worksheets/sheet2.xml');
+
+    const controller = new AbortController();
+    const cancelledSink = {
+      async write() {},
+      async close() {},
+      async abort() {
+        aborted = true;
+      },
+    };
+    await expect(
+      writeInvestigationXlsx(
+        input,
+        cancelledSink,
+        (next) => {
+          if (next.phase === 'render' && next.completed > 0) controller.abort();
+        },
+        controller.signal,
+      ),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(aborted).toBe(true);
   });
 
   it('serializa CSV con progreso por filas y permite cancelar', async () => {

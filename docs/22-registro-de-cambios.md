@@ -225,7 +225,6 @@
   resultados, con progreso, cancelación y reintento. No hay job durable, artefacto con ACL ni renderer
   server-side PDF; no se afirma continuidad tras cerrar sesión.
 
-
 ## 2026-11-11 - Suite integrada y validaciones finales locales
 
 - La corrida final `pnpm.cmd exec vitest run --config vitest.config.ts --configLoader native --pool=threads --maxWorkers=1 --testTimeout=30000` pasó:
@@ -508,3 +507,10 @@
 - **Investigación M365:** los informes PDF/XLSX agrupan por identificador de mensaje exacto y resumen buzones auditados, destinatarios allowlisted, operaciones y truncamiento. Solo las operaciones de envío explícitas clasifican salida; la auditoría actual no demuestra recepción ni identifica siempre al actor humano. Citas de [Bunny](15-bunny-asistente.md) y criterios en [confiabilidad](25-programa-confiabilidad-e-investigacion.md).
 - **Validación local:** pruebas unitarias de assistant (33), API/ingesta/SOAR/detección (152), plugin b89_ops (154), typechecks de API, database, SOAR y assistant, typecheck OSD 2.19.6, e integración PostgreSQL temporal (25) aprobados. Una primera integración detectó semántica de error distinta al paralelizar el helper; se conservó secuencial por defecto y el runtime solicita concurrencia explícita. La integración PostgreSQL se repitió tras ese ajuste (25/25) y los typechecks finales de API, database, SOAR y assistant pasaron.
 - **Estado:** cambios locales en la rama de trabajo. No se han desplegado ni se afirma aceptación real de Teams. Continúan pendientes el canario Wazuh→Indexer→B89, la recepción por Workflow y la medición p95 en el entorno.
+
+## 2026-11-12 · Exportación progresiva de Bunny
+
+- XLSX: el navegador con File System Access escribe OOXML en el destino elegido, por bloques con backpressure, progreso y cancelación. La interfaz confirma el cierre exitoso; el fallback Blob se limita a 50 MiB y se identifica como generación en memoria.
+- PDF: Bunny muestra el avance de consulta/render y actualiza la ventana de preparación. La entrega sigue siendo HTML imprimible mediante el diálogo del navegador; no hay PDF parcial ni renderer server-side.
+- ZIP: pruebas inspeccionan firmas, flags, data descriptors, CRC32, tamaños, nombres UTF-8, offsets y directorio central. La cancelación debe abortar el destino.
+- Validación: `pnpm --dir wazuh/dashboard/plugins/b89_ops test` (155 pruebas en 20 archivos), Prettier y `git diff --check` pasan. El typecheck fijado para OSD 2.19.6 no se ejecutó porque falta el entorno `B89_TOOLS_DIR` con TypeScript 4.0.2/OUI 1.19.0. Sin validación visual ni despliegue de este cambio.

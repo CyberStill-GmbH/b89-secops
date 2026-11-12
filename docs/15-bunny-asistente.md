@@ -275,7 +275,6 @@ privadas, `password=`/`token:`/`api_key=`) de todo texto saliente (`apps/api/src
 Los bloques internos firmados del proveedor se reenvían intactos solo entre rondas del mismo turno
 cuando se usan herramientas; nunca llegan a la respuesta, historial, auditoría ni logs.
 
-
 ### Evidencia de correo M365 en informes
 
 En un expediente con eventos de Exchange/Microsoft 365, la sección de coincidencias agrupa eventos solo si comparten un identificador exacto: se prefiere `NetworkMessageId` y se usa `InternetMessageId` cuando el evento no trae el primero. La proximidad temporal o el mismo buzón no crean por sí solos un grupo de mensaje.
@@ -283,3 +282,11 @@ En un expediente con eventos de Exchange/Microsoft 365, la sección de coinciden
 El PDF imprimible y el libro XLSX muestran buzones auditados (`MailboxOwnerUPN`), destinatarios presentes en el DTO allowlisted, operaciones de auditoría e IDs de evento. `MailboxOwnerUPN` identifica el buzón de la operación; no necesariamente a la persona que actuó. Si el contrato indica que la lista de destinatarios fue truncada, el informe lo marca. No se recuperan ni se inventan destinatarios ausentes.
 
 La dirección se clasifica de forma conservadora: solo `Send`, `SendAs` y `SendOnBehalf` indican salida. El feed actual de Microsoft 365 Management Activity/Audit no permite afirmar recepción: Microsoft indica que recibir mensajes no se audita por defecto y sus acciones documentadas para el buzón incluyen acciones de envío ([Microsoft Purview: Audit mailboxes](https://learn.microsoft.com/en-us/purview/audit-mailboxes)). Por ello `Receive`, `Deliver`, otras operaciones o la operación ausente se muestran como «Dirección no determinada», salvo que exista un contrato y fuente aprobados que garanticen esa semántica. Una coincidencia por ID no demuestra causalidad ni un hilo de correo; revisar la cronología, los eventos fuente y el contexto antes de comunicar conclusiones.
+
+### Escritura progresiva de informes (2026-11-12)
+
+El XLSX de Bunny usa `showSaveFilePicker` cuando el navegador lo ofrece: el destino se elige en el gesto de la persona antes de consultar la evidencia, y el libro OOXML se escribe por fragmentos con espera de cada escritura. El progreso avanza por filas serializadas y escritura aceptada; la interfaz solo marca 100 % después de cerrar correctamente el archivo. Cancelar aborta el flujo y el destino temporal. La salida está limitada a 50 MiB y 10.000 eventos.
+
+En navegadores sin escritura directa se conserva la descarga por Blob, con el mismo límite de 50 MiB; esa alternativa sí mantiene el archivo completo en memoria y la interfaz lo informa. Cancelar el selector no inicia la consulta.
+
+PDF sigue siendo un expediente HTML local que el navegador imprime o guarda como PDF. La preparación muestra el avance de consulta y serialización, pero no transmite un PDF parcial, no usa renderer servidor y requiere confirmar **Guardar como PDF** en el diálogo del navegador.

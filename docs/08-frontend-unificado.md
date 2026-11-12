@@ -166,10 +166,7 @@ no existe renderer PDF server-side. La barra de progreso muestra avance por pág
 recibieron o serializaron; para XLSX continúa por preparación, XML y empaquetado. Se puede cancelar
 la consulta o generación y reintentar tras un error. Un fallo de acceso no produce un reporte parcial.
 
-Los reportes se preparan en memoria del navegador, tienen un límite de 10.000 eventos y no son jobs
-durables ni reanudables al cerrar la sesión. Si se alcanza el tope, el archivo indica cuántos eventos
-incluye frente al total y pide refinar los filtros. No hay artifact store privado ni descarga con ACL
-de servidor. El CSV conserva los eventos recogidos y distingue el total encontrado.
+La consulta conserva en memoria los DTO allowlisted hasta el límite de 10.000 eventos y no crea jobs durables. Con File System Access, XLSX se escribe por bloques en el archivo elegido; sin esa API, usa Blob en memoria con máximo de 50 MiB. La vista PDF se prepara como HTML local para imprimir o guardar desde el navegador. Ninguno de estos flujos se reanuda al cerrar la sesión; no hay artifact store privado ni descarga con ACL de servidor. El CSV conserva los eventos recogidos y distingue el total encontrado.
 
 La timeline y los reportes agrupan **actividad** por entidad coincidente y hasta 15 minutos entre
 eventos consecutivos; un evento puede aparecer en varios grupos. El XLSX y el expediente imprimible
@@ -232,3 +229,7 @@ Otros arreglos: el título de pestaña ya no repite «B89 SecOps», cada vista B
 pan (antes quedaba «Resumen» de la app de Wazuh) y el informe PDF de la app de Wazuh lleva cabecera,
 pie y color B89 (`customization.*` en el `wazuh.yml` que escribe `deploy-host.sh` y
 `REPORTS_PRIMARY_COLOR` en la imagen).
+
+### Escritura de informes XLSX desde Bunny
+
+Cuando el navegador admite File System Access, el analista elige el archivo y Bunny escribe el XLSX por bloques, esperando el destino entre escrituras y actualizando el progreso con filas ya serializadas. El estado de éxito aparece tras cerrar el archivo. El límite local es 50 MiB y 10.000 eventos. En navegadores sin esta capacidad, se usa descarga Blob en memoria y se comunica esa diferencia. El expediente PDF permanece como HTML imprimible del navegador, no como PDF generado progresivamente ni por servidor. La cancelación interrumpe la escritura.

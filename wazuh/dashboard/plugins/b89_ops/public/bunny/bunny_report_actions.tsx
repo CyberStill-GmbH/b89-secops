@@ -16,10 +16,26 @@ import {
 import {
   createInvestigationXlsx,
   investigationPrintHtmlWithProgress,
+  writeInvestigationXlsx,
 } from '../components/investigation_report';
 
 type Format = 'pdf' | 'xlsx';
 type ReportKind = 'answer' | 'investigation';
+
+type ReportFileWritable = {
+  write(chunk: Uint8Array): Promise<void>;
+  close(): Promise<void>;
+  abort(reason?: unknown): Promise<void>;
+};
+
+type ReportFileHandle = { createWritable(): Promise<ReportFileWritable> };
+
+type SavePickerWindow = Window & {
+  showSaveFilePicker?: (options: {
+    suggestedName: string;
+    types: Array<{ description: string; accept: Record<string, string[]> }>;
+  }) => Promise<ReportFileHandle>;
+};
 
 export function BunnyReportActions({
   api,
@@ -44,8 +60,10 @@ export function BunnyReportActions({
   const [includeChart, setIncludeChart] = useState(false);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState('');
+  const [progressPercent, setProgressPercent] = useState(0);
   const [status, setStatus] = useState('');
   const activeRun = useRef<AbortController | null>(null);
+  const startingExport = useRef(false);
   const chart = bunnyNumericTable(text);
   const evidenceCitations = citations.filter(
     (citation) => citation.kind === 'alert' || citation.kind === 'event',
@@ -56,10 +74,40 @@ export function BunnyReportActions({
     null;
 
   const exportReport = async () => {
-    if (busy) return;
+    if (busy || startingExport.current) return;
+    startingExport.current = true;
+    const filename = `b89-bunny-${kind === 'investigation' ? 'investigacion' : 'respuesta'}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    const picker =
+      format === 'xlsx' && typeof (window as SavePickerWindow).showSaveFilePicker === 'function';
+    let outputHandle: ReportFileHandle | null = null;
+    if (picker) {
+      try {
+        outputHandle = await (window as SavePickerWindow).showSaveFilePicker!({
+          suggestedName: filename,
+          types: [
+            {
+              description: 'Libro Excel de B89 SOC',
+              accept: {
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+              },
+            },
+          ],
+        });
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          setStatus('Selecci\u00f3n del destino cancelada. No se gener\u00f3 ning\u00fan archivo.');
+          startingExport.current = false;
+          return;
+        }
+        setStatus('No se pudo abrir el selector de archivos del navegador.');
+        startingExport.current = false;
+        return;
+      }
+    }
     const printWindow = format === 'pdf' ? window.open('', '_blank') : null;
     if (format === 'pdf' && !printWindow) {
       setStatus('Permite la ventana emergente para previsualizar e imprimir el PDF.');
+      startingExport.current = false;
       return;
     }
     if (printWindow) {
@@ -70,7 +118,9 @@ export function BunnyReportActions({
       printWindow.document.close();
     }
     setBusy(true);
+    startingExport.current = false;
     setStatus('');
+    setProgressPercent(0);
     setProgress('Preparando el contenido validado…');
     const controller = new AbortController();
     activeRun.current = controller;
@@ -100,36 +150,73 @@ export function BunnyReportActions({
                   signal,
                 ),
               signal: controller.signal,
-              onProgress: (next) => setProgress(next.message),
+              onProgress: (next) => {
+                setProgress(next.message);
+                if (next.percent !== undefined) {
+                  setProgressPercent((current) => Math.max(current, next.percent!));
+                }
+                if (printWindow && !printWindow.closed && printWindow.document.body) {
+                  printWindow.document.body.textContent = next.message;
+                }
+              },
             })
           : bunnyReportData({ text, citations, title, includeChart, now: new Date() });
       if (format === 'pdf' && printWindow) {
-        const html = await investigationPrintHtmlWithProgress(report, controller.signal, (next) =>
-          setProgress(next.message),
-        );
+        const html = await investigationPrintHtmlWithProgress(report, controller.signal, (next) => {
+          setProgress(next.message);
+          if (next.percent !== undefined) {
+            setProgressPercent((current) => Math.max(current, next.percent!));
+          }
+          if (!printWindow.closed && printWindow.document.body) {
+            printWindow.document.body.textContent = next.message;
+          }
+        });
         printWindow.document.open();
         printWindow.document.write(html);
         printWindow.document.close();
       } else {
-        const blob = await createInvestigationXlsx(
-          report,
-          (next) => setProgress(next.message),
-          controller.signal,
-        );
-        const url = URL.createObjectURL(blob);
-        const anchor = document.createElement('a');
-        anchor.href = url;
-        anchor.download = `b89-bunny-analisis-${new Date().toISOString().slice(0, 10)}.xlsx`;
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
-        window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+        if (outputHandle) {
+          const writable = await outputHandle.createWritable();
+          await writeInvestigationXlsx(
+            report,
+            writable,
+            (next) => {
+              setProgress(next.message);
+              if (next.percent !== undefined) {
+                setProgressPercent((current) => Math.max(current, next.percent!));
+              }
+            },
+            controller.signal,
+          );
+        } else {
+          const blob = await createInvestigationXlsx(
+            report,
+            (next) => {
+              setProgress(next.message);
+              if (next.percent !== undefined) {
+                setProgressPercent((current) => Math.max(current, next.percent!));
+              }
+            },
+            controller.signal,
+          );
+          const url = URL.createObjectURL(blob);
+          const anchor = document.createElement('a');
+          anchor.href = url;
+          anchor.download = filename;
+          document.body.appendChild(anchor);
+          anchor.click();
+          anchor.remove();
+          window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+        }
       }
       setProgress('Informe generado. Revisa el contenido antes de compartirlo.');
+      setProgressPercent(100);
       setStatus(
         format === 'pdf'
           ? 'Vista de impresión lista; elige “Guardar como PDF” en el diálogo del navegador.'
-          : 'Libro Excel descargado.',
+          : outputHandle
+            ? 'Libro Excel escrito por partes en el archivo elegido.'
+            : 'Libro Excel descargado. Este navegador lo preparó en memoria (límite: 50 MiB).',
       );
     } catch (error) {
       if (printWindow && !printWindow.closed) printWindow.close();
@@ -157,6 +244,7 @@ export function BunnyReportActions({
       }
     } finally {
       activeRun.current = null;
+      startingExport.current = false;
       setBusy(false);
     }
   };
@@ -327,6 +415,12 @@ export function BunnyReportActions({
               <p role="status" aria-live="polite">
                 {progress}
               </p>
+              <progress
+                aria-label="Avance de generacion del informe"
+                max={100}
+                value={progressPercent}
+              />{' '}
+              <span>{progressPercent}%</span>
               <button type="button" onClick={() => activeRun.current?.abort()}>
                 Cancelar
               </button>
