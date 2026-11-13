@@ -89,14 +89,15 @@ export function createIngestionPass(options: IngestionPassOptions): () => Promis
 
     try {
       const window = planIngestionWindow(claim.watermark, attemptedAt, options.window);
-      if (window) {
+      /** Lee `[from, to]` hasta el tope de páginas; devuelve true si quedó trabajo. */
+      const readWindow = async (from: Date, to: Date): Promise<boolean> => {
         let cursor: string | undefined;
         for (let page = 0; page < options.maximumPages; page += 1) {
           const result = await options.readPage({
             sourceId: options.key.sourceId,
             dataset: options.key.dataset,
-            from: window.from.toISOString(),
-            to: window.to.toISOString(),
+            from: from.toISOString(),
+            to: to.toISOString(),
             pageSize: options.pageSize,
             ...(cursor ? { cursor } : {}),
           });
@@ -127,9 +128,26 @@ export function createIngestionPass(options: IngestionPassOptions): () => Promis
             // La marca avanza solo con la página completa procesada.
             await options.state.advanceCursor(claim, pageNewest, options.now());
           }
-          if (!result.hasMore || !result.nextCursor) break;
+          if (!result.hasMore || !result.nextCursor) return false;
           cursor = result.nextCursor;
-          if (page === options.maximumPages - 1) pending = true;
+        }
+        return true;
+      };
+      if (window) {
+        pending = await readWindow(window.from, window.to);
+        // Solape saturado: el tope de páginas se gastó entero en eventos que no superan la
+        // marca (ráfaga de más de pageSize×maximumPages eventos en `overlapMs`). Sin esto cada
+        // pasada relee el mismo solape y la marca no avanza nunca: lo posterior no llega al SOC
+        // (incidente 2026-11-13: 1000 alertas en 120 s y 53 015 alertas sin ingerir). Se relee
+        // desde la marca exacta, sin solape, con un tope nuevo; lo tardío ya se cubrió arriba.
+        // `readWindow` muta `newestEventAt`; el cast evita que TS lo estreche a `null`.
+        const newestRead = newestEventAt as Date | null;
+        if (
+          pending &&
+          claim.watermark !== null &&
+          (!newestRead || newestRead.getTime() <= claim.watermark.getTime())
+        ) {
+          pending = await readWindow(claim.watermark, window.to);
         }
         // Ventana vacía y al día: la marca sube al borde de la ventana para no releer
         // indefinidamente desde la primera vez que se miró la fuente.

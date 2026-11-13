@@ -307,6 +307,32 @@ describe('pasada de ingesta', () => {
     expect(cursor?.watermark?.toISOString()).toBe('2026-10-12T17:50:00.000Z');
   });
 
+  it('un solape con más eventos que el tope no deja la marca clavada (2026-11-13)', async () => {
+    // 12 eventos dentro del solape (≤ marca) superan el tope de 10 (5 páginas × 2): antes cada
+    // pasada releía solo el solape y los eventos posteriores nunca se ingerían.
+    const watermark = new Date('2026-10-12T17:50:00.000Z');
+    const burst = Array.from({ length: 12 }, (_, index) =>
+      office365Document(
+        `burst-${index}`,
+        `2026-10-12T17:4${index < 10 ? 8 : 9}:${String(10 + index).padStart(2, '0')}.000Z`,
+      ),
+    );
+    const atMark = office365Document('at-mark', watermark.toISOString());
+    const fresh = office365Document('after-mark', '2026-10-12T17:55:00.000Z');
+    const reader = fakeReader([...burst, atMark, fresh]);
+    const claim = await state.claimCursor(KEY, NOW, 1);
+    await state.advanceCursor(claim!, watermark);
+    await state.releaseCursor(claim!);
+    const pass = createIngestionPass({ ...base(), readPage: reader.readPage });
+
+    let passes = 0;
+    while ((await pass()) === 1 && passes < 5) passes += 1;
+
+    expect(promoted).toContain(wazuhRecordToEventId(fresh));
+    const cursor = state.cursors.get(`${KEY.tenantId}|${KEY.sourceId}|${KEY.dataset}`);
+    expect(cursor?.watermark?.toISOString()).toBe('2026-10-12T17:55:00.000Z');
+  });
+
   it('con más páginas que el tope pide otra pasada sin esperar el intervalo', async () => {
     const docs = Array.from({ length: 12 }, (_, index) =>
       office365Document(
