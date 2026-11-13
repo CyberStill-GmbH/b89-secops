@@ -124,6 +124,9 @@ export const KNOWN_B89_VARIABLES = new Set([
   'B89_BUNNY_RATE_LIMIT',
   'B89_BUNNY_HISTORY_ENABLED',
   'B89_BUNNY_RETENTION_DAYS',
+  // Informes de Bunny (servicio b89-reports); validación en assistant.schema.ts.
+  'B89_REPORTS_URL',
+  'B89_REPORTS_TOKEN',
   // Política de ruido de avisos (configuration-loader › loadNotificationPolicy). Sin estas
   // entradas, definir cualquiera tumbaba el arranque con CONFIG_VALUE_INVALID.
   'B89_NOTIFY_QUIET_P1_MINUTES',

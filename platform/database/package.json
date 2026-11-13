@@ -38,6 +38,11 @@
       "types": "./src/assistant-conversation-stores.ts",
       "development": "./src/assistant-conversation-stores.ts",
       "default": "./dist/src/assistant-conversation-stores.js"
+    },
+    "./assistant-artifact-stores": {
+      "types": "./src/assistant-artifact-stores.ts",
+      "development": "./src/assistant-artifact-stores.ts",
+      "default": "./dist/src/assistant-artifact-stores.js"
     }
   },
   "scripts": {

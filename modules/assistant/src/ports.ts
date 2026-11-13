@@ -23,6 +23,8 @@ export interface AssistantTool {
   readonly inputSchema: Readonly<Record<string, unknown>>;
   /** Etiqueta corta para mostrar a la persona («Buscando alertas»). */
   readonly label: string;
+  /** Etiqueta según la entrada («Generando informe PDF»); por defecto `label`. */
+  labelFor?(input: ToolInput): string;
   run(input: ToolInput, signal?: AbortSignal): Promise<ToolOutcome>;
 }
 

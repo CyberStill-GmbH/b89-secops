@@ -7,7 +7,9 @@
  */
 
 import {
+  ArtifactVault,
   DEFAULT_ASSISTANT_LIMITS,
+  type ArtifactStore,
   type AssistantLimits,
   type AssistantModel,
   type ConversationStore,
@@ -20,6 +22,7 @@ import {
 } from './assistant-config.js';
 import { createClaudeModel } from './claude-model.js';
 import { ConversationHistory } from './conversation-history.js';
+import { createReportsClient, type ReportsClient } from './reports-client.js';
 
 type EnabledConfig = Extract<AssistantConfig, { enabled: true }>;
 
@@ -56,6 +59,10 @@ export interface AssistantService {
   readonly limiter: SlidingWindowLimiter;
   /** Historial de conversaciones; ausente con `B89_BUNNY_HISTORY_ENABLED=false`. */
   readonly history?: ConversationHistory;
+  /** Archivos generados (informes); ausente en pruebas que no lo configuran. */
+  readonly artifacts?: ArtifactVault;
+  /** Cliente del servicio de informes; ausente si `B89_REPORTS_URL` no está configurado. */
+  readonly reports?: ReportsClient;
 }
 
 export function createAssistantService(
@@ -63,6 +70,9 @@ export function createAssistantService(
   modelFactory: (config: EnabledConfig) => AssistantModel = (config) => createClaudeModel(config),
   /** Almacén del historial (ver `assistantConversationStoreFor`); sin él, el chat no guarda. */
   conversations?: ConversationStore,
+  /** Almacén de archivos generados (ver `assistantArtifactStoreFor`). */
+  artifacts?: ArtifactStore,
+  reports: ReportsClient | undefined = createReportsClient(environment),
 ): AssistantService | undefined {
   const config = loadAssistantConfig(environment);
   if (!config.enabled) return undefined;
@@ -74,6 +84,8 @@ export function createAssistantService(
       ? DEFAULT_ASSISTANT_LIMITS
       : Object.freeze({ ...DEFAULT_ASSISTANT_LIMITS, deadlineMs: 55_000 }),
     limiter: new SlidingWindowLimiter(config.rateLimit.max, config.rateLimit.windowMs),
+    ...(artifacts ? { artifacts: new ArtifactVault(artifacts) } : {}),
+    ...(reports ? { reports } : {}),
     ...(history.enabled && conversations
       ? { history: new ConversationHistory(conversations, history.retentionDays) }
       : {}),

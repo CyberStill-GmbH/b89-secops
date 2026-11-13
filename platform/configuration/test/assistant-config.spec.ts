@@ -73,3 +73,47 @@ describe('variables de Bunny en platform/configuration', () => {
     );
   });
 });
+
+describe('variables de informes de Bunny (B89_REPORTS_*)', () => {
+  const token = 'tok-' + 'a'.repeat(40);
+
+  it('son conocidas y el API arranca con ellas (o sin ellas: función apagada)', () => {
+    expect(KNOWN_B89_VARIABLES.has('B89_REPORTS_URL')).toBe(true);
+    expect(KNOWN_B89_VARIABLES.has('B89_REPORTS_TOKEN')).toBe(true);
+    for (const name of ['B89_REPORTS_URL', 'B89_REPORTS_TOKEN']) {
+      expect((ASSISTANT_VARIABLES as readonly string[]).includes(name)).toBe(true);
+    }
+    expect(() =>
+      loadApiConfig({
+        B89_PROFILE: 'production',
+        B89_REPORTS_URL: 'http://reports:8090',
+        B89_REPORTS_TOKEN: token,
+      }),
+    ).not.toThrow();
+    expect(() => loadApiConfig({ B89_PROFILE: 'test' })).not.toThrow();
+  });
+
+  it('rechaza URL o token inválidos sin exponer el valor', () => {
+    expectInvalid({ B89_REPORTS_URL: 'no-es-url', B89_REPORTS_TOKEN: token }, 'CONFIG_VALUE_INVALID', 'B89_REPORTS_URL');
+    expectInvalid({ B89_REPORTS_URL: 'ftp://reports:8090', B89_REPORTS_TOKEN: token }, 'CONFIG_VALUE_INVALID', 'B89_REPORTS_URL');
+    expectInvalid(
+      { B89_REPORTS_URL: 'http://user:pass@reports:8090', B89_REPORTS_TOKEN: token },
+      'CONFIG_VALUE_INVALID',
+      'B89_REPORTS_URL',
+    );
+    expectInvalid({ B89_REPORTS_URL: 'http://reports:8090', B89_REPORTS_TOKEN: 'corto' }, 'CONFIG_VALUE_INVALID', 'B89_REPORTS_TOKEN');
+    expectInvalid(
+      { B89_REPORTS_URL: 'http://reports:8090', B89_REPORTS_TOKEN: 'con espacios ' + 'x'.repeat(20) },
+      'CONFIG_VALUE_INVALID',
+      'B89_REPORTS_TOKEN',
+    );
+  });
+
+  it('una URL sin token es un error de configuración (nunca un servicio sin autenticar)', () => {
+    expectInvalid(
+      { B89_REPORTS_URL: 'http://reports:8090' },
+      'CONFIG_REQUIRED_VALUE_MISSING',
+      'B89_REPORTS_TOKEN',
+    );
+  });
+});

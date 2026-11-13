@@ -13,6 +13,10 @@ networks:
   correlator-internal:
     name: b89-correlator-internal
     internal: true
+  # Servicio de informes de Bunny: solo el API le llega; sin salida a Internet.
+  reports-internal:
+    name: b89-reports-internal
+    internal: true
 
 services:
   wazuh.manager:
@@ -133,6 +137,7 @@ services:
     networks:
       - default
       - correlator-internal
+      - reports-internal
     depends_on:
       postgres:
         condition: service_healthy
@@ -204,6 +209,45 @@ services:
     mem_limit: 256m
     cpus: 0.50
     pids_limit: 64
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: '3' }
+    restart: unless-stopped
+
+  # Informes de Bunny (PDF/XLSX/CSV): POST /render con bearer B89_REPORTS_TOKEN. Solo en la red
+  # interna compartida con el API, sin puertos publicados. El token vive en secrets/reports.env
+  # (0600, scripts/bootstrap-reports.sh) y es el mismo que usa el API (secrets/api.env).
+  reports:
+    image: b89/reports:local
+    build:
+      context: /opt/b89/src/services/b89-reports
+      target: runtime
+    env_file:
+      - /opt/b89/secrets/reports.env
+    networks:
+      - reports-internal
+    user: '10089:10089'
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=256m
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    init: true
+    mem_limit: 768m
+    cpus: 1.00
+    pids_limit: 128
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'python',
+          '-c',
+          "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8090/healthz', timeout=3).status == 200 else 1)",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
     logging:
       driver: json-file
       options: { max-size: 10m, max-file: '3' }

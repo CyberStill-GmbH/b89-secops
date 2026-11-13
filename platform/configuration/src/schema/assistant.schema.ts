@@ -18,6 +18,8 @@ export const ASSISTANT_VARIABLES = [
   'B89_BUNNY_RATE_LIMIT',
   'B89_BUNNY_HISTORY_ENABLED',
   'B89_BUNNY_RETENTION_DAYS',
+  'B89_REPORTS_URL',
+  'B89_REPORTS_TOKEN',
 ] as const;
 
 export const ASSISTANT_PROVIDERS = ['bedrock', 'anthropic'] as const;
@@ -62,6 +64,35 @@ export function validateAssistantEnvironment(
   const apiKey = value('B89_BUNNY_API_KEY');
   if (apiKey !== undefined && (apiKey.length > 512 || !/^[\x21-\x7e]+$/u.test(apiKey))) {
     fail('B89_BUNNY_API_KEY');
+  }
+  // Informes (servicio b89-reports): ambos o ninguno; sin ellos la herramienta responde `unavailable`.
+  const reportsUrl = value('B89_REPORTS_URL');
+  if (reportsUrl !== undefined) {
+    let parsed: URL | undefined;
+    try {
+      parsed = new URL(reportsUrl);
+    } catch {
+      parsed = undefined;
+    }
+    if (
+      !parsed ||
+      (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') ||
+      parsed.username !== '' ||
+      parsed.password !== '' ||
+      reportsUrl.length > 512
+    ) {
+      fail('B89_REPORTS_URL');
+    }
+  }
+  const reportsToken = value('B89_REPORTS_TOKEN');
+  if (
+    reportsToken !== undefined &&
+    (reportsToken.length < 16 || reportsToken.length > 512 || !/^[!-~]+$/u.test(reportsToken))
+  ) {
+    fail('B89_REPORTS_TOKEN');
+  }
+  if (reportsUrl !== undefined && reportsToken === undefined) {
+    throw configurationError('CONFIG_REQUIRED_VALUE_MISSING', 'B89_REPORTS_TOKEN', profile?.name);
   }
   if (value('B89_BUNNY_ENABLED') === 'true' && provider === 'anthropic' && apiKey === undefined) {
     throw configurationError('CONFIG_REQUIRED_VALUE_MISSING', 'B89_BUNNY_API_KEY', profile?.name);

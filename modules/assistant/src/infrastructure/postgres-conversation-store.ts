@@ -33,6 +33,7 @@ import {
   type StoredConversation,
   type StoredMessage,
 } from '../conversations.js';
+import { ARTIFACT_FORMATS, type ArtifactFormat, type ArtifactRef } from '../artifacts.js';
 import type { Citation } from '../ports.js';
 import type { AssistantStep } from '../run.js';
 
@@ -50,6 +51,7 @@ interface MessageJson {
   readonly createdAt: string;
   readonly steps?: readonly AssistantStep[];
   readonly citations?: readonly Citation[];
+  readonly artifacts?: readonly ArtifactRef[];
   readonly tone?: 'error' | 'notice';
 }
 
@@ -61,6 +63,7 @@ function toJson(message: StoredMessage): MessageJson {
     createdAt: message.createdAt.toISOString(),
     ...(message.steps ? { steps: message.steps } : {}),
     ...(message.citations ? { citations: message.citations } : {}),
+    ...(message.artifacts ? { artifacts: message.artifacts } : {}),
     ...(message.tone ? { tone: message.tone } : {}),
     ...(message.feedback ? { feedback: message.feedback } : {}),
   };
@@ -101,6 +104,34 @@ function citationsOf(value: unknown): Citation[] | undefined {
   );
 }
 
+function artifactsOf(value: unknown): ArtifactRef[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.flatMap((entry): ArtifactRef[] =>
+    isRecord(entry) &&
+    typeof entry['id'] === 'string' &&
+    typeof entry['filename'] === 'string' &&
+    ARTIFACT_FORMATS.includes(entry['format'] as ArtifactFormat) &&
+    typeof entry['title'] === 'string' &&
+    typeof entry['size'] === 'number' &&
+    typeof entry['createdAt'] === 'string' &&
+    typeof entry['expiresAt'] === 'string' &&
+    typeof entry['url'] === 'string'
+      ? [
+          {
+            id: entry['id'],
+            filename: entry['filename'],
+            format: entry['format'] as ArtifactFormat,
+            title: entry['title'],
+            size: entry['size'],
+            createdAt: entry['createdAt'],
+            expiresAt: entry['expiresAt'],
+            url: entry['url'],
+          },
+        ]
+      : [],
+  );
+}
+
 function fromJson(value: unknown): StoredMessage {
   if (
     !isRecord(value) ||
@@ -115,6 +146,7 @@ function fromJson(value: unknown): StoredMessage {
   if (Number.isNaN(createdAt.getTime())) throw new ConversationIntegrityError();
   const steps = stepsOf(value['steps']);
   const citations = citationsOf(value['citations']);
+  const artifacts = artifactsOf(value['artifacts']);
   const tone = value['tone'] === 'error' || value['tone'] === 'notice' ? value['tone'] : undefined;
   const feedback =
     value['feedback'] === 'up' || value['feedback'] === 'down' ? value['feedback'] : undefined;
@@ -125,6 +157,7 @@ function fromJson(value: unknown): StoredMessage {
     createdAt,
     ...(steps ? { steps } : {}),
     ...(citations ? { citations } : {}),
+    ...(artifacts && artifacts.length > 0 ? { artifacts } : {}),
     ...(tone ? { tone } : {}),
     ...(feedback ? { feedback } : {}),
   };

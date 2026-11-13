@@ -45,6 +45,8 @@ import {
   CONVERSATION_LIMITS,
   DEFAULT_ASSISTANT_LIMITS,
   Pseudonymizer,
+  type ArtifactRef,
+  artifactRefOf,
   clampStoredText,
   conversationTitleFrom,
   MESSAGE_FEEDBACK,
@@ -67,6 +69,7 @@ import type { SecOpsRuntime } from '../runtime/secops-runtime.js';
 import type { AssistantService } from './assistant-service.js';
 import { auditConversationRemoval, type ConversationHistory } from './conversation-history.js';
 import { createInternalGet } from './internal-client.js';
+import { buildReportTool, type StoredReport } from './report-tool.js';
 import { buildSocTools } from './soc-tools.js';
 import { connectMcpInProcess } from './mcp-protocol.js';
 
@@ -187,6 +190,7 @@ function messageView(message: StoredMessage) {
     text: message.text,
     ...(message.steps ? { steps: message.steps } : {}),
     ...(message.citations ? { citations: message.citations } : {}),
+    ...(message.artifacts && message.artifacts.length > 0 ? { artifacts: message.artifacts } : {}),
     ...(message.tone ? { tone: message.tone } : {}),
     ...(message.feedback ? { feedback: message.feedback } : {}),
     createdAt: message.createdAt.toISOString(),
@@ -194,7 +198,11 @@ function messageView(message: StoredMessage) {
 }
 
 /** Respuesta del modelo lista para guardar: textos recortados al máximo almacenable. */
-function assistantMessage(result: AssistantResult, at: Date): StoredMessage {
+function assistantMessage(
+  result: AssistantResult,
+  at: Date,
+  artifacts: readonly ArtifactRef[] = [],
+): StoredMessage {
   const max = CONVERSATION_LIMITS.maxEntriesPerMessage;
   return {
     id: randomUUID(),
@@ -202,6 +210,7 @@ function assistantMessage(result: AssistantResult, at: Date): StoredMessage {
     text: clampStoredText(result.reply),
     steps: result.steps.slice(0, max),
     citations: result.citations.slice(0, max),
+    ...(artifacts.length > 0 ? { artifacts: artifacts.slice(0, max) } : {}),
     ...(result.outcome === 'refused' || result.outcome === 'unverified'
       ? { tone: 'notice' as const }
       : {}),
@@ -402,6 +411,7 @@ export class AssistantController {
       context,
       (event) => queue.push('progress', event),
       cancellation.signal,
+      (artifact) => queue.push('artifact', artifact),
     )
       .then((result) => {
         queue.push('complete', result);
@@ -426,6 +436,7 @@ export class AssistantController {
     context: Awaited<ReturnType<typeof mutatingActor>>,
     onProgress?: (event: AssistantProgressEvent) => void,
     signal?: AbortSignal,
+    onArtifact?: (artifact: ArtifactRef) => void,
   ) {
     const { actor, session, correlationId } = context;
     const service = this.runtime.assistant;
@@ -486,7 +497,35 @@ export class AssistantController {
       roles: actor.roles,
       capabilities,
     });
-    const tools = await connectMcpInProcess(handlers);
+    const connected = await connectMcpInProcess(handlers);
+    // Informes: la herramienta escribe un archivo propio de la persona (no es una lectura MCP), así
+    // que se añade aquí y no en `buildSocTools`. Disponible con alguna capacidad de lectura de
+    // alertas o incidentes; sin servicio de informes responde `unavailable`.
+    const generated: ArtifactRef[] = [];
+    const vault = service.artifacts;
+    const reportTools =
+      vault && (actor.capabilities.has('alerts.read') || actor.capabilities.has('incidents.read'))
+        ? [
+            buildReportTool({
+              get: createInternalGet(server, request, signal),
+              capabilities: actor.capabilities,
+              displayName: session.displayName ?? actor.subjectId,
+              consoleBaseUrl: this.runtime.consoleBaseUrl,
+              now: () => this.runtime.now(),
+              reports: service.reports,
+              vault,
+              owner: ownerOf(actor),
+              conversationId: stored?.id,
+              signal,
+              onStored: async (report) => {
+                generated.push(report.artifact);
+                onArtifact?.(report.artifact);
+                await this.auditArtifact('assistant.artifact.create', actor, correlationId, report);
+              },
+            }),
+          ]
+        : [];
+    const tools = [...connected, ...reportTools];
     // Con historial activo manda el servidor: el del cliente se ignora (una conversación nueva
     // empieza vacía) para que lo guardado sea exactamente lo que vio el modelo. Sin historial,
     // el del cliente sigue sirviendo por compatibilidad.
@@ -545,7 +584,16 @@ export class AssistantController {
     }
 
     const saved = history
-      ? await this.saveTurn(history, owner, stored, message, askedAt, result, correlationId)
+      ? await this.saveTurn(
+          history,
+          owner,
+          stored,
+          message,
+          askedAt,
+          result,
+          correlationId,
+          generated,
+        )
       : undefined;
     return {
       correlationId,
@@ -553,6 +601,7 @@ export class AssistantController {
       outcome: result.outcome,
       steps: result.steps,
       citations: result.citations,
+      ...(generated.length > 0 ? { artifacts: generated } : {}),
       usage: result.usage,
       conversationId: saved?.id ?? null,
       title: saved?.title ?? null,
@@ -560,6 +609,56 @@ export class AssistantController {
       // Id del mensaje guardado de Bunny: la consola lo usa para la valoración 👍/👎.
       messageId: saved?.saved ? saved.messageId : null,
     };
+  }
+
+  /** Archivos (informes) vigentes de la persona, más recientes primero. */
+  @Get('artifacts')
+  public async listArtifacts(@Req() request: IncomingRequest) {
+    const { actor, correlationId } = await readingActor(this.runtime, request);
+    const vault = this.artifactsFor(actor, correlationId);
+    const items = await this.guarded(correlationId, () => vault.list(ownerOf(actor)));
+    return { correlationId, items: items.map(artifactRefOf) };
+  }
+
+  /**
+   * Descarga de un archivo: solo su dueño; ajeno, vencido o inexistente responde 404 neutro.
+   * La auditoría registra id, formato, tamaño y hash, nunca el contenido.
+   */
+  @Get('artifacts/:id')
+  public async downloadArtifact(
+    @Req() request: IncomingRequest,
+    @Param('id') id: string,
+    @Res() reply: OutgoingReply,
+  ) {
+    const { actor, correlationId } = await readingActor(this.runtime, request);
+    const vault = this.artifactsFor(actor, correlationId);
+    const artifact = UUID.test(id)
+      ? await this.guarded(correlationId, () => vault.get(ownerOf(actor), id))
+      : undefined;
+    if (!artifact) throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
+    await recordAudit(this.runtime.audit, {
+      id: randomUUID(),
+      tenantId: actor.tenantId,
+      occurredAt: this.runtime.now(),
+      actor: { id: actor.subjectId, type: 'user' },
+      action: 'assistant.artifact.download',
+      resource: { type: 'assistant_artifact', id: artifact.id },
+      outcome: 'succeeded',
+      correlationId,
+      metadata: { format: artifact.format, size: artifact.size, sha256: artifact.sha256 },
+    }).catch(() => undefined);
+    const ascii = artifact.filename.replace(/[^A-Za-z0-9._-]/gu, '_');
+    reply
+      .status(200)
+      .header('content-type', artifact.contentType)
+      .header(
+        'content-disposition',
+        `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(artifact.filename)}`,
+      )
+      .header('content-length', String(artifact.size))
+      .header('x-content-type-options', 'nosniff')
+      .header('cache-control', 'no-store')
+      .send(Buffer.from(artifact.content));
   }
 
   @Get('conversations')
@@ -722,6 +821,41 @@ export class AssistantController {
     return { correlationId, deleted };
   }
 
+  /** Almacén de archivos si Bunny está disponible para esta persona; si no, 404. */
+  private artifactsFor(actor: Actor, correlationId: string) {
+    const service = this.runtime.assistant;
+    if (!service?.artifacts || !canUseBunny(service, actor)) {
+      throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
+    }
+    return service.artifacts;
+  }
+
+  private async auditArtifact(
+    action: 'assistant.artifact.create',
+    actor: Actor,
+    correlationId: string,
+    report: StoredReport,
+  ): Promise<void> {
+    await recordAudit(this.runtime.audit, {
+      id: randomUUID(),
+      tenantId: actor.tenantId,
+      occurredAt: this.runtime.now(),
+      actor: { id: actor.subjectId, type: 'user' },
+      action,
+      resource: { type: 'assistant_artifact', id: report.artifact.id },
+      outcome: 'succeeded',
+      correlationId,
+      metadata: {
+        kind: report.kind,
+        format: report.format,
+        size: report.size,
+        sha256: report.sha256,
+        rows: report.rows,
+        ...(report.pages ? { pages: report.pages } : {}),
+      },
+    }).catch(() => undefined);
+  }
+
   /** Historial disponible para esta persona, o 404 (Bunny o historial apagados, sin permisos). */
   private historyFor(actor: Actor, correlationId: string): ConversationHistory {
     const service = this.runtime.assistant;
@@ -768,9 +902,10 @@ export class AssistantController {
     askedAt: Date,
     result: AssistantResult,
     correlationId: string,
+    artifacts: readonly ArtifactRef[] = [],
   ): Promise<{ id: string | null; title: string | null; saved: boolean; messageId: string }> {
     const answeredAt = this.runtime.now();
-    const reply = assistantMessage(result, answeredAt);
+    const reply = assistantMessage(result, answeredAt, artifacts);
     const turn: StoredMessage[] = [
       { id: randomUUID(), role: 'user', text: question.trim(), createdAt: askedAt },
       reply,
