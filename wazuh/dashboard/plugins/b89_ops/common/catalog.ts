@@ -9,6 +9,7 @@ import type {
   IncidentSeverity,
   IncidentStatus,
   NotificationChannel,
+  NotificationDeliveryChannel,
   NotificationStatus,
   OperationsStatus,
   Priority,
@@ -168,6 +169,8 @@ export const NOTIFICATION_STATUS_LABEL: Record<NotificationStatus, string> = {
   failed: 'Fallida',
   fallback: 'Por canal alternativo',
   acknowledged: 'Reconocida',
+  suppressed: 'Agrupada o en resumen',
+  superseded: 'Sustituida',
 };
 
 export const NOTIFICATION_TONE: Record<NotificationStatus, HealthTone> = {
@@ -178,12 +181,17 @@ export const NOTIFICATION_TONE: Record<NotificationStatus, HealthTone> = {
   failed: 'fail',
   fallback: 'warn',
   acknowledged: 'ok',
+  suppressed: 'neutral',
+  superseded: 'neutral',
 };
 
-export const NOTIFICATION_CHANNEL_LABEL: Record<NotificationChannel, string> = {
+export const NOTIFICATION_CHANNEL_LABEL: Record<NotificationDeliveryChannel, string> = {
   teams: 'Microsoft Teams',
   fallback_email: 'Correo (alternativo)',
   manual_console: 'Consola',
+  email: 'Correo',
+  console: 'Consola',
+  push: 'Aviso push',
 };
 
 export const OPERATIONS_STATUS_LABEL: Record<OperationsStatus, string> = {

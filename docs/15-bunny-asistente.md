@@ -159,14 +159,18 @@ existe. Sin una cita de alerta/evento se puede exportar la respuesta, pero no se
 probatorio.
 
 - **Excel (.xlsx):** descarga un libro con resumen, fuentes, eventos y actividad agrupada disponible.
-- **PDF:** abre una vista A4 lista para imprimir; la persona elige **Guardar como PDF** en el diálogo del
-  navegador. No es un PDF renderizado en servidor ni una descarga que Bunny pueda disparar desde el chat.
+- **PDF:** abre una vista A4 lista para imprimir. Primero aparecen el título y el contexto; luego se insertan
+  las filas en lotes de 250, cediendo el event loop y actualizando el avance. Al finalizar se abre el diálogo
+  de impresión para elegir **Guardar como PDF**. El navegador genera el PDF; no existe un PDF parcial, un
+  renderer de servidor ni una descarga que el modelo dispare desde el chat.
 - La preparación muestra el avance de lectura y serialización y permite cancelar. Revisar el documento antes
   de compartirlo; el archivo se prepara localmente en la sesión y no queda como trabajo reanudable del servidor.
 
-El asistente debe orientar a la persona al botón **Crear informe** debajo de su respuesta cuando le pidan
-exportarla. Bunny no afirma que ya descargó el archivo: la exportación se completa desde ese control y requiere
-una acción explícita de la persona.
+El asistente orienta a la persona al botón **Crear informe** debajo de su respuesta cuando le pidan exportarla;
+no debe decir que carece de una función de exportación ni que no sabe qué contenido usar. La respuesta indica
+que el control permite elegir entre **Solo respuesta de Bunny** e **Investigación con evidencia**, y entre PDF
+imprimible y Excel. Bunny no afirma que ya descargó el archivo: la exportación se completa desde ese control y
+requiere una acción explícita de la persona.
 
 Botón con Remi en la cabecera (atajo Alt+Shift+B), panel lateral con saludo, ejemplos según la página
 (alertas, incidentes, fuentes, auditoría), estado «consultando…», lista plegable de lo que consultó,
@@ -289,4 +293,4 @@ El XLSX de Bunny usa `showSaveFilePicker` cuando el navegador lo ofrece: el dest
 
 En navegadores sin escritura directa se conserva la descarga por Blob, con el mismo límite de 50 MiB; esa alternativa sí mantiene el archivo completo en memoria y la interfaz lo informa. Cancelar el selector no inicia la consulta.
 
-PDF sigue siendo un expediente HTML local que el navegador imprime o guarda como PDF. La preparación muestra el avance de consulta y serialización, pero no transmite un PDF parcial, no usa renderer servidor y requiere confirmar **Guardar como PDF** en el diálogo del navegador.
+PDF sigue siendo un expediente HTML local: la ventana de vista previa muestra la cabecera y el contexto, y añade las filas de las tablas en lotes conforme se serializan. Al terminar abre el diálogo de impresión del navegador para guardar el PDF. No hay PDF parcial, renderer servidor ni job durable.

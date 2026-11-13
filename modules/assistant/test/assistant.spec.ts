@@ -20,6 +20,8 @@ describe('exportación guiada de informes', () => {
     expect(BUNNY_SYSTEM_PROMPT).toContain('Excel (.xlsx)');
     expect(BUNNY_SYSTEM_PROMPT).toContain('guardar como PDF desde el navegador');
     expect(BUNNY_SYSTEM_PROMPT).toContain('No digas que generaste o descargaste un archivo');
+    expect(BUNNY_SYSTEM_PROMPT).toContain('careces de una función de exportación');
+    expect(BUNNY_SYSTEM_PROMPT).toContain('abre Crear informe');
   });
 });
 

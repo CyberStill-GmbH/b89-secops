@@ -710,6 +710,11 @@ $b89InvGradient: linear-gradient(110deg, #ff5899 0%, #ff5841 55%, #ffc136 100%);
   border-bottom: 1px solid $ouiBorderColor;
 }
 
+.b89DeliveryList__channel {
+  color: $ouiTitleColor;
+  font-weight: 600;
+}
+
 // Canales de notificación.
 .b89Channels {
   display: grid;

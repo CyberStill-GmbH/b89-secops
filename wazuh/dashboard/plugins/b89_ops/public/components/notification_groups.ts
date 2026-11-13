@@ -6,7 +6,7 @@ import {
   Alert,
   HealthTone,
   NotificationAttempt,
-  NotificationChannel,
+  NotificationDeliveryChannel,
   NotificationDelivery,
   Priority,
   PRIORITIES,
@@ -19,20 +19,29 @@ import {
 /** Lógica pura de la bandeja de notificaciones (agrupación, entrega, enmascarado). */
 
 export type DeliveryKind =
-  'pending' | 'sent' | 'delivered' | 'failed' | 'acknowledged' | 'uncertain';
+  | 'pending'
+  | 'sent'
+  | 'delivered'
+  | 'failed'
+  | 'acknowledged'
+  | 'uncertain'
+  | 'suppressed'
+  | 'superseded';
 
 export const DELIVERY: Record<DeliveryKind, { label: string; tone: HealthTone }> = {
   pending: { label: 'Pendiente', tone: 'neutral' },
-  sent: { label: 'Enviado (aceptado por M365)', tone: 'info' },
+  sent: { label: 'Aceptado por el canal', tone: 'info' },
   delivered: { label: 'Entregado', tone: 'ok' },
   failed: { label: 'Fallido', tone: 'fail' },
   acknowledged: { label: 'Reconocido', tone: 'ok' },
   uncertain: { label: 'Entrega sin confirmar', tone: 'warn' },
+  suppressed: { label: 'Agrupado o en resumen', tone: 'neutral' },
+  superseded: { label: 'Sustituido', tone: 'neutral' },
 };
 
 export interface DeliveryLine {
   readonly key: string;
-  readonly channel: NotificationChannel;
+  readonly channel: NotificationDeliveryChannel;
   readonly attempt: number;
   readonly kind: DeliveryKind;
   readonly at: string | null;
@@ -43,18 +52,25 @@ export interface DeliveryLine {
 
 /** Historial de entrega de un intento: `deliveries` de la API o, si no llega, su estado. */
 export function deliveryLines(item: NotificationAttempt): DeliveryLine[] {
-  if (item.deliveries && item.deliveries.length > 0) {
-    return item.deliveries.map((d: NotificationDelivery, index) => ({
-      key: `${item.id}-${index}`,
-      channel: d.channel,
-      attempt: d.attempt,
-      kind: d.outcome,
-      at: d.at,
-      reason: d.reason ?? null,
-      actor: d.actor ?? null,
-      link: d.link ?? null,
-    }));
-  }
+  const evidence = item.deliveries ?? item.delivery;
+  const lines: DeliveryLine[] =
+    evidence && evidence.length > 0
+      ? evidence.map((d: NotificationDelivery, index) => ({
+          key: `${item.id}-${index}`,
+          channel: d.channel,
+          attempt: d.attempt,
+          kind:
+            d.outcome === 'accepted'
+              ? 'sent'
+              : d.outcome === 'indeterminate'
+                ? 'uncertain'
+                : d.outcome,
+          at: d.responseAt ?? d.at,
+          reason: d.reason ?? null,
+          actor: d.actor ?? null,
+          link: d.link ?? d.providerLink ?? null,
+        }))
+      : [];
   const base = {
     channel: item.channel,
     attempt: item.attemptCount,
@@ -62,31 +78,49 @@ export function deliveryLines(item: NotificationAttempt): DeliveryLine[] {
     actor: null as string | null,
     link: item.link ?? null,
   };
-  const lines: DeliveryLine[] = [];
-  const status = item.status;
-  if (status === 'pending' || status === 'sending') {
-    lines.push({ ...base, key: `${item.id}-p`, kind: 'pending', at: null });
-  } else if (status === 'failed') {
-    lines.push({
-      ...base,
-      key: `${item.id}-f`,
-      kind: 'failed',
-      at: item.sentAt,
-      reason: item.lastFailureReason ?? item.lastFailureClass ?? null,
-    });
-  } else if (status === 'indeterminate') {
-    lines.push({ ...base, key: `${item.id}-u`, kind: 'uncertain', at: item.sentAt });
-  } else {
-    lines.push({ ...base, key: `${item.id}-s`, kind: 'sent', at: item.sentAt });
+  if (lines.length === 0) {
+    const status = item.status;
+    if (status === 'pending' || status === 'sending') {
+      lines.push({ ...base, key: `${item.id}-p`, kind: 'pending', at: null });
+    } else if (status === 'failed') {
+      lines.push({
+        ...base,
+        key: `${item.id}-f`,
+        kind: 'failed',
+        at: item.sentAt,
+        reason: item.lastFailureReason ?? item.lastFailureClass ?? null,
+      });
+    } else if (status === 'indeterminate') {
+      lines.push({ ...base, key: `${item.id}-u`, kind: 'uncertain', at: item.sentAt });
+    } else if (status === 'suppressed') {
+      lines.push({
+        ...base,
+        key: `${item.id}-x`,
+        kind: 'suppressed',
+        at: item.sentAt ?? item.createdAt ?? null,
+        reason: item.suppressionReason ?? null,
+      });
+    } else if (status === 'superseded') {
+      lines.push({
+        ...base,
+        key: `${item.id}-r`,
+        kind: 'superseded',
+        at: item.sentAt ?? item.createdAt ?? null,
+        reason: item.coveredBy ?? null,
+      });
+    } else {
+      lines.push({ ...base, key: `${item.id}-s`, kind: 'sent', at: item.sentAt });
+    }
   }
   if (item.acknowledgedAt) {
-    lines.push({
-      ...base,
-      key: `${item.id}-a`,
-      kind: 'acknowledged',
-      at: item.acknowledgedAt,
-      actor: item.acknowledgedBy,
-    });
+    if (!lines.some((line) => line.kind === 'acknowledged'))
+      lines.push({
+        ...base,
+        key: `${item.id}-a`,
+        kind: 'acknowledged',
+        at: item.acknowledgedAt,
+        actor: item.acknowledgedBy,
+      });
   }
   return lines;
 }
@@ -158,21 +192,39 @@ const isPriority = (value: unknown): value is Priority =>
 
 /** Datos visibles de un grupo: `subject` de la API o, si falta, la alerta B89. */
 export function describeGroup(group: NotificationGroup, alert: Alert | null | undefined) {
+  const latest = group.latest;
   const subject = group.items.find((item) => item.subject)?.subject ?? null;
-  const title = subject?.title ?? alert?.title ?? null;
-  const priority: Priority | null = isPriority(subject?.priority)
-    ? (subject!.priority as Priority)
+  const title = subject?.title ?? latest.title ?? alert?.title ?? null;
+  const rawPriority = subject?.priority ?? latest.priority;
+  const priority: Priority | null = isPriority(rawPriority)
+    ? (rawPriority as Priority)
     : alert
       ? alert.priority
       : null;
-  const ruleId = subject?.ruleId ?? (title ? wazuhRuleIdOfTitle(title) : null);
-  const vendor: VendorId = subject?.source
-    ? vendorOfProvider(subject.source)
+  const ruleId = subject?.ruleId ?? latest.ruleId ?? (title ? wazuhRuleIdOfTitle(title) : null);
+  const entityValue =
+    typeof latest.entity === 'string' ? latest.entity : (latest.entity?.display ?? null);
+  const provider = subject?.source ?? latest.sourceId ?? latest.source;
+  const vendor: VendorId = provider
+    ? vendorOfProvider(provider)
     : title
       ? vendorOfTitle(title)
       : 'wazuh';
-  const entity = subject?.entity ?? maskEntity(alert?.entities[0]?.label);
-  return { title, priority, ruleId, vendor, entity };
+  const entity = subject?.entity ?? entityValue ?? maskEntity(alert?.entities[0]?.label);
+  const vendorHint = `${title ?? ''} ${latest.sourceId ?? ''} ${latest.source ?? ''}`;
+  const summary = latest.summary ?? title;
+  return {
+    title,
+    priority,
+    ruleId,
+    vendor: vendorHint.trim() ? vendorOfTitle(vendorHint) : vendor,
+    entity,
+    summary,
+    whyItMatters: latest.whyItMatters ?? null,
+    nextStep: latest.nextStep ?? null,
+    occurredAt: latest.occurredAt ?? null,
+    source: latest.source ?? null,
+  };
 }
 
 /** Pistas de validación del webhook de Teams (Workflows). `null` si es válido. */

@@ -15,7 +15,7 @@ import {
 } from './bunny_report';
 import {
   createInvestigationXlsx,
-  investigationPrintHtmlWithProgress,
+  writeInvestigationPrintWindowWithProgress,
   writeInvestigationXlsx,
 } from '../components/investigation_report';
 
@@ -155,25 +155,29 @@ export function BunnyReportActions({
                 if (next.percent !== undefined) {
                   setProgressPercent((current) => Math.max(current, next.percent!));
                 }
-                if (printWindow && !printWindow.closed && printWindow.document.body) {
+                if (
+                  next.phase === 'query' &&
+                  printWindow &&
+                  !printWindow.closed &&
+                  printWindow.document.body
+                ) {
                   printWindow.document.body.textContent = next.message;
                 }
               },
             })
           : bunnyReportData({ text, citations, title, includeChart, now: new Date() });
       if (format === 'pdf' && printWindow) {
-        const html = await investigationPrintHtmlWithProgress(report, controller.signal, (next) => {
-          setProgress(next.message);
-          if (next.percent !== undefined) {
-            setProgressPercent((current) => Math.max(current, next.percent!));
-          }
-          if (!printWindow.closed && printWindow.document.body) {
-            printWindow.document.body.textContent = next.message;
-          }
-        });
-        printWindow.document.open();
-        printWindow.document.write(html);
-        printWindow.document.close();
+        await writeInvestigationPrintWindowWithProgress(
+          printWindow,
+          report,
+          controller.signal,
+          (next) => {
+            setProgress(next.message);
+            if (next.percent !== undefined) {
+              setProgressPercent((current) => Math.max(current, next.percent!));
+            }
+          },
+        );
       } else {
         if (outputHandle) {
           const writable = await outputHandle.createWritable();
@@ -209,7 +213,11 @@ export function BunnyReportActions({
           window.setTimeout(() => URL.revokeObjectURL(url), 1500);
         }
       }
-      setProgress('Informe generado. Revisa el contenido antes de compartirlo.');
+      setProgress(
+        format === 'pdf'
+          ? 'Vista imprimible completa. Revisa el contenido antes de guardarlo como PDF.'
+          : 'Libro Excel completo. Revisa el archivo antes de compartirlo.',
+      );
       setProgressPercent(100);
       setStatus(
         format === 'pdf'
@@ -230,7 +238,7 @@ export function BunnyReportActions({
             'Tu sesión no tiene acceso a la evidencia citada; no se generó un expediente parcial.',
           'not-found': 'La evidencia citada ya no está disponible para tu sesión.',
           unavailable:
-            'No se pudo consultar el historial autorizado. Verifica la conexión e inténtalo de nuevo.',
+            'Wazuh Indexer o la API de investigación no respondió. No se generó un expediente parcial; reintenta y, si persiste, revisa Salud de fuentes.',
           'no-entities':
             'La evidencia no contiene entidades consultables; no se inventaron filtros.',
         };

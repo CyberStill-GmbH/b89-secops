@@ -166,7 +166,7 @@ no existe renderer PDF server-side. La barra de progreso muestra avance por pág
 recibieron o serializaron; para XLSX continúa por preparación, XML y empaquetado. Se puede cancelar
 la consulta o generación y reintentar tras un error. Un fallo de acceso no produce un reporte parcial.
 
-La consulta conserva en memoria los DTO allowlisted hasta el límite de 10.000 eventos y no crea jobs durables. Con File System Access, XLSX se escribe por bloques en el archivo elegido; sin esa API, usa Blob en memoria con máximo de 50 MiB. La vista PDF se prepara como HTML local para imprimir o guardar desde el navegador. Ninguno de estos flujos se reanuda al cerrar la sesión; no hay artifact store privado ni descarga con ACL de servidor. El CSV conserva los eventos recogidos y distingue el total encontrado.
+La consulta conserva en memoria los DTO allowlisted hasta el límite de 10.000 eventos y no crea jobs durables. Con File System Access, XLSX se escribe por bloques en el archivo elegido; sin esa API, usa Blob en memoria con máximo de 50 MiB. La vista PDF se prepara como HTML local y va añadiendo las filas de las tablas en lotes mientras se serializan; al completar abre el diálogo de impresión del navegador. Es una vista previa HTML progresiva, no un PDF parcial ni un renderer server-side. Ninguno de estos flujos se reanuda al cerrar la sesión; no hay artifact store privado ni descarga con ACL de servidor. El CSV conserva los eventos recogidos y distingue el total encontrado.
 
 La timeline y los reportes agrupan **actividad** por entidad coincidente y hasta 15 minutos entre
 eventos consecutivos; un evento puede aparecer en varios grupos. El XLSX y el expediente imprimible
@@ -232,4 +232,6 @@ pie y color B89 (`customization.*` en el `wazuh.yml` que escribe `deploy-host.sh
 
 ### Escritura de informes XLSX desde Bunny
 
-Cuando el navegador admite File System Access, el analista elige el archivo y Bunny escribe el XLSX por bloques, esperando el destino entre escrituras y actualizando el progreso con filas ya serializadas. El estado de éxito aparece tras cerrar el archivo. El límite local es 50 MiB y 10.000 eventos. En navegadores sin esta capacidad, se usa descarga Blob en memoria y se comunica esa diferencia. El expediente PDF permanece como HTML imprimible del navegador, no como PDF generado progresivamente ni por servidor. La cancelación interrumpe la escritura.
+Cuando el navegador admite File System Access, el analista elige el archivo y Bunny escribe el XLSX por bloques, esperando el destino entre escrituras y actualizando el progreso con filas ya serializadas. El estado de éxito aparece tras cerrar el archivo. El límite local es 50 MiB y 10.000 eventos. En navegadores sin esta capacidad, se usa descarga Blob en memoria y se comunica esa diferencia.
+
+El PDF de Bunny abre una vista HTML A4 con cabecera/contexto y añade filas en lotes de 250, mostrando el avance y cediendo el event loop entre lotes; al completarse abre la impresión del navegador. La persona elige **Guardar como PDF**. La salida no es un PDF incremental ni se genera en servidor. Cancelar detiene el render y cierra la ventana de trabajo. Para una respuesta sin cita se ofrece **Solo respuesta de Bunny**; un expediente requiere evidencia que la sesión pueda consultar.

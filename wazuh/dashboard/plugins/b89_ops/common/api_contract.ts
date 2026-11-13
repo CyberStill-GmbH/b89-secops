@@ -382,9 +382,12 @@ export const NOTIFICATION_STATUSES = [
   'failed',
   'fallback',
   'acknowledged',
+  'suppressed',
+  'superseded',
 ] as const;
 export type NotificationStatus = (typeof NOTIFICATION_STATUSES)[number];
 export type NotificationChannel = 'teams' | 'fallback_email' | 'manual_console';
+export type NotificationDeliveryChannel = NotificationChannel | 'email' | 'console' | 'push';
 
 /** Estados en los que una persona puede acusar recibo (modules/soar/src/notification.ts). */
 export const ACKNOWLEDGEABLE: readonly NotificationStatus[] = ['sent', 'indeterminate', 'fallback'];
@@ -398,6 +401,28 @@ export interface NotificationAttempt {
   readonly acknowledgedAt: string | null;
   readonly acknowledgedBy: string | null;
   readonly lastFailureClass: string | null;
+  /** Campos que el API ya entrega en el nivel superior del DTO. */
+  readonly statusLabel?: string;
+  readonly deliveryState?: string;
+  readonly createdAt?: string;
+  readonly title?: string | null;
+  readonly priority?: Priority | null;
+  readonly severity?: string | null;
+  readonly source?: string | null;
+  readonly sourceId?: string | null;
+  readonly entity?: string | { readonly kind?: string; readonly display?: string } | null;
+  readonly ruleId?: string | null;
+  readonly summary?: string | null;
+  readonly whyItMatters?: string | null;
+  readonly nextStep?: string | null;
+  readonly occurredAt?: string | null;
+  readonly kind?: string | null;
+  readonly occurrences?: number;
+  readonly suppressionReason?: string | null;
+  readonly coveredBy?: string | null;
+  readonly digestId?: string | null;
+  readonly deepLink?: string | null;
+  readonly links?: Readonly<Record<string, string | null>> | null;
   /*
    * Campos opcionales pedidos al dispatcher (coordinación con el agente de notificaciones,
    * COORDINACION-CLAUDE-CODEX.md). La bandeja funciona sin ellos y los usa en cuanto llegan.
@@ -411,6 +436,8 @@ export interface NotificationAttempt {
   readonly subject?: NotificationSubject | null;
   /** Historial de entrega por canal e intento. */
   readonly deliveries?: readonly NotificationDelivery[];
+  /** Nombre que usa el DTO actual de OperationsController. */
+  readonly delivery?: readonly NotificationDelivery[];
   /** Enlace al mensaje en Teams («Ver en Teams»), si el canal lo devuelve. */
   readonly link?: string | null;
   readonly lastFailureReason?: string | null;
@@ -467,10 +494,14 @@ export type NotificationDeliveryOutcome = 'sent' | 'delivered' | 'failed' | 'ack
 
 export interface NotificationDelivery {
   readonly attempt: number;
-  readonly channel: NotificationChannel;
-  /** sent = aceptado por Microsoft 365/SMTP; delivered = confirmado en destino. */
-  readonly outcome: NotificationDeliveryOutcome;
+  readonly channel: NotificationDeliveryChannel;
+  /** accepted = el proveedor aceptó la solicitud; no demuestra lectura humana. */
+  readonly outcome: NotificationDeliveryOutcome | 'accepted' | 'indeterminate';
   readonly at: string;
+  readonly responseAt?: string;
+  readonly httpStatus?: number | null;
+  readonly providerMessageId?: string | null;
+  readonly providerLink?: string | null;
   readonly reason?: string | null;
   /** Quién reconoció (solo `acknowledged`). */
   readonly actor?: string | null;

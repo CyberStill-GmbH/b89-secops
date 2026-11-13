@@ -8,6 +8,7 @@ import {
   createInvestigationXlsx,
   investigationPrintHtml,
   investigationPrintHtmlWithProgress,
+  writeInvestigationPrintWindowWithProgress,
   writeInvestigationXlsx,
 } from './investigation_report';
 import { investigationCsv, investigationCsvWithProgress } from './investigation_export';
@@ -211,6 +212,8 @@ describe('reportes de investigación', () => {
       totalEvents: 1,
       generatedAt: new Date('2026-11-11T13:00:00Z'),
       truncated: false,
+      assistantAnalysis: 'Bunny analysis with cited evidence',
+      assistantCitations: [{ kind: 'event', id: 'preview-source', label: 'Source event' }],
     };
     const blob = await createInvestigationXlsx(report);
     expect(blob.type).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -397,6 +400,143 @@ describe('reportes de investigación', () => {
       if (item.completed >= 250) controller.abort();
     });
     await expect(cancelled).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('puebla la vista imprimible por lotes antes del dialogo de impresion', async () => {
+    const input = {
+      alert: null,
+      title: 'Vista previa progresiva',
+      entities: ['user:analyst@example.test'],
+      events: Array.from({ length: 600 }, (_, index) => event(`preview-${index}`)),
+      totalEvents: 600,
+      generatedAt: new Date('2026-11-11T13:00:00Z'),
+      truncated: false,
+      assistantAnalysis: 'Análisis de Bunny con evidencia citada.',
+      assistantCitations: [{ kind: 'event', id: 'preview-source', label: 'Evento fuente' }],
+    };
+    const sections = Array.from({ length: 3 }, () => ({
+      textContent: 'placeholder',
+      chunks: [] as string[],
+      insertAdjacentHTML(_position: string, chunk: string) {
+        this.chunks.push(chunk);
+      },
+    }));
+    let shell = '';
+    let printed = false;
+    const target = {
+      document: {
+        open() {},
+        write(content: string) {
+          shell = content;
+        },
+        close() {},
+        querySelectorAll() {
+          return sections;
+        },
+      },
+      print() {
+        printed = true;
+      },
+      setTimeout(callback: () => void) {
+        callback();
+        return 0;
+      },
+    } as unknown as Window;
+    const generatedWithRows: boolean[] = [];
+    await writeInvestigationPrintWindowWithProgress(
+      target,
+      input,
+      new AbortController().signal,
+      (next) => {
+        if (next.phase === 'render') {
+          generatedWithRows.push(sections[2]!.chunks.join('').includes('preview-0'));
+        }
+      },
+    );
+    expect(shell).toContain('<style>');
+    expect(shell).not.toContain('preview-0');
+    expect(shell).not.toContain('window.print');
+    expect(sections[2]!.chunks.length).toBe(3);
+    expect(sections[2]!.chunks.join('')).toContain('preview-0');
+    expect(sections[2]!.chunks.join('')).toContain('preview-599');
+    expect(generatedWithRows).toContain(true);
+    expect(printed).toBe(true);
+  });
+
+  it('imprime una respuesta de Bunny sin exigir tablas de investigación', async () => {
+    const input = {
+      alert: null,
+      title: 'Respuesta de Bunny',
+      entities: [],
+      events: [],
+      totalEvents: 0,
+      generatedAt: new Date('2026-11-11T13:00:00Z'),
+      truncated: false,
+      assistantAnalysis: 'Resumen basado únicamente en la respuesta.',
+      assistantCitations: [],
+    };
+    let shell = '';
+    let printed = false;
+    const target = {
+      document: {
+        open() {},
+        write(content: string) {
+          shell = content;
+        },
+        close() {},
+        querySelectorAll() {
+          return [];
+        },
+      },
+      print() {
+        printed = true;
+      },
+      setTimeout(callback: () => void) {
+        callback();
+        return 0;
+      },
+    } as unknown as Window;
+
+    await writeInvestigationPrintWindowWithProgress(target, input, new AbortController().signal);
+
+    expect(shell).toContain('Resumen basado únicamente en la respuesta.');
+    expect(shell.match(/<tbody>/gu)).toBeNull();
+    expect(printed).toBe(true);
+  });
+
+  it('conserva las secciones vacías de un expediente sin eventos', async () => {
+    const input = {
+      alert: null,
+      title: 'Expediente sin eventos',
+      entities: [],
+      events: [],
+      totalEvents: 0,
+      generatedAt: new Date('2026-11-11T13:00:00Z'),
+      truncated: false,
+    };
+    const sections = Array.from({ length: 3 }, () => ({
+      textContent: 'placeholder',
+      insertAdjacentHTML() {},
+    }));
+    const target = {
+      document: {
+        open() {},
+        write() {},
+        close() {},
+        querySelectorAll() {
+          return sections;
+        },
+      },
+      print() {},
+      setTimeout(callback: () => void) {
+        callback();
+        return 0;
+      },
+    } as unknown as Window;
+
+    await expect(
+      writeInvestigationPrintWindowWithProgress(target, input, new AbortController().signal),
+    ).resolves.toBeUndefined();
   });
 
   it('escapa el HTML para impresión y advierte que proximidad no es causalidad', () => {

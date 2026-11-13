@@ -755,6 +755,11 @@ function investigationPrintHtmlWithRows(
 ): string {
   if (input.assistantAnalysis !== undefined) {
     const hasInvestigation = Boolean(input.alert || input.sourceEvent || input.events.length > 0);
+    const eventRows =
+      prepared?.events ?? input.events.map((event) => eventPrintRow(input, event)).join('');
+    const activityRows = prepared?.activity ?? groups.map(activityPrintRow).join('');
+    const exactEmailRows =
+      prepared?.exactEmail ?? exactEmailGroups.map(exactEmailPrintRow).join('');
     const citations = (input.assistantCitations ?? [])
       .map(
         (citation) =>
@@ -763,7 +768,7 @@ function investigationPrintHtmlWithRows(
       .join('');
     const investigation = !hasInvestigation
       ? ''
-      : `<h2>Evidencia de investigación</h2><div class="meta"><strong>Alerta B89:</strong> ${html(input.alert?.id ?? '—')}<br/><strong>Eventos:</strong> ${input.events.length.toLocaleString('es-PE')} de ${input.totalEvents.toLocaleString('es-PE')}${input.truncated ? ' (límite de exportación)' : ''}<br/><strong>Entidades:</strong> ${html(input.entities.join(' · '))}</div><p class="notice">La actividad agrupada muestra coincidencias y proximidad temporal; no prueba causalidad ni un hilo de correo. Solo las operaciones de envío documentadas permiten clasificar salida; el feed actual no acredita recepción.</p><h3>Actividad agrupada por entidad</h3><table><thead><tr><th>Entidad</th><th>Primera actividad UTC</th><th>Última actividad UTC</th><th>Eventos</th><th>Orígenes</th></tr></thead><tbody>${groups.map(activityPrintRow).join('') || '<tr><td colspan="5">Sin grupos</td></tr>'}</tbody></table><h3>Coincidencias por ID exacto de mensaje</h3><table><thead><tr><th>Tipo</th><th>ID exacto</th><th>Dirección según operaciones</th><th>Eventos</th><th>Buzones auditados</th><th>Destinatarios del DTO</th><th>Operaciones</th><th>IDs de evento</th></tr></thead><tbody>${exactEmailGroups.map(exactEmailPrintRow).join('') || '<tr><td colspan="8">Sin coincidencias</td></tr>'}</tbody></table><h3>Línea de tiempo (${input.events.length.toLocaleString('es-PE')} eventos)</h3><table><thead><tr><th>Tipo</th><th>Fecha UTC</th><th>Nivel</th><th>Origen</th><th>Regla</th><th>Descripción</th><th>Entidades</th><th>Metadatos M365</th><th>ID</th></tr></thead><tbody>${input.events.map((event) => eventPrintRow(input, event)).join('') || '<tr><td colspan="9">Sin eventos autorizados en la ventana seleccionada.</td></tr>'}</tbody></table>`;
+      : `<h2>Evidencia de investigación</h2><div class="meta"><strong>Alerta B89:</strong> ${html(input.alert?.id ?? '—')}<br/><strong>Eventos:</strong> ${input.events.length.toLocaleString('es-PE')} de ${input.totalEvents.toLocaleString('es-PE')}${input.truncated ? ' (límite de exportación)' : ''}<br/><strong>Entidades:</strong> ${html(input.entities.join(' · '))}</div><p class="notice">La actividad agrupada muestra coincidencias y proximidad temporal; no prueba causalidad ni un hilo de correo. Solo las operaciones de envío documentadas permiten clasificar salida; el feed actual no acredita recepción.</p><h3>Actividad agrupada por entidad</h3><table><thead><tr><th>Entidad</th><th>Primera actividad UTC</th><th>Última actividad UTC</th><th>Eventos</th><th>Orígenes</th></tr></thead><tbody>${activityRows || '<tr><td colspan="5">Sin grupos</td></tr>'}</tbody></table><h3>Coincidencias por ID exacto de mensaje</h3><table><thead><tr><th>Tipo</th><th>ID exacto</th><th>Dirección según operaciones</th><th>Eventos</th><th>Buzones auditados</th><th>Destinatarios del DTO</th><th>Operaciones</th><th>IDs de evento</th></tr></thead><tbody>${exactEmailRows || '<tr><td colspan="8">Sin coincidencias</td></tr>'}</tbody></table><h3>Línea de tiempo (${input.events.length.toLocaleString('es-PE')} eventos)</h3><table><thead><tr><th>Tipo</th><th>Fecha UTC</th><th>Nivel</th><th>Origen</th><th>Regla</th><th>Descripción</th><th>Entidades</th><th>Metadatos M365</th><th>ID</th></tr></thead><tbody>${eventRows || '<tr><td colspan="9">Sin eventos autorizados en la ventana seleccionada.</td></tr>'}</tbody></table>`;
     return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${html(input.title)} · B89 SOC</title><style>body{font:14px/1.55 Arial,sans-serif;color:#17212b;max-width:1100px;margin:36px auto;padding:0 24px}header{border-bottom:4px solid #df8b26;padding:0 0 18px;margin-bottom:22px}h1{font-size:25px;margin:0 0 8px;color:#263444}h2{font-size:17px;color:#263444;margin:24px 0 8px}h3{font-size:14px;color:#263444;margin:20px 0 8px}.meta,.notice{padding:12px 14px;background:#f2f5f8;border-left:4px solid #df8b26}.analysis{white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.6 Arial,sans-serif}.chart{margin:20px 0}.chart svg{max-width:100%;height:auto}figcaption,small{color:#536477;font-size:11px}li{margin:6px 0}code{font:11px monospace}table{width:100%;border-collapse:collapse;margin-top:10px;table-layout:fixed;font-size:11px}th{background:#263444;color:white;text-align:left}th,td{padding:6px;border:1px solid #cbd2d9;vertical-align:top;overflow-wrap:anywhere}.foot{margin-top:32px;border-top:1px solid #cbd2d9;padding-top:10px;color:#536477;font-size:11px}@page{size:A4 landscape;margin:14mm}@media print{body{margin:0;max-width:none;padding:0}thead{display:table-header-group}tr{break-inside:avoid}}</style></head><body><header><h1>B89 SOC · ${hasInvestigation ? 'Informe profesional de investigación' : 'Informe de análisis Bunny'}</h1><div>${html(input.title)}</div></header><div class="meta"><strong>Generado (UTC):</strong> ${html(input.generatedAt.toISOString())}</div><p class="notice">Respuesta asistida por IA. Revisa las fuentes y valida los hallazgos antes de compartir o tomar decisiones.</p>${input.assistantChartSvg ? `<figure class="chart">${input.assistantChartSvg}<figcaption>Gráfico derivado solo de los valores numéricos explícitos de la respuesta.</figcaption></figure>` : ''}<h2>Análisis de Bunny</h2><pre class="analysis">${html(input.assistantAnalysis)}</pre><h2>Fuentes citadas</h2><ul>${citations || '<li>La respuesta no incluyó fuentes citadas.</li>'}</ul>${investigation}<footer class="foot">B89 SOC · Evidencia consultada con la identidad del analista; contiene solo campos autorizados del contrato de investigación.</footer><script>window.addEventListener('load',()=>window.print());</script></body></html>`;
   }
   const rows =
@@ -839,11 +844,62 @@ export async function writeInvestigationPrintWindowWithProgress(
   signal: AbortSignal,
   onProgress?: (progress: ReportProgress) => void,
 ): Promise<void> {
-  const content = await investigationPrintHtmlWithProgress(input, signal, onProgress);
-  abortIfNeeded(signal);
+  const groups = groupInvestigationActivity(input.events);
+  const exactEmailGroups = groupExactEmailMessages(input.events);
+  const emptyRows: InvestigationPrintRows = { events: '', activity: '', exactEmail: '' };
+  const shell = investigationPrintHtmlWithRows(input, [], [], emptyRows).replace(
+    /<script>window\.addEventListener\('load',\(\)=>window\.print\(\)\);<\/script>/u,
+    '',
+  );
+  if (shell.includes('window.print')) throw new Error('No se pudo preparar la vista imprimible.');
   target.document.open();
-  target.document.write(content);
+  target.document.write(shell);
   target.document.close();
+  const bodies = target.document.querySelectorAll('tbody');
+  const expectedSections = (shell.match(/<tbody>/gu) ?? []).length;
+  if (bodies.length !== expectedSections)
+    throw new Error('La vista imprimible no tiene las secciones esperadas.');
+  bodies.forEach((body) => {
+    body.textContent = '';
+  });
+
+  const total = input.events.length + groups.length + exactEmailGroups.length;
+  let completed = 0;
+  const render = async <T>(
+    items: readonly T[],
+    section: HTMLTableSectionElement,
+    write: (item: T) => string,
+  ): Promise<void> => {
+    const chunkSize = 250;
+    for (let offset = 0; offset < items.length; offset += chunkSize) {
+      abortIfNeeded(signal);
+      const end = Math.min(offset + chunkSize, items.length);
+      const chunk = items.slice(offset, end).map(write).join('');
+      section.insertAdjacentHTML('beforeend', chunk);
+      completed += end - offset;
+      onProgress?.({
+        phase: 'render',
+        completed,
+        total,
+        percent: 65 + Math.floor((completed / Math.max(1, total)) * 25),
+        message: `Vista previa: ${completed.toLocaleString('es-PE')} de ${total.toLocaleString('es-PE')} filas escritas`,
+      });
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
+  };
+
+  await render(groups, bodies[0]!, activityPrintRow);
+  await render(exactEmailGroups, bodies[1]!, exactEmailPrintRow);
+  await render(input.events, bodies[2]!, (event) => eventPrintRow(input, event));
+  abortIfNeeded(signal);
+  onProgress?.({
+    phase: 'package',
+    completed: 1,
+    total: 1,
+    percent: 100,
+    message: 'Vista imprimible lista; revisa el contenido antes de guardar como PDF.',
+  });
+  target.setTimeout(() => target.print(), 0);
 }
 
 export function downloadInvestigationXlsx(input: InvestigationReportData): Promise<void> {

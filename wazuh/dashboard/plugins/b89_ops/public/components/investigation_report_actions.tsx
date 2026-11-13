@@ -16,6 +16,7 @@ import type {
 import {
   collectInvestigationReport,
   createInvestigationXlsx,
+  ReportCollectionError,
   writeInvestigationPrintWindowWithProgress,
 } from './investigation_report';
 import './investigation_report.scss';
@@ -110,7 +111,7 @@ export function InvestigationReportActions({
           const percent = Math.max(highestProgress.current, progressPercent(next));
           highestProgress.current = percent;
           setProgress({ ...next, percent });
-          if (printWindow.current && !printWindow.current.closed) {
+          if (next.phase === 'query' && printWindow.current && !printWindow.current.closed) {
             printWindow.current.document.body.innerHTML = `<h1>B89 SOC · Preparando informe</h1><p>${escapeHtml(next.message)}</p>`;
           }
         },
@@ -177,33 +178,45 @@ export function InvestigationReportActions({
             const percent = Math.max(highestProgress.current, progressPercent(next));
             highestProgress.current = percent;
             setProgress({ ...next, percent });
-            if (printWindow.current && !printWindow.current.closed) {
-              printWindow.current.document.body.innerHTML = `<h1>B89 SOC · Preparando informe</h1><p>${escapeHtml(next.message)}</p>`;
-            }
           },
         );
       }
       highestProgress.current = 100;
+      const completionMessage =
+        action === 'print'
+          ? 'Vista imprimible lista; revisa el contenido y elige Guardar como PDF en el navegador.'
+          : action === 'xlsx'
+            ? 'Libro Excel listo para revisar y compartir.'
+            : 'Archivo CSV listo para revisar y compartir.';
       setProgress({
         phase: 'package',
         completed: 1,
         total: 1,
         percent: 100,
-        message: 'Artefacto generado',
+        message: completionMessage,
       });
-      setMessage(
-        report.truncated
-          ? `Informe listo con ${report.events.length.toLocaleString('es-PE')} de ${report.totalEvents.toLocaleString('es-PE')} eventos (límite de seguridad). Refina los filtros para completar.`
-          : `Informe listo: ${report.events.length.toLocaleString('es-PE')} eventos incluidos.`,
-      );
+      const rowSummary = report.truncated
+        ? `Incluye ${report.events.length.toLocaleString('es-PE')} de ${report.totalEvents.toLocaleString('es-PE')} eventos (límite de seguridad). Refina los filtros para completar.`
+        : `${report.events.length.toLocaleString('es-PE')} eventos incluidos.`;
+      setMessage(`${completionMessage} ${rowSummary}`);
     } catch (error) {
       if (controller.signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
         setMessage('Preparación cancelada.');
       } else {
+        const failure =
+          error instanceof ReportCollectionError
+            ? error.kind
+            : error instanceof Error && error.message.includes('forbidden')
+              ? 'forbidden'
+              : null;
         setMessage(
-          error instanceof Error && error.message.includes('forbidden')
-            ? 'No tienes acceso a todos los eventos de esta consulta; no se generó un informe parcial.'
-            : 'No se pudo completar el informe. Vuelve a intentarlo o reduce la ventana de búsqueda.',
+          failure === 'forbidden'
+            ? 'Tu sesión no puede consultar toda la evidencia; no se generó un informe parcial. Revisa los permisos de la alerta e inténtalo de nuevo.'
+            : failure === 'unavailable'
+              ? 'Wazuh Indexer no respondió a la consulta. No se generó el archivo; reintenta y, si persiste, revisa Salud de fuentes.'
+              : failure === 'invalid'
+                ? 'Wazuh Indexer devolvió páginas inconsistentes. No se generó un informe parcial; vuelve a intentarlo con una ventana menor.'
+                : 'No se pudo completar el informe. No se generó un archivo parcial; revisa la conexión e inténtalo de nuevo.',
         );
       }
       if (printWindow.current && !printWindow.current.closed) printWindow.current.close();

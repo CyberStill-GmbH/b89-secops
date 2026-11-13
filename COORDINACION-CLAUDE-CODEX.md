@@ -271,3 +271,7 @@ campos **opcionales** por 铆tem y funciona sin ellos (`common/api_contract.ts 鈥
 - `POST /api/notifications/channels/{id}/enable|disable` `{ expectedRevision? }`.
 - Todas las mutaciones con `notifications.manage` (b89.platform.admin), CSRF y auditor铆a; la UI oculta los botones sin
   esa capacidad y deja la vista en solo lectura.
+
+### 2026-11-12 路 DTO real y UX de la bandeja
+
+`OperationsController.notificationView` publica contexto en nivel superior (`title`, `summary`, `whyItMatters`, `nextStep`, `source`, `sourceId`, `entity`, `ruleId`, `alertId`) y evidencia en `delivery[]`; el plugin tambi茅n lee el formato hist贸rico `subject`/`deliveries`. `DeliveryEvidence.outcome=accepted` significa aceptaci贸n HTTP del canal, no entrega a una persona ni lectura. La bandeja mantiene esa sem谩ntica, presenta el contexto enmascarado disponible aunque falte `alertId`, filtra los estados que realmente admiten acuse y ofrece el acuse humano B89 como acci贸n primaria del flyout. No se ampl铆an permisos ni se crea una alerta cuando falta el identificador.
