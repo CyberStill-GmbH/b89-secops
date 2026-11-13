@@ -385,10 +385,32 @@ function encodeRelatedCursor(
   return Buffer.from(JSON.stringify(cursor)).toString('base64url');
 }
 
+function supportsPit(client: SearchClient): boolean {
+  return Boolean((client.createPit && client.deletePit) || client.transport);
+}
+
+async function createRelatedPit(client: SearchClient): Promise<{ body: unknown }> {
+  if (client.createPit) {
+    return client.createPit({ index: ALERTS_INDEX, keep_alive: RELATED_PIT_KEEP_ALIVE });
+  }
+  return client.transport!.request({
+    method: 'POST',
+    path: `/${ALERTS_INDEX}/_search/point_in_time`,
+    querystring: { keep_alive: RELATED_PIT_KEEP_ALIVE },
+  });
+}
+
 async function closeRelatedPit(client: SearchClient, pitId: string): Promise<void> {
-  if (!client.deletePit || !pitId) return;
+  if (!pitId || !supportsPit(client)) return;
   try {
-    await client.deletePit({ body: { pit_id: [pitId] } });
+    if (client.deletePit) await client.deletePit({ body: { pit_id: [pitId] } });
+    else {
+      await client.transport!.request({
+        method: 'DELETE',
+        path: '/_search/point_in_time',
+        body: { pit_id: [pitId] },
+      });
+    }
   } catch {
     // PIT tiene keep_alive corto; un fallo al cerrarlo no debe convertir una página correcta en error.
   }
@@ -498,16 +520,13 @@ export function findRelated(
   }
   return guarded<RelatedResponse>(
     async () => {
-      if (!client.createPit || !client.deletePit) {
+      if (!supportsPit(client)) {
         throw new Error('El cliente de Indexer no admite paginacion PIT.');
       }
       let pitId = cursor?.pitId;
       const createdHere = !pitId;
       if (!pitId) {
-        const pit = await client.createPit({
-          index: ALERTS_INDEX,
-          keep_alive: RELATED_PIT_KEEP_ALIVE,
-        });
+        const pit = await createRelatedPit(client);
         pitId = String(obj(pit.body).pit_id ?? '');
         if (!pitId || pitId.length > 1024) throw new Error('Indexer no devolvio un PIT valido.');
       }

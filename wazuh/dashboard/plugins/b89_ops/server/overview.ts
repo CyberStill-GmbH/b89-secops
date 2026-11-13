@@ -367,6 +367,18 @@ export interface SearchClient {
   search(params: { index?: string; body: Json }): Promise<{ body: unknown }>;
   createPit?(params: { index: string; keep_alive: string }): Promise<{ body: unknown }>;
   deletePit?(params: { body: { pit_id: string[] } }): Promise<{ body: unknown }>;
+  /**
+   * El cliente de OSD 2.19 (opensearch-js 1.1.0) no trae createPit/deletePit: se usa el
+   * transporte genérico contra `/{index}/_search/point_in_time`.
+   */
+  transport?: {
+    request(params: {
+      method: string;
+      path: string;
+      querystring?: Record<string, string>;
+      body?: Json;
+    }): Promise<{ body: unknown }>;
+  };
 }
 
 export function readabilityOf(error: unknown): Readability {

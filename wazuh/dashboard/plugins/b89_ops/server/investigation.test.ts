@@ -367,6 +367,32 @@ describe('eventos relacionados', () => {
     expect(lifecycle.deleted).toEqual(['pit-1']);
   });
 
+  it('usa el transporte genérico cuando el cliente de OSD no trae createPit/deletePit', async () => {
+    const calls: Array<{ method: string; path: string }> = [];
+    const searches: Json[] = [];
+    const legacy: SearchClient = {
+      search: async (params) => {
+        searches.push(params);
+        return { body: { pit_id: 'pit-x', hits: { total: { value: 0 }, hits: [] } } };
+      },
+      transport: {
+        request: async ({ method, path }) => {
+          calls.push({ method, path });
+          return { body: method === 'POST' ? { pit_id: 'pit-x' } : {} };
+        },
+      },
+    };
+    const result = await findRelated(legacy, {
+      entities: [{ kind: 'zone', value: 'b89.io' }],
+      at: Date.parse('2026-11-08T12:00:00Z'),
+      window: '1h',
+    });
+
+    expect(result.access).toBe('ok');
+    expect(calls[0]).toEqual({ method: 'POST', path: '/wazuh-alerts-*/_search/point_in_time' });
+    expect(calls[1]).toEqual({ method: 'DELETE', path: '/_search/point_in_time' });
+  });
+
   it('marca qué entidades aparecen en cada evento y cuenta por entidad', async () => {
     const result = await findRelated(
       client([
