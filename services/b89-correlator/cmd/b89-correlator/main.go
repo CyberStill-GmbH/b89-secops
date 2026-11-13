@@ -139,7 +139,7 @@ func build(cfg config.Config, log *slog.Logger, dryRun bool) (*engine.Runner, st
 	api := &sources.B89API{BaseURL: cfg.APIURL, Token: func() string { return serviceToken }, Client: client}
 	runner := engine.New(engine.Options{
 		Backfill: cfg.Backfill, PollInterval: cfg.PollInterval, FeedbackInterval: cfg.FeedbackInterval,
-		Lag: cfg.Lag, Overlap: cfg.Overlap, Emit: cfg.Emit && !dryRun, EmitMaxAge: cfg.EmitMaxAge,
+		Lag: cfg.Lag, Overlap: cfg.Overlap, Emit: cfg.Emit && !dryRun, EmitMaxAge: cfg.EmitMaxAge, EmitLateMaxAge: cfg.EmitLateMaxAge,
 		EmitMaxPerHour: cfg.EmitMaxPerHour, Audit: !dryRun, FeedbackLookback: cfg.FeedbackLookback,
 		Feedback: fbPolicy,
 	}, eng, resolver, gateway, api, log)

@@ -28,6 +28,7 @@ import {
 import { SOC_KNOWLEDGE } from './assistant/soc-knowledge.generated.js';
 import { deriveChannelKey, NotificationChannelRegistry } from './runtime/notification-channels.js';
 import { notificationEnricher } from './runtime/notification-enricher.js';
+import { entityRiskLookup } from './runtime/entity-risk.js';
 import type { SocPersistence, WazuhPushInboxStore } from '@b89/soc';
 import { composeApi } from './composition-root.js';
 import { createAssistantService } from './assistant/assistant-service.js';
@@ -509,6 +510,16 @@ export async function buildApi(
     notificationEnricher: notificationEnricher({
       alertById: (tenantId, alertId) => runtime.soc.alertById(tenantId, alertId),
       knowledge: SOC_KNOWLEDGE,
+      // Contexto de riesgo del correlador para «Por qué importa»; sin correlador, no aporta.
+      entityRisk: entityRiskLookup({
+        link:
+          environment['B89_CORRELATOR_URL'] && environment['B89_CORRELATOR_READ_TOKEN']
+            ? {
+                baseUrl: correlatorUrl(environment['B89_CORRELATOR_URL']),
+                token: environment['B89_CORRELATOR_READ_TOKEN'],
+              }
+            : undefined,
+      }),
     }),
     // Destinatarios por rol desde el padrón. Las funciones leen el runtime al despachar, que
     // siempre ocurre después de construirlo.

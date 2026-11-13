@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -43,6 +44,9 @@ type Options struct {
 	Overlap          time.Duration
 	Emit             bool
 	EmitMaxAge       time.Duration
+	// EmitLateMaxAge extends EmitMaxAge for high-priority (P1/P2) candidates whose evidence is
+	// older than EmitMaxAge only because ingestion was backlogged. 0 disables the late path.
+	EmitLateMaxAge time.Duration
 	EmitMaxPerHour   int
 	Audit            bool // record feedback decisions in the B89 audit chain
 	FeedbackLookback time.Duration
@@ -58,6 +62,7 @@ type Counters struct {
 	Emitted        atomic.Int64
 	EmitErrors     atomic.Int64
 	EmitSkipped    atomic.Int64
+	EmittedLate    atomic.Int64
 	AuditRecorded  atomic.Int64
 	Polls          atomic.Int64
 	Pages          atomic.Int64
@@ -421,10 +426,51 @@ func (r *Runner) AuditFeedback(ctx context.Context) {
 	}
 }
 
-// Emit materializes eligible candidates as B89 alerts through the API.
+// emitVerdict says whether a candidate may be emitted now and whether it is "late".
+//
+// A candidate is fresh when its newest evidence is at most EmitMaxAge old. Past that it is
+// normally dropped (an alert about something that ended hours ago is noise). The exception is a
+// detection backlog (ingestion cursor stuck, correlator restarted after an outage): real
+// multi-stage chains then surface "late" through no fault of the detection. Those are emitted
+// only when high priority (P1/P2) and not older than EmitLateMaxAge, flagged in the summary,
+// and they consume the same hourly slots, so they can never flood the SOC.
+func (r *Runner) emitVerdict(now time.Time, c *model.Candidate) (ok, late bool) {
+	age := now.Sub(c.LastSeen)
+	if age <= r.Opt.EmitMaxAge {
+		return true, false
+	}
+	if r.Opt.EmitLateMaxAge > 0 && age <= r.Opt.EmitLateMaxAge && (c.Priority == "P1" || c.Priority == "P2") {
+		return true, true
+	}
+	return false, false
+}
+
+func priorityRank(p string) int {
+	switch p {
+	case "P1":
+		return 0
+	case "P2":
+		return 1
+	case "P3":
+		return 2
+	}
+	return 3
+}
+
+// Emit materializes eligible candidates as B89 alerts through the API. Candidates are taken in
+// order of priority then score, so the limited hourly slots go to the most valuable ones.
 func (r *Runner) Emit(ctx context.Context, cands []*model.Candidate) {
 	now := r.Now().UTC()
-	sort.SliceStable(cands, func(i, j int) bool { return cands[i].LastSeen.Before(cands[j].LastSeen) })
+	sort.SliceStable(cands, func(i, j int) bool {
+		a, b := cands[i], cands[j]
+		if ra, rb := priorityRank(a.Priority), priorityRank(b.Priority); ra != rb {
+			return ra < rb
+		}
+		if a.Score != b.Score {
+			return a.Score > b.Score
+		}
+		return a.LastSeen.After(b.LastSeen)
+	})
 	for _, c := range cands {
 		snap, ok := r.Eng.Candidate(c.ID)
 		if !ok || snap.Status != model.CandidateProposed && snap.Status != model.CandidateFailed {
@@ -434,7 +480,8 @@ func (r *Runner) Emit(ctx context.Context, cands []*model.Candidate) {
 		if !r.Opt.Emit {
 			continue
 		}
-		if now.Sub(cur.LastSeen) > r.Opt.EmitMaxAge {
+		eligible, late := r.emitVerdict(now, cur)
+		if !eligible {
 			r.C.EmitSkipped.Add(1)
 			r.Eng.UpdateCandidate(c.ID, func(x *model.Candidate) { x.StatusDetail = "stale: not emitted (older than emit max age)" })
 			continue
@@ -453,9 +500,13 @@ func (r *Runner) Emit(ctx context.Context, cands []*model.Candidate) {
 				keys = append(keys, k)
 			}
 		}
+		summary := cur.Summary
+		if late {
+			summary = lateNote(now.Sub(cur.LastSeen)) + " " + summary
+		}
 		resp, err := r.API.CreateCandidate(ctx, sources.CandidateRequest{
 			IdempotencyKey: cur.IdempotencyKey, PatternID: cur.PatternID, Kind: cur.Kind,
-			Title: cur.Title, Summary: cur.Summary, Priority: cur.Priority, Score: cur.Score,
+			Title: cur.Title, Summary: summary, Priority: cur.Priority, Score: cur.Score,
 			RiskScore: math.Min(cur.RiskScore, 100), Signal: cur.Signal, PrimaryEntityKey: cur.Entity.Key(),
 			EntityKeys: keys, RelatedAlertIDs: cur.B89AlertIDs, OccurredAt: cur.LastSeen,
 			FirstSeen: cur.FirstSeen, MemberCount: cur.MemberCount, Stages: cur.Stages,
@@ -468,11 +519,20 @@ func (r *Runner) Emit(ctx context.Context, cands []*model.Candidate) {
 			continue
 		}
 		r.C.Emitted.Add(1)
+		if late {
+			r.C.EmittedLate.Add(1)
+		}
 		r.Log.Info("candidate.emitted", "candidate", c.ID, "alert", resp.AlertID, "created", resp.Created, "priority", cur.Priority, "pattern", cur.PatternID)
 		r.Eng.UpdateCandidate(c.ID, func(x *model.Candidate) {
 			x.Status, x.AlertID, x.StatusDetail = model.CandidateEmitted, resp.AlertID, ""
 		})
 	}
+}
+
+// lateNote tells the analyst the evidence is old (backlog), so urgency is judged accordingly.
+func lateNote(age time.Duration) string {
+	return "[Detección tardía: la evidencia más reciente es de hace " + strconv.Itoa(int(age.Round(time.Hour)/time.Hour)) +
+		" h; probable acumulación de ingesta. Verifica si la actividad sigue vigente.]"
 }
 
 func (r *Runner) takeEmitSlot(now time.Time) bool {
@@ -548,9 +608,11 @@ func (r *Runner) retryable() []*model.Candidate {
 	now := r.Now().UTC()
 	out := []*model.Candidate{}
 	for _, c := range r.Eng.Candidates("", 200) {
-		if (c.Status == model.CandidateFailed || (c.Status == model.CandidateProposed && c.StatusDetail != "")) && now.Sub(c.LastSeen) <= r.Opt.EmitMaxAge {
+		if c.Status == model.CandidateFailed || (c.Status == model.CandidateProposed && c.StatusDetail != "") {
 			cp := c
-			out = append(out, &cp)
+			if ok, _ := r.emitVerdict(now, &cp); ok {
+				out = append(out, &cp)
+			}
 		}
 	}
 	return out

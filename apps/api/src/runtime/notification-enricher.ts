@@ -21,6 +21,8 @@ import {
 } from '@b89/soar';
 
 import { ruleForTitle, type SocKnowledge } from '../assistant/soc-knowledge.js';
+import { describeAttention } from '../soc/attention-ranking.js';
+import type { EntityRiskLookup } from './entity-risk.js';
 
 const REASON_LABELS: Readonly<Record<string, string>> = Object.freeze({
   BASE_SEVERITY: 'severidad de la regla',
@@ -96,6 +98,8 @@ function correlationOf(alert: Alert): CorrelationSummary | null {
 export function notificationEnricher(input: {
   readonly alertById: (tenantId: string, alertId: string) => Promise<Alert | undefined>;
   readonly knowledge: SocKnowledge;
+  /** Riesgo de entidad del correlador (opcional); si falla o falta, el aviso sale igual. */
+  readonly entityRisk?: EntityRiskLookup;
 }): NotificationEnricher {
   const { knowledge } = input;
   return {
@@ -119,6 +123,11 @@ export function notificationEnricher(input: {
         ? knowledge.runbooks.find((candidate) => candidate.id === runbookId)
         : undefined;
       const platform = alert.ruleId ? platformExplanation(alert.ruleId) : undefined;
+      // Contexto del correlador (riesgo acumulado de la entidad, cadena, fuentes). Nunca bloquea el aviso.
+      const riskContext = await input.entityRisk
+        ?.snapshot()
+        .then((snapshot) => describeAttention(alert, snapshot).why)
+        .catch(() => null);
       const correlatorSteps = alert.reasons
         .map((reason) => reason.detail ?? '')
         .filter((detail) => detail.startsWith('Siguiente paso: '))
@@ -130,6 +139,7 @@ export function notificationEnricher(input: {
           ? `Caso de uso «${useCase.title}»${useCase.priorityHint ? `; prioridad esperada ${useCase.priorityHint}` : ''}.`
           : null,
         platform?.why ?? null,
+        riskContext ? `Contexto del correlador: ${riskContext}.` : null,
       ]
         .filter((part): part is string => Boolean(part))
         .join(' ');

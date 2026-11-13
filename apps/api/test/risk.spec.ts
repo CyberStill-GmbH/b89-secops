@@ -87,6 +87,17 @@ function fakeCorrelator(request: { url?: string; headers: Record<string, unknown
       candidates: [candidate],
     };
   }
+  if (url.pathname === '/v1/feedback')
+    return {
+      evaluatedAt: 'now',
+      verdicts: 5,
+      activeSuppressions: 0,
+      cdbListName: 'b89-correlator-fp-allowlist',
+      proposals: [
+        { id: 'rsup_1', kind: 'allowlist', ruleId: '101501', entityKey: 'ip:203.0.113.9', falsePositives: 3, truePositives: 0, ratio: 1, suppression: 'proposed', protected: false, reason: 'x', highestPriority: 'P3', thresholdAt: 'now' },
+        { id: 'rsup_2', kind: 'demote', ruleId: '5712', entityKey: '', falsePositives: 4, truePositives: 0, ratio: 1, entities: 3, suppression: 'none', protected: false, reason: 'y', highestPriority: 'P4', thresholdAt: 'now' },
+      ],
+    };
   if (url.pathname === '/v1/candidates')
     return { asOf: 'now', reduction: { b89Alerts: 3.2 }, items: [candidate] };
   return undefined;
@@ -265,5 +276,41 @@ describe('riesgo sin correlador configurado', () => {
     } finally {
       await built.stop();
     }
+  });
+});
+
+describe('cola de atención y propuestas de feedback', () => {
+  it('attention: devuelve alertas abiertas con `attention` y valida el límite', async () => {
+    const cookie = await signIn('analista@b89.example');
+    const response = await get(cookie, '/api/risk/attention?limit=3');
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    expect(body.riskAvailable).toBe(true);
+    expect(Array.isArray(body.items)).toBe(true);
+    expect(body.items.length).toBeLessThanOrEqual(3);
+    for (const item of body.items) {
+      expect(item.attention).toEqual(expect.objectContaining({ score: expect.any(Number) }));
+      expect(item.status).toBe('open');
+    }
+    expect((await get(cookie, '/api/risk/attention?limit=0')).statusCode).toBe(422);
+    expect((await get(cookie, '/api/risk/attention?limit=21')).statusCode).toBe(422);
+  });
+
+  it('sin alerts.read responde como recurso inexistente', async () => {
+    const cookie = await signIn('auditor@b89.example');
+    expect((await get(cookie, '/api/risk/attention')).statusCode).toBe(404);
+    expect((await get(cookie, '/api/risk/feedback')).statusCode).toBe(404);
+  });
+
+  it('feedback: proyecta propuestas con entidad opaca', async () => {
+    const cookie = await signIn('lider@b89.example');
+    const response = await get(cookie, '/api/risk/feedback');
+    expect(response.statusCode).toBe(200);
+    const body = JSON.parse(response.body);
+    expect(body.proposals).toHaveLength(2);
+    expect(body.proposals[0]).toMatchObject({ kind: 'allowlist', ruleId: '101501', falsePositives: 3 });
+    expect(body.proposals[0].entity.ref).toMatch(/^ent_/u);
+    expect(body.proposals[0].entityKey).toBeUndefined();
+    expect(body.proposals[1].entity).toBeNull();
   });
 });
