@@ -179,6 +179,48 @@ describe('reportes de investigación', () => {
     ).rejects.toMatchObject({ kind: 'forbidden' });
   });
 
+  it('reintenta un fallo transitorio del Indexer y completa el informe', async () => {
+    let attempts = 0;
+    const messages: string[] = [];
+    const report = await collectInvestigationReport({
+      query,
+      alert: null,
+      title: 'Informe',
+      entities: [],
+      signal: new AbortController().signal,
+      retryDelayMs: 0,
+      onProgress: (item) => messages.push(item.message),
+      loadPage: async () => {
+        attempts += 1;
+        return attempts === 1
+          ? ({ ...page([], 0, null), access: 'error' } as RelatedResponse)
+          : page([event('recovered')], 1, null);
+      },
+    });
+    expect(attempts).toBe(2);
+    expect(report.events.map((item) => item.id)).toEqual(['recovered']);
+    expect(messages).toContain('El Indexer no respondió; reintentando la página (1/2)');
+  });
+
+  it('tras agotar los reintentos rechaza la exportación sin devolver un resultado parcial', async () => {
+    let attempts = 0;
+    await expect(
+      collectInvestigationReport({
+        query,
+        alert: null,
+        title: 'Informe',
+        entities: [],
+        signal: new AbortController().signal,
+        retryDelayMs: 0,
+        loadPage: async () => {
+          attempts += 1;
+          return { ...page([], 0, null), access: 'error' } as RelatedResponse;
+        },
+      }),
+    ).rejects.toMatchObject({ kind: 'unavailable' });
+    expect(attempts).toBe(3);
+  });
+
   it('produce un XLSX ZIP real con hojas, celdas seguras y contenido escapado', async () => {
     const report = {
       alert: null,

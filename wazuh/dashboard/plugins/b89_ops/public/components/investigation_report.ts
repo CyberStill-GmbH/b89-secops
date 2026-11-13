@@ -72,6 +72,26 @@ export class ReportCollectionError extends Error {
   }
 }
 
+const REPORT_PAGE_RETRIES = 2;
+const REPORT_RETRY_DELAY_MS = 400;
+
+function waitForReportRetry(signal: AbortSignal, delayMs: number): Promise<void> {
+  if (signal.aborted) return Promise.reject(new DOMException('Informe cancelado', 'AbortError'));
+  if (delayMs <= 0) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, delayMs);
+    const onAbort = () => {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', onAbort);
+      reject(new DOMException('Informe cancelado', 'AbortError'));
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
 /** Fetch every authorized search_after page; progress counts returned rows, not elapsed time. */
 export async function collectInvestigationReport(input: {
   readonly query: InvestigationReportQuery;
@@ -84,6 +104,8 @@ export async function collectInvestigationReport(input: {
   readonly now?: () => Date;
   readonly onProgress?: (progress: ReportProgress) => void;
   readonly maximumEvents?: number;
+  /** Test seam; production retries use a short fixed delay. */
+  readonly retryDelayMs?: number;
 }): Promise<InvestigationReportData> {
   const maximum = Math.min(
     REPORT_EVENT_LIMIT,
@@ -107,16 +129,31 @@ export async function collectInvestigationReport(input: {
   });
   do {
     if (input.signal.aborted) throw new DOMException('Informe cancelado', 'AbortError');
-    let page: RelatedResponse;
-    try {
-      page = await input.loadPage(input.query, cursor, input.signal);
-    } catch (error) {
-      if (input.signal.aborted || (error instanceof Error && error.name === 'AbortError'))
-        throw error;
-      throw new ReportCollectionError('unavailable');
+    let page: RelatedResponse | null = null;
+    for (let attempt = 0; attempt <= REPORT_PAGE_RETRIES; attempt += 1) {
+      try {
+        const candidate = await input.loadPage(input.query, cursor, input.signal);
+        if (candidate.access === 'forbidden') throw new ReportCollectionError('forbidden');
+        if (candidate.access === 'ok') {
+          page = candidate;
+          break;
+        }
+      } catch (error) {
+        if (input.signal.aborted || (error instanceof Error && error.name === 'AbortError'))
+          throw error;
+        if (error instanceof ReportCollectionError && error.kind === 'forbidden') throw error;
+      }
+      if (attempt === REPORT_PAGE_RETRIES) throw new ReportCollectionError('unavailable');
+      input.onProgress?.({
+        phase: 'query',
+        completed: events.size,
+        total: Math.min(totalEvents, maximum),
+        percent: totalEvents === 0 ? 0 : Math.min(65, Math.floor((events.size / totalEvents) * 65)),
+        message: `El Indexer no respondió; reintentando la página (${attempt + 1}/${REPORT_PAGE_RETRIES})`,
+      });
+      await waitForReportRetry(input.signal, input.retryDelayMs ?? REPORT_RETRY_DELAY_MS);
     }
-    if (page.access === 'forbidden') throw new ReportCollectionError('forbidden');
-    if (page.access !== 'ok') throw new ReportCollectionError('unavailable');
+    if (!page) throw new ReportCollectionError('unavailable');
     if (pages === 0) {
       expectedTotal = page.total;
       sourceFoundInRelated = Boolean(

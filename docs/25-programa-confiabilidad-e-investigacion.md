@@ -467,6 +467,11 @@ el codigo local previo de la conversacion no cuenta como release.
   expediente. Los botones quedan disponibles tras error para reintentar. La integración en
   `investigation_view.tsx` está hecha. Los artefactos se generan en memoria del navegador y se pierden
   al cerrar la página; no hay reanudación durable ni artefacto protegido.
+- Ante una página temporalmente no disponible, la exportación reintenta hasta dos veces con espera
+  breve y cancelable; si no se recupera, falla sin descargar resultados parciales. Esto mejora la
+  tolerancia del cliente, pero no reemplaza el diagnóstico de la respuesta del Indexer ni prueba su
+  disponibilidad. Los mensajes antiguos en el dashboard tampoco prueban que el código actual esté
+  desplegado; la versión visible debe coincidir con el SHA de la release.
 - **Cobertura M365:** el feed actual es Microsoft 365 Management Activity/Audit, no Graph Mail ni
   eDiscovery. La proyección allowlistea `email` opcional con `InternetMessageId`, `NetworkMessageId`,
   `MailboxOwnerUPN`, hasta 50 destinatarios deduplicados y la operación cuando el esquema del evento
