@@ -75,20 +75,17 @@ function setup(options: {
 
 const alertsGet: InternalGet = async (url) => {
   if (url.startsWith('/api/alerts?')) {
-    return {
-      status: 200,
-      body: {
-        items: [
-          alert('a-4', 'P1', 'B89 Cloudflare: oleada', '2026-11-13T15:00:00Z'),
-          alert('a-3', 'P2', 'B89 Snyk: vulnerabilidad', '2026-11-13T02:00:00Z', {
-            status: 'closed',
-          }),
-          alert('a-2', 'P1', 'B89 Cloudflare: oleada', '2026-11-12T20:00:00Z'),
-          alert('a-1', 'P3', 'B89 AWS: CloudTrail', '2026-10-01T20:00:00Z'),
-        ],
-        nextCursor: null,
-      },
-    };
+    // Como la API real: `priority` filtra en el servidor.
+    const priority = new URLSearchParams(url.slice(url.indexOf('?') + 1)).get('priority');
+    const items = [
+      alert('a-4', 'P1', 'B89 Cloudflare: oleada', '2026-11-13T15:00:00Z'),
+      alert('a-3', 'P2', 'B89 Snyk: vulnerabilidad', '2026-11-13T02:00:00Z', {
+        status: 'closed',
+      }),
+      alert('a-2', 'P1', 'B89 Cloudflare: oleada', '2026-11-12T20:00:00Z'),
+      alert('a-1', 'P3', 'B89 AWS: CloudTrail', '2026-10-01T20:00:00Z'),
+    ].filter((item) => !priority || item['priority'] === priority);
+    return { status: 200, body: { items, nextCursor: null } };
   }
   return { status: 404, body: null };
 };
@@ -143,7 +140,8 @@ describe('generate_report · kind=alerts', () => {
     expect(spec.kpis.length).toBeLessThanOrEqual(8);
     expect(spec.kpis.find((kpi) => kpi.label === 'Alertas')?.value).toBe('3');
     expect(spec.kpis.find((kpi) => kpi.label === 'Alertas P1')?.value).toBe('2');
-    expect(spec.kpis.find((kpi) => kpi.label === 'Alertas P3')?.value).toBe('0');
+    // Solo las prioridades del alcance: sin KPIs en cero de P3/P4 que no se pidieron.
+    expect(spec.kpis.find((kpi) => kpi.label === 'Alertas P3')).toBeUndefined();
     // Narrativa del modelo primero, sin HTML, con el valor real (es la descarga de la persona).
     const [summary, findings] = spec.sections;
     expect(summary).toMatchObject({ type: 'markdown', heading: 'Resumen ejecutivo' });
@@ -168,6 +166,35 @@ describe('generate_report · kind=alerts', () => {
     expect(stored).toHaveLength(1);
     expect(await vault.get(owner, stored[0]!.artifact.id)).toMatchObject({ size: PDF.byteLength });
     expect(stored[0]).toMatchObject({ kind: 'alerts', format: 'pdf', rows: 3, pages: 3 });
+  });
+
+  it('miles de P3 recientes no tapan las P1/P2 del periodo (incidente 2026-11-13)', async () => {
+    const { client, specs } = fakeReports();
+    const p3 = Array.from({ length: 200 }, (_, index) =>
+      alert(`p3-${index}`, 'P3', 'B89 M365: actividad', '2026-11-13T16:00:00Z'),
+    );
+    const older = Array.from({ length: 40 }, (_, index) =>
+      alert(`p2-${index}`, 'P2', 'B89 SharePoint: descarga masiva', '2026-11-10T12:00:00Z'),
+    );
+    const get: InternalGet = async (url) => {
+      const query = new URLSearchParams(url.slice(url.indexOf('?') + 1));
+      const priority = query.get('priority');
+      if (!priority) {
+        // Sin filtro: páginas eternas de P3 recientes (lo que hacía agotar el tope).
+        return { status: 200, body: { items: p3, nextCursor: 'more' } };
+      }
+      return { status: 200, body: { items: priority === 'P2' ? older : [], nextCursor: null } };
+    };
+    const { tool } = setup({ get, reports: client });
+    const outcome = await tool.run({
+      format: 'pdf',
+      kind: 'alerts',
+      title: 'P1 y P2',
+      scope: { from: '2026-11-06T00:00:00Z', to: '2026-11-13T17:00:00Z', priorities: ['P1', 'P2'] },
+    });
+    expect(outcome.ok).toBe(true);
+    expect(specs[0]!.kpis.find((kpi) => kpi.label === 'Alertas')?.value).toBe('40');
+    expect(specs[0]!.kpis.find((kpi) => kpi.label === 'Alertas P2')?.value).toBe('40');
   });
 
   it('sin servicio de informes responde unavailable', async () => {

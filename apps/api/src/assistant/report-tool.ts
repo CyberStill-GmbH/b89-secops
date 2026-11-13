@@ -289,36 +289,45 @@ async function gatherAlerts(context: ToolContext, scope: Row): Promise<Gathered>
   if (!context.capabilities.has('alerts.read')) throw new ForbiddenError();
   const parsed = parseAlertScope(scope, context.now);
   const matched: Row[] = [];
-  let cursor: string | undefined;
-  let complete = false;
-  for (let page = 0; page < REPORT_LIMITS.maxAlertPages; page += 1) {
-    const params = new URLSearchParams({ pageSize: '200' });
-    if (parsed.open) params.set('status', 'open');
-    if (parsed.priorities.length === 1) params.set('priority', parsed.priorities[0] as string);
-    if (cursor) params.set('cursor', cursor);
-    const response = await context.get(`/api/alerts?${params.toString()}`);
-    guardStatus(response);
-    let older = false;
-    for (const alert of rowsOf(response.body)) {
-      const at = new Date(String(alert['occurredAt'] ?? ''));
-      if (Number.isNaN(at.getTime())) continue;
-      if (at > parsed.to) continue;
-      if (at < parsed.from) {
-        older = true;
-        continue;
+  let complete = true;
+  // Una pasada por prioridad pedida, filtrada en la API. Sin esto, pedir «P1 y P2» recorría la
+  // lista completa (ordenada por hora) y miles de P3 recientes agotaban el tope antes de llegar a
+  // las P1/P2 del periodo: el informe del 2026-11-13 mostró 2 alertas en vez de 133.
+  const passes: readonly (string | undefined)[] =
+    parsed.priorities.length > 0 ? parsed.priorities : [undefined];
+  for (const priority of passes) {
+    let cursor: string | undefined;
+    let passComplete = false;
+    for (let page = 0; page < REPORT_LIMITS.maxAlertPages; page += 1) {
+      const params = new URLSearchParams({ pageSize: '200' });
+      if (parsed.open) params.set('status', 'open');
+      if (priority) params.set('priority', priority);
+      if (cursor) params.set('cursor', cursor);
+      const response = await context.get(`/api/alerts?${params.toString()}`);
+      guardStatus(response);
+      let older = false;
+      for (const alert of rowsOf(response.body)) {
+        const at = new Date(String(alert['occurredAt'] ?? ''));
+        if (Number.isNaN(at.getTime())) continue;
+        if (at > parsed.to) continue;
+        if (at < parsed.from) {
+          older = true;
+          continue;
+        }
+        if (parsed.source && providerOf(alert['title']) !== parsed.source) continue;
+        matched.push(alert);
       }
-      if (parsed.priorities.length > 1 && !parsed.priorities.includes(String(alert['priority']))) {
-        continue;
+      cursor = nextCursorOf(response.body);
+      if (older || !cursor) {
+        passComplete = true;
+        break;
       }
-      if (parsed.source && providerOf(alert['title']) !== parsed.source) continue;
-      matched.push(alert);
     }
-    cursor = nextCursorOf(response.body);
-    if (older || !cursor) {
-      complete = true;
-      break;
-    }
+    if (!passComplete) complete = false;
   }
+  matched.sort((left, right) =>
+    String(right['occurredAt'] ?? '').localeCompare(String(left['occurredAt'] ?? '')),
+  );
 
   const byPriority = countBy(matched, (alert) => alert['priority']);
   const byStatus = countBy(matched, (alert) => alert['status']);
@@ -328,7 +337,10 @@ async function gatherAlerts(context: ToolContext, scope: Row): Promise<Gathered>
   ).length;
   const kpis: ReportKpi[] = [
     { label: 'Alertas', value: String(matched.length) },
-    ...(['P1', 'P2', 'P3', 'P4'] as const).map((priority) => ({
+    ...(parsed.priorities.length > 0
+      ? parsed.priorities
+      : (['P1', 'P2', 'P3', 'P4'] as const)
+    ).map((priority) => ({
       label: `Alertas ${priority}`,
       value: String(byPriority.get(priority) ?? 0),
     })),
