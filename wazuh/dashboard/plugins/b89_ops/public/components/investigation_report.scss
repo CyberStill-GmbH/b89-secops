@@ -28,7 +28,94 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  justify-content: flex-end;
+  justify-content: flex-start;
+}
+
+// Acción principal: «Generar informe con Bunny» (Fucsia/Coral) con menú de formato.
+.b89ReportActions__primary {
+  position: relative;
+}
+
+.b89ReportActions__split {
+  display: inline-flex;
+}
+
+.b89ReportActions__bunny,
+.b89ReportActions__bunnyMenu {
+  min-height: 36px;
+  border: 0;
+  background: linear-gradient(120deg, #ff5899, #ff5841);
+  color: #21141b;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
+  &:focus-visible {
+    outline: 2px solid #119cff;
+    outline-offset: 2px;
+  }
+}
+
+.b89ReportActions__bunny {
+  padding: 7px 14px;
+  border-radius: 6px 0 0 6px;
+}
+
+.b89ReportActions__bunnyMenu {
+  padding: 7px 10px;
+  border-left: 1px solid rgba(33, 20, 27, 0.35);
+  border-radius: 0 6px 6px 0;
+}
+
+.b89ReportActions__menu {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 4px);
+  right: 0;
+  display: grid;
+  min-width: 170px;
+  padding: 4px;
+  border: 1px solid #566576;
+  border-radius: 6px;
+  background: #1f2832;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+
+  button {
+    padding: 8px 12px;
+    border: 0;
+    border-radius: 4px;
+    background: none;
+    color: #f2f5f8;
+    cursor: pointer;
+    font-size: 13px;
+    text-align: left;
+
+    &:hover,
+    &:focus-visible {
+      background: #334151;
+    }
+  }
+}
+
+// Exportación directa (en el navegador): secundaria.
+.b89ReportActions__direct {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid #364453;
+}
+
+.b89ReportActions__directLabel {
+  color: #aab6c2;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .b89ReportActions__buttons button {
