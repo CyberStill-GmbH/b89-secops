@@ -240,3 +240,125 @@ describe('ráfaga tras una caída (incidente 2026-11-10)', () => {
     expect(transport.calls).toHaveLength(1);
   });
 });
+
+describe('una misma acción con varias reglas (incidente 2026-11-13)', () => {
+  // Un consentimiento en Entra registra tres operaciones (tres reglas) del mismo usuario en el
+  // mismo segundo. Antes salía un aviso por regla al canal y un correo por miembro del grupo.
+  let attempts: InMemoryAttemptStore;
+  let transport: RecordingTransport;
+  let now: Date;
+  let sequence: number;
+
+  const enricher: NotificationEnricher = {
+    contextFor: (message) =>
+      Promise.resolve({
+        context: {
+          kind: 'alert',
+          alertId: message.aggregateId,
+          incidentId: null,
+          title: String(message.payload['title']),
+          priority: message.payload['priority'] as 'P1' | 'P2',
+          severity: null,
+          source: { id: 'entra', vendor: 'Microsoft Entra ID' },
+          entity: null,
+          ruleId: String(message.payload['ruleId']),
+          summary: String(message.payload['title']),
+          whyItMatters: null,
+          mitre: [],
+          correlation: null,
+          score: 80,
+          reasons: [],
+          relatedAlertCount: 0,
+          occurredAt: NOW.toISOString(),
+          nextStep: null,
+          runbook: null,
+          test: false,
+        },
+        // El orden y las IP difieren entre operaciones: el actor es el mismo usuario.
+        entityKeys: (message.payload['entities'] as string[]) ?? [],
+        occurredAt: NOW,
+      }),
+  };
+
+  function message(index: number, ruleId: string, priority: 'P1' | 'P2', entities: string[]): OutboxMessageDraft {
+    return {
+      messageId: `00000000-0000-4000-9000-${index.toString().padStart(12, '0')}`,
+      tenantId: 't1',
+      aggregateType: 'alert',
+      aggregateId: `alert-entra-${index}`,
+      messageType: 'soc.alert.created',
+      schemaVersion: '1.0.0',
+      idempotencyKey: `entra-${index}`,
+      payload: { title: `B89 Entra: consentimiento (${ruleId})`, priority, ruleId, entities, occurredAt: NOW.toISOString() },
+      availableAt: NOW,
+    };
+  }
+
+  function dependencies(): DispatchDependencies {
+    return {
+      outbox: new InMemoryOutbox(),
+      attempts,
+      transport,
+      fallback: new ConsoleFallbackChannel(),
+      audit: new InMemoryAuditStore(),
+      clock: { now: () => now },
+      ids: {
+        next: () => {
+          sequence += 1;
+          return `0199bf33-0000-7000-9000-${sequence.toString().padStart(12, '0')}`;
+        },
+      },
+      consoleBaseUrl: 'https://dev.security.b89.io',
+      enricher,
+    };
+  }
+
+  beforeEach(() => {
+    attempts = new InMemoryAttemptStore();
+    transport = new RecordingTransport();
+    now = NOW;
+    sequence = 0;
+  });
+
+  it('tres reglas del mismo usuario y fuente salen como un solo aviso y no se repiten en el resumen', async () => {
+    const results = [
+      await dispatchMessage(dependencies(), message(1, '100710', 'P2', ['user:fr@b89.io', 'ip:203.0.113.7'])),
+      await dispatchMessage(dependencies(), message(2, '100711', 'P2', ['ip:203.0.113.8', 'user:fr@b89.io'])),
+      await dispatchMessage(dependencies(), message(3, '100712', 'P2', ['user:fr@b89.io'])),
+    ];
+    expect(results.map((result) => result.code)).toEqual(['delivered', 'suppressed', 'suppressed']);
+    expect(results[1]!.attempt).toMatchObject({ suppressionReason: 'grouped', supersededBy: results[0]!.attempt?.id });
+    expect(transport.calls).toHaveLength(1);
+
+    now = new Date(NOW.getTime() + DEFAULT_NOTIFICATION_POLICY.digestFlushMs + 1);
+    const digest = await runSuppressedDigest({
+      tenantId: 't1',
+      attempts,
+      transport,
+      audit: new InMemoryAuditStore(),
+      clock: { now: () => now },
+      consoleBaseUrl: 'https://dev.security.b89.io',
+    });
+    expect(digest).toBeUndefined();
+    expect(transport.calls).toHaveLength(1);
+  });
+
+  it('una P1 del mismo usuario sí avisa aunque ya saliera una P2 (escalada)', async () => {
+    await dispatchMessage(dependencies(), message(1, '100710', 'P2', ['user:fr@b89.io']));
+    const p1 = await dispatchMessage(dependencies(), message(2, '100799', 'P1', ['user:fr@b89.io']));
+    expect(p1.code).toBe('delivered');
+    expect(transport.calls).toHaveLength(2);
+  });
+
+  it('otro usuario u otra fuente forman su propio grupo', () => {
+    const base = { aggregateType: 'alert' as const, aggregateId: 'a', ruleId: '100710', priority: 'P2' };
+    const fr = groupKeyFor({ ...base, entityKeys: ['user:fr@b89.io'], sourceId: 'entra' });
+    expect(groupKeyFor({ ...base, ruleId: '100711', entityKeys: ['ip:1.2.3.4', 'user:FR@b89.io'], sourceId: 'entra' })).toBe(fr);
+    expect(groupKeyFor({ ...base, entityKeys: ['user:otra@b89.io'], sourceId: 'entra' })).not.toBe(fr);
+    expect(groupKeyFor({ ...base, entityKeys: ['user:fr@b89.io'], sourceId: 'm365' })).not.toBe(fr);
+    // Solo IP: no hay actor, se conserva la agrupación por regla + entidades.
+    expect(groupKeyFor({ ...base, entityKeys: ['ip:1.2.3.4'], sourceId: 'entra' })).not.toBe(
+      groupKeyFor({ ...base, ruleId: '100711', entityKeys: ['ip:1.2.3.4'], sourceId: 'entra' }),
+    );
+  });
+});

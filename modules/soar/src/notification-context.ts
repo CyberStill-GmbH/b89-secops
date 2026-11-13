@@ -142,10 +142,30 @@ export const ENTITY_LABELS: Readonly<Record<NotificationEntity['kind'], string>>
   service: 'Servicio',
 });
 
+/** Entidad que «hace» la actividad: usuario, equipo, servicio o recurso cloud (nunca solo IP). */
+const ACTOR_KINDS = ['user', 'host', 'service', 'cloud'] as const;
+
+export function actorKeyOf(entityKeys: readonly string[] | undefined): string | null {
+  const keys = (entityKeys ?? []).map((key) => key.trim().toLowerCase()).filter(Boolean);
+  for (const kind of ACTOR_KINDS) {
+    const match = keys.filter((key) => key.startsWith(`${kind}:`)).sort()[0];
+    if (match) return match;
+  }
+  return null;
+}
+
 /**
- * Clave de agrupación de ruido. Orden de preferencia: incidente → patrón del correlador +
- * entidades → regla + entidades → regla sola (alertas de plataforma sin entidad). Se guarda
- * como hash: la clave no debe llevar UPN ni IP a la base de avisos.
+ * Clave de agrupación de ruido. Orden de preferencia: escalada humana → incidente → cadena del
+ * correlador + entidades → **actividad** (actor + fuente + nivel de prioridad) → regla +
+ * entidades → título (plataforma sin regla). Se guarda como hash: la clave no debe llevar UPN
+ * ni IP a la base de avisos.
+ *
+ * Actividad (incidente 2026-11-13): una sola acción genera varias reglas a la vez (un
+ * consentimiento en Entra registra «Consent to application», «Add app role» y «Add delegated
+ * permission»; una regla de bandeja, alta + modificación). Agrupar por regla mandaba un aviso
+ * por operación al canal de Teams y, por la suscripción del grupo M365, un correo por miembro.
+ * El nivel P1/P2 forma parte de la clave para que una P1 nueva del mismo actor sí avise
+ * aunque ya hubiera salido una P2 (escalada), y varias P1 del mismo actor se agrupen.
  */
 export function groupKeyFor(input: {
   /** Una escalada es una decisión humana: nunca se agrupa con la creación de la alerta. */
@@ -156,12 +176,19 @@ export function groupKeyFor(input: {
   readonly ruleId?: string | null;
   readonly entityKeys?: readonly string[];
   readonly title?: string;
+  /** Fuente normalizada (`sourceFromTitle(...).id`): entra, m365, aws, b89-platform… */
+  readonly sourceId?: string | null;
+  readonly priority?: string | null;
 }): string {
   let raw: string;
+  const actor = actorKeyOf(input.entityKeys);
   if (input.messageType === 'soc.alert.escalated') raw = `escalated:${input.aggregateId}`;
   else if (input.aggregateType === 'incident') raw = `incident:${input.aggregateId}`;
   else if (input.incidentId) raw = `incident:${input.incidentId}`;
-  else if (input.ruleId) {
+  else if (input.ruleId && !input.ruleId.startsWith('corr:') && actor) {
+    const tier = input.priority === 'P1' ? 'P1' : 'P2+';
+    raw = `activity:${(input.sourceId ?? 'unknown').toLowerCase()}|${actor}|${tier}`;
+  } else if (input.ruleId) {
     const entities = [...(input.entityKeys ?? [])].sort().join(',');
     raw = `rule:${input.ruleId}|${entities}`;
   } else {

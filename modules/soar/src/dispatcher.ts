@@ -241,6 +241,8 @@ export async function dispatchMessage(
       ruleId: context.correlation ? `corr:${context.correlation.patternId}` : context.ruleId,
       entityKeys,
       title: context.title,
+      sourceId: context.source?.id ?? null,
+      priority: context.priority,
     });
   const effectivePriority = message.aggregateType === 'incident' ? 'P1' : context.priority;
   const quietPeriodMs =
@@ -303,6 +305,10 @@ export async function dispatchMessage(
         status: 'suppressed',
         suppressionReason: decision.reason,
         supersededBy: decision.coveredBy,
+        // Agrupada: ya la cubre un aviso enviado; no vuelve a salir en el resumen de suprimidas.
+        ...(decision.reason === 'grouped' && decision.coveredBy
+          ? { digestId: decision.coveredBy }
+          : {}),
         groupKey,
         context: { ...context },
         updatedAt: at,
@@ -378,6 +384,8 @@ export async function dispatchMessage(
       status: 'suppressed',
       suppressionReason: 'grouped',
       supersededBy: groupReservation.coveredBy,
+      // Cubierta por el aviso en curso del grupo: no se repite en el resumen de suprimidas.
+      ...(groupReservation.coveredBy ? { digestId: groupReservation.coveredBy } : {}),
       groupKey,
       context: { ...context, ...(notice ? { notice } : {}) },
       updatedAt: at,
