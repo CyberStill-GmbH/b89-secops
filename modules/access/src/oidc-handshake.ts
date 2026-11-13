@@ -72,6 +72,28 @@ export interface CallbackInput {
   readonly browserBinding?: string;
 }
 
+const PROVIDER_ERROR_CODES = new Set([
+  'access_denied',
+  'consent_required',
+  'interaction_required',
+  'invalid_client',
+  'invalid_request',
+  'login_required',
+  'server_error',
+  'temporarily_unavailable',
+  'unauthorized_client',
+  'unsupported_response_type',
+]);
+
+/** Conserva solo un código estable del proveedor; nunca registra `error_description` crudo. */
+function providerDiagnosticCode(input: CallbackInput): string {
+  const description = input.errorDescription?.slice(0, 4096);
+  const aadsts = description?.match(/AADSTS([0-9]{1,8})/iu);
+  if (aadsts) return `AADSTS${aadsts[1]}`;
+  const error = input.error?.toLowerCase();
+  return error && PROVIDER_ERROR_CODES.has(error) ? error : 'PROVIDER_ERROR';
+}
+
 export type CallbackResult =
   | { readonly ok: true; readonly handshake: PendingHandshake; readonly code: string }
   | {
@@ -144,7 +166,7 @@ export function resolveCallback(
     return { ok: false, code: 'STATE_MISMATCH' };
   }
   if (input.error) {
-    return { ok: false, code: 'PROVIDER_ERROR', detail: input.error };
+    return { ok: false, code: 'PROVIDER_ERROR', detail: providerDiagnosticCode(input) };
   }
   if (!input.code) return { ok: false, code: 'CODE_REQUIRED' };
   return { ok: true, handshake: stored, code: input.code };

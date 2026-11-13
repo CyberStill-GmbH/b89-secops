@@ -129,7 +129,10 @@ export class B89ApiClient {
         body: JSON.stringify(body),
         ...(signal ? { signal } : {}),
       });
-    } catch {
+    } catch (error) {
+      // Keep AbortError intact so callers can distinguish an intentional cancel
+      // from a transport failure and the server can observe the closed stream.
+      if (signal?.aborted) throw error;
       throw new B89ApiError('DEPENDENCY_DEGRADED', 0, null);
     }
     if (!response.ok) {
@@ -146,10 +149,9 @@ export class B89ApiClient {
       }
       throw error;
     }
-    if (
-      !response.headers.get('content-type')?.toLowerCase().includes('text/event-stream') ||
-      !response.body
-    ) {
+    const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+    if (contentType.includes('application/json')) return response;
+    if (!contentType.includes('text/event-stream') || !response.body) {
       throw new B89ApiError('DEPENDENCY_DEGRADED', response.status, null);
     }
     return response;

@@ -78,7 +78,13 @@ export class AuthController {
 
   @Get('callback')
   public async callback(
-    @Query() query: { state?: string; code?: string; error?: string },
+    @Query()
+    query: {
+      state?: string;
+      code?: string;
+      error?: string;
+      error_description?: string;
+    },
     @Req() request: IncomingRequest,
     @Res() reply: OutgoingReply,
   ) {
@@ -86,7 +92,15 @@ export class AuthController {
     const browserBinding = oidcFlowBindingOf(request, query.state);
     const returnTo = this.runtime.takeReturnTo(query.state, browserBinding);
     const result = await this.runtime.completeSignIn(
-      { ...query, ...(browserBinding ? { browserBinding } : {}) },
+      {
+        ...(query.state === undefined ? {} : { state: query.state }),
+        ...(query.code === undefined ? {} : { code: query.code }),
+        ...(query.error === undefined ? {} : { error: query.error }),
+        ...(query.error_description === undefined
+          ? {}
+          : { errorDescription: query.error_description }),
+        ...(browserBinding ? { browserBinding } : {}),
+      },
       originOf(request),
       correlationId,
     );

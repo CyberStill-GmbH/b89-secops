@@ -294,3 +294,9 @@ El XLSX de Bunny usa `showSaveFilePicker` cuando el navegador lo ofrece: el dest
 En navegadores sin escritura directa se conserva la descarga por Blob, con el mismo límite de 50 MiB; esa alternativa sí mantiene el archivo completo en memoria y la interfaz lo informa. Cancelar el selector no inicia la consulta.
 
 PDF sigue siendo un expediente HTML local: la ventana de vista previa muestra la cabecera y el contexto, y añade las filas de las tablas en lotes conforme se serializan. Al terminar abre el diálogo de impresión del navegador para guardar el PDF. No hay PDF parcial, renderer servidor ni job durable.
+
+### Cancelación y compatibilidad del chat (2026-11-13)
+
+El panel permite cancelar una consulta en curso con `AbortController`; el cierre del stream llega al servidor y la interfaz conserva el borrador para un reenvío explícito. Cancelar no reintenta ni afirma que el servidor no alcanzó a iniciar el turno. Si el proxy rechaza expresamente SSE antes de aceptar la solicitud (404/405/406/415/501 sin `correlationId` B89), el cliente usa una sola vez `POST /assistant/chat`. Los errores de red ambiguos, 5xx, respuestas SSE ya recibidas o streams cortados tras iniciar no se reenvían automáticamente para evitar doble invocación. Una respuesta JSON completa ya devuelta por el proxy se valida y se usa directamente.
+
+La disponibilidad de configuración tiene estados distintos: comprobando, disponible (incluye `enabled=false`) y no disponible. Un fallo de lectura no se interpreta como asistente deshabilitado y ofrece reintento. El progreso expone el fallback de transporte como tal; no inventa actividad del modelo ni muestra razonamiento privado.

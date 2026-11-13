@@ -1134,6 +1134,7 @@ export class SecOpsRuntime {
       readonly state?: string;
       readonly code?: string;
       readonly error?: string;
+      readonly errorDescription?: string;
       readonly browserBinding?: string;
     },
     origin: RequestOrigin,
@@ -1155,6 +1156,7 @@ export class SecOpsRuntime {
       readonly state?: string;
       readonly code?: string;
       readonly error?: string;
+      readonly errorDescription?: string;
       readonly browserBinding?: string;
     },
     origin: RequestOrigin,

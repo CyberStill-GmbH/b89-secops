@@ -12,6 +12,7 @@ import type { B89ApiClient } from '../api/client';
 import type {
   BunnyCitation,
   BunnyConfig,
+  BunnyConfigState,
   BunnyFeedback,
   BunnyProgressEvent,
   BunnyStep,
@@ -24,10 +25,10 @@ import {
   citationPath,
   deleteAllConversations,
   deleteConversation,
-  fetchBunnyConfig,
   fetchBunnyUsage,
   formatWhen,
   getConversation,
+  loadBunnyConfigState,
   listConversations,
   rateMessage,
   suggestionsFor,
@@ -386,7 +387,15 @@ function HistoryView({
   );
 }
 
-function BunnyUsageView({ api, config }: { api: B89ApiClient; config: BunnyConfig | null }) {
+function BunnyUsageView({
+  api,
+  configState,
+  onRetryConfig,
+}: {
+  api: B89ApiClient;
+  configState: BunnyConfigState;
+  onRetryConfig: () => void;
+}) {
   const [usage, setUsage] = useState<BunnyUsage | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
@@ -438,35 +447,42 @@ function BunnyUsageView({ api, config }: { api: B89ApiClient; config: BunnyConfi
       <p className="b89Bunny__usageIntro">
         Vista administrativa de solo lectura. No muestra prompts, respuestas ni claves.
       </p>
-      {config ? (
+      {configState.status === 'ready' ? (
         <dl>
           <div>
             <dt>Estado</dt>
-            <dd>{config.enabled ? 'Habilitado' : 'Deshabilitado'}</dd>
+            <dd>{configState.config.enabled ? 'Habilitado' : 'Deshabilitado'}</dd>
           </div>
           <div>
             <dt>Proveedor</dt>
-            <dd>{config.provider ?? 'Sin dato'}</dd>
+            <dd>{configState.config.provider ?? 'Sin dato'}</dd>
           </div>
           <div>
             <dt>Modelo</dt>
-            <dd>{config.model ?? 'Sin dato'}</dd>
+            <dd>{configState.config.model ?? 'Sin dato'}</dd>
           </div>
           <div>
             <dt>Esfuerzo</dt>
-            <dd>{config.effort ?? 'Sin dato'}</dd>
+            <dd>{configState.config.effort ?? 'Sin dato'}</dd>
           </div>
           <div>
             <dt>Límite por persona</dt>
-            <dd>{config.rateLimit ?? 'Sin dato'} preguntas / 10 min</dd>
+            <dd>{configState.config.rateLimit ?? 'Sin dato'} preguntas / 10 min</dd>
           </div>
           <div>
             <dt>Datos personales</dt>
-            <dd>{config.redactsPersonalData ? 'Seudonimizados' : 'Redacción desactivada'}</dd>
+            <dd>{configState.config.redactsPersonalData ? 'Seudonimizados' : 'Redacción desactivada'}</dd>
           </div>
         </dl>
+      ) : configState.status === 'loading' ? (
+        <p role="status">Consultando configuración del servicio…</p>
       ) : (
-        <p role="status">No se pudo leer la configuración del servicio.</p>
+        <div role="alert">
+          <p>No se pudo comprobar la configuración. El estado del asistente es desconocido.</p>
+          <button type="button" onClick={onRetryConfig}>
+            Reintentar configuración
+          </button>
+        </div>
       )}
       <h4>Consumo · últimos 30 días</h4>
       {loading && !usage && <p role="status">Consultando auditoría…</p>}
@@ -565,7 +581,8 @@ export function BunnyPanel({
   imageUrl: string;
 }) {
   const open = useBunnyOpen(state);
-  const [config, setConfig] = useState<BunnyConfig | null>(null);
+  const [configState, setConfigState] = useState<BunnyConfigState>({ status: 'loading' });
+  const config = configState.status === 'ready' ? configState.config : null;
   const [canSeeUsage, setCanSeeUsage] = useState(false);
   const [canWriteNotes, setCanWriteNotes] = useState(false);
   const [view, setView] = useState<View>('chat');
@@ -587,8 +604,17 @@ export function BunnyPanel({
   /** Contexto recibido de «Preguntar a Bunny» (alerta/incidente) para la siguiente pregunta. */
   const [askContext, setAskContext] = useState<string | null>(null);
   const nextId = useRef(1);
+  const activeChatRun = useRef<AbortController | null>(null);
+  const configRequest = useRef(0);
   const listRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const loadConfig = useCallback(async () => {
+    const requestId = ++configRequest.current;
+    setConfigState({ status: 'loading' });
+    const result = await loadBunnyConfigState(api);
+    if (requestId === configRequest.current) setConfigState(result);
+  }, [api]);
 
   useEffect(() => {
     if (!pending || thinkingStartedAt === null) return undefined;
@@ -600,7 +626,7 @@ export function BunnyPanel({
   }, [pending, thinkingStartedAt]);
 
   useEffect(() => {
-    fetchBunnyConfig(api).then(setConfig, () => setConfig({ enabled: false, name: NAME }));
+    void loadConfig();
     api.session().then(
       (session) => {
         setCanSeeUsage(session.capabilities.includes('observability.read_platform'));
@@ -611,7 +637,10 @@ export function BunnyPanel({
         setCanWriteNotes(false);
       },
     );
-  }, [api]);
+    return () => {
+      configRequest.current += 1;
+    };
+  }, [api, loadConfig]);
 
   useEffect(() => {
     if (open && view === 'chat') inputRef.current?.focus();
@@ -683,11 +712,14 @@ export function BunnyPanel({
         .filter((message) => !message.tone)
         .map(({ role, text: content }) => ({ role, content }));
       setDraft('');
+      const userMessageId = nextId.current;
       append({ role: 'user', text });
       setPending(true);
       setThinkingStartedAt(Date.now());
       setElapsedSeconds(0);
       setProgressEvents([]);
+      const controller = new AbortController();
+      activeChatRun.current = controller;
       try {
         const reply = await askBunnyStream(
           api,
@@ -696,6 +728,7 @@ export function BunnyPanel({
           askContext ?? `${window.location.pathname}${window.location.search}`,
           (event) => setProgressEvents((current) => [...current, event]),
           conversationId ?? undefined,
+          controller.signal,
         );
         setAskContext(null);
         if (reply.conversationId) setConversationId(reply.conversationId);
@@ -711,8 +744,23 @@ export function BunnyPanel({
             : {}),
         });
       } catch (error) {
-        append({ role: 'assistant', text: errorText(error), tone: 'error' });
+        if (controller.signal.aborted) {
+          setDraft(text);
+          setMessages((current) =>
+            current.map((message) =>
+              message.id === userMessageId ? { ...message, tone: 'notice' } : message,
+            ),
+          );
+          append({
+            role: 'assistant',
+            text: 'Consulta cancelada. No se reintentó automáticamente; revisa la actividad antes de volver a enviarla.',
+            tone: 'notice',
+          });
+        } else {
+          append({ role: 'assistant', text: errorText(error), tone: 'error' });
+        }
       } finally {
+        if (activeChatRun.current === controller) activeChatRun.current = null;
         setPending(false);
         inputRef.current?.focus();
       }
@@ -834,12 +882,24 @@ export function BunnyPanel({
       </header>
 
       {view === 'usage' && canSeeUsage ? (
-        <BunnyUsageView api={api} config={config} />
-      ) : !config ? (
+        <BunnyUsageView
+          api={api}
+          configState={configState}
+          onRetryConfig={() => void loadConfig()}
+        />
+      ) : configState.status === 'loading' ? (
         <div className="b89Bunny__unavailable" role="status">
           Comprobando disponibilidad del asistente...
         </div>
-      ) : !config.enabled ? (
+      ) : configState.status === 'unavailable' ? (
+        <section className="b89Bunny__unavailable" role="alert">
+          <h3>No se pudo comprobar la disponibilidad</h3>
+          <p>El servicio de configuración no respondió. El estado de Bunny es desconocido.</p>
+          <button type="button" onClick={() => void loadConfig()}>
+            Reintentar
+          </button>
+        </section>
+      ) : configState.status === 'ready' && !configState.config.enabled ? (
         <section className="b89Bunny__unavailable" role="status">
           <h3>Bunny está instalado</h3>
           <p>
@@ -1015,6 +1075,13 @@ export function BunnyPanel({
                 <img src={imageUrl} alt="" width={24} height={24} />
                 <div className="b89Bunny__bubble">
                   <BunnyThinking events={progressEvents} elapsedSeconds={elapsedSeconds} />
+                  <button
+                    type="button"
+                    className="b89Bunny__cancelChat"
+                    onClick={() => activeChatRun.current?.abort()}
+                  >
+                    Cancelar consulta
+                  </button>
                 </div>
               </article>
             )}

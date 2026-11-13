@@ -481,3 +481,9 @@ limita a HTTP status, código Graph, `request-id` y etiqueta de operación (`res
 Ante el permiso faltante, revisar que `GroupMember.Read.All` o `Group.Read.All` sea un permiso de
 aplicación de Microsoft Graph con admin consent en el mismo registro de aplicación que usa el API.
 El token de aplicación `.default` se renueva automáticamente. El sondeo read-only del runtime del 2026-11-12 confirmó que el token del client ID configurado por B89 no contenía ninguno de esos app roles y que `GET /groups` respondía 403 `Authorization_RequestDenied`; por tanto, todavía no se pudo validar el nombre del grupo. Esto no demuestra que el consentimiento no se haya concedido a otro registro. La consola ahora expone el código Graph y el `request-id` sin incluir cuerpo, URL ni token; este diagnóstico requiere desplegar la versión local.
+
+### Diagnóstico seguro de errores OIDC (2026-11-13)
+
+El callback conserva únicamente códigos de diagnóstico del proveedor. Si `error_description` contiene un código `AADSTS` numérico, el runtime registra `PROVIDER_ERROR:AADSTS<n>` junto con la etapa `callback` y el `correlationId`; nunca registra ni devuelve la descripción completa. Para errores conocidos conserva solo el valor enumerado de `error`; valores desconocidos se convierten en `PROVIDER_ERROR`. La pantalla mantiene `AUTH_FAILED` genérico y muestra la referencia de correlación para evitar revelar si una cuenta existe o qué rol tiene.
+
+Para investigar un rechazo, buscar `auth.sign_in.denied` por el `correlationId` mostrado en el login y revisar `stage`/`detail`. No solicitar ni copiar `error_description`, códigos de autorización, tokens ni secretos a tickets o chats. Esta traza distingue un rechazo del proveedor de fallos posteriores de canje, JWKS, política de red, MFA o rol, pero no confirma por sí sola que el OAuth desplegado funcione: esa comprobación requiere un intento autorizado contra el entorno y la aplicación Entra configurados.

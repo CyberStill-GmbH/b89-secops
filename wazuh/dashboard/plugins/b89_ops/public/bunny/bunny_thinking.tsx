@@ -29,6 +29,7 @@ export function bunnyProgressTimeline(events: readonly BunnyProgressEvent[]): Bu
   };
 
   events.forEach((event, index) => {
+    if (event.type === 'transport_fallback') return;
     if (event.type === 'model_started') {
       const activeModel = findLastIndex(
         steps,
@@ -87,6 +88,7 @@ export function BunnyThinking({
   readonly elapsedSeconds: number;
 }) {
   const steps = bunnyProgressTimeline(events);
+  const jsonFallback = events.some((event) => event.type === 'transport_fallback');
   return (
     <div className="b89Bunny__thinking" aria-live="off">
       <div className="b89Bunny__thinkingHead">
@@ -100,7 +102,9 @@ export function BunnyThinking({
       </div>
       {steps.length === 0 ? (
         <p className="b89Bunny__thinkingWaiting" role="status" aria-live="polite">
-          Esperando la primera actualización de actividad del servidor…
+          {jsonFallback
+            ? 'El proxy no admite el canal de actividad; esperando la respuesta completa del servicio.'
+            : 'Esperando la primera actualización de actividad del servidor…'}
         </p>
       ) : (
         <ol

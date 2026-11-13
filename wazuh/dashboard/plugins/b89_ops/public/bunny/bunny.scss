@@ -221,6 +221,21 @@ $bunnyEase: cubic-bezier(0.16, 1, 0.3, 1);
     margin: 8px 0 0;
     line-height: 1.55;
   }
+
+  button {
+    margin-top: 14px;
+    padding: 7px 12px;
+    border: 1px solid $bunnyBlue;
+    border-radius: 8px;
+    background: transparent;
+    color: $bunnyText;
+    cursor: pointer;
+
+    &:focus-visible {
+      outline: 2px solid $bunnyBlue;
+      outline-offset: 2px;
+    }
+  }
 }
 
 .b89Bunny__header {
@@ -663,6 +678,28 @@ $bunnyEase: cubic-bezier(0.16, 1, 0.3, 1);
   color: $bunnyMuted;
   font-size: 10px;
   line-height: 1.4;
+}
+
+.b89Bunny__cancelChat {
+  margin-top: 10px;
+  padding: 5px 9px;
+  border: 1px solid $bunnyLine;
+  border-radius: 8px;
+  background: transparent;
+  color: $bunnyText2;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+
+  &:hover {
+    border-color: $bunnyBlue;
+    color: $bunnyText;
+  }
+
+  &:focus-visible {
+    outline: 2px solid $bunnyBlue;
+    outline-offset: 2px;
+  }
 }
 .b89Bunny__thinkingNote {
   padding-top: 8px;

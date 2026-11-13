@@ -4,6 +4,7 @@
 
 import {
   askBunny,
+  askBunnyStream,
   citationPath,
   deleteAllConversations,
   deleteConversation,
@@ -11,9 +12,31 @@ import {
   getConversation,
   HISTORY_TURNS,
   listConversations,
+  loadBunnyConfigState,
   suggestionsFor,
 } from './chat_client';
 import type { B89ApiClient } from '../api/client';
+import { B89ApiError } from '../api/client';
+
+const ANSWER = { reply: 'ok', outcome: 'answered', steps: [], citations: [] } as const;
+
+function streamResponse(chunks: readonly (string | Error)[]): Response {
+  let index = 0;
+  const reader = {
+    read: jest.fn(async () => {
+      const chunk = chunks[index++];
+      if (chunk instanceof Error) throw chunk;
+      if (chunk === undefined) return { done: true, value: undefined };
+      return { done: false, value: new TextEncoder().encode(chunk) };
+    }),
+    releaseLock: jest.fn(),
+  };
+  return {
+    status: 200,
+    headers: { get: () => 'text/event-stream; charset=utf-8' },
+    body: { getReader: () => reader },
+  } as unknown as Response;
+}
 
 describe('citationPath', () => {
   it('lleva alertas e incidentes a su vista con el id codificado', () => {
@@ -58,6 +81,102 @@ describe('askBunny', () => {
     expect(body?.history).toHaveLength(HISTORY_TURNS);
     expect(body?.page).toBe('/app/b89-alerts');
     expect(body?.message).toBe('hola');
+  });
+});
+
+describe('Bunny config availability', () => {
+  it('distingue servicio deshabilitado de configuración no disponible y permite reintentar', async () => {
+    const get = jest.fn().mockRejectedValueOnce(new Error('network')).mockResolvedValueOnce({
+      enabled: false,
+      name: 'Bunny',
+    });
+    const api = { get } as unknown as B89ApiClient;
+
+    expect(await loadBunnyConfigState(api)).toEqual({ status: 'unavailable' });
+    expect(await loadBunnyConfigState(api)).toEqual({
+      status: 'ready',
+      config: { enabled: false, name: 'Bunny' },
+    });
+  });
+});
+
+describe('askBunnyStream', () => {
+  it('pasa la señal de cancelación al transporte SSE', async () => {
+    const controller = new AbortController();
+    let observedSignal: AbortSignal | undefined;
+    const api = {
+      postStream: async (_path: string, _body: unknown, signal?: AbortSignal) => {
+        observedSignal = signal;
+        return streamResponse([
+          `event: complete\ndata: ${JSON.stringify(ANSWER)}\n\n`,
+        ]);
+      },
+    } as unknown as B89ApiClient;
+
+    await askBunnyStream(api, 'pregunta', [], '/app/home', jest.fn(), undefined, controller.signal);
+    expect(observedSignal).toBe(controller.signal);
+  });
+
+  it('usa JSON solo tras un rechazo explícito previo a aceptar el stream', async () => {
+    const post = jest.fn().mockResolvedValue(ANSWER);
+    const onProgress = jest.fn();
+    const api = {
+      postStream: jest.fn().mockRejectedValue(new B89ApiError('DEPENDENCY_DEGRADED', 415, null)),
+      post,
+    } as unknown as B89ApiClient;
+
+    await expect(askBunnyStream(api, 'pregunta', [], '/app/home', onProgress)).resolves.toEqual(
+      ANSWER,
+    );
+    expect(post).toHaveBeenCalledWith('/assistant/chat', {
+      message: 'pregunta',
+      history: [],
+      page: '/app/home',
+    });
+    expect(onProgress).toHaveBeenCalledWith({ type: 'transport_fallback' });
+  });
+
+  it.each([
+    new B89ApiError('DEPENDENCY_DEGRADED', 0, null),
+    new B89ApiError('DEPENDENCY_DEGRADED', 502, null),
+    new B89ApiError('RESOURCE_UNAVAILABLE', 404, 'api-correlation'),
+  ])('no repite solicitudes en fallos ambiguos o procesados (%s)', async (error) => {
+    const post = jest.fn();
+    const api = { postStream: jest.fn().mockRejectedValue(error), post } as unknown as B89ApiClient;
+    await expect(askBunnyStream(api, 'pregunta', [], '/app/home', jest.fn())).rejects.toBe(error);
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it('no repite una llamada si se corta un stream aceptado parcialmente', async () => {
+    const post = jest.fn();
+    const api = {
+      postStream: async () =>
+        streamResponse([
+          'event: started\ndata: {"correlationId":"corr-1"}\n\n',
+          new TypeError('connection dropped'),
+        ]),
+      post,
+    } as unknown as B89ApiClient;
+
+    await expect(askBunnyStream(api, 'pregunta', [], '/app/home', jest.fn())).rejects.toThrow(
+      'connection dropped',
+    );
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it('acepta una respuesta JSON completa del proxy sin volver a enviar la pregunta', async () => {
+    const post = jest.fn();
+    const response = {
+      status: 200,
+      headers: { get: () => 'application/json' },
+      json: async () => ANSWER,
+    } as unknown as Response;
+    const api = { postStream: jest.fn().mockResolvedValue(response), post } as unknown as B89ApiClient;
+
+    await expect(askBunnyStream(api, 'pregunta', [], '/app/home', jest.fn())).resolves.toEqual(
+      ANSWER,
+    );
+    expect(post).not.toHaveBeenCalled();
   });
 });
 

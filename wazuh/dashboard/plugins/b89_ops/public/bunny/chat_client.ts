@@ -18,6 +18,11 @@ export interface BunnyConfig {
   readonly retentionDays?: number;
 }
 
+export type BunnyConfigState =
+  | { readonly status: 'loading' }
+  | { readonly status: 'ready'; readonly config: BunnyConfig }
+  | { readonly status: 'unavailable' };
+
 export interface BunnyUsage {
   readonly period: { readonly from: string; readonly to: string; readonly days: number };
   readonly totals: {
@@ -74,6 +79,7 @@ export interface BunnyTurn {
 }
 
 export type BunnyProgressEvent =
+  | { readonly type: 'transport_fallback' }
   | { readonly type: 'model_started'; readonly round: number }
   | { readonly type: 'tool_started'; readonly label: string }
   | { readonly type: 'tool_finished'; readonly label: string; readonly ok: boolean };
@@ -83,6 +89,15 @@ export const HISTORY_TURNS = 12;
 
 export function fetchBunnyConfig(api: B89ApiClient): Promise<BunnyConfig> {
   return api.get<BunnyConfig>('/assistant/config');
+}
+
+/** A failed config request is an outage, never evidence that Bunny is disabled. */
+export async function loadBunnyConfigState(api: B89ApiClient): Promise<BunnyConfigState> {
+  try {
+    return { status: 'ready', config: await fetchBunnyConfig(api) };
+  } catch {
+    return { status: 'unavailable' };
+  }
 }
 
 export function fetchBunnyUsage(
@@ -118,16 +133,33 @@ export async function askBunnyStream(
   conversationId?: string,
   signal?: AbortSignal,
 ): Promise<BunnyReply> {
-  const response = await api.postStream(
-    '/assistant/chat/stream',
-    {
-      message,
-      history: history.slice(-HISTORY_TURNS),
-      page,
-      ...(conversationId ? { conversationId } : {}),
-    },
-    signal,
-  );
+  let response: Response;
+  try {
+    response = await api.postStream(
+      '/assistant/chat/stream',
+      {
+        message,
+        history: history.slice(-HISTORY_TURNS),
+        page,
+        ...(conversationId ? { conversationId } : {}),
+      },
+      signal,
+    );
+  } catch (error) {
+    // Only retry when a gateway explicitly rejected streaming before the B89
+    // handler accepted the request. Status 0/5xx is ambiguous and must not
+    // trigger a second model call.
+    if (isPreAcceptStreamRejection(error)) {
+      onProgress({ type: 'transport_fallback' });
+      return askBunny(api, message, history, page, conversationId);
+    }
+    throw error;
+  }
+  if (response.headers.get('content-type')?.toLowerCase().includes('application/json')) {
+    const value: unknown = await response.json();
+    if (isBunnyReply(value)) return value;
+    throw new B89ApiError('DEPENDENCY_DEGRADED', response.status, null);
+  }
   const reader = response.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
@@ -185,6 +217,25 @@ export async function askBunnyStream(
   if (streamError) throw streamError;
   if (!completed) throw new B89ApiError('DEPENDENCY_DEGRADED', response.status, null);
   return completed;
+}
+
+function isPreAcceptStreamRejection(error: unknown): error is B89ApiError {
+  return (
+    error instanceof B89ApiError &&
+    error.correlationId === null &&
+    [404, 405, 406, 415, 501].includes(error.status)
+  );
+}
+
+function isBunnyReply(value: unknown): value is BunnyReply {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const reply = value as Partial<BunnyReply>;
+  return (
+    typeof reply.reply === 'string' &&
+    ['answered', 'budget', 'refused', 'truncated', 'unverified'].includes(String(reply.outcome)) &&
+    Array.isArray(reply.steps) &&
+    Array.isArray(reply.citations)
+  );
 }
 
 export interface ConversationSummary {

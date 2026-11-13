@@ -143,6 +143,38 @@ describe('C-18 · retorno del flujo OIDC', () => {
     ).toMatchObject({ ok: false, code: 'PROVIDER_ERROR', detail: 'access_denied' });
   });
 
+  it('conserva solo el código AADSTS de error_description y descarta datos personales', () => {
+    const result = resolveCallback(
+      {
+        state: 'state-1',
+        error: 'access_denied',
+        errorDescription: 'AADSTS50011: redirect mismatch for analyst@example.test',
+        browserBinding: 'binding-1',
+      },
+      pending(),
+      NOW,
+    );
+
+    expect(result).toMatchObject({ ok: false, code: 'PROVIDER_ERROR', detail: 'AADSTS50011' });
+    expect(JSON.stringify(result)).not.toContain('analyst@example.test');
+  });
+
+  it('no registra errores de proveedor desconocidos ni texto arbitrario', () => {
+    const result = resolveCallback(
+      {
+        state: 'state-1',
+        error: 'arbitrary-provider-text',
+        errorDescription: 'sensitive account data without a provider code',
+        browserBinding: 'binding-1',
+      },
+      pending(),
+      NOW,
+    );
+
+    expect(result).toMatchObject({ ok: false, code: 'PROVIDER_ERROR', detail: 'PROVIDER_ERROR' });
+    expect(JSON.stringify(result)).not.toContain('sensitive account data');
+  });
+
   it('solo deja consumir el handshake una vez en el store', async () => {
     const store = new InMemoryHandshakeStore();
     await store.save(pending());

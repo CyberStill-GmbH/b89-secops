@@ -19,7 +19,11 @@ import { wazuhRecordToEvent } from '../src/runtime/wazuh-ingestion.js';
 import { createAttempt, type InMemoryAttemptStore } from '@b89/soar';
 import type { InMemorySoc } from '@b89/soc';
 
-import type { RuntimeDirectory, SecOpsRuntime } from '../src/runtime/secops-runtime.js';
+import type {
+  RuntimeDirectory,
+  SecOpsRuntime,
+  SignInDiagnostic,
+} from '../src/runtime/secops-runtime.js';
 
 const ENVIRONMENT = { B89_PROFILE: 'test' } as const;
 
@@ -36,6 +40,7 @@ let officeSequence = 0;
 
 let application: NestFastifyApplication;
 let runtime: SecOpsRuntime;
+const signInDiagnostics: SignInDiagnostic[] = [];
 /** El harness usa el adapter en memoria; sus filas se inspeccionan directamente. */
 const memorySoc = () => runtime.soc as InMemorySoc;
 let stop: () => Promise<void>;
@@ -197,7 +202,16 @@ async function ingest(recordId: string, severity: 'critical' | 'low' = 'critical
 }
 
 beforeAll(async () => {
-  const built = await buildApi(ENVIRONMENT, () => {});
+  const built = await buildApi(
+    ENVIRONMENT,
+    () => {},
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    (diagnostic) => signInDiagnostics.push(diagnostic),
+  );
   application = built.application;
   runtime = built.runtime;
   stop = built.stop;
@@ -210,6 +224,7 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
+  signInDiagnostics.length = 0;
   officeSequence += 1;
   officeIp = `10.20.${100 + Math.floor(officeSequence / 250)}.${(officeSequence % 250) + 1}`;
   memorySoc().alertRows.clear();
@@ -269,6 +284,39 @@ describe('C-18 · inicio de sesión por el BFF', () => {
     expect(session.statusCode).toBe(200);
     expect(body.capabilities).toContain('incidents.close');
     expect(body.correlationId).toMatch(/^[0-9a-f-]{36}$/u);
+  });
+
+  it('registra solo el AADSTS de un error OAuth y mantiene la respuesta pÃºblica genÃ©rica', async () => {
+    const start = await server().inject({
+      method: 'GET',
+      url: '/api/auth/start',
+      remoteAddress: OFFICE_IP,
+    });
+    const state = new URL(start.headers.location as string, 'http://local').searchParams.get(
+      'state',
+    );
+    const flowCookie = cookiePair(start, 'b89_oidc_flow_');
+    const description = 'AADSTS50011: redirect mismatch for analyst@example.test';
+    const callback = await server().inject({
+      method: 'GET',
+      url: `/api/auth/callback?${new URLSearchParams({
+        state: state ?? '',
+        error: 'access_denied',
+        error_description: description,
+      }).toString()}`,
+      headers: { cookie: flowCookie },
+      remoteAddress: OFFICE_IP,
+    });
+
+    expect(callback.statusCode).toBe(303);
+    expect(authErrorOf(callback)).toBe('AUTH_FAILED');
+    expect(String(callback.headers.location)).not.toContain('AADSTS50011');
+    expect(String(callback.headers.location)).not.toContain('analyst@example.test');
+    expect(signInDiagnostics.at(-1)).toMatchObject({
+      stage: 'callback',
+      code: 'PROVIDER_ERROR:AADSTS50011',
+    });
+    expect(JSON.stringify(signInDiagnostics)).not.toContain(description);
   });
 
   it('introspect entrega persona y roles al proxy del dashboard sin cuerpo', async () => {
