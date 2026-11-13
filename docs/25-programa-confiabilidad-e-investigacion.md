@@ -429,6 +429,16 @@ duplicate cuenta como revisado, no como TP/FP ni como evidencia de supresión.
 - Revision del matcher: la secuencia actual acepta empates de timestamp por la resolucion de segundos.
   Exigir orden temporal estricto podria perder senales; no cambiar ese criterio sin corpus y evaluacion.
 
+El cambio local añade una dimensión de readiness independiente para el feed de feedback; está
+pendiente de deploy y no forma parte del release live descrito arriba. Una vez desplegado, `/readyz`
+expondrá estado, edad y timestamp del último refresh exitoso. `feedbackStatus` distinguirá `pending`,
+`ready`, `failed` y `stale`; una falla reciente o un refresh más viejo que
+`max(3 × B89_CORRELATOR_FEEDBACK_INTERVAL, 30 s)` degradará también la readiness general. El intervalo
+predeterminado es 60 s. Prometheus publicará `b89_correlator_feedback_ready`,
+`b89_correlator_feedback_status`, edad, timestamp del último éxito y
+`b89_correlator_feedback_refresh_errors_total`; si nunca hubo éxito, no inventará edad ni timestamp.
+Esto hará visible la salud del refresh, pero no modifica emisión, matcher ni auto-supresión.
+
 ### 6 - Acceso de owners SOC y privacidad de investigacion
 
 - **Acceso de owners:** se confirmo que una cache local de 60 segundos podia mantener el rol despues

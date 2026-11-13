@@ -190,6 +190,7 @@ func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 	stats := eng.Stats()
 	snap := s.Runner.Snapshot()
 	now := s.Now().UTC()
+	readiness := s.Runner.Readiness(now)
 	var b strings.Builder
 	gauge := func(name, help string, v float64, labels ...string) {
 		fmt.Fprintf(&b, "# HELP %s %s\n# TYPE %s gauge\n", name, help, name)
@@ -203,10 +204,24 @@ func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(&b, "# HELP %s %s\n# TYPE %s counter\n%s %d\n", name, help, name, name, v)
 	}
 	ready := 0.0
-	if snap.Ready {
+	if readiness.Ready {
 		ready = 1
 	}
-	gauge("b89_correlator_ready", "1 when backfill completed and upstream polling is fresh", ready)
+	gauge("b89_correlator_ready", "1 when backfill, upstream polling, and feedback refresh are ready", ready)
+	feedbackReady := 0.0
+	if readiness.FeedbackReady {
+		feedbackReady = 1
+	}
+	gauge("b89_correlator_feedback_ready", "1 when the B89 alert feedback feed has a recent successful refresh", feedbackReady)
+	fmt.Fprintf(&b, "# HELP b89_correlator_feedback_status Current B89 feedback refresh state; one status is always 1\n# TYPE b89_correlator_feedback_status gauge\n")
+	fmt.Fprintf(&b, "b89_correlator_feedback_status{status=%q} 1\n", readiness.FeedbackStatus)
+	if readiness.FeedbackAgeSecs != nil {
+		gauge("b89_correlator_feedback_age_seconds", "Seconds since the last successful B89 feedback refresh", *readiness.FeedbackAgeSecs)
+	}
+	if readiness.LastFeedbackSuccess != nil {
+		gauge("b89_correlator_feedback_last_success_timestamp_seconds", "Unix timestamp of the last successful B89 feedback refresh", float64(readiness.LastFeedbackSuccess.UnixNano())/float64(time.Second))
+	}
+	counter("b89_correlator_feedback_refresh_errors_total", "Failed B89 alert feedback refreshes", s.Runner.C.FeedbackErrors.Load())
 	fmt.Fprintf(&b, "# HELP b89_correlator_observations_total Wazuh alerts processed\n# TYPE b89_correlator_observations_total counter\n")
 	srcs := make([]string, 0, len(stats.BySource))
 	for k := range stats.BySource {

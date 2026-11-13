@@ -116,10 +116,11 @@ func fakeGateway(t *testing.T, docs []map[string]any) *httptest.Server {
 }
 
 type fakeAPI struct {
-	mu         sync.Mutex
-	alerts     json.RawMessage
-	candidates []sources.CandidateRequest
-	audits     map[string]sources.AuditRequest
+	mu           sync.Mutex
+	alerts       json.RawMessage
+	alertsStatus int
+	candidates   []sources.CandidateRequest
+	audits       map[string]sources.AuditRequest
 }
 
 func (f *fakeAPI) server() *httptest.Server {
@@ -132,6 +133,10 @@ func (f *fakeAPI) server() *httptest.Server {
 		defer f.mu.Unlock()
 		switch r.URL.Path {
 		case "/api/internal/correlator/alerts":
+			if f.alertsStatus != 0 {
+				w.WriteHeader(f.alertsStatus)
+				return
+			}
 			_, _ = w.Write(f.alerts)
 		case "/api/internal/correlator/candidates":
 			var req sources.CandidateRequest
@@ -305,6 +310,9 @@ func TestIntegrationFixtureReplayEmitsAuditsAndServes(t *testing.T) {
 		_ = json.NewDecoder(resp.Body).Decode(&out)
 		return resp.StatusCode, out
 	}
+	if code, body := get("/readyz", ""); code != 200 || body["ready"] != true || body["feedbackStatus"] != "ready" || body["lastFeedbackSuccess"] != now.Format(time.RFC3339Nano) {
+		t.Fatalf("readyz must include a fresh successful feedback cycle: %d %v", code, body)
+	}
 	if code, _ := get("/v1/entities?top=5", ""); code != 401 {
 		t.Fatalf("unauthenticated /v1: %d", code)
 	}
@@ -338,6 +346,11 @@ func TestIntegrationFixtureReplayEmitsAuditsAndServes(t *testing.T) {
 		"b89_correlator_reduction_factor{stream=\"b89\"}",
 		"# HELP b89_correlator_feedback_alerts Correlator alert counts by feedback category in the feedback window; false_positive groups false_positive and benign verdicts",
 		"b89_correlator_feedback_alerts{verdict=\"false_positive\"}",
+		"b89_correlator_feedback_ready 1",
+		"b89_correlator_feedback_status{status=\"ready\"} 1",
+		"b89_correlator_feedback_age_seconds 0",
+		"b89_correlator_feedback_last_success_timestamp_seconds",
+		"b89_correlator_feedback_refresh_errors_total 0",
 		"b89_correlator_review_coverage_status{status=\"NO_DATA\"}",
 		"b89_correlator_feedback_alert_feed_truncated",
 	} {
@@ -375,6 +388,33 @@ func TestIntegrationFixtureReplayEmitsAuditsAndServes(t *testing.T) {
 	} {
 		if !strings.Contains(string(m), want) {
 			t.Errorf("available review coverage metric missing %q", want)
+		}
+	}
+
+	api.mu.Lock()
+	api.alertsStatus = http.StatusServiceUnavailable
+	api.mu.Unlock()
+	if err := runner.RefreshFeedback(ctx); err == nil {
+		t.Fatal("expected feedback refresh to fail after the API returned 503")
+	}
+	if code, body := get("/readyz", ""); code != http.StatusServiceUnavailable || body["ready"] != false || body["reason"] != "feedback_refresh_failed" || body["feedbackStatus"] != "failed" {
+		t.Fatalf("readyz must degrade on feedback failure while exposing feedback status: %d %v", code, body)
+	}
+	resp, err = srv.Client().Get(srv.URL + "/metrics")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	for _, want := range []string{
+		"b89_correlator_ready 0",
+		"b89_correlator_feedback_ready 0",
+		"b89_correlator_feedback_status{status=\"failed\"} 1",
+		"b89_correlator_feedback_age_seconds 0",
+		"b89_correlator_feedback_refresh_errors_total 1",
+	} {
+		if !strings.Contains(string(m), want) {
+			t.Errorf("failed feedback metrics missing %s", want)
 		}
 	}
 }

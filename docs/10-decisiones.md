@@ -74,7 +74,7 @@ Estas decisiones definen B89 SOC frente a la base heredada. Detalle en
 | A20 | **No se rotan secretos** al desplegar: los scripts reutilizan las credenciales publicadas (`B89_ROTATE` sigue en false) | Vigente | 2026-10-13 (dueño) |
 | A21 | Apply en AWS: el pipeline oficial es el workflow `terraform-demo`. Desde Windows solo se permite `-target` revisado, porque los CRLF y `dirname()` con `\` generan diffs falsos (reemplazo de la EC2 de Wazuh y rutas rotas en SSM) | Vigente | 2026-10-13 |
 
-**Alcance aclarado 2026-11-12:** `terraform-demo.yml` aplica `infra/aws` en la cuenta `123456789012`; no aplica `infra/aws-poweruser`, cuyo backend es `b89-tfstate-061098277310-us-east-1/aws-poweruser/dev/terraform.tfstate`. Ese stack PowerUser documenta `terraform apply` seguido de `ship.sh`, pero el workflow oficial citado en A21 no ejecuta esa raíz. No reutilizar `terraform-demo` para el nodo PowerUser; el pipeline autorizado para esa raíz queda por resolver antes del apply.
+**Alcance aclarado 2026-11-13:** `terraform-demo.yml` aplica `infra/aws` en la cuenta `123456789012`; no aplica `infra/aws-poweruser`, cuyo backend es `b89-tfstate-061098277310-us-east-1/aws-poweruser/dev/terraform.tfstate`. El PR actual añade `.github/workflows/terraform-aws-poweruser.yml` para esa raíz: plan manual de un día y apply manual del mismo artefacto después de revisar su salida y hash. No reutilizar `terraform-demo` para el nodo PowerUser ni hacer `terraform apply` local. El workflow exige el rol y la variable OIDC `B89_AWS_POWERUSER_TERRAFORM_ROLE_ARN`; su existencia y trust policy aún deben verificarse por el operador autorizado. Esta rama no está desplegada y el workflow aún no se ha ejecutado.
 
 ## Abiertas
 
