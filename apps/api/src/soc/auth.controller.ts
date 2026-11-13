@@ -77,7 +77,7 @@ export class AuthController {
   }
 
   @Get('callback')
-  public async callback(
+  public callbackGet(
     @Query()
     query: {
       state?: string;
@@ -88,17 +88,57 @@ export class AuthController {
     @Req() request: IncomingRequest,
     @Res() reply: OutgoingReply,
   ) {
+    return this.completeCallback(query, undefined, request, reply);
+  }
+
+  @Post('callback')
+  public callbackPost(
+    @Body()
+    body:
+      | {
+          state?: string;
+          code?: string;
+          error?: string;
+          error_description?: string;
+        }
+      | undefined,
+    @Req() request: IncomingRequest,
+    @Res() reply: OutgoingReply,
+  ) {
+    return this.completeCallback({}, body, request, reply);
+  }
+
+  private async completeCallback(
+    query: {
+      state?: string;
+      code?: string;
+      error?: string;
+      error_description?: string;
+    },
+    body:
+      | {
+          state?: string;
+          code?: string;
+          error?: string;
+          error_description?: string;
+        }
+      | undefined,
+    request: IncomingRequest,
+    reply: OutgoingReply,
+  ) {
+    // GET conserva compatibilidad con el emisor local; POST solo confía en el formulario.
+    const callback = body ?? query;
     const correlationId = correlationIdOf(request);
-    const browserBinding = oidcFlowBindingOf(request, query.state);
-    const returnTo = this.runtime.takeReturnTo(query.state, browserBinding);
+    const browserBinding = oidcFlowBindingOf(request, callback.state);
+    const returnTo = this.runtime.takeReturnTo(callback.state, browserBinding);
     const result = await this.runtime.completeSignIn(
       {
-        ...(query.state === undefined ? {} : { state: query.state }),
-        ...(query.code === undefined ? {} : { code: query.code }),
-        ...(query.error === undefined ? {} : { error: query.error }),
-        ...(query.error_description === undefined
+        ...(callback.state === undefined ? {} : { state: callback.state }),
+        ...(callback.code === undefined ? {} : { code: callback.code }),
+        ...(callback.error === undefined ? {} : { error: callback.error }),
+        ...(callback.error_description === undefined
           ? {}
-          : { errorDescription: query.error_description }),
+          : { errorDescription: callback.error_description }),
         ...(browserBinding ? { browserBinding } : {}),
       },
       originOf(request),
@@ -106,8 +146,8 @@ export class AuthController {
     );
     if (!result.ok) {
       const code = signInDenialCode(result.failure.reason);
-      const expiredCookie = query.state
-        ? expiredOidcFlowCookie(query.state, this.runtime.secureCookies)
+      const expiredCookie = callback.state
+        ? expiredOidcFlowCookie(callback.state, this.runtime.secureCookies)
         : '';
       if (expiredCookie) reply.header('set-cookie', expiredCookie);
       await reply
@@ -125,8 +165,8 @@ export class AuthController {
       Math.floor(
         (result.value.session.absoluteExpiresAt.getTime() - this.runtime.now().getTime()) / 1000,
       ),
-      query.state
-        ? [expiredOidcFlowCookie(query.state, this.runtime.secureCookies)].filter(Boolean)
+      callback.state
+        ? [expiredOidcFlowCookie(callback.state, this.runtime.secureCookies)].filter(Boolean)
         : [],
     );
     await reply

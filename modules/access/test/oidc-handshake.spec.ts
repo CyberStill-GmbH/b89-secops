@@ -43,6 +43,7 @@ describe('C-18 · inicio del flujo OIDC', () => {
     expect(url.origin + url.pathname).toBe(config.authorizationEndpoint);
     expect(url.searchParams.get('client_id')).toBe(CLIENT_ID);
     expect(url.searchParams.get('response_type')).toBe('code');
+    expect(url.searchParams.get('response_mode')).toBe('form_post');
     expect(url.searchParams.get('code_challenge_method')).toBe('S256');
     expect(url.searchParams.get('state')).toBe(request.state);
     expect(url.searchParams.get('nonce')).toBe(request.nonce);
@@ -71,6 +72,17 @@ describe('C-18 · inicio del flujo OIDC', () => {
     expect(() =>
       beginAuthorization({ ...config, redirectUri: 'https://atacante.example/callback' }, NOW),
     ).toThrow(/REDIRECT_URI_NOT_ALLOWED/u);
+  });
+
+  it('mantiene query solo para el callback HTTP local de desarrollo', () => {
+    const localConfig = {
+      ...config,
+      redirectUri: 'http://127.0.0.1:3000/api/auth/callback',
+      allowedRedirectUris: ['http://127.0.0.1:3000/api/auth/callback'],
+    };
+    const request = beginAuthorization(localConfig, NOW);
+
+    expect(new URL(request.authorizationUrl).searchParams.get('response_mode')).toBe('query');
   });
 });
 

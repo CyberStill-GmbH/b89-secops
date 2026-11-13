@@ -122,6 +122,8 @@ server {
   # cambio de persona en el navegador. En el logout, un mirror avisa al puente para que cierre
   # también la sesión en Shuffle (best effort: si el puente no está, el logout de B89 no cambia).
   location ~ ^/api/auth/(callback|password|logout)$ {
+    # No registrar URLs de autenticación: callbacks antiguos pueden traer code/state en query.
+    access_log off;
     mirror /_b89/respond-sso-logout;
     mirror_request_body off;
     proxy_pass http://b89_api;

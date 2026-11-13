@@ -690,6 +690,12 @@ describe.skipIf(!databaseUrl)('C-17 · persistencia SOC sobre PostgreSQL', () =>
     expect(winners).toHaveLength(1);
     const claim = winners[0]!;
     expect(claim.watermark).toBeNull();
+    const continuation = {
+      from: new Date('2026-10-12T17:58:00.000Z'),
+      to: new Date('2026-10-12T18:00:00.000Z'),
+      cursor: '["2026-10-12T17:59:00.000Z","wazuh-id-7"]',
+    };
+    expect(await persistence.ingestion.saveContinuation(claim, continuation, at)).toBe(true);
 
     const later = new Date('2026-10-12T17:30:00.000Z');
     const earlier = new Date('2026-10-12T17:00:00.000Z');
@@ -699,11 +705,19 @@ describe.skipIf(!databaseUrl)('C-17 · persistencia SOC sobre PostgreSQL', () =>
     expect(
       await persistence.ingestion.advanceCursor({ ...claim, claimId: randomUUID() }, at, at),
     ).toBe(false);
+    expect(
+      await persistence.ingestion.saveContinuation({ ...claim, claimId: randomUUID() }, null, at),
+    ).toBe(false);
     await persistence.ingestion.releaseCursor(claim);
 
     const next = await persistence.ingestion.claimCursor(key, at, 60_000);
     expect(next?.watermark?.toISOString()).toBe(later.toISOString());
+    expect(next?.continuation).toEqual(continuation);
+    expect(await persistence.ingestion.saveContinuation(next!, null, at)).toBe(true);
     await persistence.ingestion.releaseCursor(next!);
+    const cleared = await persistence.ingestion.claimCursor(key, at, 60_000);
+    expect(cleared?.continuation).toBeNull();
+    await persistence.ingestion.releaseCursor(cleared!);
 
     const observation = {
       id: randomUUID(),

@@ -133,7 +133,12 @@ export function beginAuthorization(
   const url = new URL(config.authorizationEndpoint);
   url.searchParams.set('client_id', config.clientId);
   url.searchParams.set('response_type', 'code');
-  url.searchParams.set('response_mode', 'query');
+  // En producción el callback llega por POST: el código no termina en la URL ni en los
+  // access logs del ALB/nginx. HTTP queda reservado al emisor local de desarrollo.
+  url.searchParams.set(
+    'response_mode',
+    new URL(config.redirectUri).protocol === 'https:' ? 'form_post' : 'query',
+  );
   url.searchParams.set('redirect_uri', config.redirectUri);
   url.searchParams.set('scope', config.scopes.join(' '));
   url.searchParams.set('state', state);

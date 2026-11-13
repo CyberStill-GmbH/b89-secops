@@ -100,6 +100,7 @@ export {
   planIngestionWindow,
   POLL_OUTCOMES,
   type ClaimedIngestionCursor,
+  type IngestionContinuation,
   type IngestionCursorKey,
   type IngestionStateStore,
   type IngestionWindowPolicy,

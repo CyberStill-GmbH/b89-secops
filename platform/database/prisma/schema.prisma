@@ -584,13 +584,16 @@ model AccessSession {
 
 // Sprint 5 · fase 0 — cursor de ingesta por fuente, con lease y fencing (`claimId`).
 model SocIngestionCursor {
-  tenantId   String    @map("tenant_id") @db.Text
-  sourceId   String    @map("source_id") @db.Text
-  dataset    String    @db.Text
-  watermark  DateTime? @db.Timestamptz(3)
-  leaseUntil DateTime? @map("lease_until") @db.Timestamptz(3)
-  claimId    String?   @map("claim_id") @db.Uuid
-  updatedAt  DateTime  @map("updated_at") @db.Timestamptz(3)
+  tenantId           String    @map("tenant_id") @db.Text
+  sourceId           String    @map("source_id") @db.Text
+  dataset            String    @db.Text
+  watermark          DateTime? @db.Timestamptz(3)
+  continuationFrom   DateTime? @map("continuation_from") @db.Timestamptz(3)
+  continuationTo     DateTime? @map("continuation_to") @db.Timestamptz(3)
+  continuationCursor String?   @map("continuation_cursor") @db.Text
+  leaseUntil         DateTime? @map("lease_until") @db.Timestamptz(3)
+  claimId            String?   @map("claim_id") @db.Uuid
+  updatedAt          DateTime  @map("updated_at") @db.Timestamptz(3)
 
   @@id([tenantId, sourceId, dataset], map: "soc_ingestion_cursors_pkey")
   @@map("soc_ingestion_cursors")

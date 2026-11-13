@@ -13,6 +13,7 @@ import { SecurityEventProviderError } from '@b89/connectors';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 
 import { buildApi } from '../src/bootstrap.js';
+import { expiredOidcFlowCookie } from '../src/http/request-context.js';
 import { SlidingWindowLimiter } from '../src/assistant/assistant-service.js';
 import type { EventsReader } from '../src/runtime/events-reader.js';
 import { wazuhRecordToEvent } from '../src/runtime/wazuh-ingestion.js';
@@ -90,10 +91,11 @@ async function signIn(
   // El emisor local devuelve una ruta relativa: la API y la consola comparten origen.
   const callbackUrl = new URL(authorize.headers.location as string, 'http://local');
   const response = await server().inject({
-    method: 'GET',
-    url: `/api/auth/callback${callbackUrl.search}`,
+    method: 'POST',
+    url: '/api/auth/callback',
+    headers: { ...flowHeaders, 'content-type': 'application/x-www-form-urlencoded' },
+    payload: callbackUrl.searchParams.toString(),
     remoteAddress,
-    headers: flowHeaders,
   });
   const responseCookies = Array.isArray(response.headers['set-cookie'])
     ? (response.headers['set-cookie'] as string[])
@@ -239,6 +241,17 @@ beforeEach(() => {
 });
 
 describe('C-18 · inicio de sesión por el BFF', () => {
+  it('habilita la cookie cross-site segura requerida por form_post y mantiene Lax en local', () => {
+    const state = 'a'.repeat(43);
+    const secureCookie = expiredOidcFlowCookie(state, true);
+    const localCookie = expiredOidcFlowCookie(state, false);
+
+    expect(secureCookie).toContain('SameSite=None');
+    expect(secureCookie).toContain('Secure');
+    expect(localCookie).toContain('SameSite=Lax');
+    expect(localCookie).not.toContain('Secure');
+  });
+
   it('redirige al emisor con un state opaco y sin tokens en el cliente', async () => {
     const response = await server().inject({
       method: 'GET',
@@ -298,13 +311,17 @@ describe('C-18 · inicio de sesión por el BFF', () => {
     const flowCookie = cookiePair(start, 'b89_oidc_flow_');
     const description = 'AADSTS50011: redirect mismatch for analyst@example.test';
     const callback = await server().inject({
-      method: 'GET',
-      url: `/api/auth/callback?${new URLSearchParams({
+      method: 'POST',
+      url: '/api/auth/callback',
+      headers: {
+        cookie: flowCookie,
+        'content-type': 'application/x-www-form-urlencoded',
+      },
+      payload: new URLSearchParams({
         state: state ?? '',
         error: 'access_denied',
         error_description: description,
-      }).toString()}`,
-      headers: { cookie: flowCookie },
+      }).toString(),
       remoteAddress: OFFICE_IP,
     });
 

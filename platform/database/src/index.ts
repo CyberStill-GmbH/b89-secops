@@ -52,6 +52,7 @@ export {
 export {
   PrismaIngestionStateStore,
   type IngestionCursorKeyRow,
+  type IngestionContinuationRow,
   type SourceHealthTransitionRow,
   type StreamActivityRow,
   type SourcePollObservationRow,

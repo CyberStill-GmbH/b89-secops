@@ -333,6 +333,54 @@ describe('pasada de ingesta', () => {
     expect(cursor?.watermark?.toISOString()).toBe('2026-10-12T17:55:00.000Z');
   });
 
+  it('reanuda con search_after durable cuando más eventos comparten la marca que el tope', async () => {
+    const watermark = new Date('2026-10-12T17:50:00.000Z');
+    const tied = Array.from({ length: 12 }, (_, index) =>
+      office365Document(`tied-${index}`, watermark.toISOString()),
+    );
+    const reader = fakeReader(tied);
+    const claim = await state.claimCursor(KEY, NOW, 300_000);
+    await state.advanceCursor(claim!, watermark, NOW);
+    await state.releaseCursor(claim!);
+    const pass = createIngestionPass({ ...base(), readPage: reader.readPage });
+
+    expect(await pass()).toBe(1);
+    expect(
+      state.cursors.get(`${KEY.tenantId}|${KEY.sourceId}|${KEY.dataset}`)?.continuation,
+    ).toMatchObject({ from: watermark, cursor: '10' });
+    expect(await pass()).toBe(0);
+    expect(reader.calls.at(-1)?.cursor).toBe('10');
+    expect(new Set(promoted).size).toBe(12);
+    expect(
+      state.cursors.get(`${KEY.tenantId}|${KEY.sourceId}|${KEY.dataset}`)?.continuation,
+    ).toBeNull();
+  });
+
+  it('reinicia el rango fijo si expira el token search_after guardado', async () => {
+    const watermark = new Date('2026-10-12T17:50:00.000Z');
+    const to = new Date('2026-10-12T17:59:30.000Z');
+    const tied = Array.from({ length: 12 }, (_, index) =>
+      office365Document(`expired-${index}`, watermark.toISOString()),
+    );
+    const reader = fakeReader(tied);
+    const claim = await state.claimCursor(KEY, NOW, 300_000);
+    await state.advanceCursor(claim!, watermark, NOW);
+    await state.saveContinuation(claim!, { from: watermark, to, cursor: 'expired-token' }, NOW);
+    await state.releaseCursor(claim!);
+    const readPage = async (query: EventQuery) => {
+      if (query.cursor === 'expired-token') {
+        throw Object.assign(new Error('cursor expired'), { code: 'PROVIDER_CURSOR_EXPIRED' });
+      }
+      return reader.readPage(query);
+    };
+    const pass = createIngestionPass({ ...base(), readPage });
+
+    expect(await pass()).toBe(1);
+    expect(reader.calls[0]?.from).toBe(watermark.toISOString());
+    expect(await pass()).toBe(0);
+    expect(new Set(promoted).size).toBe(12);
+  });
+
   it('con más páginas que el tope pide otra pasada sin esperar el intervalo', async () => {
     const docs = Array.from({ length: 12 }, (_, index) =>
       office365Document(

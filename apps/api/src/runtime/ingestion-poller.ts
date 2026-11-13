@@ -25,6 +25,7 @@ import type { SecurityEvent } from '@b89/contracts';
 import {
   planIngestionWindow,
   type IngestionCursorKey,
+  type IngestionContinuation,
   type IngestionStateStore,
   type IngestionWindowPolicy,
   type PollOutcome,
@@ -90,17 +91,39 @@ export function createIngestionPass(options: IngestionPassOptions): () => Promis
     try {
       const window = planIngestionWindow(claim.watermark, attemptedAt, options.window);
       /** Lee `[from, to]` hasta el tope de páginas; devuelve true si quedó trabajo. */
-      const readWindow = async (from: Date, to: Date): Promise<boolean> => {
-        let cursor: string | undefined;
+      const readWindow = async (from: Date, to: Date, initialCursor?: string): Promise<boolean> => {
+        let cursor = initialCursor;
         for (let page = 0; page < options.maximumPages; page += 1) {
-          const result = await options.readPage({
-            sourceId: options.key.sourceId,
-            dataset: options.key.dataset,
-            from: from.toISOString(),
-            to: to.toISOString(),
-            pageSize: options.pageSize,
-            ...(cursor ? { cursor } : {}),
-          });
+          let result: Awaited<ReturnType<IngestionPassOptions['readPage']>>;
+          try {
+            result = await options.readPage({
+              sourceId: options.key.sourceId,
+              dataset: options.key.dataset,
+              from: from.toISOString(),
+              to: to.toISOString(),
+              pageSize: options.pageSize,
+              ...(cursor ? { cursor } : {}),
+            });
+          } catch (error) {
+            const code = (error as { code?: unknown } | undefined)?.code;
+            if (
+              page === 0 &&
+              initialCursor &&
+              cursor === initialCursor &&
+              code === 'PROVIDER_CURSOR_EXPIRED'
+            ) {
+              if (!(await options.state.saveContinuation(claim, null, options.now()))) {
+                throw Object.assign(new Error('ingestion claim lost'), {
+                  code: 'INGESTION_CLAIM_LOST',
+                  retryable: true,
+                });
+              }
+              // El token opaco ya caducó: reinicia el mismo rango fijo. La promoción por
+              // identidad es idempotente, y la nueva página deja un checkpoint fresco.
+              return readWindow(from, to);
+            }
+            throw error;
+          }
           let pageNewest: Date | null = null;
           for (const record of result.items) {
             recordsSeen += 1;
@@ -123,17 +146,34 @@ export function createIngestionPass(options: IngestionPassOptions): () => Promis
               suppressed += 1;
             } else notPromoted += 1;
           }
+          const nextCursor = result.hasMore ? result.nextCursor : undefined;
+          const continuation: IngestionContinuation | null = nextCursor
+            ? { from, to, cursor: nextCursor }
+            : null;
+          // Guarda/limpia search_after después de procesar la página y antes de mover la
+          // marca. Un fallo no pierde la posición dentro de muchos eventos empatados.
+          if (!(await options.state.saveContinuation(claim, continuation, options.now()))) {
+            throw Object.assign(new Error('ingestion claim lost'), {
+              code: 'INGESTION_CLAIM_LOST',
+              retryable: true,
+            });
+          }
           if (pageNewest) {
             if (!newestEventAt || pageNewest > newestEventAt) newestEventAt = pageNewest;
-            // La marca avanza solo con la página completa procesada.
+            // La marca avanza solo con la página completa y su checkpoint durable.
             await options.state.advanceCursor(claim, pageNewest, options.now());
           }
-          if (!result.hasMore || !result.nextCursor) return false;
-          cursor = result.nextCursor;
+          if (!nextCursor) return false;
+          cursor = nextCursor;
         }
         return true;
       };
-      if (window) {
+      let activeWindow = window;
+      if (claim.continuation) {
+        // Reanuda el rango y search_after exactos guardados en la pasada anterior.
+        activeWindow = { from: claim.continuation.from, to: claim.continuation.to };
+        pending = await readWindow(activeWindow.from, activeWindow.to, claim.continuation.cursor);
+      } else if (window) {
         pending = await readWindow(window.from, window.to);
         // Solape saturado: el tope de páginas se gastó entero en eventos que no superan la
         // marca (ráfaga de más de pageSize×maximumPages eventos en `overlapMs`). Sin esto cada
@@ -147,7 +187,8 @@ export function createIngestionPass(options: IngestionPassOptions): () => Promis
           claim.watermark !== null &&
           (!newestRead || newestRead.getTime() <= claim.watermark.getTime())
         ) {
-          pending = await readWindow(claim.watermark, window.to);
+          activeWindow = { from: claim.watermark, to: window.to };
+          pending = await readWindow(activeWindow.from, activeWindow.to);
         }
         // Ventana vacía y al día: la marca sube al borde de la ventana para no releer
         // indefinidamente desde la primera vez que se miró la fuente.
@@ -160,9 +201,11 @@ export function createIngestionPass(options: IngestionPassOptions): () => Promis
         // cada pasada relee la misma hora para siempre: lo posterior nunca llega al SOC.
         // El borde ya quedó atrás (`to` < ahora − retraso), así que el solape de la pasada
         // siguiente cubre lo indexado tarde. Queda trabajo: se pide otra pasada enseguida.
-        const capped = window.to.getTime() < attemptedAt.getTime() - options.window.lagMs;
+      }
+      if (activeWindow) {
+        const capped = activeWindow.to.getTime() < attemptedAt.getTime() - options.window.lagMs;
         if (capped && !pending) {
-          await options.state.advanceCursor(claim, window.to, options.now());
+          await options.state.advanceCursor(claim, activeWindow.to, options.now());
           pending = true;
         }
       }

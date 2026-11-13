@@ -29,6 +29,13 @@ navegador ─TLS─▶ ALB + WAF ─▶ edge nginx (172.30.89.11)
   identidad. El edge borra lo que envíe el navegador y escribe lo que devuelve el introspect.
 - **Cabeceras:** HSTS, `nosniff`, `Referrer-Policy`; CSP propia en el login y en B89 Respond
   (`frame-ancestors 'self'`). Plantilla: `infra/aws-poweruser/host/edge.conf.template`.
+- **Callback OIDC:** con redirect URI HTTPS se solicita `response_mode=form_post`; el código y el
+  `state` llegan en el cuerpo `application/x-www-form-urlencoded`, no en la URL. La cookie de
+  enlace del navegador es `HttpOnly; Secure; SameSite=None` para que viaje en ese POST cross-site;
+  el estado de un solo uso y el enlace de navegador siguen siendo obligatorios. El emisor local
+  HTTP conserva `response_mode=query` y `SameSite=Lax`. El nginx del nodo AWS desactiva los access
+  logs de callback/password/logout para no registrar parámetros de autenticación de clientes
+  antiguos; el proxy local hace lo mismo para la allowlist de rutas de autenticación.
 - **Identidades de servicio:** `b89-bootstrap` (scripts de arranque, rol `b89.platform.admin`, solo
   desde dentro del contenedor del dashboard), `b89_reader` (ingesta, solo lectura), `wazuh-wui` (app de
   Wazuh hacia la API del manager, sin `run_as`), `kibanaserver` y el `admin` del indexer como
@@ -105,7 +112,7 @@ sequenceDiagram
   B->>C: Authorization Code + PKCE
   C->>E: federación OIDC (MFA en Entra)
   E-->>C: id_token
-  C-->>B: /api/auth/callback?code&state
+  C-->>B: POST /api/auth/callback (code/state en formulario)
   B->>Q: callback → valida token de Cognito, amr/passkey, grupo, roles
   Q-->>B: Set-Cookie b89_session (HttpOnly) → 302 return
   B->>N: GET /app/wz-home

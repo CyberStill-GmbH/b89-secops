@@ -144,6 +144,15 @@ en `17:59:00Z`, consulta desde `17:57:00Z`; `17:58:00Z` entra y `17:56:59.999Z` 
 límite de consulta local no prueba la latencia real del Indexer ni garantiza el end-to-end. El canario
 autorizado debe medir origen→API→Indexer visible→SOC antes de publicar un SLO.
 
+**Continuación durable del pull (2026-11-13):** cuando una pasada agota el presupuesto de páginas,
+el checkpoint guarda el rango fijo `[from,to]` y el cursor opaco `search_after` junto al watermark.
+La siguiente réplica retoma desde ese punto con el fencing token vigente; al completar la ventana,
+borra el checkpoint. Así el solape de eventos tardíos no vuelve a seleccionar indefinidamente las
+primeras páginas cuando hay más eventos empatados en el mismo timestamp. Las filas existentes
+inician con continuación nula mediante la migración `20261113110000_soc_ingestion_cursor_continuation`.
+La promoción idempotente sigue necesaria: un proceso que cae después de promover una página y antes
+de persistir el checkpoint puede volver a leerla.
+
 No usar una cola de AWS en el perfil actual sin cambiar de arquitectura y obtener permisos IAM.
 Una futura migracion serverless puede adoptar SQS y DLQ, pero los consumidores seguiran siendo
 idempotentes: la entrega de una cola no sustituye la deduplicacion durable de B89.

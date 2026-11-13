@@ -242,10 +242,19 @@ function ingestionPort(store: PrismaIngestionStateStore): IngestionStateStore {
   return {
     claimCursor: async (key: IngestionCursorKey, at: Date, leaseMs: number) => {
       const claim = await store.claimCursor(key, at, leaseMs);
-      return claim ? { key, watermark: claim.watermark, claimId: claim.claimId } : undefined;
+      return claim
+        ? {
+            key,
+            watermark: claim.watermark,
+            continuation: claim.continuation,
+            claimId: claim.claimId,
+          }
+        : undefined;
     },
     advanceCursor: (claim: ClaimedIngestionCursor, watermark: Date, at: Date) =>
       store.advanceCursor(claim.key, claim.claimId, watermark, at),
+    saveContinuation: (claim: ClaimedIngestionCursor, continuation, at: Date) =>
+      store.saveContinuation(claim.key, claim.claimId, continuation, at),
     releaseCursor: (claim: ClaimedIngestionCursor) => store.releaseCursor(claim.key, claim.claimId),
     recordObservation: (observation: SourcePollObservation) => store.recordObservation(observation),
     recentTransitions: async (key: IngestionCursorKey, limit: number) =>

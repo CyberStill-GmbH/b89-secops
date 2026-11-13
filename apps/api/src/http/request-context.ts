@@ -79,7 +79,9 @@ function oidcFlowCookie(
     `${oidcFlowCookieName(state)}=${encodeURIComponent(binding)}`,
     'Path=/api/auth/callback',
     'HttpOnly',
-    'SameSite=Lax',
+    // Entra responde con un POST cross-site cuando usamos response_mode=form_post.
+    // `None` exige Secure; el modo local HTTP conserva Lax y response_mode=query.
+    secure ? 'SameSite=None' : 'SameSite=Lax',
     `Max-Age=${maxAgeSeconds}`,
     ...(secure ? ['Secure'] : []),
   ].join('; ');
