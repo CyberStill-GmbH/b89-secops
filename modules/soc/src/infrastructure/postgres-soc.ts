@@ -460,8 +460,8 @@ export class PostgresSocPersistence implements SocPersistence {
     return this.queries.lastAlertAt(tenantId);
   }
 
-  public outboxHealth(tenantId: string): Promise<OutboxHealth> {
-    return this.queries.outboxHealth(tenantId);
+  public outboxHealth(tenantId: string, at: Date): Promise<OutboxHealth> {
+    return this.queries.outboxHealth(tenantId, at);
   }
 
   /**

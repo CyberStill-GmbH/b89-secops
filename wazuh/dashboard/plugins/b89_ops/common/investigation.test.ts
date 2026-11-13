@@ -195,12 +195,40 @@ describe('correlación de mensajes M365 por identificador exacto', () => {
       operations: ['MailItemsAccessed', 'SendAs'],
       auditedMailboxes: ['recipient@example.test', 'sender@example.test'],
       recipients: ['archive@example.test', 'recipient@example.test'],
+      recipientCount: 2,
       recipientsTruncated: true,
     });
     expect(emailOperationDirection('MailItemsAccessed')).toBe('Dirección no determinada');
     expect(emailOperationDirection('Receive')).toBe('Dirección no determinada');
     expect(emailOperationDirection('Deliver')).toBe('Dirección no determinada');
     expect(emailOperationDirection(undefined)).toBe('Dirección no determinada');
+  });
+
+  it('acota memoria y lista de destinatarios y reporta un conteo mínimo al superar el límite', () => {
+    const recipients = new Proxy(
+      Array.from({ length: 105 }, (_, index) => `recipient-${index}@example.test`),
+      {
+        get(target, property, receiver) {
+          if (property === '101') throw new Error('recipient scan continued after overflow');
+          return Reflect.get(target, property, receiver);
+        },
+      },
+    );
+    const first = summary('send-large', {
+      networkMessageId: 'large-message',
+      recipients,
+    });
+    const second = summary('audit-large', {
+      networkMessageId: 'large-message',
+      recipients: ['recipient-0@example.test', 'recipient-104@example.test'],
+    });
+    const evidence = summarizeExactEmailMessageGroup(groupExactEmailMessages([first, second])[0]!);
+
+    expect(evidence.recipients).toHaveLength(100);
+    expect(evidence.recipients).toContain('recipient-0@example.test');
+    expect(evidence.recipients).not.toContain('recipient-104@example.test');
+    expect(evidence.recipientCount).toBe(101);
+    expect(evidence.recipientsTruncated).toBe(true);
   });
 });
 

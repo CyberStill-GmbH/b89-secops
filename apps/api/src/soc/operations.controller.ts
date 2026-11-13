@@ -316,7 +316,7 @@ export class OperationsController {
         {
           persistence: this.runtime.soc.kind,
           dispatcherRunning: this.runtime.dispatcher.started,
-          outbox: await this.runtime.soc.outboxHealth(actor.tenantId),
+          outbox: await this.runtime.soc.outboxHealth(actor.tenantId, at),
           notificationsByStatus,
           providerAcceptanceLatency,
           wazuhPushInbox,

@@ -678,22 +678,47 @@ export class PrismaSocQueries {
     return row?.occurredAt ?? null;
   }
 
-  /** Conteos de la cola del outbox del tenant y el pendiente más antiguo. */
-  public async outboxHealth(tenantId: string): Promise<{
+  /** Conteos consistentes de la cola del tenant y el lease vencido más antiguo. */
+  public async outboxHealth(
+    tenantId: string,
+    at: Date,
+  ): Promise<{
     readonly pending: number;
     readonly processing: number;
     readonly oldestPendingAt: Date | null;
+    readonly expiredProcessing: number;
+    readonly oldestExpiredProcessingLeaseUntil: Date | null;
   }> {
-    const [pending, processing, oldest] = await Promise.all([
-      this.client.socOutboxMessage.count({ where: { tenantId, status: 'pending' } }),
-      this.client.socOutboxMessage.count({ where: { tenantId, status: 'processing' } }),
-      this.client.socOutboxMessage.findFirst({
-        where: { tenantId, status: 'pending' },
-        orderBy: [{ availableAt: 'asc' }, { messageId: 'asc' }],
-        select: { availableAt: true },
-      }),
-    ]);
-    return { pending, processing, oldestPendingAt: oldest?.availableAt ?? null };
+    const [row] = await this.client.$queryRaw<
+      readonly {
+        readonly pending: bigint;
+        readonly processing: bigint;
+        readonly oldest_pending_at: Date | null;
+        readonly expired_processing: bigint;
+        readonly oldest_expired_processing_lease_until: Date | null;
+      }[]
+    >`
+      SELECT
+        (SELECT COUNT(*) FROM "soc_outbox_messages"
+          WHERE "tenant_id" = ${tenantId} AND "status" = 'pending') AS pending,
+        (SELECT COUNT(*) FROM "soc_outbox_messages"
+          WHERE "tenant_id" = ${tenantId} AND "status" = 'processing') AS processing,
+        (SELECT MIN("available_at") FROM "soc_outbox_messages"
+          WHERE "tenant_id" = ${tenantId} AND "status" = 'pending') AS oldest_pending_at,
+        (SELECT COUNT(*) FROM "soc_outbox_messages"
+          WHERE "tenant_id" = ${tenantId} AND "status" = 'processing'
+            AND "lease_until" < ${at}) AS expired_processing,
+        (SELECT MIN("lease_until") FROM "soc_outbox_messages"
+          WHERE "tenant_id" = ${tenantId} AND "status" = 'processing'
+            AND "lease_until" < ${at}) AS oldest_expired_processing_lease_until
+    `;
+    return {
+      pending: Number(row?.pending ?? 0n),
+      processing: Number(row?.processing ?? 0n),
+      oldestPendingAt: row?.oldest_pending_at ?? null,
+      expiredProcessing: Number(row?.expired_processing ?? 0n),
+      oldestExpiredProcessingLeaseUntil: row?.oldest_expired_processing_lease_until ?? null,
+    };
   }
 
   /**

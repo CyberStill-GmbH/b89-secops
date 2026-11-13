@@ -332,13 +332,50 @@ func TestIntegrationFixtureReplayEmitsAuditsAndServes(t *testing.T) {
 	}
 	m, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	for _, want := range []string{"b89_correlator_observations_total{source=\"aws\"}", "b89_correlator_candidates_emitted_total", "b89_correlator_reduction_factor{stream=\"b89\"}", "b89_correlator_feedback_alerts{verdict=\"false_positive\"}", "b89_correlator_review_coverage_status{status=\"NO_DATA\"}", "b89_correlator_feedback_alert_feed_truncated"} {
+	for _, want := range []string{
+		"b89_correlator_observations_total{source=\"aws\"}",
+		"b89_correlator_candidates_emitted_total",
+		"b89_correlator_reduction_factor{stream=\"b89\"}",
+		"# HELP b89_correlator_feedback_alerts Correlator alert counts by feedback category in the feedback window; false_positive groups false_positive and benign verdicts",
+		"b89_correlator_feedback_alerts{verdict=\"false_positive\"}",
+		"b89_correlator_review_coverage_status{status=\"NO_DATA\"}",
+		"b89_correlator_feedback_alert_feed_truncated",
+	} {
 		if !strings.Contains(string(m), want) {
 			t.Errorf("metrics missing %s", want)
 		}
 	}
 	if strings.Contains(string(m), "victima") || strings.Contains(string(m), "203.0.113") {
 		t.Error("metrics must not carry entity values")
+	}
+
+	api.mu.Lock()
+	api.alerts, err = json.Marshal(map[string]any{"items": []model.B89Alert{{
+		ID: "correlator-duplicate", RuleID: model.CorrelatorRulePrefix + "test",
+		Verdict: "duplicate", OccurredAt: now.Add(-time.Hour),
+	}}})
+	api.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.RefreshFeedback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	resp, err = srv.Client().Get(srv.URL + "/metrics")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	const reviewCoverageHelp = "# HELP b89_correlator_review_coverage Fraction of correlator candidates materialized as B89 alerts in the effective feedback occurrence-time window adjudicated as true_positive, false_positive, benign, or duplicate; absent when unavailable"
+	for _, want := range []string{
+		reviewCoverageHelp,
+		"b89_correlator_review_coverage 1",
+		"b89_correlator_review_coverage_status{status=\"AVAILABLE\"} 1",
+	} {
+		if !strings.Contains(string(m), want) {
+			t.Errorf("available review coverage metric missing %q", want)
+		}
 	}
 }
 

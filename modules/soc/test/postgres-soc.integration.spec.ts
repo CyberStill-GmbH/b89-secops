@@ -425,13 +425,117 @@ describe.skipIf(!databaseUrl)('C-17 · persistencia SOC sobre PostgreSQL', () =>
   });
 
   it('las consultas de salud cuentan la cola y la última alerta del tenant', async () => {
-    const health = await persistence.outboxHealth(TENANT);
-    const other = await persistence.outboxHealth('otro-tenant');
+    const at = new Date('2026-10-11T15:00:00.000Z');
+    const health = await persistence.outboxHealth(TENANT, at);
+    const other = await persistence.outboxHealth('otro-tenant', at);
 
     expect(health.pending + health.processing).toBeGreaterThan(0);
-    expect(other).toEqual({ pending: 0, processing: 0, oldestPendingAt: null });
+    expect(other).toEqual({
+      pending: 0,
+      processing: 0,
+      oldestPendingAt: null,
+      expiredProcessing: 0,
+      oldestExpiredProcessingLeaseUntil: null,
+    });
     expect(await persistence.lastAlertAt(TENANT)).toEqual(new Date(Date.UTC(2026, 9, 11, 12, 3)));
     expect(await persistence.lastAlertAt('otro-tenant')).toBeNull();
+  });
+
+  it('mide el lease vencido más antiguo sin mezclar leases activos ni tenants', async () => {
+    const tenantId = `health-${randomUUID()}`;
+    const at = new Date();
+    const oldestExpired = new Date(at.getTime() - 12_000);
+    const newerExpired = new Date(at.getTime() - 3_000);
+    const activeLease = new Date(at.getTime() + 30_000);
+    const admin = new Client(database!.url);
+    await admin.connect();
+    try {
+      const rows = [
+        { status: 'pending', availableAt: new Date(at.getTime() - 1_000), leaseUntil: null },
+        { status: 'processing', availableAt: at, leaseUntil: oldestExpired },
+        { status: 'processing', availableAt: at, leaseUntil: newerExpired },
+        { status: 'processing', availableAt: at, leaseUntil: activeLease },
+      ] as const;
+      for (const row of rows) {
+        const messageId = randomUUID();
+        await admin.query(
+          `INSERT INTO soc_outbox_messages (
+             message_id, tenant_id, aggregate_type, aggregate_id, message_type,
+             schema_version, idempotency_key, payload, available_at, status,
+             attempt_count, lease_until, claim_id
+           ) VALUES ($1, $2, 'alert', $3, 'soc.alert.created', '1.0.0', $4,
+                     '{"priority":"P1"}'::jsonb, $5, $6, 1, $7, $8)`,
+          [
+            messageId,
+            tenantId,
+            randomUUID(),
+            `health-${messageId}`,
+            row.availableAt,
+            row.status,
+            row.leaseUntil,
+            row.status === 'processing' ? randomUUID() : null,
+          ],
+        );
+      }
+
+      await admin.query(
+        `INSERT INTO soc_outbox_messages
+          (message_id, tenant_id, aggregate_type, aggregate_id, message_type, schema_version,
+           idempotency_key, payload, available_at)
+         SELECT gen_random_uuid(), $1, 'alert', gen_random_uuid(), 'soc.alert.created', '1.0.0',
+                'health-bulk-pending-' || n::text, '{"priority":"P1"}'::jsonb, $2
+           FROM generate_series(1, 5000) AS n`,
+        [tenantId, new Date(at.getTime() - 2_000)],
+      );
+      await admin.query(
+        `INSERT INTO soc_outbox_messages
+          (message_id, tenant_id, aggregate_type, aggregate_id, message_type, schema_version,
+           idempotency_key, payload, available_at, status, attempt_count, lease_until, claim_id)
+         SELECT gen_random_uuid(), $1, 'alert', gen_random_uuid(), 'soc.alert.created', '1.0.0',
+                'health-bulk-processing-' || n::text, '{"priority":"P1"}'::jsonb, $2,
+                'processing', 1, $3, gen_random_uuid()
+           FROM generate_series(1, 5000) AS n`,
+        [tenantId, at, new Date(at.getTime() - 1_000)],
+      );
+      await admin.query('ANALYZE soc_outbox_messages');
+
+      const explain = await admin.query<{ 'QUERY PLAN': unknown }>(
+        `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
+         SELECT
+           (SELECT COUNT(*) FROM soc_outbox_messages
+             WHERE tenant_id = $1 AND status = 'pending'),
+           (SELECT COUNT(*) FROM soc_outbox_messages
+             WHERE tenant_id = $1 AND status = 'processing'),
+           (SELECT MIN(available_at) FROM soc_outbox_messages
+             WHERE tenant_id = $1 AND status = 'pending'),
+           (SELECT COUNT(*) FROM soc_outbox_messages
+             WHERE tenant_id = $1 AND status = 'processing' AND lease_until < $2),
+           (SELECT MIN(lease_until) FROM soc_outbox_messages
+             WHERE tenant_id = $1 AND status = 'processing' AND lease_until < $2)`,
+        [tenantId, at],
+      );
+      const plan = JSON.stringify(explain.rows[0]?.['QUERY PLAN']);
+      expect(plan).toContain('soc_outbox_messages_pending_health_idx');
+      expect(plan).toContain('soc_outbox_messages_processing_lease_health_idx');
+
+      await expect(persistence.outboxHealth(tenantId, at)).resolves.toEqual({
+        pending: 5_001,
+        processing: 5_003,
+        oldestPendingAt: new Date(at.getTime() - 2_000),
+        expiredProcessing: 5_002,
+        oldestExpiredProcessingLeaseUntil: oldestExpired,
+      });
+      await expect(persistence.outboxHealth(`${tenantId}-other`, at)).resolves.toEqual({
+        pending: 0,
+        processing: 0,
+        oldestPendingAt: null,
+        expiredProcessing: 0,
+        oldestExpiredProcessingLeaseUntil: null,
+      });
+    } finally {
+      await admin.query('DELETE FROM soc_outbox_messages WHERE tenant_id = $1', [tenantId]);
+      await admin.end();
+    }
   });
 
   it('la cadena de auditoría no se bifurca con escritores concurrentes', async () => {

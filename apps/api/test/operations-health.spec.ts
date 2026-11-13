@@ -34,7 +34,13 @@ describe('operations/health · estados', () => {
     const base = {
       persistence: 'postgres' as const,
       dispatcherRunning: true,
-      outbox: { pending: 0, processing: 0, oldestPendingAt: null },
+      outbox: {
+        pending: 0,
+        processing: 0,
+        oldestPendingAt: null,
+        expiredProcessing: 0,
+        oldestExpiredProcessingLeaseUntil: null,
+      },
       notificationsByStatus: {},
     };
     expect(socSection(base, AT).status).toBe('OK');
@@ -45,8 +51,19 @@ describe('operations/health · estados', () => {
       AT.getTime() - (HEALTH_THRESHOLDS.outboxOldestPendingSeconds + 1) * 1000,
     );
     expect(
-      socSection({ ...base, outbox: { pending: 1, processing: 0, oldestPendingAt: stale } }, AT)
-        .degradedReasons,
+      socSection(
+        {
+          ...base,
+          outbox: {
+            pending: 1,
+            processing: 0,
+            oldestPendingAt: stale,
+            expiredProcessing: 0,
+            oldestExpiredProcessingLeaseUntil: null,
+          },
+        },
+        AT,
+      ).degradedReasons,
     ).toEqual(['OUTBOX_BACKLOG']);
     expect(socSection({ ...base, persistence: 'memory' }, AT).degradedReasons).toEqual([
       'PERSISTENCE_EPHEMERAL',
@@ -58,7 +75,13 @@ describe('operations/health · estados', () => {
       {
         persistence: 'postgres',
         dispatcherRunning: true,
-        outbox: { pending: 0, processing: 0, oldestPendingAt: null },
+        outbox: {
+          pending: 0,
+          processing: 0,
+          oldestPendingAt: null,
+          expiredProcessing: 0,
+          oldestExpiredProcessingLeaseUntil: null,
+        },
         notificationsByStatus: { sent: 4, failed: 1, fallback: 1 },
       },
       AT,
@@ -71,7 +94,13 @@ describe('operations/health · estados', () => {
     const base = {
       persistence: 'postgres' as const,
       dispatcherRunning: true,
-      outbox: { pending: 0, processing: 0, oldestPendingAt: null },
+      outbox: {
+        pending: 0,
+        processing: 0,
+        oldestPendingAt: null,
+        expiredProcessing: 0,
+        oldestExpiredProcessingLeaseUntil: null,
+      },
       notificationsByStatus: {},
     };
     const measured = socSection(
@@ -115,7 +144,13 @@ describe('operations/health · estados', () => {
       {
         persistence: 'postgres',
         dispatcherRunning: true,
-        outbox: { pending: 0, processing: 0, oldestPendingAt: null },
+        outbox: {
+          pending: 0,
+          processing: 0,
+          oldestPendingAt: null,
+          expiredProcessing: 0,
+          oldestExpiredProcessingLeaseUntil: null,
+        },
         notificationsByStatus: {},
         wazuhPushInbox: {
           counts: { pending: 2, processing: 1, processed: 20, 'failed-terminal': 1 },
@@ -167,6 +202,33 @@ describe('operations/health · estados', () => {
       },
     });
     expect(JSON.stringify(section)).not.toContain('alertId');
+  });
+
+  it('degrada y expone el número y edad del lease vencido más antiguo del outbox', () => {
+    const expiredAt = new Date(AT.getTime() - 9_000);
+    const section = socSection(
+      {
+        persistence: 'postgres',
+        dispatcherRunning: true,
+        outbox: {
+          pending: 0,
+          processing: 3,
+          oldestPendingAt: null,
+          expiredProcessing: 2,
+          oldestExpiredProcessingLeaseUntil: expiredAt,
+        },
+        notificationsByStatus: {},
+      },
+      AT,
+    );
+
+    expect(section.status).toBe('DEGRADED');
+    expect(section.degradedReasons).toContain('OUTBOX_LEASE_EXPIRED');
+    expect(section.outbox).toMatchObject({
+      processing: 3,
+      expiredProcessing: 2,
+      oldestExpiredLeaseAgeSeconds: 9,
+    });
   });
 
   it('degrada la plataforma si la base no responde o responde lento', () => {

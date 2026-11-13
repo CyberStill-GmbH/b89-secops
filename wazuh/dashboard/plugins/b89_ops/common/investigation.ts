@@ -120,9 +120,15 @@ export interface ExactEmailMessageEvidence {
   readonly operations: readonly string[];
   /** MailboxOwnerUPN is an audited mailbox, not necessarily the human actor. */
   readonly auditedMailboxes: readonly string[];
+  /** At most `EXACT_EMAIL_GROUP_RECIPIENT_LIMIT` unique addresses are retained for export. */
   readonly recipients: readonly string[];
+  /** Minimum distinct addresses observed; capped at the display limit plus one overflow sentinel. */
+  readonly recipientCount: number;
   readonly recipientsTruncated: boolean;
 }
+
+/** Bound report and DOM size when many events share one message identifier. */
+export const EXACT_EMAIL_GROUP_RECIPIENT_LIMIT = 100;
 
 /** Conservative mapping: unknown operations never imply a message direction. */
 export function emailOperationDirection(operation: string | undefined): EmailMessageDirection {
@@ -157,13 +163,29 @@ export function summarizeExactEmailMessageGroup(
     ...(hasUnknown || known.length === 0 ? ['Dirección no determinada'] : []),
   ].join('; ');
   const auditedMailboxes = distinct(group.events.map((event) => event.email?.mailboxOwnerUpn));
-  const recipients = distinct(group.events.flatMap((event) => event.email?.recipients ?? []));
+  const recipients = new Set<string>();
+  const sourceTruncated = group.events.some((event) => event.email?.recipientsTruncated === true);
+  let recipientLimitExceeded = false;
+  for (const event of group.events) {
+    for (const value of event.email?.recipients ?? []) {
+      const recipient = value?.trim();
+      if (!recipient || recipients.has(recipient)) continue;
+      if (recipients.size >= EXACT_EMAIL_GROUP_RECIPIENT_LIMIT) {
+        recipientLimitExceeded = true;
+        break;
+      }
+      recipients.add(recipient);
+    }
+    if (recipientLimitExceeded) break;
+  }
+  const recipientCount = recipients.size + (recipientLimitExceeded ? 1 : 0);
   return {
     direction: direction || 'Dirección no determinada',
     operations,
     auditedMailboxes,
-    recipients,
-    recipientsTruncated: group.events.some((event) => event.email?.recipientsTruncated === true),
+    recipients: [...recipients].sort((left, right) => left.localeCompare(right, 'es')),
+    recipientCount,
+    recipientsTruncated: recipientLimitExceeded || sourceTruncated,
   };
 }
 

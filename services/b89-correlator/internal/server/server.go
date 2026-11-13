@@ -243,13 +243,13 @@ func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 	gauge("b89_correlator_suppressions_active", "Active temporary suppressions", float64(snap.Feedback.ActiveCount(now)))
 	gauge("b89_correlator_feedback_proposals", "Feedback proposals", float64(len(snap.Feedback.Proposals)))
 	gauge("b89_correlator_feedback_window_seconds", "Lookback window of correlator adjudication counts", float64(snap.Feedback.WindowSeconds))
-	fmt.Fprintf(&b, "# HELP b89_correlator_feedback_alerts Alerts emitted by the correlator in the feedback window, including unreviewed alerts\n# TYPE b89_correlator_feedback_alerts gauge\n")
+	fmt.Fprintf(&b, "# HELP b89_correlator_feedback_alerts Correlator alert counts by feedback category in the feedback window; false_positive groups false_positive and benign verdicts\n# TYPE b89_correlator_feedback_alerts gauge\n")
 	fmt.Fprintf(&b, "b89_correlator_feedback_alerts{verdict=\"all\"} %d\n", snap.Feedback.CorrelatorAlerts)
 	fmt.Fprintf(&b, "b89_correlator_feedback_alerts{verdict=\"unreviewed\"} %d\n", snap.Feedback.CorrelatorUnreviewed)
 	fmt.Fprintf(&b, "b89_correlator_feedback_alerts{verdict=\"false_positive\"} %d\n", snap.Feedback.CorrelatorFalsePos)
 	fmt.Fprintf(&b, "b89_correlator_feedback_alerts{verdict=\"true_positive\"} %d\n", snap.Feedback.CorrelatorTruePos)
 	if snap.Feedback.ReviewCoverage != nil && snap.Feedback.ReviewCoverageStatus == "AVAILABLE" {
-		gauge("b89_correlator_review_coverage", "Fraction of correlator candidates materialized as B89 alerts in the feedback occurrence-time window adjudicated as true_positive, false_positive, or benign; absent when unavailable", *snap.Feedback.ReviewCoverage)
+		gauge("b89_correlator_review_coverage", "Fraction of correlator candidates materialized as B89 alerts in the effective feedback occurrence-time window adjudicated as true_positive, false_positive, benign, or duplicate; absent when unavailable", *snap.Feedback.ReviewCoverage)
 	}
 	fmt.Fprintf(&b, "# HELP b89_correlator_review_coverage_status Status of review coverage: 1 for the single current status label\n# TYPE b89_correlator_review_coverage_status gauge\n")
 	status := snap.Feedback.ReviewCoverageStatus

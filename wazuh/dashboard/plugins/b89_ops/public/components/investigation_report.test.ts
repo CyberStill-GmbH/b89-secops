@@ -294,6 +294,7 @@ describe('reportes de investigación', () => {
     expect(content).toContain('name="Eventos"');
     expect(content).toContain('name="Actividad agrupada"');
     expect(content).toContain('name="IDs exactos de mensaje"');
+    expect(content).toContain('Destinatarios distintos observados');
     expect(content).toContain('Coincidencia por ID exacto; no prueba causalidad ni hilo');
     expect(content).toContain('Dirección según operaciones explícitas');
     expect(content).toContain('Salida; Dirección no determinada');

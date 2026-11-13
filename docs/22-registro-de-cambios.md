@@ -551,3 +551,15 @@ Plugin `b89_ops`: 21 archivos y 167 pruebas aprobadas; typecheck OSD 2.19.6 apro
 ## 2026-11-13 · Guardado PostgreSQL del dispatcher con filtro válido
 
 La primera integración con PostgreSQL real encontró que `PrismaNotificationAttemptStore.save` pasaba una clave compuesta de `WhereUniqueInput` a `updateMany`, que solo admite el `WhereInput` escalar. Prisma rechazaba la llamada y el dispatcher no podía persistir estados de intentos. El guardado ahora usa igualdad sobre `tenantId` e `idempotencyKey` más el predicado `status != acknowledged`, conservando el compare-and-set ante snapshots stale y la protección del acuse. PostgreSQL C-20 de `modules/soar` y `platform/database` pasó 12/12 en un contenedor PostgreSQL 18.0 limitado a loopback; se retiró al terminar.
+
+## 2026-11-13 · Salud de leases vencidos del outbox
+
+`GET /api/operations/health` ahora expone, por tenant, el número de mensajes `processing` con lease vencido y la edad del vencimiento más antiguo. La consulta usa subconsultas tenant-scoped en un solo round-trip; dos índices parciales por estado soportan conteo, mínimo y rango de lease sin recorrer mensajes publicados. La sección SOC se degrada con `OUTBOX_LEASE_EXPIRED` y Operaciones muestra los valores sin datos de destinatarios ni contenido.
+
+Se agregaron pruebas para el adapter en memoria, la respuesta HTTP/contrato y una integración PostgreSQL que cubre leases activos/vencidos, aislamiento de tenant y uso de ambos índices parciales con carga. Validación ejecutada: API/SOC 128/128, plugin 169/169, PostgreSQL SOC 15/15 en PostgreSQL 18.6 efímero de loopback, typechecks de API/SOC/database, `gofmt -d` y `git diff --check` PASS. `go test ./...` también pasó en `golang:1.23.12-bookworm`.
+
+## 2026-11-13 · Informes M365 y métrica de revisión del correlador
+
+La investigación escribe el XLSX por bloques al archivo elegido en navegadores con File System Access; la descarga Blob en memoria queda como alternativa con tope de 50 MiB. Las filas autorizadas siguen en memoria durante la consulta. Los grupos por ID exacto conservan hasta 100 destinatarios distintos y examinan como máximo 101 para marcar exceso, sin construir una colección temporal ilimitada; el conteo se identifica como mínimo cuando hay recorte. El PDF conserva su vista HTML imprimible local. `b89_ops`: 21 archivos, 169/169 pruebas; typecheck OSD no se ejecutó porque no está disponible `B89_TOOLS_DIR`.
+
+Se corrigió el HELP de Prometheus: `reviewCoverage` enumera también `duplicate`, que cuenta como revisado y no como TP/FP; `false_positive` agrupa `false_positive` y `benign`. La documentación separa cobertura de revisión de precisión, recall y tasa de FP. `gofmt -d` quedó limpio y `go test ./...` pasó en `golang:1.23.12-bookworm`; esto no demuestra reducción medida de falsos positivos ni aceptación de un corpus SOC real.

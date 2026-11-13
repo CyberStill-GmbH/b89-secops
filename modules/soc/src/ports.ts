@@ -165,12 +165,16 @@ export interface OutboxHealth {
   readonly processing: number;
   /** Disponibilidad del pendiente más antiguo; `null` si no hay pendientes. */
   readonly oldestPendingAt: Date | null;
+  /** Claims en proceso cuyo lease ya venció al instante de la consulta. */
+  readonly expiredProcessing: number;
+  /** Vencimiento más antiguo entre leases expirados; `null` si todos siguen vigentes. */
+  readonly oldestExpiredProcessingLeaseUntil: Date | null;
 }
 
 export interface SocHealthQuery {
   /** Instante de la alerta más reciente del tenant; `null` si nunca hubo. */
   lastAlertAt(tenantId: string): Promise<Date | null>;
-  outboxHealth(tenantId: string): Promise<OutboxHealth>;
+  outboxHealth(tenantId: string, at: Date): Promise<OutboxHealth>;
 }
 
 /* ---------------------------------------------------------------- Agregado */

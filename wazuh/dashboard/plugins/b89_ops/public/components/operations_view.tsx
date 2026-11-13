@@ -43,6 +43,20 @@ export function formatLatencySummary(
   return `p50 ${Math.round(p50 ?? 0)} ms · p95 ${Math.round(p95)} ms · p99 ${Math.round(p99 ?? p95)} ms · ${sampleCount} ${sampleCount === 1 ? 'muestra' : 'muestras'}`;
 }
 
+export function formatOutboxQueueSummary(input: {
+  pending: number;
+  processing: number;
+  oldestPendingAgeSeconds: number | null;
+  expiredProcessing: number;
+  oldestExpiredLeaseAgeSeconds: number | null;
+}): string {
+  const expired =
+    input.expiredProcessing > 0
+      ? ` · lease más antiguo vencido hace ${duration(input.oldestExpiredLeaseAgeSeconds)}`
+      : '';
+  return `${input.pending} pendientes · ${input.processing} en curso · más antigua ${duration(input.oldestPendingAgeSeconds)} · ${input.expiredProcessing} leases vencidos${expired}`;
+}
+
 function SectionPanel({
   title,
   status,
@@ -170,9 +184,7 @@ function OperationsContent({ embedded }: { embedded: boolean }) {
                         title: 'Cola de salida',
                         description: (
                           <span className="b89Tabular">
-                            {data.sections.soc.outbox.pending} pendientes ·{' '}
-                            {data.sections.soc.outbox.processing} en curso · más antigua{' '}
-                            {duration(data.sections.soc.outbox.oldestPendingAgeSeconds)}
+                            {formatOutboxQueueSummary(data.sections.soc.outbox)}
                           </span>
                         ),
                       },

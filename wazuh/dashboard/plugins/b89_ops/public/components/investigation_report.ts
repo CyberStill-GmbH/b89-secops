@@ -564,6 +564,7 @@ async function buildInvestigationSheets(
             'Eventos',
             'Buzones auditados (MailboxOwnerUPN)',
             'Destinatarios presentes en el DTO allowlisted',
+            'Destinatarios distintos observados (conteo mínimo si hay recorte)',
             'Lista de destinatarios truncada',
             'Operaciones auditadas',
             'IDs de evento',
@@ -578,6 +579,7 @@ async function buildInvestigationSheets(
               group.events.length,
               evidence.auditedMailboxes.join(' | '),
               evidence.recipients.join(' | '),
+              evidence.recipientCount,
               evidence.recipientsTruncated ? 'S\u00ed' : 'No',
               evidence.operations.join(' | '),
               group.events.map((event) => event.id).join(' | '),
@@ -586,7 +588,7 @@ async function buildInvestigationSheets(
           }
         })(),
       rowCount: exactEmailGroups.length + 1,
-      columnCount: 10,
+      columnCount: 11,
     },
   ];
   const sheets: Sheet[] =
@@ -792,7 +794,10 @@ function activityPrintRow(group: ReturnType<typeof groupInvestigationActivity>[n
 function exactEmailPrintRow(group: ReturnType<typeof groupExactEmailMessages>[number]): string {
   const evidence = summarizeExactEmailMessageGroup(group);
   const recipients = evidence.recipients.join(', ') || 'No provistos en los eventos';
-  const truncation = evidence.recipientsTruncated ? 'Sí; la lista está truncada' : 'No';
+  const recipientCount = evidence.recipientsTruncated
+    ? `al menos ${evidence.recipientCount.toLocaleString('es-PE')}`
+    : evidence.recipientCount.toLocaleString('es-PE');
+  const truncation = `${evidence.recipientsTruncated ? 'Sí; la lista está truncada' : 'No'} (${recipientCount} destinatarios distintos observados)`;
   return `<tr><td>${html(group.idType)}</td><td class="mono">${html(group.id)}</td><td>${html(evidence.direction)}</td><td>${group.events.length}</td><td>${html(evidence.auditedMailboxes.join(', ') || 'No provisto')}</td><td>${html(recipients)}<br/><small>Lista truncada: ${html(truncation)}</small></td><td>${html(evidence.operations.join(', ') || 'No provista')}</td><td>${html(group.events.map((event) => event.id).join(' · '))}</td></tr>`;
 }
 

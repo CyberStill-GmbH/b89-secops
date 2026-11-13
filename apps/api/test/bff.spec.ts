@@ -1432,6 +1432,10 @@ describe('Observabilidad · GET /api/operations/health por rol', () => {
       p99: null,
     });
     expect(body.sections.soc.outbox.pending).toBeGreaterThan(0);
+    expect(body.sections.soc.outbox).toMatchObject({
+      expiredProcessing: 0,
+      oldestExpiredLeaseAgeSeconds: null,
+    });
     // El harness no arranca el bucle y usa memoria: se reporta, no se oculta.
     expect(body.sections.soc.degradedReasons).toEqual(
       expect.arrayContaining(['DISPATCHER_STOPPED', 'PERSISTENCE_EPHEMERAL']),

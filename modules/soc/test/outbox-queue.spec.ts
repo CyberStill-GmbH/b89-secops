@@ -65,6 +65,25 @@ describe('C-20 · cola del outbox con lease', () => {
     expect(soc.outboxState.get('1')?.status).toBe('published');
   });
 
+  it('health cuenta leases vencidos del tenant y mide la expiración más antigua', async () => {
+    const soc = queueWith(message('1'), { ...message('2', after(15_000)), tenantId: 'tenant-2' });
+    await soc.claimOutbox(AT, 10, LEASE_MS);
+    const at = after(LEASE_MS + 10_000);
+
+    await expect(soc.outboxHealth('tenant-1', at)).resolves.toMatchObject({
+      pending: 0,
+      processing: 1,
+      expiredProcessing: 1,
+      oldestExpiredProcessingLeaseUntil: after(LEASE_MS),
+    });
+    await expect(soc.outboxHealth('tenant-2', AT)).resolves.toMatchObject({
+      pending: 1,
+      processing: 0,
+      expiredProcessing: 0,
+      oldestExpiredProcessingLeaseUntil: null,
+    });
+  });
+
   it('publicado es definitivo: no se vuelve a reclamar ni a cerrar', async () => {
     const soc = queueWith(message('1'));
     const [claimed] = await soc.claimOutbox(AT, 10, LEASE_MS);

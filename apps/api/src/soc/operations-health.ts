@@ -25,6 +25,8 @@ export type HealthStatus = (typeof HEALTH_STATUSES)[number];
 export const HEALTH_THRESHOLDS = Object.freeze({
   /** Un pendiente más viejo que esto indica que el despacho no avanza. */
   outboxOldestPendingSeconds: 300,
+  /** Un lease vencido indica que una pasada no cerró el claim antes de perderlo. */
+  outboxExpiredProcessingIsDegraded: true,
   /** Una receipt terminal fue aceptada por API pero no llegó a promoverse por el fast path. */
   pushInboxTerminalFailureIsDegraded: true,
   /** Latencia de base de datos que ya degrada la operación de la consola. */
@@ -80,6 +82,8 @@ export interface SocSectionInput {
     readonly pending: number;
     readonly processing: number;
     readonly oldestPendingAt: Date | null;
+    readonly expiredProcessing: number;
+    readonly oldestExpiredProcessingLeaseUntil: Date | null;
   };
   readonly notificationsByStatus: Readonly<Record<string, number>>;
   readonly providerAcceptanceLatency?: ProviderAcceptanceLatency | null;
@@ -93,9 +97,16 @@ export function socSection(input: SocSectionInput, at: Date) {
   const stuck =
     oldestPendingAgeSeconds !== null &&
     oldestPendingAgeSeconds > HEALTH_THRESHOLDS.outboxOldestPendingSeconds;
+  const oldestExpiredLeaseAgeSeconds = ageSeconds(
+    input.outbox.oldestExpiredProcessingLeaseUntil,
+    at,
+  );
   const degradedReasons = [
     ...(input.dispatcherRunning ? [] : ['DISPATCHER_STOPPED']),
     ...(stuck ? ['OUTBOX_BACKLOG'] : []),
+    ...(HEALTH_THRESHOLDS.outboxExpiredProcessingIsDegraded && input.outbox.expiredProcessing > 0
+      ? ['OUTBOX_LEASE_EXPIRED']
+      : []),
     // Memoria en un ambiente que debería ser durable se reporta, no se esconde.
     ...(input.persistence === 'memory' ? ['PERSISTENCE_EPHEMERAL'] : []),
     ...(input.wazuhPushInbox?.terminalFailuresRecent ? ['WAZUH_PUSH_TERMINAL_FAILURES'] : []),
@@ -114,6 +125,8 @@ export function socSection(input: SocSectionInput, at: Date) {
       pending: input.outbox.pending,
       processing: input.outbox.processing,
       oldestPendingAgeSeconds,
+      expiredProcessing: input.outbox.expiredProcessing,
+      oldestExpiredLeaseAgeSeconds,
     },
     notifications: {
       windowHours: HEALTH_THRESHOLDS.notificationWindowHours,

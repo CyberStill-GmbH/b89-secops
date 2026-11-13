@@ -18,10 +18,26 @@ import {
   createInvestigationXlsx,
   ReportCollectionError,
   writeInvestigationPrintWindowWithProgress,
+  writeInvestigationXlsx,
 } from './investigation_report';
 import './investigation_report.scss';
 
 type ReportAction = 'csv' | 'xlsx' | 'print';
+
+type ReportFileWritable = {
+  write(chunk: Uint8Array): Promise<void>;
+  close(): Promise<void>;
+  abort(reason?: unknown): Promise<void>;
+};
+
+type ReportFileHandle = { createWritable(): Promise<ReportFileWritable> };
+
+type SavePickerWindow = Window & {
+  showSaveFilePicker?: (options: {
+    suggestedName: string;
+    types: Array<{ description: string; accept: Record<string, string[]> }>;
+  }) => Promise<ReportFileHandle>;
+};
 
 function progressPercent(progress: ReportProgress): number {
   if (progress.percent !== undefined) return Math.max(0, Math.min(100, progress.percent));
@@ -56,15 +72,50 @@ export function InvestigationReportActions({
   const [message, setMessage] = useState('');
   const cancel = useRef<AbortController | null>(null);
   const printWindow = useRef<Window | null>(null);
+  const startingExport = useRef(false);
   const highestProgress = useRef(0);
 
   const start = async (action: ReportAction) => {
-    if (busy || entities.length === 0) return;
+    if (busy || startingExport.current || entities.length === 0) return;
+    startingExport.current = true;
+    setBusy(action);
+    setProgress(null);
+    setMessage('');
+    const filename = `b89-investigacion-${(alert?.id ?? 'grupo').replace(/[^A-Za-z0-9_-]/gu, '_')}.xlsx`;
+    let outputHandle: ReportFileHandle | null = null;
+    const picker =
+      action === 'xlsx' && typeof (window as SavePickerWindow).showSaveFilePicker === 'function';
+    if (picker) {
+      try {
+        outputHandle = await (window as SavePickerWindow).showSaveFilePicker!({
+          suggestedName: filename,
+          types: [
+            {
+              description: 'Libro Excel de B89 SOC',
+              accept: {
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+              },
+            },
+          ],
+        });
+      } catch (error) {
+        setMessage(
+          error instanceof Error && error.name === 'AbortError'
+            ? 'Selección del destino cancelada. No se generó ningún archivo.'
+            : 'No se pudo abrir el selector de archivos del navegador.',
+        );
+        startingExport.current = false;
+        setBusy(null);
+        return;
+      }
+    }
     // Open synchronously in the click handler to preserve the browser's popup permission while
     // the authorized pages are collected. It is closed on cancel/failure.
     const opened = action === 'print' ? windowOpen() : null;
     if (action === 'print' && !opened) {
       setMessage('Permite la ventana emergente para preparar el PDF imprimible.');
+      startingExport.current = false;
+      setBusy(null);
       return;
     }
     printWindow.current = opened;
@@ -78,9 +129,6 @@ export function InvestigationReportActions({
     const controller = new AbortController();
     cancel.current = controller;
     highestProgress.current = 0;
-    setBusy(action);
-    setProgress(null);
-    setMessage('');
     const query: InvestigationReportQuery = {
       entities: entities.map(({ kind, value }) => ({ kind, value })),
       at,
@@ -120,7 +168,19 @@ export function InvestigationReportActions({
         setMessage('Preparación cancelada.');
         return;
       }
-      if (action === 'xlsx') {
+      if (action === 'xlsx' && outputHandle) {
+        const writable = await outputHandle.createWritable();
+        await writeInvestigationXlsx(
+          report,
+          writable,
+          (next) => {
+            const percent = Math.max(highestProgress.current, progressPercent(next));
+            highestProgress.current = percent;
+            setProgress({ ...next, percent });
+          },
+          controller.signal,
+        );
+      } else if (action === 'xlsx') {
         const blob = await createInvestigationXlsx(
           report,
           (next) => {
@@ -137,7 +197,7 @@ export function InvestigationReportActions({
         const url = URL.createObjectURL(blob);
         const anchor = document.createElement('a');
         anchor.href = url;
-        anchor.download = `b89-investigacion-${(alert?.id ?? 'grupo').replace(/[^A-Za-z0-9_-]/gu, '_')}.xlsx`;
+        anchor.download = filename;
         document.body.appendChild(anchor);
         anchor.click();
         anchor.remove();
@@ -186,7 +246,9 @@ export function InvestigationReportActions({
         action === 'print'
           ? 'Vista imprimible lista; revisa el contenido y elige Guardar como PDF en el navegador.'
           : action === 'xlsx'
-            ? 'Libro Excel listo para revisar y compartir.'
+            ? outputHandle
+              ? 'Libro Excel escrito por partes en el archivo elegido.'
+              : 'Libro Excel listo para revisar y compartir; este navegador lo preparó en memoria (límite: 50 MiB).'
             : 'Archivo CSV listo para revisar y compartir.';
       setProgress({
         phase: 'package',
@@ -225,6 +287,7 @@ export function InvestigationReportActions({
     } finally {
       cancel.current = null;
       printWindow.current = null;
+      startingExport.current = false;
       setBusy(null);
     }
   };

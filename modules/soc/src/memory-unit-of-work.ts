@@ -475,21 +475,40 @@ export class InMemorySoc implements SocPersistence {
     return Promise.resolve(latest);
   }
 
-  public outboxHealth(tenantId: string): Promise<OutboxHealth> {
+  public outboxHealth(tenantId: string, at: Date): Promise<OutboxHealth> {
     let pending = 0;
     let processing = 0;
     let oldestPendingAt: Date | null = null;
+    let expiredProcessing = 0;
+    let oldestExpiredProcessingLeaseUntil: Date | null = null;
     for (const message of this.outboxRows.values()) {
       if (message.tenantId !== tenantId) continue;
       const state = this.stateOf(message);
-      if (state.status === 'processing') processing += 1;
+      if (state.status === 'processing') {
+        processing += 1;
+        if (state.leaseUntil && state.leaseUntil.getTime() < at.getTime()) {
+          expiredProcessing += 1;
+          if (
+            !oldestExpiredProcessingLeaseUntil ||
+            state.leaseUntil.getTime() < oldestExpiredProcessingLeaseUntil.getTime()
+          ) {
+            oldestExpiredProcessingLeaseUntil = state.leaseUntil;
+          }
+        }
+      }
       if (state.status !== 'pending') continue;
       pending += 1;
       if (!oldestPendingAt || state.availableAt.getTime() < oldestPendingAt.getTime()) {
         oldestPendingAt = state.availableAt;
       }
     }
-    return Promise.resolve({ pending, processing, oldestPendingAt });
+    return Promise.resolve({
+      pending,
+      processing,
+      oldestPendingAt,
+      expiredProcessing,
+      oldestExpiredProcessingLeaseUntil,
+    });
   }
 
   public ready(): Promise<void> {

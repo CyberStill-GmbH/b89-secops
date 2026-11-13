@@ -362,9 +362,12 @@ limites y retencion: [referencia oficial de permisos Microsoft Graph](https://le
   bloques de 250 filas y ceden el hilo de UI entre bloques; cancelar aborta la petición y el render;
   se rechaza ACL/errores sin entregar parcial, y 10.000 es el límite declarado.
 - Límite conocido: el snapshot PIT no vive más allá de su keep-alive; si expira, retry comienza con
-  nueva consulta. Los artefactos se preparan en la memoria del navegador; no existe job durable,
-  reanudación, worker, artifact store privado, PDF server-side ni descarga ACL-protegida. Estas
-  propiedades siguen como gates del diseño durable arriba. No afirmar validación desplegada.
+  nueva consulta. Las filas consultadas siguen en memoria durante la investigación. La exportación
+  XLSX puede escribirse por bloques en un destino elegido por el usuario; el fallback del navegador
+  está limitado a 50 MiB. CSV y vista imprimible no tienen destino de archivo por bloques. No existe
+  job durable, reanudación, worker, artifact store privado, PDF server-side ni descarga
+  ACL-protegida. Estas propiedades siguen como gates del diseño durable arriba. No afirmar
+  validación desplegada.
 
 ## Calidad, privacidad y liberacion
 
@@ -396,15 +399,19 @@ el codigo local previo de la conversacion no cuenta como release.
 
 Actualización local del 2026-11-12: `reviewCoverage` es la fracción de candidatos `b89-correlator`
 materializados como alertas B89 en la ventana de ocurrencia que ya tienen veredicto
-`true_positive`, `false_positive` o `benign`:
+`true_positive`, `false_positive`, `benign` o `duplicate`:
 `(TP + FP + benign + duplicate) / candidatos materializados como alertas`. `duplicate` cuenta como
 decisión humana revisada, pero no se suma a TP/FP ni alimenta propuestas de supresión. El JSON expone
 `reviewCoverage` y `reviewCoverageStatus`; sin
 candidatos el valor es `null` con `NO_DATA`,
 y con feed truncado es `null` con `INCOMPLETE`. Prometheus publica el ratio solo cuando está
 disponible; la ausencia del sample significa que no hay una medición válida. Esta cobertura mide qué
-parte se revisó, no la calidad de las decisiones: no es precisión (`TP / (TP + FP)`) ni recall
-(`TP / (TP + FN)`), y no demuestra reducción de falsos positivos.
+parte se revisó, no la calidad de las decisiones: no es precisión (`TP / (TP + FP)`), tasa de falsos
+positivos (`FP / (FP + TN)`) ni recall (`TP / (TP + FN)`), y no demuestra reducción de falsos
+positivos. En `b89_correlator_feedback_alerts{verdict="false_positive"}`, el contador agrupa los
+veredictos `false_positive` y `benign`, conforme a `IsFalsePositive`; no es un conteo puro de FP para
+evaluación de calidad. El HELP de `b89_correlator_review_coverage` enumera TP, FP, benign y duplicate;
+duplicate cuenta como revisado, no como TP/FP ni como evidencia de supresión.
 
 - Se añadieron conteos TP, FP, revisados y no revisados, ventana y truncamiento del feed en API,
   Prometheus y reportes. La cohorte de alertas se cuenta por `OccurredAt`; los veredictos se agrupan
@@ -479,8 +486,11 @@ parte se revisó, no la calidad de las decisiones: no es precisión (`TP / (TP +
   filas realmente recibidas y serializadas, no tiempo estimado. El PDF
   imprimible actualiza el estado durante consulta y generación; cancelar aborta la petición y cierra el
   expediente. Los botones quedan disponibles tras error para reintentar. La integración en
-  `investigation_view.tsx` está hecha. Los artefactos se generan en memoria del navegador y se pierden
-  al cerrar la página; no hay reanudación durable ni artefacto protegido.
+  `investigation_view.tsx` está hecha. XLSX solicita el destino antes de la consulta y, cuando el
+  navegador ofrece File System Access, escribe el libro por bloques al archivo local elegido; la
+  descarga Blob en memoria es la alternativa de hasta 50 MiB. Las filas autorizadas se mantienen en
+  memoria durante la consulta. CSV se descarga como Blob y PDF es una vista HTML local que se imprime
+  desde el navegador; no hay reanudación durable, job server-side ni artefacto protegido por B89.
 - Ante una página temporalmente no disponible, la exportación reintenta hasta dos veces con espera
   breve y cancelable; si no se recupera, falla sin descargar resultados parciales. Esto mejora la
   tolerancia del cliente, pero no reemplaza el diagnóstico de la respuesta del Indexer ni prueba su
@@ -699,3 +709,17 @@ Validación local: plugin `b89_ops`, 21 archivos y 167 pruebas aprobadas. Sin de
 `custom-b89` ahora realiza hasta tres intentos para fallos de red, timeout y respuestas HTTP 408/425/429/5xx, con timeout de 2 s por llamada y backoff de 250/500 ms. Cada intento vuelve a firmar el mismo hint minimizado con timestamp fresco; el receptor deduplica por manager + alertId para cubrir respuestas perdidas tras commit. Errores 4xx permanentes y TLS/CA inválida no se reintentan; el pull sigue como recuperación final. El objetivo es recuperar fallos transitorios sin convertir la integración Wazuh en cola durable.
 
 Validación local: `python -m pytest wazuh/manager/integrations/tests -q -p no:cacheprovider` pasó 22 pruebas y 19 subtests. Aún falta desplegar y medir el handshake, `202`, receipt durable, promoción y alerta visible; la prueba local no acredita entrega live.
+
+### Salud de leases vencidos del outbox (2026-11-13)
+
+`GET /api/operations/health` expone ahora `expiredProcessing` y `oldestExpiredLeaseAgeSeconds` para la cola de salida. Las subconsultas se ejecutan en un solo round-trip y usan `soc_outbox_messages_pending_health_idx` y `soc_outbox_messages_processing_lease_health_idx`, índices parciales por tenant/estado para excluir filas publicadas. `OUTBOX_LEASE_EXPIRED` degrada la sección SOC mientras haya claims vencidos. La UI muestra la edad solo cuando el conteo es mayor que cero. Este indicador hace visibles claims abandonados, pero no mide la antigüedad de un lease todavía activo ni la latencia de entrega al proveedor.
+
+Las pruebas locales API/SOC pasaron 128/128; `b89_ops`, 169/169; y los typechecks de API, SOC y database pasaron. La integración PostgreSQL pasó 15/15 en PostgreSQL 18.6 efímero, ligado a loopback y retirado al terminar; cubrió leases activos/vencidos, aislamiento de tenant y `EXPLAIN` usando los dos índices parciales.
+
+## 2026-11-13 · Informe de investigación: escritura y límites del expediente
+
+En los navegadores con File System Access, el informe relacionado de investigación solicita el destino antes de consultar y escribe XLSX por bloques, respetando el backpressure del archivo. La barra conserva el progreso de consulta y continúa con el render y el empaquetado; el 100 % solo se muestra al cerrar el archivo. En navegadores sin esa API queda la descarga Blob en memoria con límite de 50 MiB, indicado en el estado final.
+
+Los grupos de correo por ID exacto limitan la lista exportada y el conjunto temporal a 100 destinatarios distintos por mensaje. El informe cuenta hasta 101 para señalar el exceso sin retener el resto; el indicador de recorte distingue una lista completa de un mínimo conocido. La fuente también puede limitar destinatarios por evento, así que no se presenta un total global del mensaje cuando el DTO señala truncamiento. PDF sigue siendo una vista HTML local que se completa por lotes y usa el diálogo de impresión del navegador; no se ofrece como descarga PDF server-side ni como PDF parcial en streaming.
+
+Verificación local de esta edición: suite `b89_ops` 21 archivos y 169 pruebas PASS; Prettier y `git diff --check` PASS. El typecheck OSD 2.19.6 no se pudo ejecutar porque falta el directorio `B89_TOOLS_DIR` con las dependencias fijadas. `go test ./...` pasó en `golang:1.23.12-bookworm`. Sin verificación visual ni despliegue del bundle.

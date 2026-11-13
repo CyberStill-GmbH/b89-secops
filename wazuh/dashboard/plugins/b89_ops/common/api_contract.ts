@@ -546,6 +546,8 @@ export interface OperationsHealth {
         readonly pending: number;
         readonly processing: number;
         readonly oldestPendingAgeSeconds: number | null;
+        readonly expiredProcessing: number;
+        readonly oldestExpiredLeaseAgeSeconds: number | null;
       };
       readonly notifications: {
         readonly windowHours: number;
