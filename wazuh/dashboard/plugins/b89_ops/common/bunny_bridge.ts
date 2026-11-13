@@ -52,3 +52,37 @@ export function alertQuestion(alert: {
   lines.push('¿Qué significa, qué tan grave es, qué más reviso y qué acción recomiendas?');
   return lines.join('\n');
 }
+
+export type BunnyReportFormat = 'pdf' | 'xlsx' | 'csv';
+
+export const BUNNY_REPORT_FORMAT_LABEL: Readonly<Record<BunnyReportFormat, string>> = {
+  pdf: 'PDF',
+  xlsx: 'Excel',
+  csv: 'CSV',
+};
+
+const BUNNY_REPORT_WINDOW_TEXT: Readonly<Record<string, string>> = {
+  '1h': '±1 hora (ventana 1h)',
+  '24h': '±24 horas (ventana 24h)',
+  '7d': '±7 días (ventana 7d)',
+};
+
+/**
+ * Pregunta que pide a Bunny el informe profesional de una investigación (herramienta
+ * `generate_report`). Sin alerta (investigación por entidad) se describe el sujeto con `subject`.
+ */
+export function bunnyReportPrompt(options: {
+  readonly format: BunnyReportFormat;
+  readonly window: string;
+  readonly alertId?: string | null;
+  readonly subject?: string;
+}): string {
+  const format = BUNNY_REPORT_FORMAT_LABEL[options.format];
+  const windowText = BUNNY_REPORT_WINDOW_TEXT[options.window] ?? `±${options.window}`;
+  const target = options.alertId
+    ? `la alerta ${options.alertId}`
+    : options.subject
+      ? `${options.subject}`
+      : 'la entidad investigada';
+  return `Genera un informe ${format} profesional de la investigación de ${target} con eventos relacionados ${windowText}.`;
+}

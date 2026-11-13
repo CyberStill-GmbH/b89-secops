@@ -243,7 +243,10 @@ export function renderMarkdown(source: string, options: MarkdownOptions = {}): R
     if (heading) {
       const title = (heading[2] ?? '').replace(/\*\*/gu, '');
       blocks.push(
-        <h4 key={`b${key++}`} className={`b89Bunny__h b89Bunny__h--${sectionOf(title)}`}>
+        <h4
+          key={`b${key++}`}
+          className={`b89Bunny__h b89Bunny__h--${sectionOf(title)} b89Bunny__h--l${(heading[1] ?? '###').length}`}
+        >
           {inline(title, `h${key}`, options)}
         </h4>,
       );

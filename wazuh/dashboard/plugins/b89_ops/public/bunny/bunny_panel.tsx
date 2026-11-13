@@ -2,7 +2,7 @@
  * Copyright B89. SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
 import type { CoreStart } from '../../../../src/core/public';
 import type { BunnyAskDetail } from '../../common';
@@ -10,6 +10,7 @@ import { BRAND_ASSETS_PATH, BUNNY_ASK_EVENT, CAPABILITIES } from '../../common';
 import { B89ApiError } from '../api/client';
 import type { B89ApiClient } from '../api/client';
 import type {
+  ArtifactRef,
   BunnyCitation,
   BunnyConfig,
   BunnyConfigState,
@@ -28,25 +29,49 @@ import {
   fetchBunnyUsage,
   formatWhen,
   getConversation,
+  listArtifacts,
   loadBunnyConfigState,
   listConversations,
+  mergeArtifacts,
   rateMessage,
   suggestionsFor,
 } from './chat_client';
+import { BunnyArtifactCard, BunnyArtifactList } from './bunny_artifact_card';
+import { autoDownloadOnce } from './bunny_artifacts';
+import { BunnyComposer } from './bunny_composer_view';
+import { Icon } from './bunny_icons';
+import type { IconName } from './bunny_icons';
+import {
+  applyDock,
+  clampPanelWidth,
+  dockWidthFor,
+  effectivePanelWidth,
+  layoutMode,
+  PANEL_MAX_WIDTH,
+  PANEL_MIN_WIDTH,
+  readStoredWidth,
+  toggleWideWidth,
+  widthFromKey,
+  widthFromPointer,
+  writeStoredWidth,
+  PANEL_WIDE_WIDTH,
+} from './bunny_layout';
 import { renderMarkdown } from './markdown';
 import { BunnyReportActions } from './bunny_report_actions';
-import { BunnyThinking } from './bunny_thinking';
+import { BunnyActivity, BunnyThinking } from './bunny_thinking';
 
 /**
- * Bunny, el asistente de IA de B89 SOC. Panel lateral a la derecha al estilo de Amazon Q en la
- * consola de AWS: se abre desde la cabecera, se ajusta a la pantalla, saluda con
- * ejemplos de la página actual, muestra las consultas realizadas, cita lo
- * que afirma con enlaces a la consola y guarda las conversaciones en un historial que se puede
- * reabrir y borrar. Es de solo lectura y responde con los permisos de la persona.
+ * Bunny, el asistente de IA de B89 SOC. Panel lateral derecho al estilo de ChatGPT/Codex: en
+ * pantallas anchas EMPUJA la consola a la izquierda (acoplado, con ancho ajustable); en las
+ * estrechas es un cajón con fondo. Saluda con ejemplos de la página, muestra la actividad como una
+ * línea plegable, cita lo que afirma con enlaces a la consola, entrega informes (PDF/Excel/CSV)
+ * como tarjetas de archivo y guarda las conversaciones en un historial. Es de solo lectura y
+ * responde con los permisos de la persona.
  */
 
 const MAX_CHARS = 4000;
 const NAME = 'Bunny';
+const LAUNCHER = '[data-test-subj="b89BunnyLauncher"]';
 
 interface Message {
   readonly id: number;
@@ -54,10 +79,13 @@ interface Message {
   readonly text: string;
   readonly steps?: readonly BunnyStep[];
   readonly citations?: readonly BunnyCitation[];
+  readonly artifacts?: readonly ArtifactRef[];
   readonly tone?: 'error' | 'notice';
   /** Id del mensaje guardado en el historial (necesario para la valoración). */
   readonly serverId?: string;
   readonly feedback?: BunnyFeedback;
+  /** Segundos que tardó Bunny (solo respuestas de esta sesión). */
+  readonly seconds?: number;
 }
 
 /** Página de contexto para una pregunta abierta desde una vista («Preguntar a Bunny»). */
@@ -87,29 +115,31 @@ function Feedback({
     <span className="b89Bunny__feedback" role="group" aria-label="Valora esta respuesta">
       <button
         type="button"
-        className={value === 'up' ? 'is-active' : ''}
+        className={`b89Bunny__action${value === 'up' ? ' is-active' : ''}`}
         aria-pressed={value === 'up'}
+        aria-label="Respuesta útil"
         title="Respuesta útil"
         disabled={disabled}
         onClick={() => onRate(value === 'up' ? null : 'up')}
       >
-        👍
+        <Icon name="up" size={15} />
       </button>
       <button
         type="button"
-        className={value === 'down' ? 'is-active' : ''}
+        className={`b89Bunny__action${value === 'down' ? ' is-active' : ''}`}
         aria-pressed={value === 'down'}
+        aria-label="Respuesta incorrecta o poco útil"
         title="Respuesta incorrecta o poco útil"
         disabled={disabled}
         onClick={() => onRate(value === 'down' ? null : 'down')}
       >
-        👎
+        <Icon name="down" size={15} />
       </button>
     </span>
   );
 }
 
-type View = 'chat' | 'history' | 'usage';
+type View = 'chat' | 'history' | 'usage' | 'files';
 
 /** Estado compartido entre el botón de la cabecera y el panel (ambos montan por separado). */
 export class BunnyState {
@@ -200,30 +230,7 @@ export function BunnyLauncher({ state, imageUrl }: { state: BunnyState; imageUrl
   );
 }
 
-/** Actividad visible limitada a pasos de herramientas que realmente ejecutó el servidor. */
-function Activity({ steps }: { steps?: readonly BunnyStep[] }) {
-  const [shown, setShown] = useState(false);
-  if (!steps || steps.length === 0) return null;
-  return (
-    <div className="b89Bunny__activity">
-      <button type="button" aria-expanded={shown} onClick={() => setShown(!shown)}>
-        <span aria-hidden="true">{shown ? '▾' : '▸'}</span> {shown ? 'Ocultar' : 'Mostrar'}{' '}
-        actividad
-      </button>
-      {shown && (
-        <ol>
-          {steps.map((step, index) => (
-            <li key={`${step.tool}-${index}`} className={step.ok ? 'is-ok' : 'is-failed'}>
-              <span aria-hidden="true">{step.ok ? '✓' : '✕'}</span> {step.label}
-              {step.ok ? '' : ' (sin resultado)'}
-            </li>
-          ))}
-        </ol>
-      )}
-    </div>
-  );
-}
-
+/** Fuentes citadas como chips pequeños. */
 function Sources({
   citations,
   open,
@@ -252,6 +259,49 @@ function Sources({
         );
       })}
     </div>
+  );
+}
+
+/** «Archivos»: informes vigentes (24 h) del usuario, desde GET /assistant/artifacts. */
+function FilesView({ api, onBack }: { api: B89ApiClient; onBack: () => void }) {
+  const [items, setItems] = useState<readonly ArtifactRef[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const load = useCallback(() => {
+    setFailed(false);
+    listArtifacts(api).then(setItems, () => setFailed(true));
+  }, [api]);
+  useEffect(() => load(), [load]);
+  return (
+    <section className="b89Bunny__history b89Bunny__filesView" aria-label="Archivos generados">
+      <div className="b89Bunny__historyHead">
+        <h3>Archivos</h3>
+        <button type="button" onClick={onBack}>
+          Volver al chat
+        </button>
+      </div>
+      <p className="b89Bunny__historyNote">
+        Los informes que genera {NAME} se guardan 24 horas y solo los ves tú.
+      </p>
+      {failed && (
+        <p className="b89Bunny__historyNote" role="alert">
+          No pude cargar los archivos.{' '}
+          <button type="button" className="b89Bunny__more" onClick={load}>
+            Reintentar
+          </button>
+        </p>
+      )}
+      {items === null && !failed && <p className="b89Bunny__historyNote">Cargando…</p>}
+      {items !== null && items.length === 0 && !failed && (
+        <p className="b89Bunny__historyNote">
+          Aún no hay archivos vigentes. Pídele a {NAME} un informe en PDF, Excel o CSV.
+        </p>
+      )}
+      <div className="b89Bunny__files b89Bunny__files--list">
+        {(items ?? []).map((artifact) => (
+          <BunnyArtifactCard key={artifact.id} artifact={artifact} apiPrefix={api.apiPrefix} />
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -353,7 +403,7 @@ function HistoryView({
                 aria-label={`Borrar la conversación ${item.title}`}
                 onClick={() => setConfirming(item.id)}
               >
-                🗑
+                <Icon name="trash" size={15} />
               </button>
             )}
           </li>
@@ -471,7 +521,9 @@ function BunnyUsageView({
           </div>
           <div>
             <dt>Datos personales</dt>
-            <dd>{configState.config.redactsPersonalData ? 'Seudonimizados' : 'Redacción desactivada'}</dd>
+            <dd>
+              {configState.config.redactsPersonalData ? 'Seudonimizados' : 'Redacción desactivada'}
+            </dd>
           </div>
         </dl>
       ) : configState.status === 'loading' ? (
@@ -569,6 +621,92 @@ function BunnyUsageView({
   );
 }
 
+function useViewportWidth(): number {
+  const [width, setWidth] = useState(() => window.innerWidth);
+  useEffect(() => {
+    const onResize = () => setWidth(window.innerWidth);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  return width;
+}
+
+interface MenuEntry {
+  readonly key: string;
+  readonly icon: IconName;
+  readonly label: string;
+  readonly onSelect: () => void;
+}
+
+/** Menú «⋯» de la cabecera (Archivos, Uso y configuración). */
+function HeaderMenu({ entries }: { entries: readonly MenuEntry[] }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return undefined;
+    const onPointer = (event: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onPointer);
+    return () => document.removeEventListener('mousedown', onPointer);
+  }, [open]);
+  if (entries.length === 0) return null;
+  return (
+    <div
+      className="b89Bunny__menuRoot"
+      ref={rootRef}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && open) {
+          event.preventDefault();
+          event.stopPropagation();
+          setOpen(false);
+          (rootRef.current?.querySelector('button') as HTMLButtonElement | null)?.focus();
+        }
+      }}
+    >
+      <button
+        type="button"
+        className="b89Bunny__iconButton"
+        title="Más opciones"
+        aria-label="Más opciones"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <Icon name="more" size={18} />
+      </button>
+      {open && (
+        <div className="b89Bunny__menu" role="menu">
+          {entries.map((entry) => (
+            <button
+              type="button"
+              role="menuitem"
+              key={entry.key}
+              onClick={() => {
+                setOpen(false);
+                entry.onSelect();
+              }}
+            >
+              <Icon name={entry.icon} size={15} /> {entry.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Mensaje de la persona: píldora sutil alineada a la derecha. */
+function UserMessage({ message }: { message: Message }) {
+  return (
+    <article
+      className={`b89Bunny__message b89Bunny__message--user${message.tone ? ` is-${message.tone}` : ''}`}
+    >
+      <p className="b89Bunny__pill">{message.text}</p>
+    </article>
+  );
+}
+
 export function BunnyPanel({
   core,
   api,
@@ -582,7 +720,6 @@ export function BunnyPanel({
 }) {
   const open = useBunnyOpen(state);
   const [configState, setConfigState] = useState<BunnyConfigState>({ status: 'loading' });
-  const config = configState.status === 'ready' ? configState.config : null;
   const [canSeeUsage, setCanSeeUsage] = useState(false);
   const [canWriteNotes, setCanWriteNotes] = useState(false);
   const [view, setView] = useState<View>('chat');
@@ -592,6 +729,8 @@ export function BunnyPanel({
   const [draft, setDraft] = useState('');
   const [pending, setPending] = useState(false);
   const [progressEvents, setProgressEvents] = useState<BunnyProgressEvent[]>([]);
+  const [streamText, setStreamText] = useState('');
+  const [liveArtifacts, setLiveArtifacts] = useState<readonly ArtifactRef[]>([]);
   const [thinkingStartedAt, setThinkingStartedAt] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [copied, setCopied] = useState<number | null>(null);
@@ -603,11 +742,31 @@ export function BunnyPanel({
   const [noteStatus, setNoteStatus] = useState<{ id: number; text: string } | null>(null);
   /** Contexto recibido de «Preguntar a Bunny» (alerta/incidente) para la siguiente pregunta. */
   const [askContext, setAskContext] = useState<string | null>(null);
+  const [panelWidth, setPanelWidth] = useState(() => readStoredWidth());
+  const [resizing, setResizing] = useState(false);
+  const viewport = useViewportWidth();
   const nextId = useRef(1);
   const activeChatRun = useRef<AbortController | null>(null);
   const configRequest = useRef(0);
   const listRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const panelRef = useRef<HTMLElement | null>(null);
+  const dragging = useRef(false);
+  const stickToBottom = useRef(true);
+  const wasOpen = useRef(false);
+  /** Archivos ya descargados automáticamente en esta sesión (evento SSE + respuesta final). */
+  const downloaded = useRef<Set<string>>(new Set());
+
+  const mode = layoutMode(viewport);
+  const renderWidth = effectivePanelWidth(panelWidth, viewport);
+  const dockWidth = dockWidthFor(open, viewport, panelWidth);
+
+  // La consola se acopla (se encoge) mientras el panel está abierto y en pantalla ancha; al cerrar
+  // `<html>` queda exactamente como estaba (sin clase ni variable). Ver `bunny.scss`.
+  useLayoutEffect(() => {
+    applyDock(document.documentElement, dockWidth);
+  }, [dockWidth]);
+  useLayoutEffect(() => () => applyDock(document.documentElement, null), []);
 
   const loadConfig = useCallback(async () => {
     const requestId = ++configRequest.current;
@@ -646,17 +805,29 @@ export function BunnyPanel({
     if (open && view === 'chat') inputRef.current?.focus();
   }, [open, view]);
 
+  // Al cerrar, el foco vuelve al botón de la cabecera (lo que abrió el panel).
+  useEffect(() => {
+    if (wasOpen.current && !open) document.querySelector<HTMLElement>(LAUNCHER)?.focus();
+    wasOpen.current = open;
+  }, [open]);
+
   useEffect(() => {
     const el = listRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, pending, view]);
+    if (el && stickToBottom.current) el.scrollTop = el.scrollHeight;
+  }, [messages, pending, view, streamText, progressEvents, liveArtifacts]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.altKey && event.shiftKey && event.key.toLowerCase() === 'b') {
         event.preventDefault();
         state.toggle();
-      } else if (event.key === 'Escape' && state.isOpen()) {
+      } else if (
+        event.key === 'Escape' &&
+        !event.defaultPrevented &&
+        state.isOpen() &&
+        // Un modal o flyout de OSD abierto atiende primero su propio Esc.
+        !document.querySelector('.euiOverlayMask')
+      ) {
         state.set(false);
       }
     };
@@ -674,6 +845,7 @@ export function BunnyPanel({
     setConversationId(null);
     setNotSaved(false);
     setView('chat');
+    stickToBottom.current = true;
   }, []);
 
   const openConversation = useCallback(
@@ -688,6 +860,7 @@ export function BunnyPanel({
             text: message.text,
             ...(message.steps ? { steps: message.steps } : {}),
             ...(message.citations ? { citations: message.citations } : {}),
+            ...(message.artifacts ? { artifacts: message.artifacts } : {}),
             ...(message.tone ? { tone: message.tone } : {}),
             ...(message.role === 'assistant' ? { serverId: String(message.id) } : {}),
             ...(message.feedback ? { feedback: message.feedback } : {}),
@@ -696,6 +869,7 @@ export function BunnyPanel({
         setConversationId(stored.id);
         setNotSaved(false);
         setView('chat');
+        stickToBottom.current = true;
       } catch {
         append({ role: 'assistant', text: 'No pude abrir esa conversación.', tone: 'error' });
         setView('chat');
@@ -714,10 +888,15 @@ export function BunnyPanel({
       setDraft('');
       const userMessageId = nextId.current;
       append({ role: 'user', text });
+      stickToBottom.current = true;
+      const startedAt = Date.now();
       setPending(true);
-      setThinkingStartedAt(Date.now());
+      setThinkingStartedAt(startedAt);
       setElapsedSeconds(0);
       setProgressEvents([]);
+      setStreamText('');
+      setLiveArtifacts([]);
+      const received: ArtifactRef[] = [];
       const controller = new AbortController();
       activeChatRun.current = controller;
       try {
@@ -729,21 +908,37 @@ export function BunnyPanel({
           (event) => setProgressEvents((current) => [...current, event]),
           conversationId ?? undefined,
           controller.signal,
+          {
+            onArtifact: (artifact) => {
+              received.push(artifact);
+              setLiveArtifacts((current) => mergeArtifacts(current, [artifact]));
+              // El archivo ya está guardado: se descarga una sola vez, en cuanto llega.
+              autoDownloadOnce(downloaded.current, artifact, api.apiPrefix);
+            },
+            onDelta: (chunk) => setStreamText((current) => current + chunk),
+          },
         );
         setAskContext(null);
         if (reply.conversationId) setConversationId(reply.conversationId);
         setNotSaved(reply.saved === false);
+        // Camino JSON (sin SSE): los archivos llegan solo en la respuesta final.
+        (reply.artifacts ?? []).forEach((artifact) =>
+          autoDownloadOnce(downloaded.current, artifact, api.apiPrefix),
+        );
         append({
           role: 'assistant',
           text: reply.reply,
           steps: reply.steps,
           citations: reply.citations,
+          seconds: Math.max(0, Math.round((Date.now() - startedAt) / 1000)),
+          ...(reply.artifacts && reply.artifacts.length > 0 ? { artifacts: reply.artifacts } : {}),
           ...(reply.messageId ? { serverId: reply.messageId } : {}),
           ...(reply.outcome === 'refused' || reply.outcome === 'unverified'
             ? { tone: 'notice' as const }
             : {}),
         });
       } catch (error) {
+        const files = received.length > 0 ? { artifacts: received } : {};
         if (controller.signal.aborted) {
           setDraft(text);
           setMessages((current) =>
@@ -755,13 +950,16 @@ export function BunnyPanel({
             role: 'assistant',
             text: 'Consulta cancelada. No se reintentó automáticamente; revisa la actividad antes de volver a enviarla.',
             tone: 'notice',
+            ...files,
           });
         } else {
-          append({ role: 'assistant', text: errorText(error), tone: 'error' });
+          append({ role: 'assistant', text: errorText(error), tone: 'error', ...files });
         }
       } finally {
         if (activeChatRun.current === controller) activeChatRun.current = null;
         setPending(false);
+        setStreamText('');
+        setLiveArtifacts([]);
         inputRef.current?.focus();
       }
     },
@@ -821,322 +1019,417 @@ export function BunnyPanel({
     [core],
   );
 
+  const commitWidth = (next: number) => {
+    const clamped = clampPanelWidth(next, window.innerWidth);
+    setPanelWidth(clamped);
+    writeStoredWidth(clamped);
+  };
+
   if (!open) return null;
 
   const suggestions = suggestionsFor(page);
-  return (
-    <aside
-      id="b89-bunny-panel"
-      className="b89Bunny__panel"
-      role="dialog"
-      aria-label={`${NAME}, asistente de IA de B89 SOC`}
-      data-test-subj="b89BunnyPanel"
-    >
-      <header className="b89Bunny__header">
-        <img src={imageUrl} alt="" width={36} height={36} />
-        <div>
-          <h2>{NAME}</h2>
-          <p>Asistente de IA de B89 SOC</p>
-        </div>
-        {canSeeUsage && (
-          <button
-            type="button"
-            className={`b89Bunny__iconButton${view === 'usage' ? ' is-active' : ''}`}
-            title="Uso y configuración del asistente"
-            aria-label="Uso y configuración del asistente"
-            aria-pressed={view === 'usage'}
-            onClick={() => setView(view === 'usage' ? 'chat' : 'usage')}
-          >
-            i
-          </button>
-        )}
-        <button
-          type="button"
-          className={`b89Bunny__iconButton${view === 'history' ? ' is-active' : ''}`}
-          title="Historial de conversaciones"
-          aria-label="Historial de conversaciones"
-          aria-pressed={view === 'history'}
-          onClick={() => setView(view === 'history' ? 'chat' : 'history')}
-        >
-          🕘
-        </button>
-        <button
-          type="button"
-          className="b89Bunny__iconButton"
-          title="Nueva conversación"
-          aria-label="Nueva conversación"
-          disabled={pending || (messages.length === 0 && view === 'chat')}
-          onClick={newConversation}
-        >
-          ＋
-        </button>
-        <button
-          type="button"
-          className="b89Bunny__iconButton"
-          title="Cerrar (Esc)"
-          aria-label="Cerrar el panel"
-          onClick={() => state.set(false)}
-        >
-          ✕
-        </button>
-      </header>
+  const lastAssistantId = [...messages]
+    .reverse()
+    .find((message) => message.role === 'assistant')?.id;
+  const isWide = renderWidth >= PANEL_WIDE_WIDTH;
+  const menuEntries: MenuEntry[] = [
+    { key: 'files', icon: 'file', label: 'Archivos', onSelect: () => setView('files') },
+    ...(canSeeUsage
+      ? [
+          {
+            key: 'usage',
+            icon: 'info' as IconName,
+            label: 'Uso y configuración',
+            onSelect: () => setView('usage'),
+          },
+        ]
+      : []),
+  ];
+  const contextChip = askContext
+    ? {
+        label: `${askContext.includes('incidents') ? 'Incidente' : 'Alerta'} ${decodeURIComponent(askContext.split('id=')[1] ?? '')}`,
+        onRemove: () => setAskContext(null),
+      }
+    : null;
 
-      {view === 'usage' && canSeeUsage ? (
-        <BunnyUsageView
-          api={api}
-          configState={configState}
-          onRetryConfig={() => void loadConfig()}
-        />
-      ) : configState.status === 'loading' ? (
-        <div className="b89Bunny__unavailable" role="status">
-          Comprobando disponibilidad del asistente...
-        </div>
-      ) : configState.status === 'unavailable' ? (
-        <section className="b89Bunny__unavailable" role="alert">
-          <h3>No se pudo comprobar la disponibilidad</h3>
-          <p>El servicio de configuración no respondió. El estado de Bunny es desconocido.</p>
-          <button type="button" onClick={() => void loadConfig()}>
-            Reintentar
-          </button>
-        </section>
-      ) : configState.status === 'ready' && !configState.config.enabled ? (
-        <section className="b89Bunny__unavailable" role="status">
-          <h3>Bunny está instalado</h3>
-          <p>
-            La interfaz del asistente está lista. Para activar las respuestas, un administrador debe
-            habilitar y configurar el proveedor de IA en el servicio B89. Con Bedrock, la API usa el
-            rol de AWS.
-          </p>
-          <p>El envío de mensajes está deshabilitado hasta que el servicio confirme la conexión.</p>
-        </section>
-      ) : view === 'history' ? (
-        <HistoryView
-          api={api}
-          currentId={conversationId}
-          onOpen={openConversation}
-          onNew={newConversation}
-          onDeleted={(id) => {
-            if (id === null || id === conversationId) newConversation();
-            setView('history');
+  const onPanelKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    // Cajón superpuesto: el foco no sale del panel mientras está abierto.
+    if (mode !== 'overlay' || event.key !== 'Tab' || !panelRef.current) return;
+    const focusable = Array.from(
+      panelRef.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), a[href], textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    ).filter((el) => el.offsetParent !== null);
+    if (focusable.length === 0) return;
+    const first = focusable[0]!;
+    const last = focusable[focusable.length - 1]!;
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
+
+  return (
+    <>
+      {mode === 'overlay' && (
+        <div className="b89Bunny__backdrop" aria-hidden="true" onClick={() => state.set(false)} />
+      )}
+      <aside
+        id="b89-bunny-panel"
+        ref={panelRef}
+        className={`b89Bunny__panel b89Bunny__panel--${mode}${resizing ? ' is-resizing' : ''}`}
+        style={{ width: renderWidth }}
+        role="dialog"
+        aria-modal={mode === 'overlay' ? true : undefined}
+        aria-label={`${NAME}, asistente de IA de B89 SOC`}
+        data-test-subj="b89BunnyPanel"
+        onKeyDown={onPanelKeyDown}
+      >
+        <div
+          className="b89Bunny__resizer"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Cambiar el ancho del panel (flechas izquierda y derecha)"
+          aria-valuemin={PANEL_MIN_WIDTH}
+          aria-valuemax={PANEL_MAX_WIDTH}
+          aria-valuenow={renderWidth}
+          tabIndex={0}
+          title="Arrastra para cambiar el ancho"
+          onPointerDown={(event) => {
+            event.preventDefault();
+            dragging.current = true;
+            setResizing(true);
+            event.currentTarget.setPointerCapture?.(event.pointerId);
+          }}
+          onPointerMove={(event) => {
+            if (dragging.current) setPanelWidth(widthFromPointer(event.clientX, window.innerWidth));
+          }}
+          onPointerUp={(event) => {
+            if (!dragging.current) return;
+            dragging.current = false;
+            setResizing(false);
+            event.currentTarget.releasePointerCapture?.(event.pointerId);
+            commitWidth(widthFromPointer(event.clientX, window.innerWidth));
+          }}
+          onPointerCancel={() => {
+            dragging.current = false;
+            setResizing(false);
+          }}
+          onDoubleClick={() => commitWidth(toggleWideWidth(renderWidth, window.innerWidth))}
+          onKeyDown={(event) => {
+            const next = widthFromKey(renderWidth, event.key, window.innerWidth);
+            if (next === null) return;
+            event.preventDefault();
+            commitWidth(next);
           }}
         />
-      ) : (
-        <>
-          <div className="b89Bunny__list" ref={listRef} role="log" aria-live="polite">
-            {messages.length === 0 && (
-              <section className="b89Bunny__welcome">
-                <img src={imageUrl} alt="" width={96} height={96} />
-                <h3>Hola, soy {NAME}</h3>
-                <p>
-                  Pregúntame por alertas, incidentes, eventos, la salud de las fuentes o la
-                  auditoría. Veo lo mismo que tú: lo que tu rol no puede ver, yo tampoco.
-                </p>
-                <ul className="b89Bunny__suggestions">
-                  {suggestions.map((suggestion) => (
-                    <li key={suggestion.title}>
-                      <button type="button" onClick={() => send(suggestion.prompt)}>
-                        <strong>{suggestion.title}</strong>
-                        <span>{suggestion.prompt}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )}
-            {messages.map((message) => (
-              <article
-                key={message.id}
-                className={`b89Bunny__message b89Bunny__message--${message.role}${message.tone ? ` is-${message.tone}` : ''}`}
-              >
-                {message.role === 'assistant' && (
-                  <img src={imageUrl} alt="" width={24} height={24} />
-                )}
-                <div className="b89Bunny__bubble">
-                  {message.role === 'user' ? (
-                    <p>{message.text}</p>
-                  ) : (
-                    renderMarkdown(message.text, {
-                      citations: message.citations ?? [],
-                      onOpen: navigate,
-                    })
-                  )}
-                  {message.role === 'assistant' && <Activity steps={message.steps} />}
-                  {message.citations && <Sources citations={message.citations} open={navigate} />}
-                  {message.role === 'assistant' && !message.tone && (
-                    <div className="b89Bunny__actions">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard?.writeText(message.text).then(
-                            () => {
-                              setCopied(message.id);
-                              window.setTimeout(() => setCopied(null), 1500);
-                            },
-                            () => undefined,
-                          );
-                        }}
-                      >
-                        {copied === message.id ? 'Copiado' : 'Copiar'}
-                      </button>
-                      {conversationId && message.serverId && (
-                        <Feedback
-                          value={message.feedback}
-                          disabled={pending}
-                          onRate={(rating) => void rate(message, rating)}
-                        />
-                      )}
-                      <BunnyReportActions
-                        api={api}
-                        basePath={core.http.basePath.get()}
-                        messageId={message.id}
-                        text={message.text}
-                        citations={message.citations ?? []}
-                      />
-                      {canWriteNotes &&
-                        message.citations?.some((citation) => citation.kind === 'incident') && (
-                          <>
-                            <select
-                              aria-label="Incidente donde guardar el borrador"
-                              value={
-                                (selectedIncident?.messageId === message.id
-                                  ? selectedIncident.incidentId
-                                  : '') ||
-                                message.citations?.find((citation) => citation.kind === 'incident')
-                                  ?.id ||
-                                ''
-                              }
-                              onChange={(event) =>
-                                setSelectedIncident({
-                                  messageId: message.id,
-                                  incidentId: event.target.value,
-                                })
-                              }
-                            >
-                              {(message.citations ?? [])
-                                .filter((citation) => citation.kind === 'incident')
-                                .map((citation) => (
-                                  <option key={citation.id} value={citation.id}>
-                                    {citation.label}
-                                  </option>
-                                ))}
-                            </select>
-                            <button
-                              type="button"
-                              disabled={savingNoteId === message.id}
-                              onClick={async () => {
-                                const incidentId =
-                                  (selectedIncident?.messageId === message.id
-                                    ? selectedIncident.incidentId
-                                    : '') ||
-                                  message.citations?.find(
-                                    (citation) => citation.kind === 'incident',
-                                  )?.id;
-                                if (!incidentId) return;
-                                setSavingNoteId(message.id);
-                                setNoteStatus(null);
-                                try {
-                                  await api.post(
-                                    `/incidents/${encodeURIComponent(incidentId)}/notes`,
-                                    { body: reportNoteBody(message) },
-                                  );
-                                  setNoteStatus({
-                                    id: message.id,
-                                    text: 'Borrador guardado en las notas del incidente.',
-                                  });
-                                } catch {
-                                  setNoteStatus({
-                                    id: message.id,
-                                    text: 'No se pudo guardar. Verifica tu acceso al incidente.',
-                                  });
-                                } finally {
-                                  setSavingNoteId(null);
-                                }
-                              }}
-                            >
-                              {savingNoteId === message.id ? 'Guardando…' : 'Guardar en incidente'}
-                            </button>
-                          </>
-                        )}
-                      <button type="button" onClick={() => navigate('/app/b89-respond')}>
-                        Abrir B89 Respond
-                      </button>
-                    </div>
-                  )}
-                  {noteStatus?.id === message.id && (
-                    <p className="b89Bunny__notice" role="status">
-                      {noteStatus.text}
-                    </p>
-                  )}
-                </div>
-              </article>
-            ))}
-            {pending && (
-              <article className="b89Bunny__message b89Bunny__message--assistant" aria-busy="true">
-                <img src={imageUrl} alt="" width={24} height={24} />
-                <div className="b89Bunny__bubble">
-                  <BunnyThinking events={progressEvents} elapsedSeconds={elapsedSeconds} />
-                  <button
-                    type="button"
-                    className="b89Bunny__cancelChat"
-                    onClick={() => activeChatRun.current?.abort()}
-                  >
-                    Cancelar consulta
-                  </button>
-                </div>
-              </article>
-            )}
-          </div>
-
-          {askContext && (
-            <p className="b89Bunny__context" role="status">
-              Contexto: {askContext.includes('incidents') ? 'incidente' : 'alerta'}{' '}
-              <code>{decodeURIComponent(askContext.split('id=')[1] ?? '')}</code>
-              <button
-                type="button"
-                onClick={() => setAskContext(null)}
-                aria-label="Quitar contexto"
-              >
-                ✕
-              </button>
-            </p>
-          )}
-          {notSaved && (
-            <p className="b89Bunny__notice" role="status">
-              Esta conversación no se guardó en el historial.
-            </p>
-          )}
-          <form
-            className="b89Bunny__composer"
-            onSubmit={(event) => {
-              event.preventDefault();
-              send(draft);
-            }}
+        <header className="b89Bunny__header">
+          <img src={imageUrl} alt="" width={28} height={28} />
+          <h2>{NAME}</h2>
+          <span className="b89Bunny__spacer" />
+          <button
+            type="button"
+            className="b89Bunny__iconButton"
+            title="Nueva conversación"
+            aria-label="Nueva conversación"
+            disabled={pending || (messages.length === 0 && view === 'chat')}
+            onClick={newConversation}
           >
-            <textarea
-              ref={inputRef}
-              value={draft}
-              maxLength={MAX_CHARS}
-              rows={2}
-              placeholder={`Pregúntale algo a ${NAME}…`}
-              aria-label={`Escribe tu pregunta para ${NAME}`}
-              onChange={(event) => setDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
-                  event.preventDefault();
-                  send(draft);
+            <Icon name="plus" size={18} />
+          </button>
+          <button
+            type="button"
+            className={`b89Bunny__iconButton${view === 'history' ? ' is-active' : ''}`}
+            title="Historial de conversaciones"
+            aria-label="Historial de conversaciones"
+            aria-pressed={view === 'history'}
+            onClick={() => setView(view === 'history' ? 'chat' : 'history')}
+          >
+            <Icon name="history" size={18} />
+          </button>
+          <HeaderMenu entries={menuEntries} />
+          <button
+            type="button"
+            className="b89Bunny__iconButton"
+            title={isWide ? 'Reducir el panel' : 'Ensanchar el panel'}
+            aria-label={isWide ? 'Reducir el panel' : 'Ensanchar el panel'}
+            onClick={() => commitWidth(toggleWideWidth(renderWidth, window.innerWidth))}
+          >
+            <Icon name={isWide ? 'shrink' : 'expand'} size={17} />
+          </button>
+          <button
+            type="button"
+            className="b89Bunny__iconButton"
+            title="Cerrar (Esc)"
+            aria-label="Cerrar el panel"
+            onClick={() => state.set(false)}
+          >
+            <Icon name="close" size={18} />
+          </button>
+        </header>
+
+        {view === 'usage' && canSeeUsage ? (
+          <BunnyUsageView
+            api={api}
+            configState={configState}
+            onRetryConfig={() => void loadConfig()}
+          />
+        ) : configState.status === 'loading' ? (
+          <div className="b89Bunny__unavailable" role="status">
+            Comprobando disponibilidad del asistente...
+          </div>
+        ) : configState.status === 'unavailable' ? (
+          <section className="b89Bunny__unavailable" role="alert">
+            <h3>No se pudo comprobar la disponibilidad</h3>
+            <p>El servicio de configuración no respondió. El estado de Bunny es desconocido.</p>
+            <button type="button" onClick={() => void loadConfig()}>
+              Reintentar
+            </button>
+          </section>
+        ) : configState.status === 'ready' && !configState.config.enabled ? (
+          <section className="b89Bunny__unavailable" role="status">
+            <h3>Bunny está instalado</h3>
+            <p>
+              La interfaz del asistente está lista. Para activar las respuestas, un administrador
+              debe habilitar y configurar el proveedor de IA en el servicio B89. Con Bedrock, la API
+              usa el rol de AWS.
+            </p>
+            <p>
+              El envío de mensajes está deshabilitado hasta que el servicio confirme la conexión.
+            </p>
+          </section>
+        ) : view === 'history' ? (
+          <HistoryView
+            api={api}
+            currentId={conversationId}
+            onOpen={openConversation}
+            onNew={newConversation}
+            onDeleted={(id) => {
+              if (id === null || id === conversationId) newConversation();
+              setView('history');
+            }}
+          />
+        ) : view === 'files' ? (
+          <FilesView api={api} onBack={() => setView('chat')} />
+        ) : (
+          <>
+            <div
+              className="b89Bunny__list"
+              ref={listRef}
+              role="log"
+              aria-live="polite"
+              onScroll={() => {
+                const el = listRef.current;
+                if (el) {
+                  stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 96;
                 }
               }}
+            >
+              <div className="b89Bunny__thread">
+                {messages.length === 0 && !pending && (
+                  <section className="b89Bunny__welcome">
+                    <img src={imageUrl} alt="" width={72} height={72} />
+                    <h3>Hola, soy {NAME}</h3>
+                    <p>
+                      ¿En qué te ayudo hoy? Veo lo mismo que tú: lo que tu rol no puede ver, yo
+                      tampoco.
+                    </p>
+                    <ul className="b89Bunny__suggestions">
+                      {suggestions.slice(0, 4).map((suggestion) => (
+                        <li key={suggestion.title}>
+                          <button type="button" onClick={() => send(suggestion.prompt)}>
+                            <strong>{suggestion.title}</strong>
+                            <span>{suggestion.prompt}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
+                {messages.map((message) =>
+                  message.role === 'user' ? (
+                    <UserMessage key={message.id} message={message} />
+                  ) : (
+                    <article
+                      key={message.id}
+                      className={`b89Bunny__message b89Bunny__message--assistant${message.tone ? ` is-${message.tone}` : ''}${message.id === lastAssistantId ? ' is-last' : ''}`}
+                    >
+                      <BunnyActivity steps={message.steps} seconds={message.seconds} />
+                      <div className="b89Bunny__answer">
+                        {renderMarkdown(message.text, {
+                          citations: message.citations ?? [],
+                          onOpen: navigate,
+                        })}
+                      </div>
+                      {message.artifacts && (
+                        <BunnyArtifactList
+                          artifacts={message.artifacts}
+                          apiPrefix={api.apiPrefix}
+                        />
+                      )}
+                      {message.citations && (
+                        <Sources citations={message.citations} open={navigate} />
+                      )}
+                      {!message.tone && (
+                        <div className="b89Bunny__actions">
+                          <button
+                            type="button"
+                            className={`b89Bunny__action${copied === message.id ? ' is-active' : ''}`}
+                            title={copied === message.id ? 'Copiado' : 'Copiar respuesta'}
+                            aria-label={copied === message.id ? 'Copiado' : 'Copiar respuesta'}
+                            onClick={() => {
+                              navigator.clipboard?.writeText(message.text).then(
+                                () => {
+                                  setCopied(message.id);
+                                  window.setTimeout(() => setCopied(null), 1500);
+                                },
+                                () => undefined,
+                              );
+                            }}
+                          >
+                            <Icon name={copied === message.id ? 'check' : 'copy'} size={15} />
+                          </button>
+                          {conversationId && message.serverId && (
+                            <Feedback
+                              value={message.feedback}
+                              disabled={pending}
+                              onRate={(rating) => void rate(message, rating)}
+                            />
+                          )}
+                          <BunnyReportActions
+                            api={api}
+                            basePath={core.http.basePath.get()}
+                            messageId={message.id}
+                            text={message.text}
+                            citations={message.citations ?? []}
+                          />
+                          {canWriteNotes &&
+                            message.citations?.some((citation) => citation.kind === 'incident') && (
+                              <>
+                                <select
+                                  aria-label="Incidente donde guardar el borrador"
+                                  value={
+                                    (selectedIncident?.messageId === message.id
+                                      ? selectedIncident.incidentId
+                                      : '') ||
+                                    message.citations?.find(
+                                      (citation) => citation.kind === 'incident',
+                                    )?.id ||
+                                    ''
+                                  }
+                                  onChange={(event) =>
+                                    setSelectedIncident({
+                                      messageId: message.id,
+                                      incidentId: event.target.value,
+                                    })
+                                  }
+                                >
+                                  {(message.citations ?? [])
+                                    .filter((citation) => citation.kind === 'incident')
+                                    .map((citation) => (
+                                      <option key={citation.id} value={citation.id}>
+                                        {citation.label}
+                                      </option>
+                                    ))}
+                                </select>
+                                <button
+                                  type="button"
+                                  disabled={savingNoteId === message.id}
+                                  onClick={async () => {
+                                    const incidentId =
+                                      (selectedIncident?.messageId === message.id
+                                        ? selectedIncident.incidentId
+                                        : '') ||
+                                      message.citations?.find(
+                                        (citation) => citation.kind === 'incident',
+                                      )?.id;
+                                    if (!incidentId) return;
+                                    setSavingNoteId(message.id);
+                                    setNoteStatus(null);
+                                    try {
+                                      await api.post(
+                                        `/incidents/${encodeURIComponent(incidentId)}/notes`,
+                                        { body: reportNoteBody(message) },
+                                      );
+                                      setNoteStatus({
+                                        id: message.id,
+                                        text: 'Borrador guardado en las notas del incidente.',
+                                      });
+                                    } catch {
+                                      setNoteStatus({
+                                        id: message.id,
+                                        text: 'No se pudo guardar. Verifica tu acceso al incidente.',
+                                      });
+                                    } finally {
+                                      setSavingNoteId(null);
+                                    }
+                                  }}
+                                >
+                                  {savingNoteId === message.id
+                                    ? 'Guardando…'
+                                    : 'Guardar en incidente'}
+                                </button>
+                              </>
+                            )}
+                          <button type="button" onClick={() => navigate('/app/b89-respond')}>
+                            Abrir B89 Respond
+                          </button>
+                        </div>
+                      )}
+                      {noteStatus?.id === message.id && (
+                        <p className="b89Bunny__notice" role="status">
+                          {noteStatus.text}
+                        </p>
+                      )}
+                    </article>
+                  ),
+                )}
+                {pending && (
+                  <article
+                    className="b89Bunny__message b89Bunny__message--assistant is-live"
+                    aria-busy="true"
+                  >
+                    <BunnyThinking events={progressEvents} elapsedSeconds={elapsedSeconds} />
+                    {streamText && (
+                      <div className="b89Bunny__answer is-streaming">
+                        {renderMarkdown(streamText, {
+                          citations: [],
+                          onOpen: navigate,
+                        })}
+                      </div>
+                    )}
+                    <BunnyArtifactList artifacts={liveArtifacts} apiPrefix={api.apiPrefix} />
+                  </article>
+                )}
+              </div>
+            </div>
+
+            {notSaved && (
+              <p className="b89Bunny__notice" role="status">
+                Esta conversación no se guardó en el historial.
+              </p>
+            )}
+            <BunnyComposer
+              draft={draft}
+              pending={pending}
+              maxChars={MAX_CHARS}
+              name={NAME}
+              context={contextChip}
+              inputRef={inputRef}
+              onDraft={setDraft}
+              onSend={() => void send(draft)}
+              onStop={() => activeChatRun.current?.abort()}
             />
-            <button type="submit" disabled={pending || draft.trim() === ''} aria-label="Enviar">
-              ➤
-            </button>
-          </form>
-        </>
-      )}
-      <p className="b89Bunny__disclaimer">
-        IA: verifica antes de actuar. Solo lectura, con tus permisos.
-      </p>
-    </aside>
+          </>
+        )}
+        <p className="b89Bunny__disclaimer">
+          IA: verifica antes de actuar. Solo lectura, con tus permisos.
+        </p>
+      </aside>
+    </>
   );
 }
 
@@ -1160,8 +1453,8 @@ export function mountBunnyPanel(core: CoreStart, api: B89ApiClient, state: Bunny
   });
   return () => {
     unsubscribe();
-    document.documentElement.classList.remove('b89-bunny-open');
     ReactDOM.unmountComponentAtNode(container);
+    applyDock(document.documentElement, null);
     container.remove();
   };
 }

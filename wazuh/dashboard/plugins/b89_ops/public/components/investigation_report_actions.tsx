@@ -3,7 +3,9 @@
  */
 
 import React, { useRef, useState } from 'react';
-import type { Alert } from '../../common';
+import type { Alert, BunnyReportFormat } from '../../common';
+import { BUNNY_REPORT_FORMAT_LABEL, bunnyReportPrompt } from '../../common';
+import { askBunny } from '../bunny_bridge';
 import type { InvestigationEntity, RelatedWindow } from '../../common/investigation';
 import { fetchRelated } from '../api/investigation';
 import { investigationCsvWithProgress } from './investigation_export';
@@ -74,6 +76,27 @@ export function InvestigationReportActions({
   const printWindow = useRef<Window | null>(null);
   const startingExport = useRef(false);
   const highestProgress = useRef(0);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  /** Informe profesional con Bunny (PDF/Excel/CSV): abre el panel y envía la petición. */
+  const askForReport = (format: BunnyReportFormat) => {
+    setMenuOpen(false);
+    const opened = askBunny({
+      prompt: bunnyReportPrompt({
+        format,
+        window: relatedWindow,
+        alertId: alert?.id ?? null,
+        subject: title,
+      }),
+      ...(alert ? { context: { alertId: alert.id } } : {}),
+      autoSend: true,
+    });
+    setMessage(
+      opened
+        ? `Pedí a Bunny el informe ${BUNNY_REPORT_FORMAT_LABEL[format]}; el archivo se descargará solo cuando esté listo.`
+        : 'Bunny no está activo para tu sesión. Usa la exportación directa.',
+    );
+  };
 
   const start = async (action: ReportAction) => {
     if (busy || startingExport.current || entities.length === 0) return;
@@ -299,37 +322,86 @@ export function InvestigationReportActions({
       <div className="b89ReportActions__copy">
         <h3 id="b89ReportActionsTitle">Informe de investigación con eventos relacionados</h3>
         <p>
-          Incluye todos los eventos de la ventana y grupos por entidad/tiempo. La correlación
-          temporal no demuestra causalidad ni hilo de correo.
+          Bunny redacta el resumen y B89 arma las tablas con los eventos de la ventana; la
+          correlación temporal no demuestra causalidad ni hilo de correo.
         </p>
       </div>
-      <div className="b89ReportActions__buttons">
-        <button
-          type="button"
-          disabled={Boolean(busy) || entities.length === 0}
-          onClick={() => void start('csv')}
-        >
-          {busy === 'csv' ? 'Preparando CSV…' : 'Descargar CSV completo'}
-        </button>
-        <button
-          type="button"
-          disabled={Boolean(busy) || entities.length === 0}
-          onClick={() => void start('xlsx')}
-        >
-          {busy === 'xlsx' ? 'Preparando Excel…' : 'Descargar Excel (.xlsx)'}
-        </button>
-        <button
-          type="button"
-          disabled={Boolean(busy) || entities.length === 0}
-          onClick={() => void start('print')}
-        >
-          {busy === 'print' ? 'Preparando PDF…' : 'Imprimir / guardar PDF'}
-        </button>
-        {busy && (
-          <button type="button" className="b89ReportActions__cancel" onClick={stop}>
-            Cancelar
+      <div
+        className="b89ReportActions__primary"
+        onKeyDown={(event) => {
+          if (event.key === 'Escape' && menuOpen) {
+            event.stopPropagation();
+            setMenuOpen(false);
+          }
+        }}
+      >
+        <div className="b89ReportActions__split">
+          <button
+            type="button"
+            className="b89ReportActions__bunny"
+            disabled={Boolean(busy)}
+            onClick={() => askForReport('pdf')}
+          >
+            Generar informe con Bunny
           </button>
+          <button
+            type="button"
+            className="b89ReportActions__bunnyMenu"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            aria-label="Elegir formato del informe"
+            disabled={Boolean(busy)}
+            onClick={() => setMenuOpen((value) => !value)}
+          >
+            ▾
+          </button>
+        </div>
+        {menuOpen && (
+          <div className="b89ReportActions__menu" role="menu">
+            {(['pdf', 'xlsx', 'csv'] as const).map((format) => (
+              <button
+                type="button"
+                role="menuitem"
+                key={format}
+                onClick={() => askForReport(format)}
+              >
+                {BUNNY_REPORT_FORMAT_LABEL[format]}
+                {format === 'xlsx' ? ' (.xlsx)' : ''}
+              </button>
+            ))}
+          </div>
         )}
+      </div>
+      <div className="b89ReportActions__direct" role="group" aria-label="Exportación directa">
+        <span className="b89ReportActions__directLabel">Exportación directa</span>
+        <div className="b89ReportActions__buttons">
+          <button
+            type="button"
+            disabled={Boolean(busy) || entities.length === 0}
+            onClick={() => void start('csv')}
+          >
+            {busy === 'csv' ? 'Preparando CSV…' : 'Descargar CSV completo'}
+          </button>
+          <button
+            type="button"
+            disabled={Boolean(busy) || entities.length === 0}
+            onClick={() => void start('xlsx')}
+          >
+            {busy === 'xlsx' ? 'Preparando Excel…' : 'Descargar Excel (.xlsx)'}
+          </button>
+          <button
+            type="button"
+            disabled={Boolean(busy) || entities.length === 0}
+            onClick={() => void start('print')}
+          >
+            {busy === 'print' ? 'Preparando PDF…' : 'Imprimir / guardar PDF'}
+          </button>
+          {busy && (
+            <button type="button" className="b89ReportActions__cancel" onClick={stop}>
+              Cancelar
+            </button>
+          )}
+        </div>
       </div>
       {busy && progress && (
         <div className="b89ReportActions__progress" aria-live="polite" aria-atomic="true">

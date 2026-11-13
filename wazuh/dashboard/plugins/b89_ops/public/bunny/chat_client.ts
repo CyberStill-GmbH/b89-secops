@@ -60,6 +60,67 @@ export interface BunnyCitation {
   readonly label: string;
 }
 
+/** Archivo generado por Bunny (informe PDF/Excel/CSV), guardado por la API durante 24 h. */
+export interface ArtifactRef {
+  readonly id: string;
+  readonly filename: string;
+  readonly format: 'pdf' | 'xlsx' | 'csv';
+  readonly title: string;
+  readonly size: number;
+  readonly createdAt: string;
+  readonly expiresAt: string;
+  /** Ruta relativa de descarga (`/api/assistant/artifacts/<id>`); la consola la reconstruye. */
+  readonly url: string;
+}
+
+const ARTIFACT_FORMATS: readonly string[] = ['pdf', 'xlsx', 'csv'];
+const ARTIFACT_ID = /^[A-Za-z0-9-]{1,64}$/u;
+
+/** Valida un artefacto recibido de la API (SSE o JSON); lo que no cumple el contrato se descarta. */
+export function parseArtifactRef(value: unknown): ArtifactRef | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+  const item = value as Record<string, unknown>;
+  const { id, filename, format, title, size, createdAt, expiresAt, url } = item;
+  if (typeof id !== 'string' || !ARTIFACT_ID.test(id)) return null;
+  if (typeof format !== 'string' || !ARTIFACT_FORMATS.includes(format)) return null;
+  if (typeof filename !== 'string' || filename === '') return null;
+  if (typeof expiresAt !== 'string' || Number.isNaN(Date.parse(expiresAt))) return null;
+  return {
+    id,
+    filename,
+    format: format as ArtifactRef['format'],
+    title: typeof title === 'string' && title !== '' ? title : filename,
+    size: typeof size === 'number' && Number.isFinite(size) && size >= 0 ? size : 0,
+    createdAt: typeof createdAt === 'string' ? createdAt : expiresAt,
+    expiresAt,
+    url: typeof url === 'string' ? url : '',
+  };
+}
+
+export function parseArtifacts(value: unknown): ArtifactRef[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const result: ArtifactRef[] = [];
+  for (const entry of value) {
+    const artifact = parseArtifactRef(entry);
+    if (artifact && !seen.has(artifact.id)) {
+      seen.add(artifact.id);
+      result.push(artifact);
+    }
+  }
+  return result;
+}
+
+export function mergeArtifacts(
+  first: readonly ArtifactRef[],
+  second: readonly ArtifactRef[],
+): ArtifactRef[] {
+  const byId = new Map<string, ArtifactRef>();
+  for (const artifact of [...first, ...second])
+    if (!byId.has(artifact.id)) byId.set(artifact.id, artifact);
+  return Array.from(byId.values());
+}
+
 export interface BunnyReply {
   readonly conversationId?: string;
   readonly title?: string;
@@ -71,6 +132,26 @@ export interface BunnyReply {
   readonly citations: readonly BunnyCitation[];
   /** Id del mensaje de Bunny guardado (para la valoración 👍/👎); `null` si no se guardó. */
   readonly messageId?: string | null;
+  /** Archivos generados en este turno (informes); también llegan por SSE como `artifact`. */
+  readonly artifacts?: readonly ArtifactRef[];
+}
+
+/** Devoluciones de llamada opcionales del canal SSE más allá del progreso operativo. */
+export interface BunnyStreamHandlers {
+  /** Un archivo quedó guardado (evento SSE `artifact`). */
+  readonly onArtifact?: (artifact: ArtifactRef) => void;
+  /** Fragmento de texto de la respuesta (evento SSE `delta`), si el servidor lo envía. */
+  readonly onDelta?: (text: string) => void;
+}
+
+/** Sanea `artifacts` de una respuesta final y los une a los recibidos por SSE. */
+export function withArtifacts(
+  reply: BunnyReply,
+  streamed: readonly ArtifactRef[] = [],
+): BunnyReply {
+  const artifacts = mergeArtifacts(parseArtifacts(reply.artifacts), streamed);
+  const { artifacts: _ignored, ...rest } = reply;
+  return artifacts.length > 0 ? { ...rest, artifacts } : rest;
 }
 
 export interface BunnyTurn {
@@ -114,13 +195,15 @@ export function askBunny(
   page: string,
   conversationId?: string,
 ): Promise<BunnyReply> {
-  return api.post<BunnyReply>('/assistant/chat', {
-    message,
-    // Con `conversationId` el servidor usa el historial guardado e ignora este.
-    history: history.slice(-HISTORY_TURNS),
-    page,
-    ...(conversationId ? { conversationId } : {}),
-  });
+  return api
+    .post<BunnyReply>('/assistant/chat', {
+      message,
+      // Con `conversationId` el servidor usa el historial guardado e ignora este.
+      history: history.slice(-HISTORY_TURNS),
+      page,
+      ...(conversationId ? { conversationId } : {}),
+    })
+    .then((reply) => withArtifacts(reply));
 }
 
 /** Turnos nuevos por SSE: solo progreso operativo real y la respuesta final ya validada. */
@@ -132,6 +215,7 @@ export async function askBunnyStream(
   onProgress: (event: BunnyProgressEvent) => void,
   conversationId?: string,
   signal?: AbortSignal,
+  handlers: BunnyStreamHandlers = {},
 ): Promise<BunnyReply> {
   let response: Response;
   try {
@@ -157,13 +241,14 @@ export async function askBunnyStream(
   }
   if (response.headers.get('content-type')?.toLowerCase().includes('application/json')) {
     const value: unknown = await response.json();
-    if (isBunnyReply(value)) return value;
+    if (isBunnyReply(value)) return withArtifacts(value);
     throw new B89ApiError('DEPENDENCY_DEGRADED', response.status, null);
   }
   const reader = response.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
   let completed: BunnyReply | null = null;
+  const streamedArtifacts: ArtifactRef[] = [];
   let streamError: B89ApiError | null = null;
   const consumeFrame = (frame: string) => {
     let event = '';
@@ -181,7 +266,17 @@ export async function askBunnyStream(
       return;
     }
     if (event === 'progress') onProgress(value as BunnyProgressEvent);
-    else if (event === 'complete') completed = value as BunnyReply;
+    else if (event === 'artifact') {
+      // Un artefacto fuera de contrato se ignora: nunca debe romper la respuesta.
+      const artifact = parseArtifactRef(value);
+      if (artifact && !streamedArtifacts.some((known) => known.id === artifact.id)) {
+        streamedArtifacts.push(artifact);
+        handlers.onArtifact?.(artifact);
+      }
+    } else if (event === 'delta') {
+      const text = (value as { text?: unknown } | null)?.text;
+      if (typeof text === 'string' && text !== '') handlers.onDelta?.(text);
+    } else if (event === 'complete') completed = value as BunnyReply;
     else if (event === 'error') {
       const error = value as { code?: unknown; correlationId?: unknown; fields?: unknown };
       const code = typeof error.code === 'string' ? error.code : 'DEPENDENCY_DEGRADED';
@@ -216,7 +311,7 @@ export async function askBunnyStream(
   }
   if (streamError) throw streamError;
   if (!completed) throw new B89ApiError('DEPENDENCY_DEGRADED', response.status, null);
-  return completed;
+  return withArtifacts(completed, streamedArtifacts);
 }
 
 function isPreAcceptStreamRejection(error: unknown): error is B89ApiError {
@@ -256,6 +351,7 @@ export interface StoredMessage {
   readonly text: string;
   readonly steps?: readonly BunnyStep[];
   readonly citations?: readonly BunnyCitation[];
+  readonly artifacts?: readonly ArtifactRef[];
   readonly tone?: 'error' | 'notice';
   readonly feedback?: BunnyFeedback;
   readonly createdAt?: string;
@@ -284,7 +380,16 @@ export function listConversations(api: B89ApiClient, cursor?: string): Promise<C
 }
 
 export async function getConversation(api: B89ApiClient, id: string): Promise<StoredConversation> {
-  return api.get<StoredConversation>(conversationPath(id));
+  const stored = await api.get<StoredConversation>(conversationPath(id));
+  if (!Array.isArray(stored?.messages)) return stored;
+  return {
+    ...stored,
+    messages: stored.messages.map((message) => {
+      const { artifacts, ...rest } = message;
+      const parsed = parseArtifacts(artifacts);
+      return parsed.length > 0 ? { ...rest, artifacts: parsed } : rest;
+    }),
+  };
 }
 
 export async function deleteConversation(api: B89ApiClient, id: string): Promise<void> {
@@ -304,6 +409,12 @@ export function rateMessage(
   return api.put<void>(`${conversationPath(conversationId)}/messages/${messageId}/feedback`, {
     rating,
   });
+}
+
+/** Archivos vigentes del usuario (GET /assistant/artifacts), para la lista «Archivos». */
+export async function listArtifacts(api: B89ApiClient): Promise<ArtifactRef[]> {
+  const body = await api.get<{ items?: unknown }>('/assistant/artifacts');
+  return parseArtifacts(body?.items);
 }
 
 export function deleteAllConversations(api: B89ApiClient): Promise<void> {
@@ -346,7 +457,17 @@ export interface Suggestion {
   readonly prompt: string;
 }
 
-/** Ejemplos según la página: Bunny es sensible al contexto, como Amazon Q. */
+const REPORT_PDF: Suggestion = {
+  title: 'Informe PDF de alertas P1/P2',
+  prompt: 'Genera un informe PDF de alertas P1/P2 de las últimas 24 h',
+};
+
+const REPORT_XLSX: Suggestion = {
+  title: 'Excel de alertas abiertas',
+  prompt: 'Exporta a Excel las alertas abiertas de esta semana',
+};
+
+/** Ejemplos según la página (siempre 4: dos de contexto y dos de informes). */
 export function suggestionsFor(page: string): readonly Suggestion[] {
   if (page.includes('b89-incidents')) {
     return [
@@ -355,15 +476,12 @@ export function suggestionsFor(page: string): readonly Suggestion[] {
         prompt: '¿Qué incidentes siguen activos y cuál es el más urgente?',
       },
       {
-        title: 'Resumir un caso',
-        prompt: 'Resume el incidente abierto: qué pasó, estado y siguientes pasos.',
-      },
-      { title: 'Tareas pendientes', prompt: '¿Qué tareas pendientes hay en mis incidentes?' },
-      {
         title: 'Borrador ejecutivo',
         prompt:
           'Prepara un borrador ejecutivo del incidente abierto, con alcance confirmado, incertidumbres, cronología y fuentes citadas.',
       },
+      REPORT_PDF,
+      REPORT_XLSX,
     ];
   }
   if (page.includes('b89-alerts')) {
@@ -378,10 +496,8 @@ export function suggestionsFor(page: string): readonly Suggestion[] {
         prompt:
           'Investiga la alerta seleccionada y correlaciona actividad de sus entidades en la ventana relevante; separa hechos, hipótesis y brechas de telemetría.',
       },
-      {
-        title: 'Fuentes degradadas',
-        prompt: '¿Hay fuentes degradadas que limiten esta investigación?',
-      },
+      REPORT_PDF,
+      REPORT_XLSX,
     ];
   }
   if (page.includes('b89-sources')) {
@@ -391,6 +507,8 @@ export function suggestionsFor(page: string): readonly Suggestion[] {
         prompt: '¿Hay fuentes de datos degradadas o sin eventos recientes?',
       },
       { title: 'Última recepción', prompt: '¿Cuándo llegó el último evento de cada fuente?' },
+      REPORT_PDF,
+      REPORT_XLSX,
     ];
   }
   if (page.includes('b89-audit')) {
@@ -400,6 +518,8 @@ export function suggestionsFor(page: string): readonly Suggestion[] {
         prompt: '¿Quién cambió roles o accesos en los últimos 7 días?',
       },
       { title: 'Integridad', prompt: 'Verifica la integridad de la cadena de auditoría.' },
+      REPORT_PDF,
+      REPORT_XLSX,
     ];
   }
   return [
@@ -413,19 +533,7 @@ export function suggestionsFor(page: string): readonly Suggestion[] {
       prompt:
         'Prepara el resumen semanal del SOC: alertas por prioridad y proveedor, incidentes activos y salud de las fuentes.',
     },
-    {
-      title: 'Alertas por proveedor',
-      prompt:
-        '¿Qué alertas abiertas hay de Snyk, Bitdefender, Cloudflare y AWS, y cuál atiendo primero?',
-    },
-    {
-      title: 'Salud de fuentes',
-      prompt: '¿Qué fuentes de datos están degradadas o sin eventos recientes?',
-    },
-    {
-      title: 'Runbook aplicable',
-      prompt:
-        'Bitdefender detectó malware en un equipo: ¿qué runbook sigo y qué reviso en los primeros 10 minutos?',
-    },
+    REPORT_PDF,
+    REPORT_XLSX,
   ];
 }
