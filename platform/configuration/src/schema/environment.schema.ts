@@ -124,6 +124,14 @@ export const KNOWN_B89_VARIABLES = new Set([
   'B89_BUNNY_RATE_LIMIT',
   'B89_BUNNY_HISTORY_ENABLED',
   'B89_BUNNY_RETENTION_DAYS',
+  // Política de ruido de avisos (configuration-loader › loadNotificationPolicy). Sin estas
+  // entradas, definir cualquiera tumbaba el arranque con CONFIG_VALUE_INVALID.
+  'B89_NOTIFY_QUIET_P1_MINUTES',
+  'B89_NOTIFY_QUIET_P2_MINUTES',
+  'B89_NOTIFY_STALE_MINUTES',
+  'B89_NOTIFY_MAX_PER_HOUR',
+  'B89_NOTIFY_DIGEST_MINUTES',
+  'B89_NOTIFY_TIME_ZONE',
 ]);
 
 export function rejectUnknownB89Variables(

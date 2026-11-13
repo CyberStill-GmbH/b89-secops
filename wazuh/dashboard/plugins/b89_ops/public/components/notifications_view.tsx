@@ -433,7 +433,18 @@ function NotificationFlyout({
               )}
             </dl>
           )}
-          {!group.alertId ? (
+          {!group.alertId && group.latest.kind === 'digest' ? (
+            <EuiCallOut size="s" color="primary" title="Resumen de varias alertas">
+              <p>
+                Este aviso agrupa alertas que no se enviaron una por una (baja prioridad, atraso
+                tras una caída o ráfagas de la misma regla). No corresponde a una sola alerta: la
+                revisión se hace en la cola, ordenada por prioridad.
+              </p>
+              <EuiButton size="s" href={`${basePath}/app/b89-alerts`}>
+                Abrir la cola de alertas
+              </EuiButton>
+            </EuiCallOut>
+          ) : !group.alertId ? (
             <>
               <EuiCallOut
                 size="s"
