@@ -1400,6 +1400,32 @@ describe('C-20 · acuse atómico de notificación', () => {
 });
 
 describe('Observabilidad · GET /api/operations/health por rol', () => {
+  async function withCorrelatorResponse(
+    response: { readonly status: number; readonly body: unknown } | Error,
+    run: (fetchSpy: ReturnType<typeof vi.spyOn>) => Promise<void>,
+  ) {
+    const original = runtime.correlatorRead;
+    Object.defineProperty(runtime, 'correlatorRead', {
+      configurable: true,
+      writable: true,
+      value: { baseUrl: 'http://correlator.internal:8080', token: 'test-correlator-read-token' },
+    });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      if (response instanceof Error) throw response;
+      return new Response(JSON.stringify(response.body), { status: response.status });
+    });
+    try {
+      await run(fetchSpy);
+    } finally {
+      fetchSpy.mockRestore();
+      Object.defineProperty(runtime, 'correlatorRead', {
+        configurable: true,
+        writable: true,
+        value: original,
+      });
+    }
+  }
+
   async function health(cookie: string) {
     return server().inject({
       method: 'GET',
@@ -1424,6 +1450,13 @@ describe('Observabilidad · GET /api/operations/health por rol', () => {
 
     expect(Object.keys(body.sections).sort()).toEqual(['soc', 'summary']);
     expect(body.sections.soc).toMatchObject({ persistence: 'memory', dispatcherRunning: false });
+    expect(body.sections.soc.correlator).toEqual({
+      status: 'NO_DATA',
+      ready: null,
+      feedbackStatus: 'unconfigured',
+      feedbackAgeSeconds: null,
+      lastFeedbackSuccess: null,
+    });
     expect(body.sections.soc.outboxToProviderAcceptanceMs).toMatchObject({
       status: 'NO_DATA',
       sampleCount: 0,
@@ -1439,6 +1472,93 @@ describe('Observabilidad · GET /api/operations/health por rol', () => {
     // El harness no arranca el bucle y usa memoria: se reporta, no se oculta.
     expect(body.sections.soc.degradedReasons).toEqual(
       expect.arrayContaining(['DISPATCHER_STOPPED', 'PERSISTENCE_EPHEMERAL']),
+    );
+  });
+
+  it('proyecta solo los campos permitidos de /readyz para operadores SOC', async () => {
+    const lead = await signIn('lider@b89.example');
+    const readyz = {
+      ready: true,
+      status: 'ready',
+      feedbackReady: true,
+      feedbackStatus: 'ready',
+      feedbackAgeSeconds: 12.5,
+      lastFeedbackSuccess: '2026-11-12T11:59:47.500Z',
+      reason: 'must not be forwarded',
+      debug: { token: 'must not be forwarded' },
+    };
+
+    await withCorrelatorResponse({ status: 200, body: readyz }, async () => {
+      const response = await health(lead.cookie);
+      const body = JSON.parse(response.body);
+      expect(response.statusCode).toBe(200);
+      expect(body.sections.soc.correlator).toEqual({
+        status: 'OK',
+        ready: true,
+        feedbackStatus: 'ready',
+        feedbackAgeSeconds: 12.5,
+        lastFeedbackSuccess: '2026-11-12T11:59:47.500Z',
+      });
+      expect(body.sections.soc.degradedReasons).not.toContain('CORRELATOR_NOT_READY');
+      expect(response.body).not.toContain('must not be forwarded');
+      expect(response.body).not.toContain('test-correlator-read-token');
+    });
+  });
+
+  it('degrada solo SOC si /readyz falla o informa que el correlador no está listo', async () => {
+    const lead = await signIn('lider@b89.example');
+    await withCorrelatorResponse(new Error('private transport detail'), async () => {
+      const response = await health(lead.cookie);
+      const body = JSON.parse(response.body);
+      expect(response.statusCode).toBe(200);
+      expect(body.status).toBe('DEGRADED');
+      expect(body.sections.soc.correlator).toEqual({
+        status: 'DEGRADED',
+        ready: null,
+        feedbackStatus: 'unavailable',
+        feedbackAgeSeconds: null,
+        lastFeedbackSuccess: null,
+      });
+      expect(body.sections.soc.degradedReasons).toContain('CORRELATOR_UNREACHABLE');
+      expect(response.body).not.toContain('private transport detail');
+    });
+
+    const leadAfter = await signIn('lider@b89.example');
+    await withCorrelatorResponse(
+      {
+        status: 503,
+        body: {
+          ready: false,
+          status: 'degraded',
+          feedbackReady: false,
+          feedbackStatus: 'failed',
+          feedbackAgeSeconds: 3,
+          lastFeedbackSuccess: '2026-11-12T11:59:57.000Z',
+        },
+      },
+      async () => {
+        const response = await health(leadAfter.cookie);
+        const body = JSON.parse(response.body);
+        expect(response.statusCode).toBe(200);
+        expect(body.sections.soc.correlator).toMatchObject({
+          status: 'DEGRADED',
+          ready: false,
+          feedbackStatus: 'failed',
+        });
+        expect(body.sections.soc.degradedReasons).toContain('CORRELATOR_NOT_READY');
+      },
+    );
+
+    await withCorrelatorResponse(
+      { status: 200, body: { ready: 'yes', reason: 'bad body' } },
+      async () => {
+        const response = await health(leadAfter.cookie);
+        const body = JSON.parse(response.body);
+        expect(response.statusCode).toBe(200);
+        expect(body.sections.soc.correlator.feedbackStatus).toBe('unavailable');
+        expect(body.sections.soc.degradedReasons).toContain('CORRELATOR_UNREACHABLE');
+        expect(response.body).not.toContain('bad body');
+      },
     );
   });
 
@@ -1504,6 +1624,57 @@ describe('Observabilidad · GET /api/operations/health por rol', () => {
         );
       }
       readMetrics.mockRestore();
+    }
+  });
+
+  it('no consulta ni expone la salud del correlador a un actor de otro tenant', async () => {
+    const lead = await signIn('lider@b89.example');
+    const sessionId = decodeURIComponent(lead.cookie.slice('b89_session='.length));
+    const originalSession = await runtime.sessions.byId(sessionId);
+    expect(originalSession?.tenantId).toBe(runtime.tenantId);
+    expect(originalSession).toBeDefined();
+    expect(
+      await runtime.sessions.update(
+        { ...originalSession!, tenantId: 'tenant-outside-correlator' },
+        originalSession!.revision,
+      ),
+    ).toBe(true);
+
+    try {
+      await withCorrelatorResponse(
+        {
+          status: 200,
+          body: {
+            ready: true,
+            status: 'ready',
+            feedbackReady: true,
+            feedbackStatus: 'ready',
+            feedbackAgeSeconds: 1,
+            lastFeedbackSuccess: '2026-11-12T12:00:00.000Z',
+          },
+        },
+        async (fetchSpy) => {
+          const response = await health(lead.cookie);
+          const body = JSON.parse(response.body);
+          expect(response.statusCode).toBe(200);
+          expect(body.sections.soc.correlator).toEqual({
+            status: 'NO_DATA',
+            ready: null,
+            feedbackStatus: 'unconfigured',
+            feedbackAgeSeconds: null,
+            lastFeedbackSuccess: null,
+          });
+          expect(fetchSpy).not.toHaveBeenCalled();
+        },
+      );
+    } finally {
+      const currentSession = await runtime.sessions.byId(sessionId);
+      if (currentSession && currentSession.tenantId !== originalSession!.tenantId) {
+        await runtime.sessions.update(
+          { ...currentSession, tenantId: originalSession!.tenantId },
+          currentSession.revision,
+        );
+      }
     }
   });
 

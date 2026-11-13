@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  correlatorHealth,
   HEALTH_THRESHOLDS,
   platformSection,
   socSection,
@@ -12,6 +13,87 @@ import {
 const AT = new Date('2026-10-12T12:00:00.000Z');
 
 describe('operations/health · estados', () => {
+  it('expone correlador como NO_DATA si no está configurado y degrada señales no listas', () => {
+    const unconfigured = correlatorHealth(undefined);
+    expect(unconfigured).toEqual({
+      status: 'NO_DATA',
+      ready: null,
+      feedbackStatus: 'unconfigured',
+      feedbackAgeSeconds: null,
+      lastFeedbackSuccess: null,
+    });
+    const section = socSection(
+      {
+        persistence: 'postgres',
+        dispatcherRunning: true,
+        outbox: {
+          pending: 0,
+          processing: 0,
+          oldestPendingAt: null,
+          expiredProcessing: 0,
+          oldestExpiredProcessingLeaseUntil: null,
+        },
+        notificationsByStatus: {},
+        correlator: correlatorHealth({
+          status: 503,
+          body: {
+            ready: false,
+            status: 'degraded',
+            feedbackReady: false,
+            feedbackStatus: 'stale',
+            feedbackAgeSeconds: 45,
+            lastFeedbackSuccess: '2026-10-12T11:59:15.000Z',
+            reason: 'raw detail must be discarded',
+          },
+        }),
+      },
+      AT,
+    );
+    expect(section.status).toBe('DEGRADED');
+    expect(section.degradedReasons).toContain('CORRELATOR_NOT_READY');
+    expect(section.correlator).toEqual({
+      status: 'DEGRADED',
+      ready: false,
+      feedbackStatus: 'stale',
+      feedbackAgeSeconds: 45,
+      lastFeedbackSuccess: '2026-10-12T11:59:15.000Z',
+    });
+    expect(JSON.stringify(section)).not.toContain('raw detail');
+  });
+
+  it('solo acepta status HTTP y body coherentes con el contrato de /readyz', () => {
+    const readyBody = {
+      ready: true,
+      status: 'ready',
+      feedbackReady: true,
+      feedbackStatus: 'ready',
+      feedbackAgeSeconds: 0,
+      lastFeedbackSuccess: '2026-10-12T12:00:00.000Z',
+    };
+    expect(correlatorHealth({ status: 200, body: readyBody })).toEqual({
+      status: 'OK',
+      ready: true,
+      feedbackStatus: 'ready',
+      feedbackAgeSeconds: 0,
+      lastFeedbackSuccess: '2026-10-12T12:00:00.000Z',
+    });
+    expect(correlatorHealth({ status: 503, body: readyBody })).toMatchObject({
+      status: 'DEGRADED',
+      ready: null,
+      feedbackStatus: 'unavailable',
+    });
+    expect(
+      correlatorHealth({ status: 200, body: { ...readyBody, feedbackAgeSeconds: '0' } }),
+    ).toMatchObject({ status: 'DEGRADED', feedbackStatus: 'unavailable' });
+    expect(correlatorHealth(null)).toMatchObject({
+      status: 'DEGRADED',
+      ready: null,
+      feedbackStatus: 'unavailable',
+      feedbackAgeSeconds: null,
+      lastFeedbackSuccess: null,
+    });
+  });
+
   it('sin alertas el resumen es NO_DATA y la cobertura de fuentes se declara NO_DATA', () => {
     const summary = summarySection({ lastAlertAt: null }, AT);
     expect(summary).toMatchObject({ status: 'NO_DATA', sourceCoverage: 'NO_DATA' });

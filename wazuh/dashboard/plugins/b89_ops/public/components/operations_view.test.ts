@@ -1,5 +1,60 @@
 import { describe, expect, it } from 'vitest';
-import { formatLatencySummary, formatOutboxQueueSummary } from './operations_view';
+import {
+  CorrelatorFeedbackStatus,
+  OperationsStatus,
+  SocCorrelatorHealth,
+} from '../../common/api_contract';
+import {
+  describeCorrelatorHealth,
+  formatLatencySummary,
+  formatOutboxQueueSummary,
+} from './operations_view';
+
+describe('operations correlator contract and copy', () => {
+  const correlator = (
+    feedbackStatus: CorrelatorFeedbackStatus,
+    overrides: Partial<SocCorrelatorHealth> = {},
+  ): SocCorrelatorHealth => ({
+    status: 'OK' as OperationsStatus,
+    ready: feedbackStatus === 'ready',
+    feedbackStatus,
+    feedbackAgeSeconds: null,
+    lastFeedbackSuccess: null,
+    ...overrides,
+  });
+
+  it.each([
+    ['ready', 'Listo'],
+    ['pending', 'Inicializando'],
+    ['failed', 'Refresh fallido'],
+    ['unavailable', 'Sin respuesta'],
+    ['unconfigured', 'No configurado'],
+  ] as const)('labels feedback status %s as %s', (feedbackStatus, label) => {
+    expect(describeCorrelatorHealth(correlator(feedbackStatus)).label).toBe(label);
+  });
+
+  it('shows stale age and last successful refresh data without internal details', () => {
+    const status = describeCorrelatorHealth(
+      correlator('stale', {
+        status: 'STALE',
+        ready: false,
+        feedbackAgeSeconds: 125,
+        lastFeedbackSuccess: '2026-11-12T10:00:00.000Z',
+      }),
+    );
+    expect(status.label).toBe('Atrasado · 2 min sin refresh');
+    expect(status.tone).toBe('warn');
+  });
+
+  it('reports a missing correlator response and degraded overall readiness clearly', () => {
+    expect(describeCorrelatorHealth(undefined).label).toBe('Sin respuesta');
+    expect(
+      describeCorrelatorHealth(
+        correlator('ready', { status: 'DEGRADED', ready: false }),
+      ).label,
+    ).toBe('Degradado');
+  });
+});
 
 describe('operations latency copy', () => {
   it('uses readable separators and Spanish labels for handler latency', () => {

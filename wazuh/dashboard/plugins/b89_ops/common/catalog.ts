@@ -6,6 +6,7 @@ import type {
   AlertStatus,
   AlertVerdict,
   ApiErrorCode,
+  CorrelatorFeedbackStatus,
   IncidentSeverity,
   IncidentStatus,
   NotificationChannel,
@@ -206,6 +207,24 @@ export const OPERATIONS_TONE: Record<OperationsStatus, HealthTone> = {
   NO_DATA: 'neutral',
   STALE: 'warn',
   DEGRADED: 'warn',
+};
+
+export const CORRELATOR_FEEDBACK_STATUS_LABEL: Record<CorrelatorFeedbackStatus, string> = {
+  ready: 'Listo',
+  pending: 'Inicializando',
+  failed: 'Refresh fallido',
+  stale: 'Atrasado',
+  unavailable: 'Sin respuesta',
+  unconfigured: 'No configurado',
+};
+
+export const CORRELATOR_FEEDBACK_STATUS_TONE: Record<CorrelatorFeedbackStatus, HealthTone> = {
+  ready: 'ok',
+  pending: 'info',
+  failed: 'fail',
+  stale: 'warn',
+  unavailable: 'neutral',
+  unconfigured: 'neutral',
 };
 
 export const DEGRADED_REASON_LABEL: Record<string, string> = {

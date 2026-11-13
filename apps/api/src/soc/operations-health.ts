@@ -21,6 +21,106 @@ import type { ProviderAcceptanceLatency } from '@b89/soar';
 export const HEALTH_STATUSES = ['OK', 'NO_DATA', 'STALE', 'DEGRADED'] as const;
 export type HealthStatus = (typeof HEALTH_STATUSES)[number];
 
+export const CORRELATOR_FEEDBACK_STATUSES = [
+  'ready',
+  'pending',
+  'failed',
+  'stale',
+  'unavailable',
+  'unconfigured',
+] as const;
+export type CorrelatorFeedbackStatus = (typeof CORRELATOR_FEEDBACK_STATUSES)[number];
+
+export interface CorrelatorHealth {
+  readonly status: HealthStatus;
+  readonly ready: boolean | null;
+  readonly feedbackStatus: CorrelatorFeedbackStatus;
+  readonly feedbackAgeSeconds: number | null;
+  readonly lastFeedbackSuccess: string | null;
+}
+
+interface CorrelatorReadResult {
+  readonly status: number;
+  readonly body: unknown;
+}
+
+/**
+ * Validates the small readiness projection and discards every unrecognized field. `undefined`
+ * means no read link was configured; `null` means a configured link could not be read safely.
+ */
+export function correlatorHealth(
+  response: CorrelatorReadResult | null | undefined,
+): CorrelatorHealth {
+  if (response === undefined) {
+    return {
+      status: 'NO_DATA',
+      ready: null,
+      feedbackStatus: 'unconfigured',
+      feedbackAgeSeconds: null,
+      lastFeedbackSuccess: null,
+    };
+  }
+  if (response === null) return unavailableCorrelator();
+
+  const body = recordOf(response.body);
+  const feedbackStatus = body['feedbackStatus'];
+  const feedbackReady = body['feedbackReady'];
+  const ready = body['ready'];
+  const status = body['status'];
+  const age = body['feedbackAgeSeconds'];
+  const lastSuccess = body['lastFeedbackSuccess'];
+  const allowedFeedbackStatuses = new Set<string>(CORRELATOR_FEEDBACK_STATUSES.slice(0, 4));
+  const validAge =
+    age === undefined || (typeof age === 'number' && Number.isFinite(age) && age >= 0);
+  const validTimestamp =
+    lastSuccess === undefined ||
+    (typeof lastSuccess === 'string' &&
+      /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/u.test(lastSuccess) &&
+      Number.isFinite(Date.parse(lastSuccess)));
+  const hasAge = typeof age === 'number';
+  const hasTimestamp = typeof lastSuccess === 'string';
+  const validState =
+    typeof ready === 'boolean' &&
+    typeof feedbackReady === 'boolean' &&
+    typeof status === 'string' &&
+    ['ready', 'degraded', 'backfilling'].includes(status) &&
+    typeof feedbackStatus === 'string' &&
+    allowedFeedbackStatuses.has(feedbackStatus) &&
+    feedbackReady === (feedbackStatus === 'ready') &&
+    (ready ? status === 'ready' && feedbackReady : status !== 'ready') &&
+    validAge &&
+    validTimestamp &&
+    hasAge === hasTimestamp &&
+    (feedbackStatus !== 'pending' || (!hasAge && !hasTimestamp)) &&
+    (!['ready', 'stale'].includes(feedbackStatus) || (hasAge && hasTimestamp));
+  const expectedHttpStatus = ready === true ? 200 : ready === false ? 503 : 0;
+  if (!validState || response.status !== expectedHttpStatus) return unavailableCorrelator();
+
+  return {
+    status: ready ? 'OK' : 'DEGRADED',
+    ready,
+    feedbackStatus: feedbackStatus as CorrelatorFeedbackStatus,
+    feedbackAgeSeconds: hasAge ? (age as number) : null,
+    lastFeedbackSuccess: hasTimestamp ? (lastSuccess as string) : null,
+  };
+}
+
+function unavailableCorrelator(): CorrelatorHealth {
+  return {
+    status: 'DEGRADED',
+    ready: null,
+    feedbackStatus: 'unavailable',
+    feedbackAgeSeconds: null,
+    lastFeedbackSuccess: null,
+  };
+}
+
+function recordOf(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
 /** Umbrales operativos. Cambiarlos es una decisión del SOC, no un ajuste de UI. */
 export const HEALTH_THRESHOLDS = Object.freeze({
   /** Un pendiente más viejo que esto indica que el despacho no avanza. */
@@ -88,9 +188,11 @@ export interface SocSectionInput {
   readonly notificationsByStatus: Readonly<Record<string, number>>;
   readonly providerAcceptanceLatency?: ProviderAcceptanceLatency | null;
   readonly wazuhPushInbox?: WazuhPushInboxMetrics | null;
+  readonly correlator?: CorrelatorHealth;
 }
 
 export function socSection(input: SocSectionInput, at: Date) {
+  const correlator = input.correlator ?? correlatorHealth(undefined);
   const oldestPendingAgeSeconds = input.outbox.oldestPendingAt
     ? Math.max(0, Math.round((at.getTime() - input.outbox.oldestPendingAt.getTime()) / 1_000))
     : null;
@@ -114,6 +216,8 @@ export function socSection(input: SocSectionInput, at: Date) {
     ...Object.entries(NOTIFICATION_DEGRADING)
       .filter(([status]) => (input.notificationsByStatus[status] ?? 0) > 0)
       .map(([, reason]) => reason),
+    ...(correlator.feedbackStatus === 'unavailable' ? ['CORRELATOR_UNREACHABLE'] : []),
+    ...(correlator.ready === false ? ['CORRELATOR_NOT_READY'] : []),
   ];
   return {
     status: (degradedReasons.length > 0 ? 'DEGRADED' : 'OK') as HealthStatus,
@@ -121,6 +225,7 @@ export function socSection(input: SocSectionInput, at: Date) {
     degradedReasons,
     persistence: input.persistence,
     dispatcherRunning: input.dispatcherRunning,
+    correlator,
     outbox: {
       pending: input.outbox.pending,
       processing: input.outbox.processing,

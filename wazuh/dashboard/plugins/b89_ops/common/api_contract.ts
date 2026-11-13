@@ -527,6 +527,22 @@ export interface ChangesResponse {
 
 export type OperationsStatus = 'OK' | 'NO_DATA' | 'STALE' | 'DEGRADED';
 
+export type CorrelatorFeedbackStatus =
+  | 'ready'
+  | 'pending'
+  | 'failed'
+  | 'stale'
+  | 'unavailable'
+  | 'unconfigured';
+
+export interface SocCorrelatorHealth {
+  readonly status: OperationsStatus;
+  readonly ready: boolean | null;
+  readonly feedbackStatus: CorrelatorFeedbackStatus;
+  readonly feedbackAgeSeconds: number | null;
+  readonly lastFeedbackSuccess: string | null;
+}
+
 export interface OperationsHealth {
   readonly generatedAt: string;
   readonly status: OperationsStatus;
@@ -553,6 +569,8 @@ export interface OperationsHealth {
         readonly windowHours: number;
         readonly byStatus: Readonly<Record<string, number>>;
       };
+      /** Optional while older API deployments do not yet return correlator readiness. */
+      readonly correlator?: SocCorrelatorHealth | null;
       /** Outbox creation to first external provider HTTP 2xx; accepted does not mean read. */
       readonly outboxToProviderAcceptanceMs: {
         readonly status: OperationsStatus;

@@ -28,6 +28,7 @@ import {
 import { ApiError } from '../http/api-error.js';
 import {
   HEALTH_THRESHOLDS,
+  correlatorHealth,
   platformSection,
   socSection,
   summarySection,
@@ -36,6 +37,7 @@ import {
 } from './operations-health.js';
 import { paginate, type PageQuery } from '../http/pagination.js';
 import { correlationIdOf } from '../http/request-context.js';
+import { correlatorGet } from '../runtime/correlator-link.js';
 import { mutatingActor, readingActor } from './session-actor.js';
 import { SECOPS_RUNTIME } from './tokens.js';
 import type { SecOpsRuntime } from '../runtime/secops-runtime.js';
@@ -43,6 +45,7 @@ import { evaluateMonitor } from '../runtime/source-health.js';
 
 /** Mensajes por pasada manual del despacho. */
 const MANUAL_DRAIN_BATCH = 1;
+const CORRELATOR_HEALTH_TIMEOUT_MS = 750;
 /** Tope de la bandeja de notificaciones que se pagina en el BFF. */
 const NOTIFICATION_LIST_LIMIT = 2_000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
@@ -312,6 +315,21 @@ export class OperationsController {
         monitor?.key.tenantId === actor.tenantId
           ? await this.runtime.wazuhPushInboxMetrics(at)
           : null;
+      let correlator = correlatorHealth(undefined);
+      if (this.runtime.correlatorRead && actor.tenantId === this.runtime.tenantId) {
+        try {
+          correlator = correlatorHealth(
+            await correlatorGet(
+              this.runtime.correlatorRead,
+              '/readyz',
+              CORRELATOR_HEALTH_TIMEOUT_MS,
+            ),
+          );
+        } catch {
+          // Una dependencia auxiliar nunca debe romper la respuesta agregada de operaciones.
+          correlator = correlatorHealth(null);
+        }
+      }
       sections['soc'] = socSection(
         {
           persistence: this.runtime.soc.kind,
@@ -320,6 +338,7 @@ export class OperationsController {
           notificationsByStatus,
           providerAcceptanceLatency,
           wazuhPushInbox,
+          correlator,
         },
         at,
       );

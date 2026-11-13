@@ -261,6 +261,21 @@ ni activación de la integración en Wazuh.
   objetivo propuesto. Hasta entonces no hay línea base, SLO alcanzado, canario ni despliegue
   acreditado.
 
+#### Correlador en Salud operativa (cambio local; pendiente de despliegue)
+
+`GET /api/operations/health`, dentro de `sections.soc` para `observability.read_soc`, consulta el
+`/readyz` privado del correlador con timeout de 750 ms, únicamente cuando el tenant del actor coincide
+con el tenant del runtime (el correlador es deployment-scoped). Otros tenants reciben
+`NO_DATA`/`unconfigured` sin ejecutar la lectura. El bloque `soc.correlator` solo proyecta
+`status`, `ready`, `feedbackStatus`, `feedbackAgeSeconds` y `lastFeedbackSuccess`; valida el body y
+la correspondencia del status HTTP y descarta razones, campos extra y detalles del transporte.
+Sin `runtime.correlatorRead`, queda en `NO_DATA`/`unconfigured` sin degradar SOC. Un timeout,
+respuesta HTTP incompatible o body inválido degrada SOC con `CORRELATOR_UNREACHABLE`, pero mantiene
+`/operations/health` disponible. Un `/readyz` válido con `ready: false` degrada con
+`CORRELATOR_NOT_READY` y conserva solo el estado acotado (`pending`, `failed` o `stale`) y su edad y
+marca temporal opcionales. Este indicador es local: no se afirma que esté desplegado ni validado en
+el release live, y no cambia la emisión del correlador.
+
 ## Progreso local del punto 4 · UX de investigación (2026-11-11)
 
 - La pantalla limita a ocho entidades de consulta y deriva los pivotes visibles y la consulta del

@@ -15,11 +15,15 @@ import {
 } from '@elastic/eui';
 import {
   CAPABILITIES,
+  CORRELATOR_FEEDBACK_STATUS_LABEL,
+  CORRELATOR_FEEDBACK_STATUS_TONE,
   DEGRADED_REASON_LABEL,
+  HealthTone,
   NOTIFICATION_STATUS_LABEL,
   NotificationStatus,
   OPERATIONS_STATUS_LABEL,
   OPERATIONS_TONE,
+  SocCorrelatorHealth,
   OperationsHealth,
   OperationsStatus,
 } from '../../common';
@@ -55,6 +59,38 @@ export function formatOutboxQueueSummary(input: {
       ? ` · lease más antiguo vencido hace ${duration(input.oldestExpiredLeaseAgeSeconds)}`
       : '';
   return `${input.pending} pendientes · ${input.processing} en curso · más antigua ${duration(input.oldestPendingAgeSeconds)} · ${input.expiredProcessing} leases vencidos${expired}`;
+}
+
+export function describeCorrelatorHealth(
+  correlator: SocCorrelatorHealth | null | undefined,
+): { label: string; tone: HealthTone } {
+  if (!correlator) return { label: 'Sin respuesta', tone: 'neutral' };
+
+  if (correlator.feedbackStatus === 'stale') {
+    const age = correlator.feedbackAgeSeconds;
+    return {
+      label: age === null ? 'Atrasado · edad sin dato' : `Atrasado · ${duration(age)} sin refresh`,
+      tone: CORRELATOR_FEEDBACK_STATUS_TONE.stale,
+    };
+  }
+
+  if (correlator.feedbackStatus === 'ready') {
+    if (correlator.ready === true && correlator.status === 'OK') {
+      return {
+        label: CORRELATOR_FEEDBACK_STATUS_LABEL.ready,
+        tone: CORRELATOR_FEEDBACK_STATUS_TONE.ready,
+      };
+    }
+    if (correlator.ready === false || correlator.status === 'DEGRADED') {
+      return { label: 'Degradado', tone: 'warn' };
+    }
+    if (correlator.ready === null) return { label: 'Sin respuesta', tone: 'neutral' };
+  }
+
+  return {
+    label: CORRELATOR_FEEDBACK_STATUS_LABEL[correlator.feedbackStatus],
+    tone: CORRELATOR_FEEDBACK_STATUS_TONE[correlator.feedbackStatus],
+  };
 }
 
 function SectionPanel({
@@ -179,6 +215,24 @@ function OperationsContent({ embedded }: { embedded: boolean }) {
                       {
                         title: 'Despachador',
                         description: data.sections.soc.dispatcherRunning ? 'En marcha' : 'Detenido',
+                      },
+                      {
+                        title: 'Correlador',
+                        description: (() => {
+                          const correlator = data.sections.soc?.correlator;
+                          const state = describeCorrelatorHealth(correlator);
+                          return (
+                            <span>
+                              <HealthMark tone={state.tone} label={state.label} />
+                              {correlator?.lastFeedbackSuccess && (
+                                <>
+                                  <br />
+                                  Último éxito <Timestamp iso={correlator.lastFeedbackSuccess} />
+                                </>
+                              )}
+                            </span>
+                          );
+                        })(),
                       },
                       {
                         title: 'Cola de salida',
