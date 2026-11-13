@@ -283,6 +283,10 @@ func TestIntegrationFixtureReplayEmitsAuditsAndServes(t *testing.T) {
 	if len(rep.TopEntities) == 0 || strings.Contains(rep.TopEntities[0].Value, "victima") {
 		t.Errorf("top entities (redacted): %+v", rep.TopEntities)
 	}
+	coverage, coverageIsPointer := rep.Feedback["reviewCoverage"].(*float64)
+	if !coverageIsPointer || coverage != nil || rep.Feedback["reviewCoverageStatus"] != feedback.ReviewCoverageNoData {
+		t.Errorf("report must mark the absent correlator-alert denominator as NO_DATA: %+v", rep.Feedback)
+	}
 
 	// HTTP read model: auth, top entities, detail by key, candidates, metrics.
 	srv := httptest.NewServer((&server.Server{Runner: runner, ReadToken: func() string { return readToken }, Now: func() time.Time { return now }, Version: "test"}).Handler())
@@ -318,13 +322,17 @@ func TestIntegrationFixtureReplayEmitsAuditsAndServes(t *testing.T) {
 	if code, _ = get("/v1/candidates?status=emitted&limit=10", readToken); code != 200 {
 		t.Fatalf("candidates: %d", code)
 	}
+	code, body = get("/v1/feedback", readToken)
+	if code != 200 || body["reviewCoverage"] != nil || body["reviewCoverageStatus"] != feedback.ReviewCoverageNoData {
+		t.Fatalf("feedback review coverage: %d %v", code, body)
+	}
 	resp, err := srv.Client().Get(srv.URL + "/metrics")
 	if err != nil {
 		t.Fatal(err)
 	}
 	m, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	for _, want := range []string{"b89_correlator_observations_total{source=\"aws\"}", "b89_correlator_candidates_emitted_total", "b89_correlator_reduction_factor{stream=\"b89\"}", "b89_correlator_feedback_alerts{verdict=\"false_positive\"}", "b89_correlator_feedback_alert_feed_truncated"} {
+	for _, want := range []string{"b89_correlator_observations_total{source=\"aws\"}", "b89_correlator_candidates_emitted_total", "b89_correlator_reduction_factor{stream=\"b89\"}", "b89_correlator_feedback_alerts{verdict=\"false_positive\"}", "b89_correlator_review_coverage_status{status=\"NO_DATA\"}", "b89_correlator_feedback_alert_feed_truncated"} {
 		if !strings.Contains(string(m), want) {
 			t.Errorf("metrics missing %s", want)
 		}

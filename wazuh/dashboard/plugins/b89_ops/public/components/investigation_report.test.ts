@@ -3,6 +3,7 @@
  */
 
 import type { InvestigationEventSummary, RelatedResponse } from '../../common';
+import { B89ApiError } from '../api/client';
 import {
   collectInvestigationReport,
   createInvestigationXlsx,
@@ -219,6 +220,25 @@ describe('reportes de investigación', () => {
       }),
     ).rejects.toMatchObject({ kind: 'unavailable' });
     expect(attempts).toBe(3);
+  });
+
+  it('no presenta un rechazo HTTP de la consulta como una caída del Indexer', async () => {
+    let attempts = 0;
+    await expect(
+      collectInvestigationReport({
+        query,
+        alert: null,
+        title: 'Informe',
+        entities: [],
+        signal: new AbortController().signal,
+        retryDelayMs: 0,
+        loadPage: async () => {
+          attempts += 1;
+          throw new B89ApiError('VALIDATION_FAILED', 400, null);
+        },
+      }),
+    ).rejects.toMatchObject({ kind: 'rejected' });
+    expect(attempts).toBe(1);
   });
 
   it('produce un XLSX ZIP real con hojas, celdas seguras y contenido escapado', async () => {

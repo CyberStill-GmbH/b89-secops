@@ -30,6 +30,7 @@ import { PostgresSocPersistence } from '@b89/soc/postgres';
 
 import { dispatchMessage, drainOutbox, type DispatchDependencies } from '../src/dispatcher.js';
 import { ConsoleFallbackChannel } from '../src/memory-stores.js';
+import { createAttempt } from '../src/notification.js';
 import { PostgresNotificationAttemptStore } from '../src/infrastructure/postgres-attempt-store.js';
 import type { OutboxMessageDraft } from '@b89/soc';
 import type { NotificationTransport } from '../src/teams-adapter.js';
@@ -242,6 +243,75 @@ describe.skipIf(!databaseUrl)('C-20 · despacho durable sobre PostgreSQL', () =>
       listed.every((attempt) => attempt.status === 'sent' && attempt.channel === 'teams'),
     ).toBe(true);
     expect(listed.map((attempt) => attempt.attemptCount).sort()).toEqual([1, 2]);
+  });
+
+  it('hace CAS del acuse con el AuditEvent y protege frente a snapshots stale', async () => {
+    const id = randomUUID();
+    const at = new Date();
+    const attempt = {
+      ...createAttempt({
+        id,
+        tenantId: TENANT,
+        messageId: randomUUID(),
+        idempotencyKey: `ack-${id}`,
+        at,
+      }),
+      status: 'sent' as const,
+      sentAt: at,
+    };
+    await attempts.save(attempt);
+    const replica = PostgresNotificationAttemptStore.connect({
+      connectionString: database!.url,
+      maxConnections: 2,
+    });
+    const eventDraft = (previousStatus: string) => ({
+      id: randomUUID(),
+      tenantId: TENANT,
+      occurredAt: at,
+      actor: { id: 'analyst-1', type: 'user' as const },
+      action: 'soar.notification.acknowledged',
+      resource: { type: 'notification', id },
+      outcome: 'succeeded' as const,
+      correlationId: randomUUID(),
+      metadata: { previousStatus },
+    });
+    const call = (store: PostgresNotificationAttemptStore) =>
+      store.acknowledgeWithAudit(TENANT, id, 'analyst-1', at, eventDraft);
+
+    try {
+      const results = await Promise.all([call(attempts), call(replica)]);
+      expect(results.filter(Boolean)).toHaveLength(1);
+      await attempts.save(attempt); // a stale dispatcher save cannot revert the acknowledgement
+      await expect(attempts.byId(TENANT, id)).resolves.toMatchObject({
+        status: 'acknowledged',
+        acknowledgedBy: 'analyst-1',
+      });
+
+      const verifier = new Client(database!.url);
+      await verifier.connect();
+      try {
+        const rows = await verifier.query(
+          `SELECT action, actor_id, resource_type, resource_id, correlation_id, metadata
+             FROM audit_events
+            WHERE tenant_id = $1 AND resource_type = 'notification' AND resource_id = $2
+              AND action = 'soar.notification.acknowledged'`,
+          [TENANT, id],
+        );
+        expect(rows.rows).toHaveLength(1);
+        expect(rows.rows[0]).toMatchObject({
+          action: 'soar.notification.acknowledged',
+          actor_id: 'analyst-1',
+          resource_type: 'notification',
+          resource_id: id,
+          metadata: { previousStatus: 'sent' },
+        });
+        expect(rows.rows[0]?.correlation_id).toBeTruthy();
+      } finally {
+        await verifier.end();
+      }
+    } finally {
+      await replica.close();
+    }
   });
 
   it('serializa el cupo P2 entre instancias Postgres y conserva idempotencia', async () => {

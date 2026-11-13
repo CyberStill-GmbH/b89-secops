@@ -123,6 +123,31 @@ describe('bandeja de notificaciones', () => {
     });
   });
 
+  it('normaliza la evidencia real del API sin inventar un número de intento', () => {
+    const apiItem: NotificationAttempt = {
+      ...base,
+      delivery: [
+        {
+          channel: 'teams',
+          outcome: 'accepted',
+          at: '2026-11-12T10:00:00Z',
+          responseAt: '2026-11-12T10:00:01Z',
+          httpStatus: 202,
+          providerMessageId: 'workflow-run-71',
+          providerLink: null,
+          reason: null,
+        },
+      ],
+    };
+
+    expect(deliveryLines(apiItem)[0]).toMatchObject({
+      channel: 'teams',
+      attempt: null,
+      kind: 'sent',
+      at: '2026-11-12T10:00:01Z',
+    });
+  });
+
   it('representa avisos agrupados y sustituidos sin marcarlos como enviados', () => {
     expect(
       deliveryLines({ ...base, status: 'suppressed', suppressionReason: 'grouped' })[0],

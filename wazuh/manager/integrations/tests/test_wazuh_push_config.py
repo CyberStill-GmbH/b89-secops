@@ -14,6 +14,8 @@ COMPOSE = ROOT / "infra/aws-poweruser/host/compose.b89.yaml"
 PREPARE = ROOT / "infra/aws-poweruser/scripts/prepare-wazuh-push-secret.sh"
 ACTIVATE = ROOT / "infra/aws-poweruser/scripts/activate-wazuh-push.sh"
 DEPLOY = ROOT / "infra/aws-poweruser/scripts/deploy-host.sh"
+DEPLOY_RESPOND = ROOT / "infra/aws-poweruser/scripts/deploy-respond.sh"
+DEPLOY_PROVIDER_MONITORING = ROOT / "infra/aws-poweruser/scripts/deploy-provider-monitoring.sh"
 AWS_INSTALLER = ROOT / "wazuh/aws-events/install-aws-events.sh"
 
 
@@ -81,6 +83,27 @@ class WazuhPushConfigTests(unittest.TestCase):
         compose = COMPOSE.read_text(encoding="utf-8")
         manager = compose.split("  wazuh.manager:", 1)[1].split("\n  wazuh.indexer:", 1)[0]
         self.assertIn("${SOC_HOSTNAME}:172.30.89.11", manager)
+        self.assertIn("B89_INGEST_CA_FILE=/etc/b89-edge-ca/ca-bundle.pem", manager)
+        self.assertIn(
+            "/etc/ssl/certs/ca-certificates.crt:/etc/b89-edge-ca/ca-bundle.pem:ro",
+            manager,
+        )
+        adapter = (ROOT / "wazuh/manager/integrations/custom-b89.py").read_text(encoding="utf-8")
+        self.assertIn('os.environ.get(CA_FILE_ENV)', adapter)
+        self.assertIn('ssl.create_default_context(cafile=path)', adapter)
+        self.assertNotIn("CERT_NONE", adapter)
+        deploy = DEPLOY.read_text(encoding="utf-8")
+        self.assertIn("EDGE_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt", deploy)
+        self.assertIn('[[ -s $EDGE_CA_BUNDLE && -r $EDGE_CA_BUNDLE ]]', deploy)
+        for deployment_script in (DEPLOY, DEPLOY_RESPOND, DEPLOY_PROVIDER_MONITORING):
+            with self.subTest(script=deployment_script.name):
+                script = deployment_script.read_text(encoding="utf-8")
+                check = '[[ -s $EDGE_CA_BUNDLE && -r $EDGE_CA_BUNDLE ]]'
+                self.assertIn("EDGE_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt", script)
+                self.assertIn(check, script)
+                # Fail before the first Compose call so a missing host mount cannot be
+                # silently created as a directory by Docker's bind-mount handling.
+                self.assertLess(script.index(check), script.index("COMPOSE=(docker compose"))
         prepare = PREPARE.read_text(encoding="utf-8")
         self.assertIn("validate_push_config.py", prepare)
         self.assertIn("B89_WAZUH_PUSH_PREPARE:-", prepare)
@@ -125,8 +148,9 @@ class WazuhPushConfigTests(unittest.TestCase):
         self.assertIn("old.manager.ossec.conf", activation)
         self.assertIn("old.host.ossec.conf", activation)
         self.assertIn("manager_changed=1\ndocker exec -u 0", activation)
-        self.assertIn('sh -c \'printf %s "$B89_WAZUH_PUSH_SECRET"\'', activation)
-        self.assertNotIn(".Config.Env", activation)
+        self.assertIn('docker inspect "$API" --format', activation)
+        self.assertIn('awk -F= \'$1 == "B89_WAZUH_PUSH_SECRET" { print substr', activation)
+        self.assertNotIn('echo "$B89_WAZUH_PUSH_SECRET"', activation)
         self.assertNotIn("activate-wazuh-push.sh", deploy)
 
 

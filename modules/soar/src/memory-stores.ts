@@ -6,8 +6,14 @@
  */
 
 import type { OutboxMessageDraft } from '@b89/soc';
+import { recordAudit, type AuditEventDraft, type AuditStore } from '@b89/audit';
 
-import type { DeliveryEvidence, NotificationAttempt, NotificationChannel } from './notification.js';
+import {
+  acknowledge,
+  type DeliveryEvidence,
+  type NotificationAttempt,
+  type NotificationChannel,
+} from './notification.js';
 import type {
   AttemptStore,
   FallbackChannel,
@@ -74,6 +80,7 @@ export class InMemoryOutbox implements OutboxReader {
 
 export class InMemoryAttemptStore implements AttemptStore {
   public readonly rows = new Map<string, NotificationAttempt>();
+  private operationQueue: Promise<void> = Promise.resolve();
   private readonly groupDispatchReservations = new Map<
     string,
     {
@@ -111,9 +118,54 @@ export class InMemoryAttemptStore implements AttemptStore {
     );
   }
 
+  private serialize<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.operationQueue.then(operation);
+    this.operationQueue = result.then(() => undefined, () => undefined);
+    return result;
+  }
+
   public save(attempt: NotificationAttempt): Promise<void> {
-    this.rows.set(`${attempt.tenantId}|${attempt.idempotencyKey}`, attempt);
-    return Promise.resolve();
+    return this.serialize(async () => {
+      if (attempt.status === 'acknowledged') {
+        throw new Error('NOTIFICATION_ACKNOWLEDGEMENT_REQUIRES_ATOMIC_WRITE');
+      }
+      const key = `${attempt.tenantId}|${attempt.idempotencyKey}`;
+      const current = this.rows.get(key);
+      // A dispatcher may finish with a stale pre-acknowledgement snapshot. The human
+      // acknowledgement is terminal for this delivery attempt and must win.
+      if (current?.status === 'acknowledged') return;
+      this.rows.set(key, attempt);
+    });
+  }
+
+  public acknowledgeWithAudit(
+    tenantId: string,
+    attemptId: string,
+    actorId: string,
+    at: Date,
+    draft: (previousStatus: string) => AuditEventDraft,
+    memoryAudit?: AuditStore,
+  ): Promise<NotificationAttempt | undefined> {
+    if (!memoryAudit) return Promise.reject(new Error('NOTIFICATION_AUDIT_STORE_REQUIRED'));
+    return this.serialize(async () => {
+      const current = [...this.rows.values()].find(
+        (attempt) => attempt.tenantId === tenantId && attempt.id === attemptId,
+      );
+      if (!current) return undefined;
+      const result = acknowledge(current, actorId, at);
+      if (!result.ok) return undefined;
+      const key = `${tenantId}|${current.idempotencyKey}`;
+      try {
+        // No attempt mutation is visible unless the append succeeds. If it fails, the
+        // old row remains intact; Map.set below cannot fail after a successful append.
+        await recordAudit(memoryAudit, draft(current.status));
+        this.rows.set(key, result.attempt);
+        return result.attempt;
+      } catch (error) {
+        this.rows.set(key, current);
+        throw error;
+      }
+    });
   }
 
   public countByStatusSince(

@@ -7,6 +7,7 @@
  */
 
 import type { OutboxMessageDraft } from '@b89/soc';
+import type { AuditEventDraft, AuditStore } from '@b89/audit';
 
 import type { RenderedEmail } from './notification-content.js';
 import type { DeliveryEvidence, NotificationAttempt, NotificationChannel } from './notification.js';
@@ -25,6 +26,15 @@ export interface AttemptStore {
   ): Promise<NotificationAttempt | undefined>;
   byId(tenantId: string, attemptId: string): Promise<NotificationAttempt | undefined>;
   save(attempt: NotificationAttempt): Promise<void>;
+  /** Actualiza el acuse y agrega su evento en una sola unidad atómica. */
+  acknowledgeWithAudit(
+    tenantId: string,
+    attemptId: string,
+    actorId: string,
+    at: Date,
+    draft: (previousStatus: string) => AuditEventDraft,
+    memoryAudit?: AuditStore,
+  ): Promise<NotificationAttempt | undefined>;
   /** Bandeja de la consola: más recientes primero, acotada por `limit`. */
   listByTenant(tenantId: string, limit: number): Promise<readonly NotificationAttempt[]>;
   /**

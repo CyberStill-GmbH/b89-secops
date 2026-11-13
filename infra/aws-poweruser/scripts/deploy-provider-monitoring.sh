@@ -13,6 +13,11 @@ RULES=$SRC/infra/wazuh/launch-detections/rules/b89_provider_service_rules.xml
 LOG_DIR=$ROOT/provider-ingestion/logs
 STATE_DIR=$ROOT/provider-ingestion/state
 BACKUP=$ROOT/backups/provider-monitoring-$(date -u +%Y%m%dT%H%M%SZ)
+EDGE_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+[[ -s $EDGE_CA_BUNDLE && -r $EDGE_CA_BUNDLE ]] || {
+  echo "host CA bundle missing or unreadable: $EDGE_CA_BUNDLE" >&2
+  exit 1
+}
 [[ -d $SECRETS ]] || { echo 'provider-services secret directory missing' >&2; exit 1; }
 [[ -f $SRC/wazuh/provider-ingestion/third_party.py && -f $RULES ]] || { echo 'provider source or rules missing' >&2; exit 1; }
 install -d -m 0750 -o 1000 -g 1000 "$LOG_DIR"

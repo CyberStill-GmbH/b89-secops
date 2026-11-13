@@ -485,6 +485,8 @@ export interface NotificationChannelsResponse {
 
 export interface NotificationChannelTest {
   readonly ok: boolean;
+  /** El proveedor aceptó la solicitud; no demuestra entrega o lectura humana. */
+  readonly accepted: boolean;
   readonly at: string;
   readonly reason?: string | null;
   readonly latencyMs?: number | null;
@@ -493,7 +495,8 @@ export interface NotificationChannelTest {
 export type NotificationDeliveryOutcome = 'sent' | 'delivered' | 'failed' | 'acknowledged';
 
 export interface NotificationDelivery {
-  readonly attempt: number;
+  /** Presente en el formato histórico `deliveries`; `delivery` del DTO actual lo omite. */
+  readonly attempt?: number;
   readonly channel: NotificationDeliveryChannel;
   /** accepted = el proveedor aceptó la solicitud; no demuestra lectura humana. */
   readonly outcome: NotificationDeliveryOutcome | 'accepted' | 'indeterminate';

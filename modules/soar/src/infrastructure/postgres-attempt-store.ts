@@ -3,12 +3,14 @@
 import {
   closeDatabaseClient,
   createDatabaseClient,
+  PrismaAuditStore,
   type DatabaseConnectionOptions,
 } from '@b89/database';
 import {
   PrismaNotificationAttemptStore,
   PrismaNotificationChannelStore,
 } from '@b89/database/notification-stores';
+import { recordAudit, type AuditEventDraft, type AuditStore } from '@b89/audit';
 
 import {
   NOTIFICATION_CHANNELS,
@@ -98,6 +100,26 @@ export class PostgresNotificationAttemptStore implements AttemptStore {
 
   public save(attempt: NotificationAttempt): Promise<void> {
     return this.store.save(attempt);
+  }
+
+  public async acknowledgeWithAudit(
+    tenantId: string,
+    attemptId: string,
+    actorId: string,
+    at: Date,
+    draft: (previousStatus: string) => AuditEventDraft,
+    _memoryAudit?: AuditStore,
+  ): Promise<NotificationAttempt | undefined> {
+    const row = await this.store.acknowledgeWithAudit(
+      tenantId,
+      attemptId,
+      actorId,
+      at,
+      async (tx, previousStatus) => {
+        await recordAudit(new PrismaAuditStore(tx), draft(previousStatus));
+      },
+    );
+    return toAttempt(row);
   }
 
   public countByStatusSince(

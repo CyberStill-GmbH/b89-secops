@@ -3,6 +3,7 @@ import hmac
 import importlib.machinery
 import importlib.util
 import json
+import os
 import tempfile
 import unittest
 import urllib.error
@@ -52,6 +53,15 @@ class WazuhPushAdapterTests(unittest.TestCase):
         self.alert_file.close()
         self.log_file.close()
         self.secret_path.write_text(SECRET, encoding="ascii")
+        self.ca_path = self.log_path.with_suffix(".ca")
+        self.ca_path.write_text("synthetic CA bundle path", encoding="ascii")
+        self.ca_env = patch.dict(os.environ, {MODULE.CA_FILE_ENV: str(self.ca_path)})
+        self.ca_env.start()
+        self.tls_context = MODULE.ssl.SSLContext(MODULE.ssl.PROTOCOL_TLS_CLIENT)
+        self.create_context = patch.object(
+            MODULE.ssl, "create_default_context", return_value=self.tls_context
+        )
+        self.create_context.start()
         MODULE.LOG = str(self.log_path)
         MODULE.SECRET_FILE = str(self.secret_path)
         self.alert = {
@@ -66,9 +76,12 @@ class WazuhPushAdapterTests(unittest.TestCase):
         self.write_alert()
 
     def tearDown(self):
+        self.create_context.stop()
+        self.ca_env.stop()
         self.alert_path.unlink(missing_ok=True)
         self.log_path.unlink(missing_ok=True)
         self.secret_path.unlink(missing_ok=True)
+        self.ca_path.unlink(missing_ok=True)
 
     def write_alert(self):
         self.alert_path.write_text(json.dumps(self.alert), encoding="utf-8")
@@ -87,7 +100,7 @@ class WazuhPushAdapterTests(unittest.TestCase):
             self.assertEqual(self.call_main(), 0)
 
         request, = urlopen.call_args.args
-        self.assertEqual(urlopen.call_args.kwargs["timeout"], 5)
+        self.assertEqual(urlopen.call_args.kwargs["timeout"], MODULE.REQUEST_TIMEOUT_SECONDS)
         context = urlopen.call_args.kwargs["context"]
         self.assertIsInstance(context, MODULE.ssl.SSLContext)
         self.assertEqual(context.verify_mode, MODULE.ssl.CERT_REQUIRED)
@@ -134,6 +147,16 @@ class WazuhPushAdapterTests(unittest.TestCase):
         context = MODULE.trusted_tls_context()
         self.assertEqual(context.verify_mode, MODULE.ssl.CERT_REQUIRED)
         self.assertTrue(context.check_hostname)
+        MODULE.ssl.create_default_context.assert_called_once_with(cafile=str(self.ca_path))
+
+    def test_tls_context_fails_closed_when_explicit_ca_mount_is_missing(self):
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(OSError, "configured edge CA bundle is unavailable"):
+                MODULE.trusted_tls_context()
+
+        with patch.dict(os.environ, {MODULE.CA_FILE_ENV: str(self.ca_path) + ".missing"}):
+            with self.assertRaisesRegex(OSError, "configured edge CA bundle is unavailable"):
+                MODULE.trusted_tls_context()
 
     def test_numeric_alert_id_is_normalized_to_string(self):
         self.alert["id"] = 42
@@ -199,18 +222,74 @@ class WazuhPushAdapterTests(unittest.TestCase):
             self.assertEqual(self.call_main(), 0)
         urlopen.assert_called_once()
         log_text = self.log_path.read_text(encoding="utf-8")
-        self.assertIn("HTTPError", log_text)
+        self.assertIn("HTTP 400", log_text)
         self.assertNotIn("synthetic provider failure", log_text)
         self.assertNotIn(SECRET, log_text)
 
-    def test_timeout_is_best_effort_and_does_not_retry(self):
+    def test_retries_transient_network_failure_with_a_fresh_signature(self):
+        response = FakeResponse(202)
+        timeout = urllib.error.URLError(TimeoutError("synthetic timeout"))
+        with patch.object(MODULE.time, "time", side_effect=[SENT_AT, SENT_AT + 1]), patch.object(
+            MODULE.time, "sleep"
+        ) as sleep, patch.object(
+            MODULE.urllib.request, "urlopen", side_effect=[timeout, response]
+        ) as urlopen:
+            self.assertEqual(self.call_main(), 0)
+
+        self.assertEqual(urlopen.call_count, 2)
+        first, second = (call.args[0] for call in urlopen.call_args_list)
+        self.assertNotEqual(first.get_header("X-b89-timestamp"), second.get_header("X-b89-timestamp"))
+        self.assertEqual(second.data, first.data)
+        self.assertEqual(
+            second.get_header("X-b89-signature"),
+            "sha256="
+            + hmac.new(
+                SECRET.encode("utf-8"),
+                str(SENT_AT + 1).encode("ascii") + b"." + second.data,
+                hashlib.sha256,
+            ).hexdigest(),
+        )
+        sleep.assert_called_once_with(MODULE.RETRY_BACKOFF_SECONDS[0])
+        self.assertTrue(response.closed)
+
+    def test_retries_provider_5xx_but_not_permanent_4xx(self):
+        unavailable = urllib.error.HTTPError(
+            HOOK_URL,
+            503,
+            "synthetic transient failure",
+            hdrs=None,
+            fp=None,
+        )
+        response = FakeResponse(202)
+        with patch.object(
+            MODULE.urllib.request, "urlopen", side_effect=[unavailable, response]
+        ) as urlopen, patch.object(MODULE.time, "sleep") as sleep:
+            self.assertEqual(self.call_main(), 0)
+        self.assertEqual(urlopen.call_count, 2)
+        sleep.assert_called_once_with(MODULE.RETRY_BACKOFF_SECONDS[0])
+        self.assertTrue(response.closed)
+
+    def test_does_not_retry_tls_trust_failure(self):
+        error = urllib.error.URLError(MODULE.ssl.SSLCertVerificationError("untrusted"))
+        with patch.object(MODULE.urllib.request, "urlopen", side_effect=error) as urlopen, patch.object(
+            MODULE.time, "sleep"
+        ) as sleep:
+            self.assertEqual(self.call_main(), 0)
+        urlopen.assert_called_once()
+        sleep.assert_not_called()
+        log_text = self.log_path.read_text(encoding="utf-8")
+        self.assertNotIn("synthetic provider failure", log_text)
+        self.assertNotIn(SECRET, log_text)
+
+    def test_timeout_retries_are_bounded_and_do_not_log_diagnostics(self):
         with patch.object(
             MODULE.urllib.request,
             "urlopen",
             side_effect=TimeoutError("private network diagnostic"),
-        ) as urlopen:
+        ) as urlopen, patch.object(MODULE.time, "sleep") as sleep:
             self.assertEqual(self.call_main(), 0)
-        urlopen.assert_called_once()
+        self.assertEqual(urlopen.call_count, MODULE.MAX_REQUEST_ATTEMPTS)
+        self.assertEqual(sleep.call_count, MODULE.MAX_REQUEST_ATTEMPTS - 1)
         log_text = self.log_path.read_text(encoding="utf-8")
         self.assertIn("TimeoutError", log_text)
         self.assertNotIn("private network diagnostic", log_text)

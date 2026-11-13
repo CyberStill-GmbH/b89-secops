@@ -22,6 +22,7 @@ services:
     extra_hosts:
       - '${SOC_HOSTNAME}:172.30.89.11'
     environment:
+      - B89_INGEST_CA_FILE=/etc/b89-edge-ca/ca-bundle.pem
       - INDEXER_URL=https://wazuh.indexer:9200
       - INDEXER_USERNAME=admin
       - INDEXER_PASSWORD=${INDEXER_ADMIN_PASSWORD}
@@ -35,6 +36,8 @@ services:
       - '1514:1514'
       - '1515:1515'
       - '127.0.0.1:55000:55000'
+    volumes:
+      - /etc/ssl/certs/ca-certificates.crt:/etc/b89-edge-ca/ca-bundle.pem:ro
     restart: unless-stopped
 
   wazuh.indexer:

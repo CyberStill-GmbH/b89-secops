@@ -517,3 +517,33 @@
 - Validación local: plugin `b89_ops` 20/20 archivos y 160/160 pruebas; suite assistant/Bunny 2/2 archivos y 33/33 pruebas; typecheck OSD 2.19.6 (TypeScript 4.0.2, OUI 1.19.0, React 16.14) OK; Prettier y `git diff --check` OK. No equivale a revisión visual ni despliegue.
 - Bandeja de notificaciones: el frontend consume la forma real de `GET /api/notifications` (metadatos superiores `title`, `priority`, `summary`, `whyItMatters`, `nextStep`, `source`, `entity`, `ruleId`; evidencia `delivery`; resultado `accepted`). Se preserva el contexto ya enmascarado; `accepted` significa que el canal aceptó la solicitud, no que una persona la recibió o leyó. `suppressed` y `superseded` no se presentan como enviados. El botón primario registra en B89 el acuse humano del último intento que admite esa transición.
 - Fallo de informes: la UI distingue acceso denegado, Indexer no disponible y respuesta inconsistente; informa que no se creó un archivo parcial y orienta a reintentar o revisar Salud de fuentes.
+
+## 2026-11-12 · CA explícita para Wazuh push (sin deploy)
+
+- `custom-b89.py` exige `B89_INGEST_CA_FILE` y conserva la verificacion TLS obligatoria. Compose monta el bundle publico del host como solo lectura en Manager; `deploy-host.sh`, `deploy-respond.sh` y `deploy-provider-monitoring.sh` lo validan antes del primer uso de Compose. La URL HTTPS, Certbot/rotacion y secretos no cambian.
+- En `infra/aws-poweruser`, Terraform declara que no hay rol IAM ni lectura de Secrets Manager; los secretos locales viven en `/opt/b89/secrets`. La CA viene del trust bundle del host, sin nuevo acceso a AWS.
+- Las pruebas locales verifican configuracion, mount y fallo cerrado. No se hizo deploy, handshake real ni canario; siguen pendientes `202`, receipt y alerta visible.
+
+## 2026-11-12 · Acuse de notificación con auditoría atómica
+
+- `POST /api/notifications/:id/acknowledge` realiza compare-and-set desde `sent`, `indeterminate` o `fallback`, y agrega `soar.notification.acknowledged` con actor, correlación, recurso `notification` y metadata `{ previousStatus }` dentro de la misma transacción. En PostgreSQL la transacción usa el pool del store de intentos y `PrismaAuditStore(tx)` sobre ese mismo `tx`; no cruza los pools Prisma del runtime.
+- El store en memoria serializa acuses y escrituras, deja el intento sin cambios si falla el append y rechaza saves stale del dispatcher tras `acknowledged`. PostgreSQL aplica CAS en el acuse y protege el estado reconocido en `save`.
+- Añadidas pruebas HTTP para éxito, duplicado concurrente y rollback, además de integración PostgreSQL para carrera entre réplicas, AuditEvent único y protección ante save stale. No se desplegó ni se cambió push.
+
+## 2026-11-12 · Reintentos acotados del emisor Wazuh (local, sin deploy)
+
+`custom-b89` reintenta fallos de red, timeout y HTTP 408/425/429/5xx hasta tres intentos de 2 s, con pausas de 250/500 ms y firma nueva para el mismo hint idempotente. No reintenta errores 4xx permanentes ni TLS/CA inválida. La suite local pasó 22 pruebas y 19 subtests; no demuestra el handshake ni receipt live. El despliegue y canario siguen pendientes.
+
+## 2026-11-12 · Clasificación de errores al exportar informes
+
+La colección del informe ya no convierte respuestas HTTP 4xx de validación/ruta en una falsa caída del Indexer ni las reintenta tres veces. `401/403` se clasifican como falta de acceso; `400/404/422` y otros 4xx permanentes como consulta rechazada. Los fallos de transporte, `429` y respuestas transitorias de servidor conservan los reintentos acotados. Se añadió una regresión para garantizar que un `400` termina en el primer intento y no se etiqueta como indisponibilidad.
+
+Validación local: suite del plugin `b89_ops`, 21 archivos y 167 pruebas aprobadas. El texto visible «reduce la ventana» no aparece en el código actual; se observa en el bundle previo del dashboard. Este ajuste todavía no se ha desplegado, así que no cambia la pantalla servida hasta que se publique un artefacto nuevo.
+
+## 2026-11-12 · Cobertura de revisión del correlador: semántica y ventana
+
+`reviewCoverage` cuenta como revisadas las alertas con veredicto humano `true_positive`, `false_positive`, `benign` o `duplicate`; `duplicate` no se agrega a las métricas de TP/FP ni a la lógica de supresión. La ventana reportada usa el mínimo entre la ventana de política y el feed efectivamente consultado (696 h por defecto). El fixture de integración sin alertas `b89-correlator:*` ahora espera `null/NO_DATA`, como exige denominador cero. La suite completa Go pasó en `golang:1.23.12-bookworm`. El KPI mide revisión, no calidad ni reducción comprobada de falsos positivos; no hay corpus SOC adjudicado.
+
+## 2026-11-12 · Verificación local cruzada del bloque actual
+
+Plugin `b89_ops`: 21 archivos y 167 pruebas aprobadas; typecheck OSD 2.19.6 aprobado. API BFF/SOAR: 6 archivos y 162 pruebas aprobadas; typechecks de API, SOAR, database y audit aprobados. Emisor Wazuh: 22 pruebas y 19 subtests aprobados. Integración PostgreSQL quedó omitida porque esta sesión no define `DATABASE_URL`; no se presenta como aprobada. Estos resultados son locales y no sustituyen CI, smoke autenticado ni despliegue.

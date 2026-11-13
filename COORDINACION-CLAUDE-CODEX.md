@@ -256,8 +256,10 @@ campos **opcionales** por ítem y funciona sin ellos (`common/api_contract.ts �
 - `messageId` (agrupa reintentos del mismo aviso), `alertId`, `incidentId` (agrupa por alerta/incidente; con
   `alertId` la UI carga la alerta y habilita «Abrir en investigación» y «Preguntar a Bunny»).
 - `subject: { title, priority, ruleId, source, entity }` con `entity` **ya enmascarada** en la API.
-- `deliveries: [{ attempt, channel, outcome: 'sent'|'delivered'|'failed'|'acknowledged', at, reason?, actor?, link? }]`
+- `deliveries: [{ attempt?, channel, outcome: 'sent'|'delivered'|'failed'|'acknowledged', at, reason?, actor?, link? }]`
   → «Enviado (aceptado por M365)» / «Entregado» / «Fallido (motivo)» / «Reconocido (quién, cuándo)».
+- El DTO vigente `GET /api/notifications` publica `delivery[]` como `DeliveryEvidence` sin `attempt`; la bandeja
+  muestra el número solo si viene en `deliveries` legado y omite esa etiqueta para la evidencia vigente.
 - `link` («Ver en Teams») y `lastFailureReason` (texto legible del fallo).
 
 ### Canales de notificación — forma que consume la UI (pestaña «Canales», `channels_panel.tsx`)
@@ -275,3 +277,7 @@ campos **opcionales** por ítem y funciona sin ellos (`common/api_contract.ts �
 ### 2026-11-12 · DTO real y UX de la bandeja
 
 `OperationsController.notificationView` publica contexto en nivel superior (`title`, `summary`, `whyItMatters`, `nextStep`, `source`, `sourceId`, `entity`, `ruleId`, `alertId`) y evidencia en `delivery[]`; el plugin también lee el formato histórico `subject`/`deliveries`. `DeliveryEvidence.outcome=accepted` significa aceptación HTTP del canal, no entrega a una persona ni lectura. La bandeja mantiene esa semántica, presenta el contexto enmascarado disponible aunque falte `alertId`, filtra los estados que realmente admiten acuse y ofrece el acuse humano B89 como acción primaria del flyout. No se amplían permisos ni se crea una alerta cuando falta el identificador.
+
+### Revisión backend solicitada · acuse append-only y atómico (2026-11-12)
+
+La auditoría del BFF encontró que `POST /api/notifications/:id/acknowledge` actualiza `notification_attempts`, pero no agrega un `AuditEvent`; además usa lectura seguida de guardado sin compare-and-set. El estado expone actor/hora, pero no es evidencia append-only y carreras pueden aceptar dos acuses o pisar estado. Revisar la propuesta de una operación de aplicación que actualice solo estados acuseables y agregue `soar.notification.acknowledged` con el mismo tx/client, `correlationId`, actor, recurso y metadata mínima. En memoria se requiere serialización/rollback; en PostgreSQL, CAS y `PrismaAuditStore(tx)` en la misma transacción. Proteger el estado `acknowledged` contra escrituras stale del dispatcher. No considerar suficiente un `recordAudit` posterior a `save`, pues incumple A3.

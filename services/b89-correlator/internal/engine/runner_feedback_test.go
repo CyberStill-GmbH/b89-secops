@@ -15,9 +15,11 @@ import (
 type feedbackTestAPI struct {
 	alerts    []model.B89Alert
 	truncated bool
+	since     time.Time
 }
 
-func (a *feedbackTestAPI) Alerts(context.Context, time.Time) ([]model.B89Alert, bool, error) {
+func (a *feedbackTestAPI) Alerts(_ context.Context, since time.Time) ([]model.B89Alert, bool, error) {
+	a.since = since
 	return a.alerts, a.truncated, nil
 }
 
@@ -73,8 +75,33 @@ func TestRefreshFeedbackKeepsMetricsButDisablesSuppressionsForTruncatedFeed(t *t
 	if !snapshot.AlertsTrunc {
 		t.Fatal("snapshot must retain the incomplete-feed indicator")
 	}
+	if snapshot.Feedback.ReviewCoverage != nil || snapshot.Feedback.ReviewCoverageStatus != feedback.ReviewCoverageIncomplete {
+		t.Fatalf("truncated denominator must not publish review coverage: %+v", snapshot.Feedback)
+	}
 	if snapshot.Feedback.Suppressed("101501", "ip:192.0.2.200", now) || snapshot.Feedback.ActiveCount(now) != 0 {
 		t.Fatal("truncated feedback must not apply or renew automatic suppressions")
+	}
+}
+
+func TestRefreshFeedbackReportsTheEffectiveFeedWindow(t *testing.T) {
+	now := time.Date(2026, time.November, 11, 12, 0, 0, 0, time.UTC)
+	lookback := 29 * 24 * time.Hour
+	policy := feedback.DefaultPolicy()
+	api := &feedbackTestAPI{alerts: []model.B89Alert{{
+		ID: "correlator-alert", RuleID: model.CorrelatorRulePrefix + "edge-to-ssh",
+		Verdict: "true_positive", OccurredAt: now.Add(-28 * 24 * time.Hour),
+	}}}
+	resolver := resolve.New(nil, "")
+	engine := risk.NewEngine(risk.DefaultPolicy(), risk.DefaultPatterns(), resolver, nil, 7)
+	runner := New(Options{Feedback: policy, FeedbackLookback: lookback}, engine, resolver, nil, api, nil)
+	runner.Now = func() time.Time { return now }
+
+	if err := runner.RefreshFeedback(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got := runner.Snapshot().Feedback
+	if !api.since.Equal(now.Add(-lookback)) || got.WindowSeconds != int64(lookback.Seconds()) {
+		t.Fatalf("reported feedback window must match fetched feed: since=%s feedback=%+v", api.since, got)
 	}
 }
 

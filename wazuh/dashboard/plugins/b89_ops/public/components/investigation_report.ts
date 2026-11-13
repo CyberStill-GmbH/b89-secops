@@ -3,6 +3,7 @@
  */
 
 import type { Alert, InvestigationEventSummary, RelatedResponse } from '../../common';
+import { B89ApiError } from '../api/client';
 import {
   groupExactEmailMessages,
   summarizeExactEmailMessageGroup,
@@ -66,7 +67,7 @@ export type RelatedPageLoader = (
 ) => Promise<RelatedResponse>;
 
 export class ReportCollectionError extends Error {
-  public constructor(public readonly kind: 'forbidden' | 'unavailable' | 'invalid') {
+  public constructor(public readonly kind: 'forbidden' | 'unavailable' | 'invalid' | 'rejected') {
     super(`No se pudo preparar el informe: ${kind}`);
     this.name = 'ReportCollectionError';
   }
@@ -142,6 +143,23 @@ export async function collectInvestigationReport(input: {
         if (input.signal.aborted || (error instanceof Error && error.name === 'AbortError'))
           throw error;
         if (error instanceof ReportCollectionError && error.kind === 'forbidden') throw error;
+        if (error instanceof B89ApiError) {
+          if (error.status === 401 || error.status === 403) {
+            throw new ReportCollectionError('forbidden');
+          }
+          if (
+            error.status === 400 ||
+            error.status === 404 ||
+            error.status === 422 ||
+            (error.status >= 400 &&
+              error.status < 500 &&
+              error.status !== 408 &&
+              error.status !== 425 &&
+              error.status !== 429)
+          ) {
+            throw new ReportCollectionError('rejected');
+          }
+        }
       }
       if (attempt === REPORT_PAGE_RETRIES) throw new ReportCollectionError('unavailable');
       input.onProgress?.({

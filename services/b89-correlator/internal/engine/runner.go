@@ -95,7 +95,10 @@ func New(opt Options, eng *risk.Engine, res *resolve.Resolver, gw Gateway, api A
 	if opt.MaxPagesPerPoll <= 0 {
 		opt.MaxPagesPerPoll = 200
 	}
-	return &Runner{Opt: opt, Eng: eng, Res: res, Gateway: gw, API: api, Log: log, Now: time.Now, audited: map[string]bool{}}
+	return &Runner{
+		Opt: opt, Eng: eng, Res: res, Gateway: gw, API: api, Log: log, Now: time.Now,
+		fb: feedback.Result{ReviewCoverageStatus: feedback.ReviewCoverageNoData}, audited: map[string]bool{},
+	}
 }
 
 // Readiness describes whether the initial backfill completed and upstream data remains fresh.
@@ -255,12 +258,24 @@ func (r *Runner) RefreshFeedback(ctx context.Context) error {
 		return err
 	}
 	policy := r.Opt.Feedback
+	// The internal API intentionally caps the requested feedback feed at 29 days to
+	// leave margin under its 30-day validation limit. Report and evaluate the effective
+	// window so the denominator/coverage metadata never claims data we did not fetch.
+	if r.Opt.FeedbackLookback > 0 && (policy.Window <= 0 || r.Opt.FeedbackLookback < policy.Window) {
+		policy.Window = r.Opt.FeedbackLookback
+	}
 	if truncated {
 		// Keep counts and human-review proposals visible, but never derive active
 		// suppressions from a partial feed: it may omit a P1 or true-positive alert.
 		policy.AutoSuppress = false
 	}
 	fb := feedback.Evaluate(alerts, r.Res.Canonical, policy, now)
+	if truncated {
+		// A truncated denominator cannot support a coverage ratio, even when the
+		// visible subset contains adjudicated alerts.
+		fb.ReviewCoverage = nil
+		fb.ReviewCoverageStatus = feedback.ReviewCoverageIncomplete
+	}
 	r.Eng.SetSuppressor(fb)
 	since := now.Add(-r.Opt.Backfill)
 	recent := make([]model.B89Alert, 0, len(alerts))

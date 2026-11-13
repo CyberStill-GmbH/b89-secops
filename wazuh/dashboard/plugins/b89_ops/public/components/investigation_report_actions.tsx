@@ -216,7 +216,9 @@ export function InvestigationReportActions({
               ? 'Wazuh Indexer no respondió a la consulta. No se generó el archivo; reintenta y, si persiste, revisa Salud de fuentes.'
               : failure === 'invalid'
                 ? 'Wazuh Indexer devolvió páginas inconsistentes. No se generó un informe parcial; vuelve a intentarlo con una ventana menor.'
-                : 'No se pudo completar el informe. No se generó un archivo parcial; revisa la conexión e inténtalo de nuevo.',
+                : failure === 'rejected'
+                  ? 'El endpoint rechazó la consulta del informe. Revisa los filtros y la compatibilidad de versiones del dashboard y del plugin.'
+                  : 'No se pudo completar el informe. No se generó un archivo parcial; revisa la conexión e inténtalo de nuevo.',
         );
       }
       if (printWindow.current && !printWindow.current.closed) printWindow.current.close();

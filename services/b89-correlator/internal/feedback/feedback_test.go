@@ -58,6 +58,28 @@ func TestCorrelatorAdjudicationCountsOnlyItsOwnLabeledAlerts(t *testing.T) {
 	}
 }
 
+func TestReviewCoverageCountsAnyHumanTriageWithoutCallingDuplicateTPOrFP(t *testing.T) {
+	alerts := []model.B89Alert{
+		{ID: "tp", RuleID: model.CorrelatorRulePrefix + "chain", Verdict: "true_positive", OccurredAt: now.Add(-time.Hour)},
+		{ID: "fp", RuleID: model.CorrelatorRulePrefix + "chain", Verdict: "false_positive", OccurredAt: now.Add(-time.Hour)},
+		{ID: "benign", RuleID: model.CorrelatorRulePrefix + "chain", Verdict: "benign", OccurredAt: now.Add(-time.Hour)},
+		{ID: "duplicate", RuleID: model.CorrelatorRulePrefix + "chain", Verdict: "duplicate", OccurredAt: now.Add(-time.Hour)},
+		{ID: "open", RuleID: model.CorrelatorRulePrefix + "chain", OccurredAt: now.Add(-time.Hour)},
+		{ID: "other", RuleID: "100530", Verdict: "true_positive", OccurredAt: now.Add(-time.Hour)},
+	}
+	res := Evaluate(alerts, nil, DefaultPolicy(), now)
+	if res.CorrelatorAlerts != 5 || res.CorrelatorAdjudicated != 4 || res.CorrelatorFalsePos != 2 || res.CorrelatorTruePos != 1 || res.ReviewCoverage == nil || *res.ReviewCoverage != 0.8 || res.ReviewCoverageStatus != ReviewCoverageAvailable {
+		t.Fatalf("review coverage: %+v", res)
+	}
+}
+
+func TestReviewCoverageWithoutCorrelatorCandidatesIsNoData(t *testing.T) {
+	res := Evaluate([]model.B89Alert{{ID: "other", RuleID: "100530", Verdict: "true_positive", OccurredAt: now.Add(-time.Hour)}}, nil, DefaultPolicy(), now)
+	if res.ReviewCoverage != nil || res.ReviewCoverageStatus != ReviewCoverageNoData {
+		t.Fatalf("zero denominator must be null/NO_DATA: %+v", res)
+	}
+}
+
 func TestRepeatedFalsePositivesProposeAllowlist(t *testing.T) {
 	start := now.Add(-48 * time.Hour)
 	res := Evaluate(verdicts("101501", "P3", "ip:192.0.2.200", "false_positive", 4, start), nil, DefaultPolicy(), now)

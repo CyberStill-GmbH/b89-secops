@@ -480,6 +480,9 @@ export class PrismaNotificationAttemptStore {
    * mensaje e idempotency key no cambia al pasar por retries o acknowledgements.
    */
   public async save(attempt: NotificationAttemptRow): Promise<void> {
+    if (attempt.status === 'acknowledged') {
+      throw new Error('NOTIFICATION_ACKNOWLEDGEMENT_REQUIRES_ATOMIC_WRITE');
+    }
     const existing = await this.byIdempotencyKey(attempt.tenantId, attempt.idempotencyKey);
     const { tenantId, idempotencyKey } = attempt;
     const mutable = {
@@ -509,7 +512,12 @@ export class PrismaNotificationAttemptStore {
     const where = { tenantId_idempotencyKey: { tenantId, idempotencyKey } };
     if (existing) {
       this.assertIdentity(existing, attempt);
-      await this.client.notificationAttempt.update({ where, data: mutable });
+      // The dispatcher can hold a stale snapshot across provider I/O. Once a human
+      // acknowledges the attempt, that snapshot must not revert its terminal status.
+      await this.client.notificationAttempt.updateMany({
+        where: { ...where, status: { not: 'acknowledged' } },
+        data: mutable,
+      });
       return;
     }
 
@@ -531,8 +539,42 @@ export class PrismaNotificationAttemptStore {
       const raced = await this.byIdempotencyKey(tenantId, idempotencyKey);
       if (!raced) throw error;
       this.assertIdentity(raced, attempt);
-      await this.client.notificationAttempt.update({ where, data: mutable });
+      await this.client.notificationAttempt.updateMany({
+        where: { ...where, status: { not: 'acknowledged' } },
+        data: mutable,
+      });
     }
+  }
+
+  /** CAS del estado y callback de auditoría en la misma transacción Prisma. */
+  public acknowledgeWithAudit(
+    tenantId: string,
+    attemptId: string,
+    actorId: string,
+    at: Date,
+    appendAudit: (tx: Prisma.TransactionClient, previousStatus: string) => Promise<void>,
+  ): Promise<NotificationAttemptRow | undefined> {
+    return this.client.$transaction(async (tx) => {
+      const current = await tx.notificationAttempt.findFirst({
+        where: { tenantId, id: attemptId },
+      });
+      if (!current || !['sent', 'indeterminate', 'fallback'].includes(current.status)) {
+        return undefined;
+      }
+      const changed = await tx.notificationAttempt.updateMany({
+        where: {
+          tenantId,
+          id: attemptId,
+          status: { in: ['sent', 'indeterminate', 'fallback'] },
+        },
+        data: { status: 'acknowledged', acknowledgedAt: at, acknowledgedBy: actorId, updatedAt: at },
+      });
+      if (changed.count !== 1) return undefined;
+      await appendAudit(tx, current.status);
+      return (
+        (await tx.notificationAttempt.findFirst({ where: { tenantId, id: attemptId } })) ?? undefined
+      );
+    });
   }
 }
 

@@ -16,7 +16,7 @@ import { buildApi } from '../src/bootstrap.js';
 import { SlidingWindowLimiter } from '../src/assistant/assistant-service.js';
 import type { EventsReader } from '../src/runtime/events-reader.js';
 import { wazuhRecordToEvent } from '../src/runtime/wazuh-ingestion.js';
-import type { InMemoryAttemptStore } from '@b89/soar';
+import { createAttempt, type InMemoryAttemptStore } from '@b89/soar';
 import type { InMemorySoc } from '@b89/soc';
 
 import type { RuntimeDirectory, SecOpsRuntime } from '../src/runtime/secops-runtime.js';
@@ -1298,6 +1298,104 @@ describe('C-16 · correlación por entidad expuesta por la API', () => {
     expect(afterLease.map((message) => message.messageId)).toEqual(
       claimed.map((message) => message.messageId),
     );
+  });
+});
+
+describe('C-20 · acuse atómico de notificación', () => {
+  async function deliveredAttempt(id: string) {
+    const at = new Date('2026-11-12T10:00:00.000Z');
+    const created = createAttempt({
+      id,
+      tenantId: runtime.tenantId,
+      messageId: `message-${id}`,
+      idempotencyKey: `key-${id}`,
+      at,
+    });
+    const attempt = { ...created, status: 'sent' as const, sentAt: at };
+    await runtime.notifications.save(attempt);
+    return attempt;
+  }
+
+  async function acknowledge(id: string, mutation: Record<string, string>) {
+    return server().inject({
+      method: 'POST',
+      url: `/api/notifications/${id}/acknowledge`,
+      headers: mutation,
+      remoteAddress: OFFICE_IP,
+    });
+  }
+
+  it('cambia el estado y agrega el evento con actor, correlación y metadata mínima', async () => {
+    const id = '0199bf33-0000-7000-8000-000000000101';
+    const stale = await deliveredAttempt(id);
+    const before = await runtime.soc.audit.head(runtime.tenantId);
+    const analyst = await signIn('analista@b89.example');
+    const response = await acknowledge(id, analyst.mutation);
+    const body = JSON.parse(response.body);
+
+    expect(response.statusCode).toBe(201);
+    expect(body).toMatchObject({ status: 'acknowledged', acknowledgedBy: 'local-analyst-1' });
+    expect(body.acknowledgedAt).toBeTruthy();
+    const events = await runtime.soc.audit.range(
+      runtime.tenantId,
+      (before?.sequence ?? 0n) + 1n,
+      10,
+    );
+    const acknowledgements = events.filter(
+      (event) => event.action === 'soar.notification.acknowledged',
+    );
+    expect(acknowledgements).toHaveLength(1);
+    expect(acknowledgements[0]).toMatchObject({
+      action: 'soar.notification.acknowledged',
+      actor: { id: 'local-analyst-1', type: 'user' },
+      resource: { type: 'notification', id },
+      outcome: 'succeeded',
+      correlationId: body.correlationId,
+      metadata: { previousStatus: 'sent' },
+    });
+
+    // El dispatcher puede terminar después de la respuesta humana con una copia vieja.
+    await runtime.notifications.save(stale);
+    await expect(runtime.notifications.byId(runtime.tenantId, id)).resolves.toMatchObject({
+      status: 'acknowledged',
+      acknowledgedBy: 'local-analyst-1',
+    });
+  });
+
+  it('serializa dos solicitudes concurrentes y registra un solo acuse', async () => {
+    const id = '0199bf33-0000-7000-8000-000000000102';
+    await deliveredAttempt(id);
+    const before = await runtime.soc.audit.head(runtime.tenantId);
+    const analyst = await signIn('analista@b89.example');
+    const results = await Promise.all([
+      acknowledge(id, analyst.mutation),
+      acknowledge(id, analyst.mutation),
+    ]);
+
+    expect(results.map((response) => response.statusCode).sort()).toEqual([201, 409]);
+    const events = await runtime.soc.audit.range(
+      runtime.tenantId,
+      (before?.sequence ?? 0n) + 1n,
+      10,
+    );
+    expect(
+      events.filter((event) => event.action === 'soar.notification.acknowledged'),
+    ).toHaveLength(1);
+  });
+
+  it('revierte el estado si el append de auditoría falla', async () => {
+    const id = '0199bf33-0000-7000-8000-000000000103';
+    await deliveredAttempt(id);
+    const analyst = await signIn('analista@b89.example');
+    vi.spyOn(runtime.soc.audit, 'head').mockRejectedValueOnce(new Error('AUDIT_STORE_UNAVAILABLE'));
+
+    const response = await acknowledge(id, analyst.mutation);
+    expect(response.statusCode).toBe(500);
+    await expect(runtime.notifications.byId(runtime.tenantId, id)).resolves.toMatchObject({
+      status: 'sent',
+      acknowledgedAt: null,
+      acknowledgedBy: null,
+    });
   });
 });
 

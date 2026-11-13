@@ -165,6 +165,8 @@ func (s *Server) feedback(w http.ResponseWriter, r *http.Request) {
 		"correlatorUnreviewed":            snap.Feedback.CorrelatorUnreviewed,
 		"correlatorFalsePositiveVerdicts": snap.Feedback.CorrelatorFalsePos,
 		"correlatorTruePositiveVerdicts":  snap.Feedback.CorrelatorTruePos,
+		"reviewCoverage":                  snap.Feedback.ReviewCoverage,
+		"reviewCoverageStatus":            snap.Feedback.ReviewCoverageStatus,
 		"alertFeedTruncated":              snap.AlertsTrunc,
 		"activeSuppressions":              snap.Feedback.ActiveCount(s.Now().UTC()),
 		"proposals":                       snap.Feedback.Proposals, "cdbListName": "b89-correlator-fp-allowlist",
@@ -246,6 +248,15 @@ func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(&b, "b89_correlator_feedback_alerts{verdict=\"unreviewed\"} %d\n", snap.Feedback.CorrelatorUnreviewed)
 	fmt.Fprintf(&b, "b89_correlator_feedback_alerts{verdict=\"false_positive\"} %d\n", snap.Feedback.CorrelatorFalsePos)
 	fmt.Fprintf(&b, "b89_correlator_feedback_alerts{verdict=\"true_positive\"} %d\n", snap.Feedback.CorrelatorTruePos)
+	if snap.Feedback.ReviewCoverage != nil && snap.Feedback.ReviewCoverageStatus == "AVAILABLE" {
+		gauge("b89_correlator_review_coverage", "Fraction of correlator candidates materialized as B89 alerts in the feedback occurrence-time window adjudicated as true_positive, false_positive, or benign; absent when unavailable", *snap.Feedback.ReviewCoverage)
+	}
+	fmt.Fprintf(&b, "# HELP b89_correlator_review_coverage_status Status of review coverage: 1 for the single current status label\n# TYPE b89_correlator_review_coverage_status gauge\n")
+	status := snap.Feedback.ReviewCoverageStatus
+	if status == "" {
+		status = "NO_DATA"
+	}
+	fmt.Fprintf(&b, "b89_correlator_review_coverage_status{status=%q} 1\n", status)
 	fmt.Fprintf(&b, "# HELP b89_correlator_feedback_alert_feed_truncated 1 when the API feedback feed was truncated\n# TYPE b89_correlator_feedback_alert_feed_truncated gauge\n")
 	truncated := 0
 	if snap.AlertsTrunc {

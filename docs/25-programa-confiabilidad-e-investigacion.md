@@ -394,9 +394,23 @@ el codigo local previo de la conversacion no cuenta como release.
 
 ### 5 - Calidad del correlador
 
+Actualización local del 2026-11-12: `reviewCoverage` es la fracción de candidatos `b89-correlator`
+materializados como alertas B89 en la ventana de ocurrencia que ya tienen veredicto
+`true_positive`, `false_positive` o `benign`:
+`(TP + FP + benign + duplicate) / candidatos materializados como alertas`. `duplicate` cuenta como
+decisión humana revisada, pero no se suma a TP/FP ni alimenta propuestas de supresión. El JSON expone
+`reviewCoverage` y `reviewCoverageStatus`; sin
+candidatos el valor es `null` con `NO_DATA`,
+y con feed truncado es `null` con `INCOMPLETE`. Prometheus publica el ratio solo cuando está
+disponible; la ausencia del sample significa que no hay una medición válida. Esta cobertura mide qué
+parte se revisó, no la calidad de las decisiones: no es precisión (`TP / (TP + FP)`) ni recall
+(`TP / (TP + FN)`), y no demuestra reducción de falsos positivos.
+
 - Se añadieron conteos TP, FP, revisados y no revisados, ventana y truncamiento del feed en API,
   Prometheus y reportes. La cohorte de alertas se cuenta por `OccurredAt`; los veredictos se agrupan
-  por fecha de adjudicacion y ventana, con filtro de futuro.
+  por fecha de adjudicacion y ventana, con filtro de futuro. El runner declara como ventana efectiva
+  el mínimo entre la política y el `FeedbackLookback` realmente consultado (696 h por defecto), en vez
+  de rotular como 30 días un feed que trae 29.
 - Se implementó `services/b89-correlator/cmd/evaluate-corpus`, un CLI offline para comparar dos
   versiones congeladas con un holdout temporal adjudicado. Valida esquema estricto, ids duplicados,
   versiones distintas, fechas, hash de snapshot y límites; separa ejemplos de calibración y ambiguos;
@@ -661,3 +675,27 @@ Validación local del worktree (2026-11-12): plugin `b89_ops` 20/20 archivos y 1
 `GET /api/notifications` entrega el contexto en propiedades superiores (`title`, `summary`, `whyItMatters`, `nextStep`, `source`, `sourceId`, `entity`, `ruleId`, `alertId`) y la evidencia en `delivery[]`. El contrato del plugin conserva compatibilidad con `subject`/`deliveries`. `DeliveryEvidence.outcome=accepted` significa aceptación HTTP por el canal, no entrega a una persona ni lectura. La bandeja presenta esa semántica, muestra contexto enmascarado aunque falte `alertId`, filtra únicamente estados que admiten acuse y llama `POST /api/notifications/:id/acknowledge` desde **Acusar recibo del último intento**. El acuse registra actor y hora en B89 y solo se admite para `sent`, `indeterminate` y `fallback`.
 
 Si falta `alertId`, la bandeja presenta el resumen, origen, prioridad, entidad enmascarada, regla y hora que el contexto sí incluya, más el ID lógico del aviso. No fabrica una alerta ni habilita investigación sin evidencia enlazada. **Solo requieren acuse** excluye `failed`, `suppressed` y `superseded`.
+
+## Punto 1 · CA explícita para Wazuh push (2026-11-12; cambio local, sin deploy)
+
+`custom-b89.py` exige `B89_INGEST_CA_FILE`, valida que la ruta sea legible y crea el contexto TLS con ese bundle explicito. No busca rutas CA alternativas ni desactiva la verificacion del certificado/hostname. `compose.b89.yaml` monta el bundle del host `/etc/ssl/certs/ca-certificates.crt` como solo lectura en Manager. `deploy-host.sh`, `deploy-respond.sh` y `deploy-provider-monitoring.sh` fallan antes del primer uso de Compose si falta el bundle. El bundle publico del sistema valida la cadena edge de Certbot; URL, certificado, rotacion y secretos HMAC no cambian.
+
+Contrato observado: `infra/aws-poweruser/main.tf` declara que el stack no tiene rol IAM y conserva secretos en `/opt/b89/secrets`. Esta raiz Terraform no lee Secrets Manager ni entrega la CA. El certificado edge se gestiona con Certbot desde `deploy-host.sh`; el trust bundle publico del host evita permisos AWS nuevos. Las pruebas cubren falta de config/mount y TLS estricto. Pendiente: deploy por el carril autorizado, verificar handshake dentro de `wazuh.manager` y completar canario con `202`, receipt, promocion y alerta visible. El runtime live aun no tiene entrega push confirmada.
+
+### Acuse de notificación y AuditEvent atómicos (2026-11-12)
+
+El endpoint de acuse solo admite la transición desde `sent`, `indeterminate` o `fallback`. En memoria, una cola serializa cambios concurrentes y un fallo de auditoría conserva la fila previa. En PostgreSQL, el compare-and-set de `notification_attempts` y el append de `soar.notification.acknowledged` comparten el `tx` del pool de notificaciones; `PrismaAuditStore(tx)` encadena el evento bajo el lock de tenant. Actor, correlación, recurso y metadata mínima `previousStatus` forman la evidencia. Los `save` del dispatcher no actualizan una fila ya `acknowledged`, también bajo carrera.
+
+Las pruebas HTTP cubren éxito, duplicado concurrente y rollback de auditoría; la integración PostgreSQL cubre acuse concurrente entre stores, unicidad del AuditEvent y save stale. Cambio local solamente: no deploy y sin cambios al bloque push.
+
+### Clasificación de fallos de exportación de investigación (2026-11-12)
+
+El colector del informe distingue las respuestas HTTP permanentes de una caída transitoria: `401/403` termina como falta de acceso; `400/404/422` y otros 4xx permanentes terminan como consulta rechazada, sin reintento; los errores de transporte, `429` y fallos transitorios conservan el máximo de tres intentos. Se evita que una validación del endpoint se presente al analista como «Indexer sin respuesta». El mensaje heredado que recomienda reducir la ventana no está en el código actual y evidencia un bundle de frontend anterior todavía servido por el dashboard.
+
+Validación local: plugin `b89_ops`, 21 archivos y 167 pruebas aprobadas. Sin despliegue ni consulta de logs de la instancia, no se afirma que el Indexer live esté recuperado. Para verificarlo se requiere publicar el artefacto de dashboard actualizado y repetir la exportación autenticada; si la consulta sigue fallando, correlacionar la hora con los logs del plugin/Indexer.
+
+## 2026-11-12 · Reintentos acotados del emisor Wazuh
+
+`custom-b89` ahora realiza hasta tres intentos para fallos de red, timeout y respuestas HTTP 408/425/429/5xx, con timeout de 2 s por llamada y backoff de 250/500 ms. Cada intento vuelve a firmar el mismo hint minimizado con timestamp fresco; el receptor deduplica por manager + alertId para cubrir respuestas perdidas tras commit. Errores 4xx permanentes y TLS/CA inválida no se reintentan; el pull sigue como recuperación final. El objetivo es recuperar fallos transitorios sin convertir la integración Wazuh en cola durable.
+
+Validación local: `python -m pytest wazuh/manager/integrations/tests -q -p no:cacheprovider` pasó 22 pruebas y 19 subtests. Aún falta desplegar y medir el handshake, `202`, receipt durable, promoción y alerta visible; la prueba local no acredita entrega live.

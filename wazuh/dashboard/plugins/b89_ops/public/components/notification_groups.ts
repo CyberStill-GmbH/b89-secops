@@ -42,7 +42,7 @@ export const DELIVERY: Record<DeliveryKind, { label: string; tone: HealthTone }>
 export interface DeliveryLine {
   readonly key: string;
   readonly channel: NotificationDeliveryChannel;
-  readonly attempt: number;
+  readonly attempt: number | null;
   readonly kind: DeliveryKind;
   readonly at: string | null;
   readonly reason: string | null;
@@ -58,7 +58,7 @@ export function deliveryLines(item: NotificationAttempt): DeliveryLine[] {
       ? evidence.map((d: NotificationDelivery, index) => ({
           key: `${item.id}-${index}`,
           channel: d.channel,
-          attempt: d.attempt,
+          attempt: d.attempt ?? null,
           kind:
             d.outcome === 'accepted'
               ? 'sent'

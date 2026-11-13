@@ -30,7 +30,11 @@ import {
   NotificationChannelView,
 } from '../../common';
 import { B89ApiError } from '../api/client';
-import { normalizeChannelTest, normalizeChannelsResponse } from './channels_contract';
+import {
+  channelTestSuccessLabel,
+  normalizeChannelTest,
+  normalizeChannelsResponse,
+} from './channels_contract';
 import { channelDestinationSummary } from './channels_display';
 import { useConsole } from './console_context';
 import { webhookProblem } from './notification_groups';
@@ -209,7 +213,7 @@ export function ChannelsPanel() {
                       ) : test.ok ? (
                         <HealthMark
                           tone="ok"
-                          label={`Prueba entregada${test.latencyMs ? ` en ${test.latencyMs} ms` : ''}`}
+                          label={`${channelTestSuccessLabel(test)}${test.latencyMs ? ` en ${test.latencyMs} ms` : ''}`}
                         />
                       ) : (
                         <HealthMark

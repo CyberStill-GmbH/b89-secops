@@ -16,7 +16,6 @@ import type { IncomingRequest } from '../http/http-contracts.js';
 import { recordAudit } from '@b89/audit';
 import { validateSecurityEvent } from '@b89/contracts';
 import {
-  acknowledge,
   AWAITING_ACKNOWLEDGEMENT,
   contextOf,
   deliveryLabel,
@@ -353,14 +352,39 @@ export class OperationsController {
   @Post('notifications/:id/acknowledge')
   public async acknowledgeNotification(@Req() request: IncomingRequest, @Param('id') id: string) {
     const { actor, correlationId } = await mutatingActor(this.runtime, request);
-    if (!actor.capabilities.has('notifications.read')) {
+    if (!actor.capabilities.has('notifications.read') || !UUID.test(id)) {
       throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
     }
-    const attempt = await this.runtime.notifications.byId(actor.tenantId, id);
-    if (!attempt) throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
-    const result = acknowledge(attempt, actor.subjectId, this.runtime.now());
-    if (!result.ok) throw new ApiError('STATE_CONFLICT', correlationId);
-    await this.runtime.notifications.save(result.attempt);
-    return { correlationId, status: result.attempt.status };
+    const at = this.runtime.now();
+    const acknowledged = await this.runtime.notifications.acknowledgeWithAudit(
+      actor.tenantId,
+      id,
+      actor.subjectId,
+      at,
+      (previousStatus) => ({
+        id: randomUUID(),
+        tenantId: actor.tenantId,
+        occurredAt: at,
+        actor: { id: actor.subjectId, type: 'user' },
+        action: 'soar.notification.acknowledged',
+        resource: { type: 'notification', id },
+        outcome: 'succeeded',
+        correlationId,
+        metadata: { previousStatus },
+      }),
+      this.runtime.soc.audit,
+    );
+    if (!acknowledged) {
+      if (!(await this.runtime.notifications.byId(actor.tenantId, id))) {
+        throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
+      }
+      throw new ApiError('STATE_CONFLICT', correlationId);
+    }
+    return {
+      correlationId,
+      status: acknowledged.status,
+      acknowledgedAt: acknowledged.acknowledgedAt?.toISOString() ?? at.toISOString(),
+      acknowledgedBy: acknowledged.acknowledgedBy,
+    };
   }
 }

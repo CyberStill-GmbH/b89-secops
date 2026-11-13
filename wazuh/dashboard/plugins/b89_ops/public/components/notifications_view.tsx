@@ -528,7 +528,8 @@ function NotificationFlyout({
                 </span>
                 <HealthMark tone={DELIVERY[line.kind].tone} label={DELIVERY[line.kind].label} />
                 <span className="b89CellMeta">
-                  Intento {line.attempt} · <Timestamp iso={line.at} />
+                  {line.attempt !== null ? `Intento ${line.attempt} · ` : null}
+                  <Timestamp iso={line.at} />
                   {line.kind === 'acknowledged' && line.actor ? (
                     <>
                       {' '}

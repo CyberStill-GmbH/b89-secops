@@ -27,6 +27,14 @@ SECRETS=$ROOT/secrets
 WD=$ROOT/wazuh-docker/single-node
 log() { printf '[b89-deploy] %s\n' "$*"; }
 
+# custom-b89 calls the edge over HTTPS from inside the Manager. All deployment entrypoints
+# that include compose.b89.yaml require the same host trust bundle before doing any work.
+EDGE_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+[[ -s $EDGE_CA_BUNDLE && -r $EDGE_CA_BUNDLE ]] || {
+  echo "host CA bundle missing or unreadable: $EDGE_CA_BUNDLE" >&2
+  exit 1
+}
+
 export DEBIAN_FRONTEND=noninteractive
 command -v envsubst >/dev/null || apt-get install -y gettext-base
 python3 -c 'import bcrypt, yaml' 2>/dev/null || apt-get install -y python3-bcrypt python3-yaml

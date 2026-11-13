@@ -132,6 +132,8 @@ func (r *Runner) BuildReport(from, to time.Time, top int, redact bool) Report {
 			"correlatorUnreviewed":            snap.Feedback.CorrelatorUnreviewed,
 			"correlatorFalsePositiveVerdicts": snap.Feedback.CorrelatorFalsePos,
 			"correlatorTruePositiveVerdicts":  snap.Feedback.CorrelatorTruePos,
+			"reviewCoverage":                  snap.Feedback.ReviewCoverage,
+			"reviewCoverageStatus":            snap.Feedback.ReviewCoverageStatus,
 			"alertFeedTruncated":              snap.AlertsTrunc,
 			"activeSuppressions":              snap.Feedback.ActiveCount(to), "proposals": shown,
 		},

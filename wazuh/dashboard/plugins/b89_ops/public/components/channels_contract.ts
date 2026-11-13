@@ -36,7 +36,13 @@ export function normalizeChannelsResponse(value: unknown): NotificationChannelsR
                 : 'unconfigured';
       const successAt = stringOrNull(health.lastSuccessAt);
       const failureAt = stringOrNull(health.lastFailureAt);
-      const lastAt = successAt ?? failureAt;
+      const successTime = parseTimestamp(successAt);
+      const failureTime = parseTimestamp(failureAt);
+      const latestIsSuccess =
+        successAt !== null &&
+        (failureAt === null ||
+          (successTime !== null && (failureTime === null || successTime >= failureTime)));
+      const lastAt = latestIsSuccess ? successAt : failureAt;
       return [
         {
           id,
@@ -47,11 +53,11 @@ export function normalizeChannelsResponse(value: unknown): NotificationChannelsR
           target: stringOrNull(row.target) ?? stringOrNull(row.destination),
           lastDelivery: lastAt
             ? {
-                ok:
-                  Boolean(successAt) &&
-                  (!failureAt || Date.parse(successAt!) >= Date.parse(failureAt)),
+                ok: latestIsSuccess,
                 at: lastAt,
-                reason: stringOrNull(health.lastFailureReason),
+                ...(!latestIsSuccess && stringOrNull(health.lastFailureReason)
+                  ? { reason: stringOrNull(health.lastFailureReason) }
+                  : {}),
               }
             : null,
           ...(typeof row.updatedAt === 'string' ? { updatedAt: row.updatedAt } : {}),
@@ -67,8 +73,10 @@ export function normalizeChannelTest(value: unknown): NotificationChannelTest {
   const body = isRecord(value) ? value : {};
   const result = isRecord(body.result) ? body.result : body;
   const failure = isRecord(result.failure) ? result.failure : {};
+  const accepted = result.outcome === 'accepted' || result.httpStatus === 202;
   return {
-    ok: result.ok === true || result.outcome === 'accepted',
+    ok: result.ok === true || accepted,
+    accepted,
     at: typeof result.at === 'string' ? result.at : new Date().toISOString(),
     ...(typeof result.reason === 'string'
       ? { reason: result.reason }
@@ -77,6 +85,16 @@ export function normalizeChannelTest(value: unknown): NotificationChannelTest {
         : {}),
     ...(typeof result.latencyMs === 'number' ? { latencyMs: result.latencyMs } : {}),
   };
+}
+
+export function channelTestSuccessLabel(test: NotificationChannelTest): string {
+  return test.accepted ? 'Prueba aceptada por el proveedor' : 'Prueba correcta';
+}
+
+function parseTimestamp(value: string | null): number | null {
+  if (value === null) return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
