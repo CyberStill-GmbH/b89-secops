@@ -73,7 +73,11 @@ function iso(input: ToolInput, key: string): Date | undefined {
   return new Date(value);
 }
 
-function oneOf<T extends string>(input: ToolInput, key: string, allowed: readonly T[]): T | undefined {
+function oneOf<T extends string>(
+  input: ToolInput,
+  key: string,
+  allowed: readonly T[],
+): T | undefined {
   const value = input[key];
   if (value === undefined || value === null || value === '') return undefined;
   if (typeof value !== 'string' || !(allowed as readonly string[]).includes(value)) {
@@ -96,7 +100,8 @@ function failure(response: InternalResponse): ToolOutcome {
   if (response.status === 403 || response.status === 404) {
     return { ok: false, error: 'No disponible: el recurso no existe o tu rol no tiene acceso.' };
   }
-  if (response.status >= 500) return { ok: false, error: 'La fuente de datos está degradada ahora mismo.' };
+  if (response.status >= 500)
+    return { ok: false, error: 'La fuente de datos está degradada ahora mismo.' };
   return { ok: false, error: 'La consulta no es válida.' };
 }
 
@@ -109,7 +114,7 @@ function withLima(value: unknown, depth = 0): unknown {
   const out: Row = {};
   for (const [key, field] of Object.entries(value as Row)) {
     out[key] = withLima(field, depth + 1);
-    if ((/At$/u.test(key) || /Seen$/u.test(key)) && typeof field === 'string') {
+    if ((key.endsWith('At') || key.endsWith('Seen')) && typeof field === 'string') {
       const label = limaLabel(field);
       if (label) out[`${key}Lima`] = label;
     }
@@ -129,8 +134,11 @@ function entitiesOf(alert: Row): Row[] {
 /** Proyección compacta y citable de una alerta. */
 export function compactAlert(alert: Row) {
   const reasons = Array.isArray(alert['reasons']) ? (alert['reasons'] as Row[]) : [];
-  const related = Array.isArray(alert['relatedAlertIds']) ? (alert['relatedAlertIds'] as string[]) : [];
-  const rule = typeof alert['title'] === 'string' ? ruleForTitle(SOC_KNOWLEDGE, alert['title']) : undefined;
+  const related = Array.isArray(alert['relatedAlertIds'])
+    ? (alert['relatedAlertIds'] as string[])
+    : [];
+  const rule =
+    typeof alert['title'] === 'string' ? ruleForTitle(SOC_KNOWLEDGE, alert['title']) : undefined;
   return {
     id: alert['id'],
     title: alert['title'],
@@ -160,9 +168,13 @@ function matchesEntity(alert: Row, needle: string): boolean {
   return (
     entitiesOf(alert).some(
       (entity) =>
-        String(entity['label'] ?? '').toLocaleLowerCase('es').includes(target) ||
-        String(entity['ref'] ?? '') === needle,
-    ) || String(alert['title'] ?? '').toLocaleLowerCase('es').includes(target)
+        String(entity['label'] ?? '')
+          .toLocaleLowerCase('es')
+          .includes(target) || String(entity['ref'] ?? '') === needle,
+    ) ||
+    String(alert['title'] ?? '')
+      .toLocaleLowerCase('es')
+      .includes(target)
   );
 }
 
@@ -220,7 +232,8 @@ async function scanAlerts(
       matched.push(alert);
     }
     const next = (response.body as Row | null)?.['nextCursor'];
-    if (older || typeof next !== 'string' || next === '') return { matched, scanned, complete: true };
+    if (older || typeof next !== 'string' || next === '')
+      return { matched, scanned, complete: true };
     cursor = next;
   }
   return { matched, scanned, complete: false };
@@ -230,7 +243,11 @@ function citeAlerts(alerts: readonly Row[]): Citation[] {
   return alerts
     .filter((alert) => typeof alert['id'] === 'string')
     .slice(0, 20)
-    .map((alert) => ({ kind: 'alert', id: String(alert['id']), label: String(alert['title'] ?? alert['id']) }));
+    .map((alert) => ({
+      kind: 'alert',
+      id: String(alert['id']),
+      label: String(alert['title'] ?? alert['id']),
+    }));
 }
 
 function isScan(value: AlertScan | InternalResponse): value is AlertScan {
@@ -326,7 +343,8 @@ export function buildInvestigationTools(
           entity: {
             type: 'string',
             maxLength: 254,
-            description: 'IP, usuario (UPN/correo), host o referencia `ent_…`. Coincidencia parcial sin distinguir mayúsculas.',
+            description:
+              'IP, usuario (UPN/correo), host o referencia `ent_…`. Coincidencia parcial sin distinguir mayúsculas.',
           },
           priority: { type: 'string', enum: ['P1', 'P2', 'P3', 'P4'] },
           status: {
@@ -337,7 +355,12 @@ export function buildInvestigationTools(
           text: { type: 'string', maxLength: 120, description: 'Texto en título y razones.' },
           from: { type: 'string', description: 'Inicio ISO 8601 UTC (…Z), inclusive.' },
           to: { type: 'string', description: 'Fin ISO 8601 UTC (…Z).' },
-          limit: { type: 'integer', minimum: 1, maximum: 40, description: 'Alertas a devolver (por defecto 15).' },
+          limit: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 40,
+            description: 'Alertas a devolver (por defecto 15).',
+          },
         },
       },
       run: guarded(async (input) => {
@@ -345,7 +368,14 @@ export function buildInvestigationTools(
           provider: oneOf(input, 'provider', PROVIDERS),
           entity: str(input, 'entity', 254),
           priority: oneOf(input, 'priority', ['P1', 'P2', 'P3', 'P4'] as const),
-          status: oneOf(input, 'status', ['open', 'new', 'acknowledged', 'triaged', 'escalated', 'closed'] as const),
+          status: oneOf(input, 'status', [
+            'open',
+            'new',
+            'acknowledged',
+            'triaged',
+            'escalated',
+            'closed',
+          ] as const),
           text: str(input, 'text', 120),
           from: iso(input, 'from'),
           to: iso(input, 'to'),
@@ -387,7 +417,9 @@ export function buildInvestigationTools(
       inputSchema: {
         type: 'object',
         additionalProperties: false,
-        properties: { id: { type: 'string', description: 'Identificador de la alerta (tal cual).' } },
+        properties: {
+          id: { type: 'string', description: 'Identificador de la alerta (tal cual).' },
+        },
         required: ['id'],
       },
       run: guarded(async (input) => {
@@ -396,31 +428,46 @@ export function buildInvestigationTools(
         const response = await get(`/api/alerts/${id}`);
         if (response.status !== 200) return failure(response);
         const alert = ((response.body as Row | null)?.['alert'] ?? {}) as Row;
-        const rule = typeof alert['title'] === 'string' ? ruleForTitle(knowledge, alert['title']) : undefined;
+        const rule =
+          typeof alert['title'] === 'string' ? ruleForTitle(knowledge, alert['title']) : undefined;
         let sourceEvent: unknown = null;
         let sourceNote: string | undefined;
-        const rawRef = typeof alert['rawRef'] === 'string' ? alert['rawRef'].replace(/^raw:/u, '') : undefined;
+        const rawRef =
+          typeof alert['rawRef'] === 'string' ? alert['rawRef'].replace(/^raw:/u, '') : undefined;
         const at = new Date(String(alert['occurredAt'] ?? ''));
         if (!canEvents) {
           sourceNote = 'Tu rol no tiene events.read: no se consultó el evento de origen.';
         } else if (!Number.isNaN(at.getTime())) {
-          const window = await readEvents(get, new Date(at.getTime() - 15 * 60_000), new Date(at.getTime() + 5 * 60_000), 2);
+          const window = await readEvents(
+            get,
+            new Date(at.getTime() - 15 * 60_000),
+            new Date(at.getTime() + 5 * 60_000),
+            2,
+          );
           if ('events' in window) {
             const match =
               (rawRef && window.events.find((event) => event['recordId'] === rawRef)) ||
               window.events.find((event) => event['title'] === alert['title']);
             if (match) sourceEvent = compactEvent(match, canRaw);
-            else sourceNote = window.status === 'disabled'
-              ? 'El explorador de eventos no está configurado.'
-              : 'No encontré el evento de origen en la ventana de ±15 min.';
+            else
+              sourceNote =
+                window.status === 'disabled'
+                  ? 'El explorador de eventos no está configurado.'
+                  : 'No encontré el evento de origen en la ventana de ±15 min.';
           } else {
             sourceNote = 'El explorador de eventos no respondió.';
           }
         }
-        const related = Array.isArray(alert['relatedAlertIds']) ? (alert['relatedAlertIds'] as string[]) : [];
+        const related = Array.isArray(alert['relatedAlertIds'])
+          ? (alert['relatedAlertIds'] as string[])
+          : [];
         const citations: Citation[] = [
           { kind: 'alert', id, label: String(alert['title'] ?? id) },
-          ...related.slice(0, 5).map((relatedId) => ({ kind: 'alert' as const, id: relatedId, label: 'Alerta relacionada' })),
+          ...related.slice(0, 5).map((relatedId) => ({
+            kind: 'alert' as const,
+            id: relatedId,
+            label: 'Alerta relacionada',
+          })),
           ...(typeof alert['incidentId'] === 'string'
             ? [{ kind: 'incident' as const, id: alert['incidentId'], label: 'Incidente vinculado' }]
             : []),
@@ -434,7 +481,11 @@ export function buildInvestigationTools(
               revision: alert['revision'],
             },
             rule: rule ? ruleView(knowledge, rule) : null,
-            ...(rule ? {} : { ruleNote: 'No identifiqué la regla B89 de esta alerta: sin mapeo MITRE conocido.' }),
+            ...(rule
+              ? {}
+              : {
+                  ruleNote: 'No identifiqué la regla B89 de esta alerta: sin mapeo MITRE conocido.',
+                }),
             sourceEvent,
             ...(sourceNote ? { sourceNote } : {}),
             ...(canRaw ? {} : { rawNote: 'El documento crudo requiere events.read_raw.' }),
@@ -453,16 +504,24 @@ export function buildInvestigationTools(
         type: 'object',
         additionalProperties: false,
         properties: {
-          entity: { type: 'string', maxLength: 254, description: 'IP, UPN/correo, host o `ent_…`.' },
+          entity: {
+            type: 'string',
+            maxLength: 254,
+            description: 'IP, UPN/correo, host o `ent_…`.',
+          },
           from: { type: 'string', description: 'Inicio ISO 8601 UTC (…Z).' },
           to: { type: 'string', description: 'Fin ISO 8601 UTC (…Z). Por defecto, ahora.' },
-          includeEvents: { type: 'boolean', description: 'Buscar también en eventos (por defecto true).' },
+          includeEvents: {
+            type: 'boolean',
+            description: 'Buscar también en eventos (por defecto true).',
+          },
         },
         required: ['entity'],
       },
       run: guarded(async (input) => {
         const entity = str(input, 'entity', 254);
-        if (!entity || entity.length < 3) throw new InputError('Indica la entidad (mínimo 3 caracteres).');
+        if (!entity || entity.length < 3)
+          throw new InputError('Indica la entidad (mínimo 3 caracteres).');
         const to = iso(input, 'to') ?? new Date();
         const fromInput = iso(input, 'from');
         const alertsFrom = fromInput ?? new Date(to.getTime() - 7 * DAY);
@@ -478,7 +537,12 @@ export function buildInvestigationTools(
           if ('events' in read) {
             const needle = entity.toLocaleLowerCase('es');
             const hits = read.events.filter((event) =>
-              JSON.stringify([event['identities'], event['resources'], event['source'], event['extensions']])
+              JSON.stringify([
+                event['identities'],
+                event['resources'],
+                event['source'],
+                event['extensions'],
+              ])
                 .toLocaleLowerCase('es')
                 .includes(needle),
             );
@@ -486,7 +550,10 @@ export function buildInvestigationTools(
               read.status === 'disabled'
                 ? { note: 'El explorador de eventos no está configurado.' }
                 : {
-                    window: { fromLima: limaLabel(eventsFrom.toISOString()), toLima: limaLabel(to.toISOString()) },
+                    window: {
+                      fromLima: limaLabel(eventsFrom.toISOString()),
+                      toLima: limaLabel(to.toISOString()),
+                    },
                     scanned: read.events.length,
                     complete: read.complete,
                     matched: hits.length,
@@ -506,7 +573,10 @@ export function buildInvestigationTools(
           data: {
             entity,
             alerts: {
-              window: { fromLima: limaLabel(alertsFrom.toISOString()), toLima: limaLabel(to.toISOString()) },
+              window: {
+                fromLima: limaLabel(alertsFrom.toISOString()),
+                toLima: limaLabel(to.toISOString()),
+              },
               matched: alerts.length,
               complete: scan.complete,
               byPriority: countBy(alerts, (alert) => alert['priority']),
@@ -523,7 +593,10 @@ export function buildInvestigationTools(
 
   if (capabilities.has('alerts.read')) {
     const RISK_TYPES = ['user', 'ip', 'host', 'cloud'] as const;
-    const unavailable = (note: string): ToolOutcome => ({ ok: true, data: { available: false, note } });
+    const unavailable = (note: string): ToolOutcome => ({
+      ok: true,
+      data: { available: false, note },
+    });
     const ENGINE_DOWN =
       'El motor de riesgo de entidades (correlador B89) no está disponible ahora. No hay un valor de riesgo que informar: no lo estimes; usa entity_activity para describir la actividad.';
     tools.push({
@@ -541,7 +614,12 @@ export function buildInvestigationTools(
             maxLength: 254,
             description: 'UPN/correo, IP, host o referencia `ent_…`. Omítelo para el ranking.',
           },
-          top: { type: 'integer', minimum: 1, maximum: 50, description: 'Tamaño del ranking (10).' },
+          top: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 50,
+            description: 'Tamaño del ranking (10).',
+          },
         },
       },
       run: guarded(async (input) => {
@@ -555,7 +633,8 @@ export function buildInvestigationTools(
           const { correlationId: _omit, ...data } = (response.body ?? {}) as Row;
           return { ok: true, data: withLima({ available: true, ...data }) };
         }
-        if (!type) throw new InputError('Indica «type» (user, ip, host o cloud) junto con «value».');
+        if (!type)
+          throw new InputError('Indica «type» (user, ip, host o cloud) junto con «value».');
         // La API de riesgo solo acepta referencias opacas `ent_…` en la URL (D-10b): un UPN o una
         // IP se resuelven primero contra el ranking del correlador y las entidades de las alertas.
         let ref = /^ent_[A-Za-z0-9_-]{22}$/u.test(value) ? value : undefined;
@@ -570,7 +649,10 @@ export function buildInvestigationTools(
             if (typeof hit?.['ref'] === 'string') ref = hit['ref'];
           }
           if (!ref) {
-            const scan = await scanAlerts(get, { entity: value, from: new Date(Date.now() - 30 * DAY) });
+            const scan = await scanAlerts(get, {
+              entity: value,
+              from: new Date(Date.now() - 30 * DAY),
+            });
             if (isScan(scan)) {
               for (const alert of scan.matched) {
                 const entity = entitiesOf(alert).find(

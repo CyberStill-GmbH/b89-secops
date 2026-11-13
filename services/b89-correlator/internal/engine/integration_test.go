@@ -116,10 +116,11 @@ func fakeGateway(t *testing.T, docs []map[string]any) *httptest.Server {
 }
 
 type fakeAPI struct {
-	mu         sync.Mutex
-	alerts     json.RawMessage
-	candidates []sources.CandidateRequest
-	audits     map[string]sources.AuditRequest
+	mu           sync.Mutex
+	alerts       json.RawMessage
+	alertsStatus int
+	candidates   []sources.CandidateRequest
+	audits       map[string]sources.AuditRequest
 }
 
 func (f *fakeAPI) server() *httptest.Server {
@@ -132,6 +133,10 @@ func (f *fakeAPI) server() *httptest.Server {
 		defer f.mu.Unlock()
 		switch r.URL.Path {
 		case "/api/internal/correlator/alerts":
+			if f.alertsStatus != 0 {
+				w.WriteHeader(f.alertsStatus)
+				return
+			}
 			_, _ = w.Write(f.alerts)
 		case "/api/internal/correlator/candidates":
 			var req sources.CandidateRequest
@@ -283,6 +288,10 @@ func TestIntegrationFixtureReplayEmitsAuditsAndServes(t *testing.T) {
 	if len(rep.TopEntities) == 0 || strings.Contains(rep.TopEntities[0].Value, "victima") {
 		t.Errorf("top entities (redacted): %+v", rep.TopEntities)
 	}
+	coverage, coverageIsPointer := rep.Feedback["reviewCoverage"].(*float64)
+	if !coverageIsPointer || coverage != nil || rep.Feedback["reviewCoverageStatus"] != feedback.ReviewCoverageNoData {
+		t.Errorf("report must mark the absent correlator-alert denominator as NO_DATA: %+v", rep.Feedback)
+	}
 
 	// HTTP read model: auth, top entities, detail by key, candidates, metrics.
 	srv := httptest.NewServer((&server.Server{Runner: runner, ReadToken: func() string { return readToken }, Now: func() time.Time { return now }, Version: "test"}).Handler())
@@ -301,6 +310,9 @@ func TestIntegrationFixtureReplayEmitsAuditsAndServes(t *testing.T) {
 		_ = json.NewDecoder(resp.Body).Decode(&out)
 		return resp.StatusCode, out
 	}
+	if code, body := get("/readyz", ""); code != 200 || body["ready"] != true || body["feedbackStatus"] != "ready" || body["lastFeedbackSuccess"] != now.Format(time.RFC3339Nano) {
+		t.Fatalf("readyz must include a fresh successful feedback cycle: %d %v", code, body)
+	}
 	if code, _ := get("/v1/entities?top=5", ""); code != 401 {
 		t.Fatalf("unauthenticated /v1: %d", code)
 	}
@@ -318,19 +330,92 @@ func TestIntegrationFixtureReplayEmitsAuditsAndServes(t *testing.T) {
 	if code, _ = get("/v1/candidates?status=emitted&limit=10", readToken); code != 200 {
 		t.Fatalf("candidates: %d", code)
 	}
+	code, body = get("/v1/feedback", readToken)
+	if code != 200 || body["reviewCoverage"] != nil || body["reviewCoverageStatus"] != feedback.ReviewCoverageNoData {
+		t.Fatalf("feedback review coverage: %d %v", code, body)
+	}
 	resp, err := srv.Client().Get(srv.URL + "/metrics")
 	if err != nil {
 		t.Fatal(err)
 	}
 	m, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	for _, want := range []string{"b89_correlator_observations_total{source=\"aws\"}", "b89_correlator_candidates_emitted_total", "b89_correlator_reduction_factor{stream=\"b89\"}"} {
+	for _, want := range []string{
+		"b89_correlator_observations_total{source=\"aws\"}",
+		"b89_correlator_candidates_emitted_total",
+		"b89_correlator_reduction_factor{stream=\"b89\"}",
+		"# HELP b89_correlator_feedback_alerts Correlator alert counts by feedback category in the feedback window; false_positive groups false_positive and benign verdicts",
+		"b89_correlator_feedback_alerts{verdict=\"false_positive\"}",
+		"b89_correlator_feedback_ready 1",
+		"b89_correlator_feedback_status{status=\"ready\"} 1",
+		"b89_correlator_feedback_age_seconds 0",
+		"b89_correlator_feedback_last_success_timestamp_seconds",
+		"b89_correlator_feedback_refresh_errors_total 0",
+		"b89_correlator_review_coverage_status{status=\"NO_DATA\"}",
+		"b89_correlator_feedback_alert_feed_truncated",
+	} {
 		if !strings.Contains(string(m), want) {
 			t.Errorf("metrics missing %s", want)
 		}
 	}
 	if strings.Contains(string(m), "victima") || strings.Contains(string(m), "203.0.113") {
 		t.Error("metrics must not carry entity values")
+	}
+
+	api.mu.Lock()
+	api.alerts, err = json.Marshal(map[string]any{"items": []model.B89Alert{{
+		ID: "correlator-duplicate", RuleID: model.CorrelatorRulePrefix + "test",
+		Verdict: "duplicate", OccurredAt: now.Add(-time.Hour),
+	}}})
+	api.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.RefreshFeedback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	resp, err = srv.Client().Get(srv.URL + "/metrics")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	const reviewCoverageHelp = "# HELP b89_correlator_review_coverage Fraction of correlator candidates materialized as B89 alerts in the effective feedback occurrence-time window adjudicated as true_positive, false_positive, benign, or duplicate; absent when unavailable"
+	for _, want := range []string{
+		reviewCoverageHelp,
+		"b89_correlator_review_coverage 1",
+		"b89_correlator_review_coverage_status{status=\"AVAILABLE\"} 1",
+	} {
+		if !strings.Contains(string(m), want) {
+			t.Errorf("available review coverage metric missing %q", want)
+		}
+	}
+
+	api.mu.Lock()
+	api.alertsStatus = http.StatusServiceUnavailable
+	api.mu.Unlock()
+	if err := runner.RefreshFeedback(ctx); err == nil {
+		t.Fatal("expected feedback refresh to fail after the API returned 503")
+	}
+	if code, body := get("/readyz", ""); code != http.StatusServiceUnavailable || body["ready"] != false || body["reason"] != "feedback_refresh_failed" || body["feedbackStatus"] != "failed" {
+		t.Fatalf("readyz must degrade on feedback failure while exposing feedback status: %d %v", code, body)
+	}
+	resp, err = srv.Client().Get(srv.URL + "/metrics")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	for _, want := range []string{
+		"b89_correlator_ready 0",
+		"b89_correlator_feedback_ready 0",
+		"b89_correlator_feedback_status{status=\"failed\"} 1",
+		"b89_correlator_feedback_age_seconds 0",
+		"b89_correlator_feedback_refresh_errors_total 1",
+	} {
+		if !strings.Contains(string(m), want) {
+			t.Errorf("failed feedback metrics missing %s", want)
+		}
 	}
 }
 

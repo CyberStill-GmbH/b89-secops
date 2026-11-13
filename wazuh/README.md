@@ -22,13 +22,21 @@ en [`docs/03-evaluacion-de-componentes.md`](../docs/03-evaluacion-de-componentes
 | `indexer/anomaly-detection/` | Detectores ML (RCF)                                                                                                      | `indexer/anomaly-detection/apply-detectors.sh`                            | Propuesto                                     |
 | `dashboard/`                 | Marca B89, proxy auth y plugin `b89-ops`                                                                                 | Copia más reinicio de `wazuh-dashboard`                                   | Propuesto                                     |
 | `core/`                      | Núcleo B89 dentro del SIEM: login Entra, casos (B89 Cases), auditoría, avisos y colas, como servicios del host (docs/12) | `core/apply-core.sh` (workflow «B89 SIEM», step=core)                     | Implementado; pendiente del primer despliegue |
-| `manager/integrations/`      | Push de alertas a B89 (`custom-b89`) y snippets de Shuffle y AWS                                                         | `ossec.conf`                                                              | Propuesto (fase 2 y 3)                        |
+| `manager/integrations/`      | Push HMAC minimizado a la inbox B89; configuración de conexión preparada, integración no activa                          | `ossec.conf` + `infra/aws-poweruser/scripts/prepare-wazuh-push-secret.sh` | Local; canario y activación pendientes        |
 
 ## Reglas
 
 - **Idempotente:** cada script se puede ejecutar N veces y deja el mismo estado. Cada uno toca solo
   su bloque `B89:<nombre>:begin/end` dentro de los archivos de Wazuh.
-- **Sin secretos:** las credenciales se leen de Secrets Manager en el host, nunca del repo.
+- **Sin secretos versionados:** credenciales permanecen en archivos protegidos del host, nunca en el repo.
+- **Wazuh push:** el helper `prepare-wazuh-push-secret.sh` sincroniza un HMAC generado/recuperado
+  entre `secrets/api.env` y un archivo `root:wazuh 0640` en el Manager. Requiere
+  `B89_WAZUH_PUSH_PREPARE=YES`, no reinicia servicios ni activa el bloque `<integration>`; no pasar
+  la clave por argumentos. El template usa un marcador inocuo porque Wazuh entrega `api_key` como
+  argumento al proceso. El Manager llega al edge por HTTPS con el hostname del certificado fijado a
+  la IP privada del edge. Solo el endpoint exacto `POST /api/ingest/wazuh` queda abierto sin sesión;
+  el controller valida HMAC, timestamp y persistencia antes de responder 202. La reconciliación pull
+  sigue siendo necesaria ante fallos del emisor best-effort.
 - **Raw archive:** `logall_json` archiva todos los eventos que procesa el Manager, no solo M365;
   `wazuh-archives-*` tiene política ISM separada de 7 días en el demo.
 - **Probado antes de aplicar:** reglas con `wazuh-logtest` (`office365/tests`), JSON con `jq`, nginx

@@ -204,6 +204,7 @@ jobs:
           pnpm run typecheck
           pnpm run lint
           pnpm run test:unit
+          pnpm --dir wazuh/dashboard/plugins/b89_ops test
           pnpm run boundaries
           pnpm --filter @b89/api... --filter @b89/worker... build
           pnpm run smoke:built

@@ -3,7 +3,8 @@
  */
 
 import React, { useState } from 'react';
-import { citationPath, type BunnyCitation } from './chat_client';
+import { citationPath } from './chat_client';
+import type { BunnyCitation } from './chat_client';
 
 /**
  * Markdown seguro para las respuestas de Bunny. Todo se construye como elementos de React: nunca
@@ -38,10 +39,7 @@ const LEVEL_WORDS: Record<string, string> = {
 type Section = 'summary' | 'evidence' | 'assessment' | 'actions' | 'next' | 'other';
 
 export function sectionOf(heading: string): Section {
-  const text = heading
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/gu, '')
-    .toLowerCase();
+  const text = heading.normalize('NFD').replace(/[̀-ͯ]/gu, '').toLowerCase();
   if (text.startsWith('resumen')) return 'summary';
   if (text.startsWith('evidencia')) return 'evidence';
   if (text.startsWith('evaluacion')) return 'assessment';
@@ -131,7 +129,9 @@ function levels(text: string, key: string, enabled: boolean): React.ReactNode[] 
   const nodes: React.ReactNode[] = [];
   let last = 0;
   let n = 0;
-  for (const match of text.matchAll(/(^|[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ])(cr[ií]tica|alta|media|baja)(?![A-Za-zÁÉÍÓÚÜÑáéíóúüñ])/giu)) {
+  for (const match of text.matchAll(
+    /(^|[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ])(cr[ií]tica|alta|media|baja)(?![A-Za-zÁÉÍÓÚÜÑáéíóúüñ])/giu,
+  )) {
     const start = (match.index ?? 0) + (match[1]?.length ?? 0);
     const word = match[2] ?? '';
     if (start > last) nodes.push(text.slice(last, start));
@@ -236,9 +236,7 @@ export function renderMarkdown(source: string, options: MarkdownOptions = {}): R
         i += 1;
       }
       i += 1; // cierre (o fin del texto si el modelo no lo cerró)
-      blocks.push(
-        <CodeBlock key={`b${key++}`} language={fence[1] ?? ''} code={code.join('\n')} />,
-      );
+      blocks.push(<CodeBlock key={`b${key++}`} language={fence[1] ?? ''} code={code.join('\n')} />);
       continue;
     }
     const heading = HEADING.exec(line);

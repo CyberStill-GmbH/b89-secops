@@ -7,7 +7,11 @@ import {
   entityKey,
   entityKql,
   extractEntities,
+  emailOperationDirection,
+  groupExactEmailMessages,
+  summarizeExactEmailMessageGroup,
   parseEntityKey,
+  selectQueryEntities,
   validEntity,
 } from './investigation';
 import { discoverUrlForQuery, mitreTechniqueUrl, threatHuntingUrl } from './discover';
@@ -16,6 +20,18 @@ import { alertQuestion } from './bunny_bridge';
 import { NAV_CATEGORIES, NAV_HIDDEN, NAV_PLACEMENT } from './navigation';
 
 describe('entidades de un evento de wazuh-alerts-*', () => {
+  it('mantiene la selección visible alineada con el límite de entidades consultadas', () => {
+    const entities = Array.from({ length: 10 }, (_, index) => ({
+      kind: 'host' as const,
+      value: `host-${index}`,
+      field: 'agent.name',
+    }));
+
+    expect(selectQueryEntities(entities)).toEqual(entities.slice(0, 8));
+    expect(selectQueryEntities(entities, ['host:host-1', 'host:host-9'])).toEqual([entities[1]]);
+    expect(selectQueryEntities(entities, [])).toEqual([]);
+  });
+
   it('extrae usuario, IP y zona de Cloudflare sin el manager como equipo', () => {
     const source = {
       agent: { id: '000', name: 'wazuh.manager' },
@@ -31,6 +47,31 @@ describe('entidades de un evento de wazuh-alerts-*', () => {
       'ip:18.214.220.109',
       'zone:b89.io',
     ]);
+  });
+
+  it('usa mailbox owner y destinatarios del schema como pivotes de usuario', () => {
+    const source = {
+      agent: { id: '000', name: 'wazuh.manager' },
+      data: {
+        office365: {
+          UserId: 'sender@example.test',
+          MailboxOwnerUPN: 'owner@example.test',
+          recipientList: [
+            { Address: 'recipient@example.test', Name: 'Recipient' },
+            { Address: 'recipient@example.test', Name: 'duplicate' },
+            { Name: 'missing address' },
+          ],
+        },
+      },
+    };
+    expect(extractEntities(source).map(entityKey)).toEqual([
+      'user:sender@example.test',
+      'user:owner@example.test',
+      'user:recipient@example.test',
+    ]);
+    expect(entityClauses([{ kind: 'user', value: 'recipient@example.test' }])).toContainEqual({
+      term: { 'data.office365.recipientList.Address': 'recipient@example.test' },
+    });
   });
 
   it('usa el agente cuando no es el manager y quita duplicados y ruido', () => {
@@ -54,9 +95,140 @@ describe('entidades de un evento de wazuh-alerts-*', () => {
       { term: { 'data.cloudflare.zone_name': 'b89.io' } },
       { term: { 'data.cloudflare.audit.zone_name': 'b89.io' } },
     ]);
-    expect(entityKql([{ kind: 'project', value: 'a"b' }])).toBe(
-      'data.snyk.project.name:"a\\"b"',
+    expect(entityKql([{ kind: 'project', value: 'a"b' }])).toBe('data.snyk.project.name:"a\\"b"');
+  });
+});
+
+describe('correlación de mensajes M365 por identificador exacto', () => {
+  const summary = (
+    id: string,
+    email?: {
+      networkMessageId?: string;
+      internetMessageId?: string;
+      operation?: string;
+      mailboxOwnerUpn?: string;
+      recipients?: readonly string[];
+      recipientsTruncated?: boolean;
+    },
+  ) => ({
+    id,
+    index: 'wazuh-alerts-test',
+    at: '2026-11-11T12:00:00.000Z',
+    level: 8,
+    ruleId: '101700',
+    description: `evento ${id}`,
+    groups: ['office365'],
+    vendor: 'office365' as const,
+    agent: null,
+    ...(email ? { email } : {}),
+    mitre: { ids: [], tactics: [], techniques: [] },
+    matched: [],
+  });
+
+  it('agrupa por NetworkMessageId compartido aunque no pueda afirmar recepción', () => {
+    const sender = summary('send-1', {
+      networkMessageId: 'abcdef01-2345-6789-abcd-ef0123456789',
+      internetMessageId: '<message-1@example.test>',
+      operation: 'Send',
+    });
+    const receiver = summary('receive-1', {
+      networkMessageId: 'ABCDEF01-2345-6789-ABCD-EF0123456789',
+      internetMessageId: '<message-1@example.test>',
+      operation: 'MailItemsAccessed',
+    });
+    const sameUserAndTime = summary('nearby-1');
+
+    expect(groupExactEmailMessages([sender, receiver, sameUserAndTime])).toEqual([
+      {
+        idType: 'NetworkMessageId',
+        id: 'abcdef01-2345-6789-abcd-ef0123456789',
+        events: [sender, receiver],
+      },
+    ]);
+  });
+
+  it('agrupa por InternetMessageId solo cuando no hay NetworkMessageId común', () => {
+    const first = summary('send-2', { internetMessageId: '<message-2@example.test>' });
+    const second = summary('receive-2', { internetMessageId: '<message-2@example.test>' });
+    const conflictingNetwork = summary('other-2', {
+      networkMessageId: '12345678-1234-1234-1234-123456789abc',
+      internetMessageId: '<message-2@example.test>',
+    });
+    const groups = groupExactEmailMessages([first, second, conflictingNetwork]);
+    expect(groups).toEqual([
+      {
+        idType: 'InternetMessageId',
+        id: '<message-2@example.test>',
+        events: [first, second],
+      },
+    ]);
+    expect(
+      groupExactEmailMessages([
+        first,
+        summary('case-variant', { internetMessageId: '<MESSAGE-2@EXAMPLE.TEST>' }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it('resume buzones, destinatarios y direcciones solo desde operaciones explícitas', () => {
+    const send = summary('send', {
+      networkMessageId: 'same-id',
+      operation: 'SendAs',
+      mailboxOwnerUpn: 'sender@example.test',
+      recipients: ['recipient@example.test'],
+    });
+    const receive = summary('receive', {
+      networkMessageId: 'same-id',
+      operation: 'MailItemsAccessed',
+      mailboxOwnerUpn: 'recipient@example.test',
+      recipients: ['archive@example.test'],
+      recipientsTruncated: true,
+    });
+    const ambiguous = summary('ambiguous', {
+      networkMessageId: 'same-id',
+      operation: 'MailItemsAccessed',
+    });
+    const group = groupExactEmailMessages([send, receive, ambiguous])[0]!;
+
+    expect(summarizeExactEmailMessageGroup(group)).toEqual({
+      direction: 'Salida; Dirección no determinada',
+      operations: ['MailItemsAccessed', 'SendAs'],
+      auditedMailboxes: ['recipient@example.test', 'sender@example.test'],
+      recipients: ['archive@example.test', 'recipient@example.test'],
+      recipientCount: 2,
+      recipientsTruncated: true,
+    });
+    expect(emailOperationDirection('MailItemsAccessed')).toBe('Dirección no determinada');
+    expect(emailOperationDirection('Receive')).toBe('Dirección no determinada');
+    expect(emailOperationDirection('Deliver')).toBe('Dirección no determinada');
+    expect(emailOperationDirection(undefined)).toBe('Dirección no determinada');
+  });
+
+  it('acota memoria y lista de destinatarios y reporta un conteo mínimo al superar el límite', () => {
+    const recipients = new Proxy(
+      Array.from({ length: 105 }, (_, index) => `recipient-${index}@example.test`),
+      {
+        get(target, property, receiver) {
+          if (property === '101') throw new Error('recipient scan continued after overflow');
+          return Reflect.get(target, property, receiver);
+        },
+      },
     );
+    const first = summary('send-large', {
+      networkMessageId: 'large-message',
+      recipients,
+    });
+    const second = summary('audit-large', {
+      networkMessageId: 'large-message',
+      recipients: ['recipient-0@example.test', 'recipient-104@example.test'],
+    });
+    const evidence = summarizeExactEmailMessageGroup(groupExactEmailMessages([first, second])[0]!);
+
+    expect(evidence.recipients).toHaveLength(100);
+    expect(evidence.recipients).toContain('recipient-0@example.test');
+    expect(evidence.recipients).not.toContain('recipient-104@example.test');
+    expect(evidence.recipientCount).toBe(101);
+    expect(evidence.recipientsTruncated).toBe(true);
   });
 });
 

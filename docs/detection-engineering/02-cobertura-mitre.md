@@ -41,7 +41,7 @@ brechas · **Baja** 3 cubiertas, 4 brechas.
 
 | Entorno | Brechas de prioridad alta/media | Bloqueo | Backlog |
 | --- | --- | --- | --- |
-| **M365 / Entra** | T1621 fatiga MFA, T1557 AiTM, T1539 robo de cookie, T1213.002 SharePoint; y todo M365 sin datos | `ActivityFeed.Read` (hoy falla con AF10001) y logs de sign-in de Entra (`AuditLog.Read.All`, Identity Protection P2) | BL-I01, BL-I02, BL-I03 |
+| **M365 / Entra** | T1621 fatiga MFA, T1557 AiTM, T1539 robo de cookie, T1213.002 SharePoint; ampliar cobertura con datos reales | El feed de auditoria Office 365 tiene ActivityFeed.Read concedido; logs de inicio de sesion de Entra requieren permisos adicionales (`AuditLog.Read.All`, Identity Protection P2) | BL-I02, BL-I03 |
 | **Correo** | T1566.001/.002 phishing | Defender for Office 365 P2 (presupuesto) | BL-B02 |
 | **Windows / AD** | T1003.001 LSASS, T1486 ransomware, T1490, T1021.001 RDP, T1219 | Agentes en estaciones y DC; Sysmon con gate de privacidad (N2) | BL-E01, BL-E02 |
 | **Linux** | T1505.003 web shell, T1609/T1610/T1611 contenedores | auditd y eventos del daemon de Docker en el nodo | BL-L01, BL-L02 |

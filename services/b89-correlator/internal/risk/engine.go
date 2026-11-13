@@ -15,7 +15,7 @@ import (
 )
 
 // CorrelatorRulePrefix prefixes the rule id of every alert the correlator creates in B89.
-const CorrelatorRulePrefix = "b89-correlator:"
+const CorrelatorRulePrefix = model.CorrelatorRulePrefix
 
 // Suppressor answers whether a rule+entity pair is under a temporary suppression at t.
 type Suppressor interface {

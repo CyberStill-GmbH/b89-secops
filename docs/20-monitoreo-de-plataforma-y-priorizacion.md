@@ -85,7 +85,11 @@ o una cuenta AWS tranquila no generan falsos positivos, pero un collector caído
 | Cloudflare | heartbeat | collector (5 min) | 20 min | 72 h |
 | Bitdefender | heartbeat | collector (10 min, instantánea diaria) | 30 min | 26 h |
 | AWS (EventBridge → SNS) | heartbeat | contenedor `b89-aws-events-1` sano | 15 min | 72 h + canario diario |
-| Agentes Wazuh (todo lo que no es proveedor) | events | — | 30 min | — |
+| Agentes Wazuh (todo lo que no es proveedor) | heartbeat | contenedor del Manager (15 min) | 15 min | No aplica; cada agente se vigila por `lastKeepAlive` (> 15 min desconectado) |
+
+Los agentes no se declaran silenciosos por falta de alertas: un agente sano puede no producir detecciones.
+La conectividad se mide con `agent_disconnected` por `lastKeepAlive`; el heartbeat de esta fila solo
+confirma que el Manager sigue vivo. Así, ausencia de incidentes no genera una falsa alarma de ingesta.
 | Office 365 | **deshabilitada** | — | — | bloqueada hasta conceder `ActivityFeed.Read` |
 
 ### Contrato de campos para la UI (Resumen / Integraciones)

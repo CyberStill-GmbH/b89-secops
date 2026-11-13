@@ -18,3 +18,8 @@ export {
   createWazuhSecurityEventProvider,
   type WazuhProviderConfiguration,
 } from '../infrastructure/wazuh/wazuh-provider.factory.js';
+export type {
+  WazuhAlertHint,
+  WazuhAlertHintLookup,
+  WazuhAlertHintLookupProvider,
+} from '../infrastructure/wazuh/wazuh-security-event.provider.js';

@@ -28,7 +28,7 @@ import {
 import { SOC_KNOWLEDGE } from './assistant/soc-knowledge.generated.js';
 import { deriveChannelKey, NotificationChannelRegistry } from './runtime/notification-channels.js';
 import { notificationEnricher } from './runtime/notification-enricher.js';
-import type { SocPersistence } from '@b89/soc';
+import type { SocPersistence, WazuhPushInboxStore } from '@b89/soc';
 import { composeApi } from './composition-root.js';
 import { createAssistantService } from './assistant/assistant-service.js';
 import { assistantConversationStoreFor } from './assistant/conversation-history.js';
@@ -52,6 +52,7 @@ import {
   PROVIDER_STREAMS,
   WAZUH_DATASET,
 } from './runtime/wazuh-ingestion.js';
+import { createWazuhPushInboxPass } from './runtime/wazuh-push-inbox.js';
 import {
   EntraClientCredentialsTokenSource,
   StaticGatewayTokenSource,
@@ -62,7 +63,7 @@ import {
   withDynamicGrants,
 } from './runtime/role-grants.js';
 import {
-  cachedOwnerSource,
+  directoryOwnerSource,
   createDirectorySyncPass,
   lazyOwnerSource,
 } from './runtime/directory-sync.js';
@@ -74,7 +75,6 @@ import { ephemeralVapidKey, VapidPushSender, vapidKeyFrom } from './runtime/web-
 import { InMemoryPushSubscriptionStore, type PushSubscriptionStore } from '@b89/soar';
 import { NotificationDispatcher } from './runtime/notification-dispatcher.js';
 import {
-  DirectoryError,
   InMemoryDirectoryStore,
   InMemoryRoleAdministration,
   type DirectoryStore,
@@ -128,6 +128,7 @@ interface DurableStores {
   readonly directory: DirectoryStore & { close(): Promise<void> };
   readonly push: PushSubscriptionStore & { close(): Promise<void> };
   readonly roleAdministration: RoleAdministration & { close(): Promise<void> };
+  readonly wazuhPushInbox?: WazuhPushInboxStore & { close(): Promise<void> };
 }
 
 /**
@@ -138,10 +139,13 @@ interface DurableStores {
  * Se importan de forma diferida: un runtime en memoria (specs, desarrollo) no carga Prisma
  * ni el driver de PostgreSQL.
  */
-async function durableStoresFor(config: SocPersistenceConfig): Promise<DurableStores | undefined> {
+async function durableStoresFor(
+  config: SocPersistenceConfig,
+  enableWazuhPushInbox: boolean,
+): Promise<DurableStores | undefined> {
   if (config.mode === 'memory') return undefined;
   const [
-    { PostgresSocPersistence },
+    { PostgresSocPersistence, PostgresWazuhPushInboxStore },
     { PostgresNotificationAttemptStore, PostgresPushSubscriptionStore },
     { PostgresSessionStore, PostgresDirectoryStore, PostgresRoleAdministration },
   ] = await Promise.all([
@@ -193,9 +197,18 @@ async function durableStoresFor(config: SocPersistenceConfig): Promise<DurableSt
     statementTimeoutMs: postgres.statementTimeoutMs,
     maxConnections: 2,
   });
+  const wazuhPushInbox = enableWazuhPushInbox
+    ? PostgresWazuhPushInboxStore.connect({
+        connectionString,
+        connectionTimeoutMs: postgres.connectionTimeoutMs,
+        statementTimeoutMs: postgres.statementTimeoutMs,
+        maxConnections: 2,
+      })
+    : undefined;
   try {
     // Falla al arrancar, no en la primera alerta: sin base o con esquema viejo no se sirve.
     await soc.ready();
+    await wazuhPushInbox?.ready();
   } catch (error) {
     await Promise.allSettled([
       soc.close(),
@@ -204,10 +217,19 @@ async function durableStoresFor(config: SocPersistenceConfig): Promise<DurableSt
       directory.close(),
       push.close(),
       roleAdministration.close(),
+      ...(wazuhPushInbox ? [wazuhPushInbox.close()] : []),
     ]);
     throw error;
   }
-  return { soc, notifications, sessions, directory, push, roleAdministration };
+  return {
+    soc,
+    notifications,
+    sessions,
+    directory,
+    push,
+    roleAdministration,
+    ...(wazuhPushInbox ? { wazuhPushInbox } : {}),
+  };
 }
 
 export async function buildApi(
@@ -255,6 +277,13 @@ export async function buildApi(
   const entityRefKey = loadEntityRefKey(environment);
   const entityRefSecret = entityRefKey?.reveal();
   const ingestionConfig = loadIngestionConfig(environment);
+  if (
+    ingestionConfig.source === 'wazuh' &&
+    ingestionConfig.pushSecret &&
+    persistenceConfig.mode !== 'postgres'
+  ) {
+    throw new Error('WAZUH_PUSH_REQUIRES_POSTGRES');
+  }
   const roleGrants = loadRoleGrantsConfig(environment);
   const directoryConfig = loadDirectoryConfig(environment);
   const directoryIntervalMs =
@@ -349,7 +378,10 @@ export async function buildApi(
         })
       : undefined;
   await activation?.attempt();
-  const durable = await durableStoresFor(persistenceConfig);
+  const durable = await durableStoresFor(
+    persistenceConfig,
+    ingestionConfig.source === 'wazuh' && ingestionConfig.pushSecret !== undefined,
+  );
   // Avisos: política de ruido, canales administrables y correo (si hay buzón y secreto).
   const notificationPolicy = notificationPolicyFrom(loadNotificationPolicy(environment));
   const graphMail =
@@ -391,7 +423,10 @@ export async function buildApi(
   const ownerSource = activation
     ? lazyOwnerSource(
         () => activation.groupId,
-        (groupId) => cachedOwnerSource(directoryStore, access.tenantId, groupId),
+        (groupId) =>
+          directoryOwnerSource(directoryStore, access.tenantId, groupId, () =>
+            directoryReader!.readOwners(groupId),
+          ),
       )
     : undefined;
   const staticRoleGrants = createRoleGrantResolver(roleGrants, ownerSource);
@@ -414,10 +449,14 @@ export async function buildApi(
     ...(durable
       ? { soc: durable.soc, notifications: durable.notifications, sessions: durable.sessions }
       : {}),
+    ...(durable?.wazuhPushInbox ? { wazuhPushInbox: durable.wazuhPushInbox } : {}),
     ...(onDispatchError ? { onDispatchError } : {}),
     ...(onSignInDenied ? { onSignInDenied } : {}),
     ...(processInfo ? { processInfo } : {}),
     ...(clientSecret !== undefined ? { clientSecret } : {}),
+    ...(ingestionConfig.source === 'wazuh' && ingestionConfig.pushSecret
+      ? { wazuhPushSecret: ingestionConfig.pushSecret.reveal() }
+      : {}),
     ...(environment['B89_CORRELATOR_SERVICE_TOKEN']
       ? { correlatorServiceToken: environment['B89_CORRELATOR_SERVICE_TOKEN'] }
       : {}),
@@ -494,6 +533,7 @@ export async function buildApi(
                   mode: 'pending',
                   intervalMs: directoryConfig.intervalMs,
                   lastErrorCode: state.lastErrorCode,
+                  diagnostic: state.diagnostic,
                   lastAttemptAt: state.lastAttemptAt,
                   nextAttemptAt: state.nextAttemptAt,
                 };
@@ -514,6 +554,7 @@ export async function buildApi(
             provider: eventProvider,
             tenantId: access.tenantId,
             sourceId: ingestionConfig.sourceId,
+            now: () => runtime.now(),
           }),
         }
       : {}),
@@ -564,6 +605,19 @@ export async function buildApi(
           },
         })
       : undefined;
+  runtime.setWazuhIngestionWakeup(ingestion ? () => ingestion.kick() : undefined);
+  if (durable?.wazuhPushInbox && eventProvider && ingestionConfig.source === 'wazuh') {
+    runtime.setWazuhPushInboxProcessor(
+      createWazuhPushInboxPass({
+        store: durable.wazuhPushInbox,
+        provider: eventProvider,
+        tenantId: access.tenantId,
+        sourceId: ingestionConfig.sourceId,
+        now: () => runtime.now(),
+        promote: (event) => runtime.promoteEvent(event),
+      }),
+    );
+  }
   // Sprint 5 · fase 3: sincronización del padrón por Microsoft Graph (token de aplicación).
   // La pasada se construye al resolverse el grupo; hasta entonces el ciclo no hace nada.
   let directorySyncPass:
@@ -637,6 +691,7 @@ export async function buildApi(
       await durable?.directory.close();
       await durable?.push.close();
       await durable?.roleAdministration.close();
+      await durable?.wazuhPushInbox?.close();
       await assistantConversations?.close();
     }, API_SHUTDOWN_TIMEOUT_MS);
   return {

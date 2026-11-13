@@ -2,7 +2,7 @@
  * Copyright B89. SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   EuiAccordion,
   EuiBadge,
@@ -42,6 +42,8 @@ import {
   RELATED_WINDOW_MS,
   RELATED_WINDOWS,
   RelatedWindow,
+  RelatedResponse,
+  selectQueryEntities,
   threatHuntingUrl,
   validEntity,
   VendorId,
@@ -71,6 +73,10 @@ import {
 } from './primitives';
 import { entityInvestigationHref } from './investigation_links';
 import { SourceBadge, VendorLogo } from './vendor_logo';
+import { InvestigationActivityGroups } from './investigation_activity_groups';
+import { InvestigationReportActions } from './investigation_report_actions';
+import { InvestigationPagination } from './investigation_pagination';
+import type { ReportEventSummary } from './investigation_report';
 
 /**
  * Investigación de una alerta (o de una entidad suelta): evento de origen del SIEM, entidades
@@ -159,16 +165,37 @@ export function InvestigationView({
   const vendor: VendorId = event?.vendor ?? (current ? vendorOfTitle(current.title) : 'wazuh');
   const title = current?.title ?? (pivot ? `${ENTITY_KIND_LABEL[pivot.kind]} ${pivot.value}` : '');
   const mitre = event?.mitre ?? { ids: [], tactics: [], techniques: [] };
-  const [selected, setSelected] = useState<string[] | null>(null);
-  const active = (selected ?? entities.map(entityKey)).filter((key) =>
-    entities.some((item) => entityKey(item) === key),
+  const exportTitle = current?.title ?? title;
+  const reportSourceEvent = useMemo<ReportEventSummary | null>(
+    () =>
+      event
+        ? {
+            id: event.id,
+            index: event.index,
+            at: event.at,
+            level: event.level,
+            ruleId: event.ruleId,
+            description: event.description,
+            groups: event.groups,
+            vendor: event.vendor,
+            agent: event.agent,
+            mitre: event.mitre,
+            matched: event.matched,
+            email: event.email,
+          }
+        : null,
+    [event],
   );
+  const [selected, setSelected] = useState<string[] | null>(null);
+  const queryEntities = entities.slice(0, MAX_QUERY_ENTITIES);
+  const activeEntities = selectQueryEntities(entities, selected);
+  const active = activeEntities.map(entityKey);
   const [range, setRange] = useState<RelatedWindow>('24h');
   const span = RELATED_WINDOW_MS[range];
   const from = new Date(Date.parse(anchor) - span).toISOString();
   const to = new Date(Date.parse(anchor) + span).toISOString();
-  const activeEntities = entities.filter((item) => active.includes(entityKey(item)));
-  const kql = activeEntities.length > 0 ? entityKql(activeEntities) : ruleId ? `rule.id:${ruleId}` : '';
+  const kql =
+    activeEntities.length > 0 ? entityKql(activeEntities) : ruleId ? `rule.id:${ruleId}` : '';
 
   const loadingHeader = alertId !== null && alert.loading && !current;
   if (alertId && alert.error) {
@@ -184,7 +211,9 @@ export function InvestigationView({
       <main className="b89Page b89Investigation">
         <BackLink basePath={basePath} />
         <EuiCallOut title="No hay nada que investigar" color="warning" iconType="help">
-          <p>La dirección no indica una alerta ni una entidad válida. Abre una alerta desde la cola.</p>
+          <p>
+            La dirección no indica una alerta ni una entidad válida. Abre una alerta desde la cola.
+          </p>
         </EuiCallOut>
       </main>
     );
@@ -256,7 +285,11 @@ export function InvestigationView({
           </EuiButton>
           {kql && (
             <>
-              <EuiButton size="s" iconType="search" href={threatHuntingUrl(basePath, kql, from, to)}>
+              <EuiButton
+                size="s"
+                iconType="search"
+                href={threatHuntingUrl(basePath, kql, from, to)}
+              >
                 Abrir en Threat Hunting
               </EuiButton>
               <EuiButton
@@ -310,7 +343,7 @@ export function InvestigationView({
             </EuiText>
             <EuiSpacer size="s" />
             <div className="b89Chips" role="group" aria-label="Entidades de la línea de tiempo">
-              {entities.slice(0, MAX_QUERY_ENTITIES).map((item) => {
+              {queryEntities.map((item) => {
                 const key = entityKey(item);
                 const on = active.includes(key);
                 return (
@@ -343,6 +376,16 @@ export function InvestigationView({
               />
             )}
           </EuiPanel>
+          <InvestigationReportActions
+            basePath={basePath}
+            alert={current}
+            title={exportTitle}
+            entities={activeEntities}
+            at={anchor}
+            relatedWindow={range}
+            excludeId={event?.id}
+            sourceEvent={reportSourceEvent}
+          />
           <EuiSpacer size="l" />
           {alertId && (
             <SourceEvent
@@ -431,6 +474,75 @@ function Timeline({
         : fetchRelated(basePath, { entities, at: anchor, window, exclude: excludeId }),
     [basePath, keys, anchor, window, excludeId],
   );
+  const data = related.loading ? null : related.data;
+  const requestKey = JSON.stringify([keys, anchor, window, excludeId ?? '']);
+  const [pageState, setPageState] = useState<{
+    key: string;
+    pages: RelatedResponse[];
+    loading: boolean;
+    error: unknown | null;
+  }>({ key: requestKey, pages: [], loading: false, error: null });
+  const pages = pageState.key === requestKey ? pageState.pages : [];
+  const loadingMore = pageState.key === requestKey && pageState.loading;
+  const pageError = pageState.key === requestKey ? pageState.error : null;
+  const continuationCursor =
+    pages.length > 0 ? pages[pages.length - 1].nextCursor : data?.nextCursor;
+  const allEvents = useMemo(
+    () => (data?.access === 'ok' ? [...data.events, ...pages.flatMap((page) => page.events)] : []),
+    [data, pages],
+  );
+  const loadMore = useCallback(async () => {
+    const cursor = continuationCursor;
+    if (!cursor || loadingMore) return;
+    setPageState((current) => ({
+      key: requestKey,
+      pages: current.key === requestKey ? current.pages : [],
+      loading: true,
+      error: null,
+    }));
+    try {
+      const page = await fetchRelated(basePath, {
+        entities,
+        at: anchor,
+        window,
+        exclude: excludeId,
+        cursor,
+      });
+      if (page.access !== 'ok') {
+        throw new Error(
+          page.access === 'forbidden'
+            ? ACCESS_MESSAGE.forbidden
+            : 'El cursor PIT pudo expirar o el Indexer no respondió. Reintenta o reinicia la consulta.',
+        );
+      }
+      setPageState((current) =>
+        current.key === requestKey
+          ? { ...current, pages: [...current.pages, page], loading: false, error: null }
+          : current,
+      );
+    } catch (error) {
+      setPageState((current) =>
+        current.key === requestKey ? { ...current, loading: false, error } : current,
+      );
+    }
+  }, [
+    anchor,
+    basePath,
+    continuationCursor,
+    entities,
+    excludeId,
+    loadingMore,
+    pages,
+    requestKey,
+    window,
+  ]);
+  const resetPages = useCallback(() => {
+    setPageState({ key: requestKey, pages: [], loading: false, error: null });
+    void related.reload();
+  }, [related.reload, requestKey]);
+  useEffect(() => {
+    setPageState({ key: requestKey, pages: [], loading: false, error: null });
+  }, [requestKey]);
   if (noEntities) {
     return (
       <EmptyLine>
@@ -442,16 +554,15 @@ function Timeline({
   if (entities.length === 0) {
     return <EmptyLine>Activa al menos una entidad para ver su línea de tiempo.</EmptyLine>;
   }
-  if (related.loading && !related.data) return <EuiLoadingContent lines={5} />;
-  if (related.error) return <ErrorCallout error={related.error} onRetry={related.reload} />;
-  const data = related.data;
+  if (related.loading) return <EuiLoadingContent lines={5} />;
+  if (related.error) return <ErrorCallout error={related.error} onRetry={resetPages} />;
   if (!data) return null;
   if (data.access !== 'ok') {
     return (
       <EuiCallOut size="s" color="warning" iconType="lock" title={ACCESS_MESSAGE[data.access]} />
     );
   }
-  if (data.events.length === 0) {
+  if (data.events.length === 0 && pages.length === 0) {
     return (
       <EmptyLine>
         Sin otros eventos de estas entidades en {RELATED_WINDOW_LABEL[window]} alrededor del evento.
@@ -464,16 +575,17 @@ function Timeline({
   return (
     <DataZone>
       <p className="b89Investigation__count">
-        {data.total > data.events.length
-          ? `${data.events.length} más recientes de ${data.total} eventos`
-          : `${data.total} eventos`}{' '}
+        {allEvents.length < data.total
+          ? `${allEvents.length} de ${data.total} eventos cargados`
+          : `${allEvents.length} eventos cargados`}{' '}
         ·{' '}
         {Object.entries(data.perEntity)
           .map(([key, count]) => `${key.slice(key.indexOf(':') + 1)}: ${count}`)
           .join(' · ')}
       </p>
+      <InvestigationActivityGroups events={allEvents} />
       <ol className="b89Timeline">
-        {data.events.map((item) => {
+        {allEvents.map((item) => {
           const before = !anchorShown && Date.parse(item.at) < anchorMs;
           if (before) anchorShown = true;
           return (
@@ -488,6 +600,17 @@ function Timeline({
           );
         })}
       </ol>
+      {continuationCursor && (
+        <div className="b89Investigation__pagination">
+          <InvestigationPagination
+            loading={loadingMore}
+            error={Boolean(pageError)}
+            remaining={data.total - allEvents.length}
+            onLoadMore={loadMore}
+            onReset={resetPages}
+          />
+        </div>
+      )}
     </DataZone>
   );
 }
@@ -631,7 +754,13 @@ function SourceEvent({
             {event.rawTruncated && (
               <EuiCallOut size="s" color="warning" title="Documento recortado (más de 64 KB)." />
             )}
-            <EuiCodeBlock language="json" fontSize="s" paddingSize="s" isCopyable overflowHeight={480}>
+            <EuiCodeBlock
+              language="json"
+              fontSize="s"
+              paddingSize="s"
+              isCopyable
+              overflowHeight={480}
+            >
               {JSON.stringify(event.raw, null, 2)}
             </EuiCodeBlock>
           </EuiAccordion>

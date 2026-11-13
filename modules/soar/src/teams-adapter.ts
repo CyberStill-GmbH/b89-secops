@@ -19,6 +19,8 @@ import type { TeamsMessage } from './teams-payload.js';
 
 export interface DeliveryOutcome {
   readonly delivered: boolean;
+  /** Time the HTTP response headers were received from the workflow. */
+  readonly responseAt?: string;
   readonly failure?: DeliveryFailure;
   readonly httpStatus?: number;
   /**
@@ -90,17 +92,20 @@ export class TeamsWorkflowTransport implements NotificationTransport {
         body: JSON.stringify(webhookPayload),
         signal: controller.signal,
       });
+      const responseAt = new Date().toISOString();
       const providerMessageId = providerMessageIdOf(response.headers);
       if (response.ok) {
         return {
           delivered: true,
           httpStatus: response.status,
+          responseAt,
           ...(providerMessageId ? { providerMessageId } : {}),
         };
       }
       return {
         delivered: false,
         httpStatus: response.status,
+        responseAt,
         ...(providerMessageId ? { providerMessageId } : {}),
         failure: {
           class: classifyHttpStatus(response.status),

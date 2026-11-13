@@ -44,19 +44,45 @@ API y del migrador si `apps/api` tiene trabajo que aún no compila.
 ## 2. Despliegue completo (nodo nuevo o reconstrucción)
 
 ```bash
-# 1. Infraestructura (estación del operador, credenciales vigentes: sección 4)
-cd infra/aws-poweruser
-terraform init -backend-config=backend.hcl
-terraform plan  -var-file=environments/dev.tfvars -out=dev.tfplan   # revisar el plan
-terraform apply dev.tfplan
+# 1. Infraestructura: usar el procedimiento manual de Terraform PowerUser de abajo.
+#    No ejecutar un apply local ni escoger Apply antes de revisar el artefacto del plan.
 
 # 2. Plugins del dashboard (los exige deploy-host.sh)
 bash infra/local/wazuh-dashboard/build-plugins.sh      # deja los zip en plugins-dist/
 
-# 3. Runtime en el nodo
-SSH_KEY=<clave privada> HOST=$(terraform -chdir=infra/aws-poweruser output -raw public_ip) \
-  SOC_HOSTNAME=dev.security.b89.io bash infra/aws-poweruser/scripts/ship.sh
+# 3. Runtime en el mismo nodo (requiere credenciales AWS temporales con permisos EC2 Instance Connect)
+terraform -chdir=infra/aws-poweruser init -backend-config=backend.hcl
+EC2_INSTANCE_ID="$(terraform -chdir=infra/aws-poweruser output -raw instance_id)" \
+AWS_REGION=us-east-1 SOC_HOSTNAME=dev.security.b89.io \
+  bash infra/aws-poweruser/scripts/ship.sh
 ```
+
+### Terraform PowerUser: revisar un plan exacto antes de Apply
+
+El workflow manual [Terraform AWS PowerUser](../.github/workflows/terraform-aws-poweruser.yml)
+opera únicamente desde `main`, en `infra/aws-poweruser`, con el backend de dev y el rol OIDC
+configurado por el administrador. No tiene disparador automático. El procedimiento conserva el
+plan binario que se revisó; Apply no vuelve a calcular otro plan:
+
+1. En GitHub Actions, iniciar **Terraform AWS PowerUser** desde `main` con `action=plan`.
+2. Descargar el artefacto `poweruser-plan-<run ID>` (retención de un día) y revisar cada cambio en
+   `plan.txt`, incluidos reemplazos y destrucciones. Copiar el SHA-256 del `poweruser.tfplan` que
+   aparece en el resumen para la siguiente acción. El artefacto también contiene un manifiesto con
+   run ID, commit, raíz/backend, versión y hashes. Tratarlo como sensible y compartirlo solo con
+   operadores autorizados.
+3. Si el plan es aceptable y `main` no avanzó, iniciar un segundo despacho manual con
+   `action=apply`, el mismo `plan_run_id` y `plan_sha256` copiados del run revisado. Apply comprueba
+   que el run fuente fue exitoso, que pertenece a este workflow y a `main`, que el commit coincide,
+   y que el hash y manifiesto del artefacto son exactos. Si el artefacto venció o `main` avanzó,
+   volver a generar y revisar un plan.
+4. Terraform aplica solo `poweruser.tfplan`, con lock remoto y timeout de cinco minutos. El backend
+   usa el lockfile S3 (`use_lockfile = true`); el propio plan guardado falla si el estado remoto
+   cambió después de planificar. Ante cualquier fallo, no regenerar automáticamente ni aprobar un
+   plan distinto: ejecutar otro despacho `plan` y revisar el nuevo artefacto.
+
+El workflow conserva la restricción de cuenta `061098277310`, rama `main`, OIDC y concurrencia sin
+cancelación. El operador debe verificar por el canal autorizado que el rol OIDC y la variable
+`B89_AWS_POWERUSER_TERRAFORM_ROLE_ARN` están configurados; este workflow no crea IAM.
 
 `deploy-host.sh` es idempotente y hace, en orden: secretos (una sola vez), CA interna de
 PostgreSQL, `wazuh-docker` v4.14.8 y sus certificados, configuración del dashboard y del API,

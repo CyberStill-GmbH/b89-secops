@@ -34,7 +34,7 @@ import {
   type StoredMessage,
 } from '../conversations.js';
 import type { Citation } from '../ports.js';
-import type { AssistantStep, ReasoningEntry } from '../run.js';
+import type { AssistantStep } from '../run.js';
 
 export class ConversationIntegrityError extends Error {
   public constructor() {
@@ -48,7 +48,6 @@ interface MessageJson {
   readonly role: 'user' | 'assistant';
   readonly text: string;
   readonly createdAt: string;
-  readonly reasoning?: readonly ReasoningEntry[];
   readonly steps?: readonly AssistantStep[];
   readonly citations?: readonly Citation[];
   readonly tone?: 'error' | 'notice';
@@ -60,7 +59,6 @@ function toJson(message: StoredMessage): MessageJson {
     role: message.role,
     text: message.text,
     createdAt: message.createdAt.toISOString(),
-    ...(message.reasoning ? { reasoning: message.reasoning } : {}),
     ...(message.steps ? { steps: message.steps } : {}),
     ...(message.citations ? { citations: message.citations } : {}),
     ...(message.tone ? { tone: message.tone } : {}),
@@ -70,24 +68,6 @@ function toJson(message: StoredMessage): MessageJson {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
-
-function reasoningOf(value: unknown): ReasoningEntry[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  return value.flatMap((entry): ReasoningEntry[] => {
-    if (!isRecord(entry)) return [];
-    if (entry['kind'] === 'thought' && typeof entry['text'] === 'string') {
-      return [{ kind: 'thought', text: entry['text'] }];
-    }
-    if (
-      entry['kind'] === 'tool' &&
-      typeof entry['label'] === 'string' &&
-      typeof entry['ok'] === 'boolean'
-    ) {
-      return [{ kind: 'tool', label: entry['label'], ok: entry['ok'] }];
-    }
-    return [];
-  });
-}
 
 function stepsOf(value: unknown): AssistantStep[] | undefined {
   if (!Array.isArray(value)) return undefined;
@@ -133,7 +113,6 @@ function fromJson(value: unknown): StoredMessage {
   }
   const createdAt = new Date(value['createdAt']);
   if (Number.isNaN(createdAt.getTime())) throw new ConversationIntegrityError();
-  const reasoning = reasoningOf(value['reasoning']);
   const steps = stepsOf(value['steps']);
   const citations = citationsOf(value['citations']);
   const tone = value['tone'] === 'error' || value['tone'] === 'notice' ? value['tone'] : undefined;
@@ -144,7 +123,6 @@ function fromJson(value: unknown): StoredMessage {
     role: value['role'],
     text: value['text'],
     createdAt,
-    ...(reasoning ? { reasoning } : {}),
     ...(steps ? { steps } : {}),
     ...(citations ? { citations } : {}),
     ...(tone ? { tone } : {}),

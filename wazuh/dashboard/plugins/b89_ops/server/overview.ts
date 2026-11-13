@@ -364,7 +364,9 @@ export function parseAgents(body: unknown): AgentsSummary {
 /* ----------------------------------------------------------------- Ejecución */
 
 export interface SearchClient {
-  search(params: { index: string; body: Json }): Promise<{ body: unknown }>;
+  search(params: { index?: string; body: Json }): Promise<{ body: unknown }>;
+  createPit?(params: { index: string; keep_alive: string }): Promise<{ body: unknown }>;
+  deletePit?(params: { body: { pit_id: string[] } }): Promise<{ body: unknown }>;
 }
 
 export function readabilityOf(error: unknown): Readability {

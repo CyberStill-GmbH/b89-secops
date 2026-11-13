@@ -2,6 +2,7 @@
  * Copyright B89. SPDX-License-Identifier: Apache-2.0
  */
 
+import { B89ApiError } from '../api/client';
 import type { B89ApiClient } from '../api/client';
 
 export interface BunnyConfig {
@@ -54,17 +55,11 @@ export interface BunnyCitation {
   readonly label: string;
 }
 
-/** Línea de tiempo del razonamiento: lo que pensó Bunny y lo que consultó, en orden. */
-export type BunnyReasoning =
-  | { readonly kind: 'thought'; readonly text: string }
-  | { readonly kind: 'tool'; readonly label: string; readonly ok: boolean };
-
 export interface BunnyReply {
   readonly conversationId?: string;
   readonly title?: string;
   /** `false` si la respuesta no pudo guardarse en el historial. */
   readonly saved?: boolean;
-  readonly reasoning?: readonly BunnyReasoning[];
   readonly reply: string;
   readonly outcome: 'answered' | 'budget' | 'refused' | 'truncated' | 'unverified';
   readonly steps: readonly BunnyStep[];
@@ -77,6 +72,11 @@ export interface BunnyTurn {
   readonly role: 'user' | 'assistant';
   readonly content: string;
 }
+
+export type BunnyProgressEvent =
+  | { readonly type: 'model_started'; readonly round: number }
+  | { readonly type: 'tool_started'; readonly label: string }
+  | { readonly type: 'tool_finished'; readonly label: string; readonly ok: boolean };
 
 /** Cuántos turnos previos viajan con cada pregunta (la API vuelve a recortar). */
 export const HISTORY_TURNS = 12;
@@ -108,6 +108,85 @@ export function askBunny(
   });
 }
 
+/** Turnos nuevos por SSE: solo progreso operativo real y la respuesta final ya validada. */
+export async function askBunnyStream(
+  api: B89ApiClient,
+  message: string,
+  history: readonly BunnyTurn[],
+  page: string,
+  onProgress: (event: BunnyProgressEvent) => void,
+  conversationId?: string,
+  signal?: AbortSignal,
+): Promise<BunnyReply> {
+  const response = await api.postStream(
+    '/assistant/chat/stream',
+    {
+      message,
+      history: history.slice(-HISTORY_TURNS),
+      page,
+      ...(conversationId ? { conversationId } : {}),
+    },
+    signal,
+  );
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let completed: BunnyReply | null = null;
+  let streamError: B89ApiError | null = null;
+  const consumeFrame = (frame: string) => {
+    let event = '';
+    let data = '';
+    for (const line of frame.split(/\r?\n/u)) {
+      if (line.startsWith('event:')) event = line.slice(6).trim();
+      else if (line.startsWith('data:')) data += line.slice(5).trim();
+    }
+    if (!event || !data) return;
+    let value: unknown;
+    try {
+      value = JSON.parse(data);
+    } catch {
+      streamError = new B89ApiError('DEPENDENCY_DEGRADED', response.status, null);
+      return;
+    }
+    if (event === 'progress') onProgress(value as BunnyProgressEvent);
+    else if (event === 'complete') completed = value as BunnyReply;
+    else if (event === 'error') {
+      const error = value as { code?: unknown; correlationId?: unknown; fields?: unknown };
+      const code = typeof error.code === 'string' ? error.code : 'DEPENDENCY_DEGRADED';
+      streamError = new B89ApiError(
+        code as ConstructorParameters<typeof B89ApiError>[0],
+        response.status,
+        typeof error.correlationId === 'string' ? error.correlationId : null,
+        Array.isArray(error.fields)
+          ? error.fields.filter((item): item is string => typeof item === 'string')
+          : [],
+      );
+    }
+  };
+  try {
+    for (;;) {
+      const part = await reader.read();
+      if (part.done) break;
+      buffer += decoder.decode(part.value, { stream: true });
+      let boundary = buffer.search(/\r?\n\r?\n/u);
+      while (boundary >= 0) {
+        const frame = buffer.slice(0, boundary);
+        const separator = buffer.slice(boundary).match(/^\r?\n\r?\n/u)?.[0].length ?? 2;
+        buffer = buffer.slice(boundary + separator);
+        consumeFrame(frame);
+        boundary = buffer.search(/\r?\n\r?\n/u);
+      }
+    }
+    buffer += decoder.decode();
+    if (buffer.trim()) consumeFrame(buffer);
+  } finally {
+    reader.releaseLock();
+  }
+  if (streamError) throw streamError;
+  if (!completed) throw new B89ApiError('DEPENDENCY_DEGRADED', response.status, null);
+  return completed;
+}
+
 export interface ConversationSummary {
   readonly id: string;
   readonly title: string;
@@ -124,7 +203,6 @@ export interface StoredMessage {
   readonly id: string | number;
   readonly role: 'user' | 'assistant';
   readonly text: string;
-  readonly reasoning?: readonly BunnyReasoning[];
   readonly steps?: readonly BunnyStep[];
   readonly citations?: readonly BunnyCitation[];
   readonly tone?: 'error' | 'notice';
@@ -232,7 +310,8 @@ export function suggestionsFor(page: string): readonly Suggestion[] {
       { title: 'Tareas pendientes', prompt: '¿Qué tareas pendientes hay en mis incidentes?' },
       {
         title: 'Borrador ejecutivo',
-        prompt: 'Prepara un borrador ejecutivo del incidente abierto, con alcance confirmado, incertidumbres, cronología y fuentes citadas.',
+        prompt:
+          'Prepara un borrador ejecutivo del incidente abierto, con alcance confirmado, incertidumbres, cronología y fuentes citadas.',
       },
     ];
   }
@@ -240,13 +319,18 @@ export function suggestionsFor(page: string): readonly Suggestion[] {
     return [
       {
         title: 'Priorizar cola',
-        prompt: 'Revisa las alertas abiertas recientes y destaca primero las que requieren atención, explicando evidencia y confianza. No cambies su prioridad.',
+        prompt:
+          'Revisa las alertas abiertas recientes y destaca primero las que requieren atención, explicando evidencia y confianza. No cambies su prioridad.',
       },
       {
         title: 'Correlacionar actividad',
-        prompt: 'Investiga la alerta seleccionada y correlaciona actividad de sus entidades en la ventana relevante; separa hechos, hipótesis y brechas de telemetría.',
+        prompt:
+          'Investiga la alerta seleccionada y correlaciona actividad de sus entidades en la ventana relevante; separa hechos, hipótesis y brechas de telemetría.',
       },
-      { title: 'Fuentes degradadas', prompt: '¿Hay fuentes degradadas que limiten esta investigación?' },
+      {
+        title: 'Fuentes degradadas',
+        prompt: '¿Hay fuentes degradadas que limiten esta investigación?',
+      },
     ];
   }
   if (page.includes('b89-sources')) {
@@ -270,7 +354,8 @@ export function suggestionsFor(page: string): readonly Suggestion[] {
   return [
     {
       title: 'Triage de la P1 más reciente',
-      prompt: 'Haz el triage de la alerta P1 abierta más reciente: evidencia, severidad, MITRE y acciones.',
+      prompt:
+        'Haz el triage de la alerta P1 abierta más reciente: evidencia, severidad, MITRE y acciones.',
     },
     {
       title: 'Resumen semanal del SOC',
@@ -279,12 +364,17 @@ export function suggestionsFor(page: string): readonly Suggestion[] {
     },
     {
       title: 'Alertas por proveedor',
-      prompt: '¿Qué alertas abiertas hay de Snyk, Bitdefender, Cloudflare y AWS, y cuál atiendo primero?',
+      prompt:
+        '¿Qué alertas abiertas hay de Snyk, Bitdefender, Cloudflare y AWS, y cuál atiendo primero?',
     },
-    { title: 'Salud de fuentes', prompt: '¿Qué fuentes de datos están degradadas o sin eventos recientes?' },
+    {
+      title: 'Salud de fuentes',
+      prompt: '¿Qué fuentes de datos están degradadas o sin eventos recientes?',
+    },
     {
       title: 'Runbook aplicable',
-      prompt: 'Bitdefender detectó malware en un equipo: ¿qué runbook sigo y qué reviso en los primeros 10 minutos?',
+      prompt:
+        'Bitdefender detectó malware en un equipo: ¿qué runbook sigo y qué reviso en los primeros 10 minutos?',
     },
   ];
 }

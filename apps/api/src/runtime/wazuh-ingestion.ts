@@ -4,11 +4,10 @@
  * Es el único lugar del API que nombra a Wazuh para la ingesta (regla C-23): une el proveedor
  * de C-28, la normalización de C-12 y la pasada genérica de `ingestion-poller.ts`.
  *
- * Identidad estable de cada documento: la normalización deriva `recordId` de la huella del
- * crudo y de `receivedAt`. En la lectura directa se usa como `receivedAt` la hora del propio
- * documento (`timestamp`), que no cambia entre lecturas; así releer el solape produce el mismo
- * `recordId` y la promoción reconoce el duplicado. La huella es SHA-256 del JSON canónico
- * (claves ordenadas), independiente del orden en que el Indexer serialice los campos.
+ * Identidad estable de cada documento: la normalización deriva `recordId` del `_id` de origen,
+ * la huella SHA-256 del JSON canónico (claves ordenadas) y `occurredAt`. `receivedAt` y
+ * `collectedAt` pueden diferir entre push, pull y replay sin cambiar la identidad; la promoción
+ * reconoce el duplicado por el mismo documento del Indexer, independiente del orden serializado.
  *
  * `raw.ref` apunta al documento en el Indexer (`raw:wazuh/<dataset>/<id>`): en el demo no hay
  * custodia propia de crudos (C-04/MinIO), y Wazuh sigue siendo el dueño del dato.
@@ -20,6 +19,7 @@ import {
   createWazuhSecurityEventProvider,
   type ProviderRecord,
   type SecurityEventProvider,
+  type WazuhAlertHintLookupProvider,
 } from '@b89/connectors';
 import { normalizeWazuhAlert } from '@b89/telemetry/wazuh';
 
@@ -77,6 +77,7 @@ export function wazuhRecordToEvent(
   record: ProviderRecord,
   tenantId: string,
   instanceId: string,
+  receivedAt: Date = new Date(record.collectedAt),
 ): RecordConversion {
   const occurredAt = record.occurredAt ? new Date(record.occurredAt) : undefined;
   if (!occurredAt || Number.isNaN(occurredAt.getTime())) return { status: 'quarantined' };
@@ -101,7 +102,7 @@ export function wazuhRecordToEvent(
       instanceId,
       connector: 'wazuh',
       connectorVersion: CONNECTOR_VERSION,
-      receivedAt: occurredAt,
+      receivedAt,
     },
   );
   return outcome.status === 'normalized'
@@ -122,7 +123,7 @@ export function createWazuhEventProvider(options: {
    * de HTTP hacia `*.b89.internal`, que solo vale para tokens de workload de vida corta.
    */
   readonly tlsOrLoopbackOnly?: boolean;
-}): SecurityEventProvider {
+}): SecurityEventProvider & WazuhAlertHintLookupProvider {
   return createWazuhSecurityEventProvider({
     sourceId: options.sourceId,
     gateway: {
@@ -152,12 +153,14 @@ export function createWazuhEventsReader(options: {
   readonly provider: SecurityEventProvider;
   readonly tenantId: string;
   readonly sourceId: string;
+  readonly now?: () => Date;
 }): EventsReader {
   return createEventsReader({
     provider: options.provider,
     sourceId: options.sourceId,
     dataset: DATASET,
-    toEvent: (record) => wazuhRecordToEvent(record, options.tenantId, options.sourceId),
+    toEvent: (record) =>
+      wazuhRecordToEvent(record, options.tenantId, options.sourceId, options.now?.() ?? new Date()),
   });
 }
 
@@ -181,7 +184,8 @@ export function createWazuhIngestion(options: WazuhIngestionOptions): Notificati
     key: { tenantId: options.tenantId, sourceId: options.sourceId, dataset: DATASET },
     readPage: (query) => provider.readPage(query),
     state: options.runtime.soc.ingestion,
-    toEvent: (record) => wazuhRecordToEvent(record, options.tenantId, options.sourceId),
+    toEvent: (record) =>
+      wazuhRecordToEvent(record, options.tenantId, options.sourceId, options.runtime.now()),
     promote: (event) => options.runtime.promoteEvent(event),
     window: { ...WINDOW, initialLookbackMs: options.initialLookbackMs },
     pageSize: PAGE_SIZE,

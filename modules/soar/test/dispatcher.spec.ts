@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { InMemoryAuditStore, verifyChain } from '@b89/audit';
 import type { OutboxMessageDraft } from '@b89/soc';
@@ -9,8 +9,9 @@ import {
   InMemoryAttemptStore,
   InMemoryOutbox,
 } from '../src/memory-stores.js';
-import { acknowledge } from '../src/notification.js';
+import { acknowledge, createAttempt } from '../src/notification.js';
 import { RETRY_POLICY, nextDelayMs } from '../src/delivery-policy.js';
+import { DEFAULT_NOTIFICATION_POLICY } from '../src/notification-policy.js';
 import type { DeliveryOutcome, NotificationTransport } from '../src/teams-adapter.js';
 import type { TeamsMessage } from '../src/teams-payload.js';
 
@@ -77,6 +78,41 @@ beforeEach(() => {
 });
 
 describe('C-20 · despacho de críticos', () => {
+  it('despacha concurrentemente una tanda acotada y conserva el resultado de cada aviso', async () => {
+    let active = 0;
+    let maximumActive = 0;
+    const transport: NotificationTransport = {
+      destinationRef: 'teams:canal-soc',
+      async send() {
+        active += 1;
+        maximumActive = Math.max(maximumActive, active);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        active -= 1;
+        return { delivered: true, httpStatus: 202 };
+      },
+    };
+    const messages = [
+      criticalMessage({
+        messageId: 'urgent-1',
+        aggregateId: 'incident-1',
+        idempotencyKey: 'key-urgent-1',
+      }),
+      criticalMessage({
+        messageId: 'urgent-2',
+        aggregateId: 'incident-2',
+        idempotencyKey: 'key-urgent-2',
+      }),
+    ];
+    messages.forEach((message) => outbox.enqueue(message));
+
+    const results = await drainOutbox(dependencies(transport), 2, 2);
+
+    expect(maximumActive).toBe(2);
+    expect(results.map((result) => result.code)).toEqual(['delivered', 'delivered']);
+    expect(outbox.rows.get('urgent-1')?.status).toBe('published');
+    expect(outbox.rows.get('urgent-2')?.status).toBe('published');
+  });
+
   it('entrega el crítico, marca el outbox y audita el envío', async () => {
     const transport = new ScriptedTransport([{ delivered: true, httpStatus: 202 }]);
     const message = criticalMessage();
@@ -86,6 +122,11 @@ describe('C-20 · despacho de críticos', () => {
 
     expect(result.code).toBe('delivered');
     expect(result.attempt?.status).toBe('sent');
+    expect(result.attempt?.delivery?.[0]).toMatchObject({
+      channel: 'teams',
+      outcome: 'accepted',
+      responseAt: AT.toISOString(),
+    });
     expect(outbox.rows.get('msg-1')?.status).toBe('published');
     expect((await audit.range('tenant-1', 1n, 10)).map((event) => event.action)).toEqual([
       'soar.notification.sent',
@@ -301,5 +342,236 @@ describe('C-20 · drenaje y acuse', () => {
     const indeterminate = (await dispatchMessage(dependencies(transport), message)).attempt!;
 
     expect(acknowledge(indeterminate, 'analyst-1', AT).ok).toBe(true);
+  });
+});
+
+describe('C-20 · plazas P2 y destinatarios push', () => {
+  it('reserva plazas P2 concurrentemente y no cuenta un P1 enviado', async () => {
+    const p1 = createAttempt({
+      id: 'p1',
+      tenantId: 'tenant-1',
+      messageId: 'p1',
+      idempotencyKey: 'p1-key',
+      at: AT,
+    });
+    await attempts.save({
+      ...p1,
+      status: 'sent',
+      sentAt: AT,
+      context: { priority: 'P1' },
+    });
+
+    const reservations = await Promise.all(
+      Array.from({ length: 32 }, (_, index) =>
+        attempts.reserveP2ImmediateSlot('tenant-1', `p2-${index}`, AT, 10),
+      ),
+    );
+
+    expect(reservations.filter(Boolean)).toHaveLength(10);
+    expect(await attempts.reserveP2ImmediateSlot('tenant-1', 'p2-0', AT, 10)).toBe(true);
+    expect(await attempts.reserveP2ImmediateSlot('tenant-1', 'p2-overflow', AT, 10)).toBe(false);
+  });
+
+  it('fencea el quiet window de grupo y trata entrega, fallo y ambigüedad', async () => {
+    const reserve = (key: string, attempt: string, fence: string, at = AT) =>
+      attempts.reserveGroupDispatchSlot(
+        'tenant-1',
+        'group-a',
+        key,
+        attempt,
+        fence,
+        at,
+        30_000,
+        120_000,
+      );
+    const settle = (
+      key: string,
+      fence: string,
+      result: 'delivered' | 'failed' | 'uncertain',
+      at = AT,
+    ) =>
+      attempts.settleGroupDispatchSlot(
+        'tenant-1',
+        'group-a',
+        key,
+        fence,
+        at,
+        30_000,
+        120_000,
+        result,
+      );
+
+    const first = await reserve('message-1', 'attempt-1', 'fence-1');
+    expect(first).toEqual({ granted: true, coveredBy: null });
+    await expect(reserve('message-2', 'attempt-2', 'fence-2')).resolves.toEqual({
+      granted: false,
+      coveredBy: 'attempt-1',
+    });
+
+    await settle('message-1', 'fence-1', 'failed');
+    const afterKnownFailure = await reserve('message-2', 'attempt-2', 'fence-2');
+    expect(afterKnownFailure.granted).toBe(true);
+    await settle('message-2', 'fence-2', 'uncertain');
+    await expect(reserve('message-3', 'attempt-3', 'fence-3')).resolves.toMatchObject({
+      granted: false,
+      coveredBy: 'attempt-2',
+    });
+
+    // Reconciliation retry of the same idempotent message takes a new fence; the old fence
+    // cannot release the reservation after that takeover.
+    expect((await reserve('message-2', 'attempt-2', 'fence-2b')).granted).toBe(true);
+    await settle('message-2', 'fence-2', 'failed');
+    await expect(reserve('message-3', 'attempt-3', 'fence-3')).resolves.toMatchObject({
+      granted: false,
+      coveredBy: 'attempt-2',
+    });
+    await settle('message-2', 'fence-2b', 'delivered');
+    await expect(reserve('message-3', 'attempt-3', 'fence-3')).resolves.toMatchObject({
+      granted: false,
+      coveredBy: 'attempt-2',
+    });
+    expect(
+      (await reserve('message-3', 'attempt-3', 'fence-3', new Date(AT.getTime() + 30_001))).granted,
+    ).toBe(true);
+  });
+
+  it('no aplica el cupo P2 a un aviso P1; limita los avisos P2 siguientes', async () => {
+    const transport = new ScriptedTransport([{ delivered: true, httpStatus: 202 }]);
+    const policy = { ...DEFAULT_NOTIFICATION_POLICY, maxImmediatePerHour: 1 };
+    const deps = { ...dependencies(transport), policy };
+    const p1: OutboxMessageDraft = {
+      ...criticalMessage(),
+      aggregateType: 'alert',
+      messageType: 'soc.alert.created',
+      payload: { title: 'P1 urgente', priority: 'P1', ruleId: 'r-p1' },
+    };
+    const p2 = (id: string): OutboxMessageDraft => ({
+      ...criticalMessage(),
+      messageId: id,
+      aggregateType: 'alert',
+      aggregateId: id,
+      messageType: 'soc.alert.created',
+      idempotencyKey: `${id}-key`,
+      payload: { title: 'P2 alerta', priority: 'P2', ruleId: id },
+    });
+
+    expect((await dispatchMessage(deps, p1)).code).toBe('delivered');
+    expect((await dispatchMessage(deps, p2('p2-first'))).code).toBe('delivered');
+    expect((await dispatchMessage(deps, p2('p2-second'))).code).toBe('suppressed');
+    expect(transport.calls).toHaveLength(2);
+  });
+
+  it('envía push a todos los destinatarios aunque Teams mencione como máximo 25', async () => {
+    const recipients = Array.from({ length: 30 }, (_, index) => ({
+      upn: `analyst-${index}@example.test`,
+      displayName: `Analyst ${index}`,
+      subjectKey: `oid-${index}`,
+    }));
+    const transport = new ScriptedTransport([{ delivered: true, httpStatus: 202 }]);
+    const devices = { notify: vi.fn(async () => recipients.length) };
+    const deps: DispatchDependencies = {
+      ...dependencies(transport),
+      recipients: { recipientsFor: async () => recipients },
+      devices,
+    };
+    const message = criticalMessage();
+    outbox.enqueue(message);
+
+    await dispatchMessage(deps, message);
+
+    expect(devices.notify).toHaveBeenCalledWith(
+      'tenant-1',
+      recipients.map((recipient) => recipient.subjectKey),
+    );
+    const content = transport.calls[0]!.message.attachments[0].content;
+    const msteams = content['msteams'] as { entities: readonly unknown[] };
+    expect(msteams.entities).toHaveLength(25);
+  });
+
+  it('libera el cupo P2 al fallar el canal y permite otra alerta', async () => {
+    const policy = { ...DEFAULT_NOTIFICATION_POLICY, maxImmediatePerHour: 1 };
+    const transport = new ScriptedTransport([
+      {
+        delivered: false,
+        httpStatus: 503,
+        failure: { class: 'transient', code: 'UNAVAILABLE', detail: 'No disponible.' },
+      },
+      { delivered: true, httpStatus: 202 },
+    ]);
+    const deps = { ...dependencies(transport), policy };
+    const p2 = (id: string): OutboxMessageDraft => ({
+      ...criticalMessage(),
+      messageId: id,
+      aggregateType: 'alert',
+      aggregateId: id,
+      messageType: 'soc.alert.created',
+      idempotencyKey: `${id}-key`,
+      payload: { title: 'Alerta P2', priority: 'P2', ruleId: id },
+    });
+    const failed = p2('p2-failed');
+    const next = p2('p2-next');
+    outbox.enqueue(failed);
+    outbox.enqueue(next);
+
+    expect((await dispatchMessage(deps, failed)).code).toBe('retry_scheduled');
+    expect((await dispatchMessage(deps, next)).code).toBe('delivered');
+  });
+
+  it('renueva idempotentemente el cupo de una alerta P2 al reintentar', async () => {
+    const policy = { ...DEFAULT_NOTIFICATION_POLICY, maxImmediatePerHour: 1 };
+    const transport = new ScriptedTransport([
+      {
+        delivered: false,
+        httpStatus: 503,
+        failure: { class: 'transient', code: 'UNAVAILABLE', detail: 'No disponible.' },
+      },
+      { delivered: true, httpStatus: 202 },
+    ]);
+    const deps = { ...dependencies(transport), policy };
+    const message: OutboxMessageDraft = {
+      ...criticalMessage(),
+      aggregateType: 'alert',
+      messageType: 'soc.alert.created',
+      payload: { title: 'Alerta P2', priority: 'P2', ruleId: 'r-p2-retry' },
+    };
+    outbox.enqueue(message);
+
+    expect((await dispatchMessage(deps, message)).code).toBe('retry_scheduled');
+    expect((await dispatchMessage(deps, message)).code).toBe('delivered');
+    expect(transport.calls).toHaveLength(2);
+    expect(await attempts.reserveP2ImmediateSlot('tenant-1', 'p2-after-confirmed', AT, 1)).toBe(
+      false,
+    );
+  });
+
+  it('acota las plazas ambiguas a dos minutos y mantiene las confirmadas una hora', async () => {
+    expect(await attempts.reserveP2ImmediateSlot('tenant-1', 'ambiguous', AT, 1)).toBe(true);
+    await attempts.settleP2ImmediateSlot('tenant-1', 'ambiguous', AT, 'uncertain');
+    expect(
+      await attempts.reserveP2ImmediateSlot(
+        'tenant-1',
+        'after-lease',
+        new Date(AT.getTime() + 120_001),
+        1,
+      ),
+    ).toBe(true);
+
+    await attempts.settleP2ImmediateSlot('tenant-1', 'after-lease', AT, 'delivered');
+    expect(
+      await attempts.reserveP2ImmediateSlot(
+        'tenant-1',
+        'within-hour',
+        new Date(AT.getTime() + 120_002),
+        1,
+      ),
+    ).toBe(false);
+    expect(
+      await attempts.reserveP2ImmediateSlot(
+        'tenant-1',
+        'after-hour',
+        new Date(AT.getTime() + 3_600_001),
+        1,
+      ),
+    ).toBe(true);
   });
 });

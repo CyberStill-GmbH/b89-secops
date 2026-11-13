@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: b89-api-no-query-logging
+  group: b89-secops-demo-wazuh-host-mutations
   cancel-in-progress: false
 
 jobs:

@@ -295,13 +295,15 @@ export class AdminRoleGrantsController {
             ? {
                 status: 'pending' as const,
                 lastErrorClass: directory.lastErrorCode,
-                permissionMissing: directory.lastErrorCode === 'DIRECTORY_FORBIDDEN',
+                permissionMissing: directory.lastErrorCode === 'DIRECTORY_PERMISSION_MISSING',
+                diagnostic: directory.diagnostic,
                 nextAttemptAt: directory.nextAttemptAt?.toISOString() ?? null,
               }
             : {
                 status: 'disabled' as const,
                 lastErrorClass: null,
                 permissionMissing: false,
+                diagnostic: null,
                 nextAttemptAt: null,
               },
       };

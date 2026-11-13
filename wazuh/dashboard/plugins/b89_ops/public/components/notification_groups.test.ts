@@ -5,6 +5,7 @@
 import type { NotificationAttempt } from '../../common';
 import {
   deliveryLines,
+  describeGroup,
   groupNotifications,
   latestByChannel,
   maskEntity,
@@ -73,6 +74,92 @@ describe('bandeja de notificaciones', () => {
     expect(lines[0]).toMatchObject({
       kind: 'delivered',
       link: 'https://teams.microsoft.com/l/message/x',
+    });
+  });
+
+  it('lee el DTO actual de notificaciones y distingue aceptación del proveedor', () => {
+    const apiItem: NotificationAttempt = {
+      ...base,
+      title: 'B89 Microsoft 365: envío anómalo',
+      summary: 'Se observó una operación de envío atípica.',
+      whyItMatters: 'La cuenta requiere revisión del SOC.',
+      nextStep: 'Revisar la actividad de la cuenta en B89.',
+      source: 'Microsoft 365',
+      sourceId: 'office365',
+      ruleId: '101701',
+      entity: { kind: 'user', display: 'us***@b89.io' },
+      alertId: 'alert-71',
+      delivery: [
+        {
+          attempt: 1,
+          channel: 'teams',
+          outcome: 'accepted',
+          at: '2026-11-10T10:00:00Z',
+          responseAt: '2026-11-10T10:00:01Z',
+          httpStatus: 202,
+          providerLink: 'https://teams.microsoft.com/l/message/test',
+          reason: null,
+        },
+      ],
+    };
+    const group = groupNotifications([apiItem])[0]!;
+    const info = describeGroup(group, null);
+    const lines = deliveryLines(apiItem);
+
+    expect(info).toMatchObject({
+      title: 'B89 Microsoft 365: envío anómalo',
+      summary: 'Se observó una operación de envío atípica.',
+      whyItMatters: 'La cuenta requiere revisión del SOC.',
+      nextStep: 'Revisar la actividad de la cuenta en B89.',
+      ruleId: '101701',
+      entity: 'us***@b89.io',
+      vendor: 'office365',
+    });
+    expect(lines[0]).toMatchObject({
+      kind: 'sent',
+      channel: 'teams',
+      at: '2026-11-10T10:00:01Z',
+      link: 'https://teams.microsoft.com/l/message/test',
+    });
+  });
+
+  it('normaliza la evidencia real del API sin inventar un número de intento', () => {
+    const apiItem: NotificationAttempt = {
+      ...base,
+      delivery: [
+        {
+          channel: 'teams',
+          outcome: 'accepted',
+          at: '2026-11-12T10:00:00Z',
+          responseAt: '2026-11-12T10:00:01Z',
+          httpStatus: 202,
+          providerMessageId: 'workflow-run-71',
+          providerLink: null,
+          reason: null,
+        },
+      ],
+    };
+
+    expect(deliveryLines(apiItem)[0]).toMatchObject({
+      channel: 'teams',
+      attempt: null,
+      kind: 'sent',
+      at: '2026-11-12T10:00:01Z',
+    });
+  });
+
+  it('representa avisos agrupados y sustituidos sin marcarlos como enviados', () => {
+    expect(
+      deliveryLines({ ...base, status: 'suppressed', suppressionReason: 'grouped' })[0],
+    ).toMatchObject({
+      kind: 'suppressed',
+      reason: 'grouped',
+    });
+    expect(
+      deliveryLines({ ...base, status: 'superseded', coveredBy: 'attempt-newer' })[0],
+    ).toMatchObject({
+      kind: 'superseded',
+      reason: 'attempt-newer',
     });
   });
 

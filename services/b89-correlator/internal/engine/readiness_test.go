@@ -5,16 +5,18 @@ import (
 	"time"
 )
 
-func TestReadinessRequiresBackfillAndFreshSuccessfulPoll(t *testing.T) {
+func TestReadinessRequiresBackfillFreshPollAndFeedback(t *testing.T) {
 	now := time.Date(2026, time.November, 8, 12, 0, 0, 0, time.UTC)
 	runner := New(Options{PollInterval: 10 * time.Second}, nil, nil, nil, nil, nil)
 
 	if got := runner.Readiness(now); got.Ready || got.Status != "backfilling" {
 		t.Fatalf("before backfill: got %+v, want backfilling", got)
+	} else if got.FeedbackStatus != "pending" || got.FeedbackReason != "feedback_not_refreshed" || got.FeedbackReady {
+		t.Fatalf("before first feedback refresh: got %+v, want pending feedback", got)
 	}
 
 	runner.mu.Lock()
-	runner.ready, runner.backfilled, runner.lastPoll = true, true, now
+	runner.ready, runner.backfilled, runner.lastPoll, runner.lastFeedback = true, true, now, now
 	runner.mu.Unlock()
 	if got := runner.Readiness(now.Add(30 * time.Second)); !got.Ready || got.Status != "ready" {
 		t.Fatalf("at stale threshold: got %+v, want ready", got)

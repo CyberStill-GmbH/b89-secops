@@ -23,7 +23,7 @@
     registro real redactado como fixture.
 -->
 
-<group name="office365,b89_m365,">
+<group name="office365,b89_m365,b89_provider,">
 
   <!-- ===================================================== Acceso a credenciales -->
 

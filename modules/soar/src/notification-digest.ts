@@ -24,7 +24,10 @@ import {
   type DigestLine,
 } from './notification-content.js';
 import { maskText, sourceFromTitle, type NotificationPriority } from './notification-context.js';
-import { DEFAULT_NOTIFICATION_POLICY, type NotificationPolicyConfig } from './notification-policy.js';
+import {
+  DEFAULT_NOTIFICATION_POLICY,
+  type NotificationPolicyConfig,
+} from './notification-policy.js';
 import { createAttempt, type DeliveryEvidence, type NotificationAttempt } from './notification.js';
 import type { NotificationRecipient, RecipientDirectory } from './notification-routing.js';
 import type { AttemptStore, MailChannel } from './ports.js';
@@ -73,12 +76,16 @@ async function send(
     buildDigestCard(input, digest.clientRequestId),
     digest.clientRequestId,
   );
+  const responseAt = outcome.delivered
+    ? (outcome.responseAt ?? dependencies.clock.now().toISOString())
+    : undefined;
   const delivery: DeliveryEvidence[] = [
     ...(digest.delivery ?? []),
     {
       channel: 'teams',
       outcome: outcome.delivered ? 'accepted' : 'failed',
       at: at.toISOString(),
+      ...(responseAt ? { responseAt } : {}),
       httpStatus: outcome.httpStatus ?? null,
       providerMessageId: outcome.providerMessageId ?? null,
       providerLink: null,
@@ -97,28 +104,31 @@ async function send(
     if (recipients.length > 0) {
       delivery.push(
         await dependencies.mail
-          .send({ recipients, email: buildDigestEmail(input), clientRequestId: digest.clientRequestId })
-          .catch(
-            (): DeliveryEvidence => ({
-              channel: 'email',
-              outcome: 'failed',
-              at: at.toISOString(),
-              httpStatus: null,
-              providerMessageId: null,
-              providerLink: null,
-              reason: 'GRAPH_MAIL_UNAVAILABLE',
-            }),
-          ),
+          .send({
+            recipients,
+            email: buildDigestEmail(input),
+            clientRequestId: digest.clientRequestId,
+          })
+          .catch((): DeliveryEvidence => ({
+            channel: 'email',
+            outcome: 'failed',
+            at: at.toISOString(),
+            httpStatus: null,
+            providerMessageId: null,
+            providerLink: null,
+            reason: 'GRAPH_MAIL_UNAVAILABLE',
+          })),
       );
     }
   }
   const attemptCount = digest.attemptCount + 1;
   const exhausted = !outcome.delivered && attemptCount >= RETRY_POLICY.maximumAttempts;
+  const acceptedAt = responseAt ? new Date(responseAt) : null;
   const saved: NotificationAttempt = {
     ...digest,
     attemptCount,
     status: outcome.delivered ? 'sent' : exhausted ? 'failed' : 'pending',
-    sentAt: outcome.delivered ? at : digest.sentAt,
+    sentAt: outcome.delivered ? acceptedAt : digest.sentAt,
     lastFailureCode: outcome.delivered ? null : (outcome.failure?.code ?? 'UNKNOWN'),
     lastFailureClass: outcome.delivered ? null : (outcome.failure?.class ?? 'transient'),
     updatedAt: at,
@@ -180,12 +190,18 @@ export async function runSuppressedDigest(
 ): Promise<NotificationAttempt | undefined> {
   const policy = dependencies.policy ?? DEFAULT_NOTIFICATION_POLICY;
   const now = dependencies.clock.now();
-  const pending = await dependencies.attempts.listUndigested(dependencies.tenantId, UNDIGESTED_LIMIT);
+  const pending = await dependencies.attempts.listUndigested(
+    dependencies.tenantId,
+    UNDIGESTED_LIMIT,
+  );
   if (pending.length === 0) return undefined;
   const oldest = pending[0]!;
   if (now.getTime() - oldest.createdAt.getTime() < policy.digestFlushMs) return undefined;
   const idempotencyKey = `digest:suppressed:${oldest.id}`;
-  const existing = await dependencies.attempts.byIdempotencyKey(dependencies.tenantId, idempotencyKey);
+  const existing = await dependencies.attempts.byIdempotencyKey(
+    dependencies.tenantId,
+    idempotencyKey,
+  );
   if (existing && existing.status === 'pending' && existing.availableAt.getTime() > now.getTime()) {
     return undefined;
   }
@@ -215,7 +231,10 @@ export async function runSuppressedDigest(
         reason: [...reasons].map((reason) => DIGEST_REASON_LABELS[reason] ?? reason).join(', '),
       };
     })
-    .sort((left, right) => (left.priority ?? 'P9').localeCompare(right.priority ?? 'P9') || right.count - left.count);
+    .sort(
+      (left, right) =>
+        (left.priority ?? 'P9').localeCompare(right.priority ?? 'P9') || right.count - left.count,
+    );
   const total = pending.length;
   const digest = digestAttempt(
     dependencies,
@@ -269,7 +288,10 @@ export async function runLowPriorityDigest(
   // La ventana se alinea al intervalo: reintentos del mismo periodo reutilizan el intento.
   const windowStart = new Date(Math.floor(from.getTime() / 60_000) * 60_000);
   const idempotencyKey = `digest:low:${windowStart.toISOString()}`;
-  const existing = await dependencies.attempts.byIdempotencyKey(dependencies.tenantId, idempotencyKey);
+  const existing = await dependencies.attempts.byIdempotencyKey(
+    dependencies.tenantId,
+    idempotencyKey,
+  );
   if (
     existing &&
     (existing.availableAt.getTime() > now.getTime() ||
@@ -300,7 +322,9 @@ export async function runLowPriorityDigest(
         reason: latest.ruleId ? `regla ${latest.ruleId}` : DIGEST_REASON_LABELS['digest']!,
       };
     })
-    .sort((left, right) => left.priority!.localeCompare(right.priority!) || right.count - left.count);
+    .sort(
+      (left, right) => left.priority!.localeCompare(right.priority!) || right.count - left.count,
+    );
   const digest = digestAttempt(
     dependencies,
     existing,
@@ -325,7 +349,10 @@ export async function runLowPriorityDigest(
     ['b89.soc.lead'],
   );
   if (saved.status === 'pending') {
-    await dependencies.attempts.save({ ...saved, availableAt: new Date(now.getTime() + 15 * 60_000) });
+    await dependencies.attempts.save({
+      ...saved,
+      availableAt: new Date(now.getTime() + 15 * 60_000),
+    });
   }
   return saved;
 }

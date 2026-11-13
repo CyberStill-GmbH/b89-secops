@@ -30,8 +30,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: b89-siem-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.event_name == 'workflow_dispatch' && 'b89-secops-demo-wazuh-host-mutations' || format('b89-siem-pr-{0}', github.ref) }}
+  cancel-in-progress: false
 
 env:
   AWS_REGION: us-east-1

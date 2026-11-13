@@ -397,6 +397,7 @@ model SocOutboxMessage {
   lastErrorCode  String?   @map("last_error_code") @db.Text
   publishedAt    DateTime? @map("published_at") @db.Timestamptz(3)
 
+  @@index([tenantId, createdAt(sort: Desc), messageId(sort: Desc)], map: "soc_outbox_tenant_created_message_idx")
   @@map("soc_outbox_messages")
 }
 
@@ -494,7 +495,39 @@ model NotificationAttempt {
   @@unique([tenantId, idempotencyKey], map: "notification_attempts_idempotency_key")
   @@index([status, availableAt, id], map: "notification_attempts_pending_idx")
   @@index([tenantId, groupKey, sentAt], map: "notification_attempts_group_idx")
+  @@index([tenantId, messageId], map: "notification_attempts_tenant_message_idx")
   @@map("notification_attempts")
+}
+
+// Reserva idempotente del cupo P2 por tenant; las filas vencidas se limpian al reservar.
+model NotificationP2RateReservation {
+  tenantId       String   @map("tenant_id") @db.Text
+  idempotencyKey String   @map("idempotency_key") @db.Text
+  reservedAt     DateTime @map("reserved_at") @db.Timestamptz(3)
+  leaseUntil     DateTime @map("lease_until") @db.Timestamptz(3)
+  confirmedAt    DateTime? @map("confirmed_at") @db.Timestamptz(3)
+
+  @@id([tenantId, idempotencyKey], map: "notification_p2_rate_reservations_pkey")
+  @@index([tenantId, reservedAt], map: "notification_p2_rate_reservations_window_idx")
+  @@map("notification_p2_rate_reservations")
+}
+
+// Quiet-window lease for notification groups; a single row serializes active dispatch per group.
+model NotificationGroupDispatchReservation {
+  tenantId       String   @map("tenant_id") @db.Text
+  groupKey       String   @map("group_key") @db.Text
+  idempotencyKey String   @map("idempotency_key") @db.Text
+  attemptId      String   @map("attempt_id") @db.Text
+  fencingToken   String   @map("fencing_token") @db.Text
+  state          String   @db.Text
+  reservedAt     DateTime @map("reserved_at") @db.Timestamptz(3)
+  leaseUntil     DateTime @map("lease_until") @db.Timestamptz(3)
+  confirmedAt    DateTime? @map("confirmed_at") @db.Timestamptz(3)
+  quietUntil     DateTime @map("quiet_until") @db.Timestamptz(3)
+
+  @@id([tenantId, groupKey], map: "notification_group_dispatch_reservations_pkey")
+  @@index([tenantId, leaseUntil], map: "notification_group_dispatch_reservations_lease_idx")
+  @@map("notification_group_dispatch_reservations")
 }
 
 // Canales de aviso administrables (Teams, correo, push). El webhook de Teams se guarda cifrado
@@ -573,8 +606,13 @@ model SourcePollObservation {
   completedAt   DateTime  @map("completed_at") @db.Timestamptz(3)
   outcome       String    @db.Text
   recordsSeen   Int       @map("records_seen")
+  normalized    Int?
   promoted      Int
   quarantined   Int
+  duplicates    Int?
+  notPromoted   Int?      @map("not_promoted")
+  belowThreshold Int?     @map("below_threshold")
+  suppressed    Int?
   newestEventAt DateTime? @map("newest_event_at") @db.Timestamptz(3)
   errorClass    String?   @map("error_class") @db.Text
 
@@ -743,4 +781,28 @@ model AssistantConversation {
   @@index([tenantId, ownerId, updatedAt(sort: Desc), id(sort: Desc)], map: "assistant_conversations_owner_idx")
   @@index([tenantId, updatedAt], map: "assistant_conversations_retention_idx")
   @@map("assistant_conversations")
+}
+
+// Receipt-only queue for minimized Wazuh push hints. Never stores full alert bodies or full_log.
+model WazuhPushInboxHint {
+  id             String    @id @db.Uuid
+  managerName    String    @map("manager_name") @db.Text
+  alertId        String    @map("alert_id") @db.Text
+  occurredAt     String    @map("occurred_at") @db.Text
+  idempotencyKey String    @unique(map: "wazuh_push_inbox_hints_idempotency_key") @map("idempotency_key") @db.Text
+  status         String    @default("pending") @db.Text
+  attemptCount   Int       @default(0) @map("attempt_count")
+  receivedAt     DateTime  @default(now()) @map("received_at") @db.Timestamptz(3)
+  availableAt    DateTime  @default(now()) @map("available_at") @db.Timestamptz(3)
+  leaseUntil     DateTime? @map("lease_until") @db.Timestamptz(3)
+  claimId        String?   @map("claim_id") @db.Uuid
+  lastErrorCode  String?   @map("last_error_code") @db.Text
+  processedAt    DateTime? @map("processed_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@index([status, availableAt, receivedAt, id], map: "wazuh_push_inbox_hints_pending_idx")
+  @@index([status, leaseUntil, receivedAt, id], map: "wazuh_push_inbox_hints_processing_idx")
+  @@index([receivedAt(sort: Desc), id(sort: Desc)], map: "wazuh_push_inbox_hints_received_idx")
+  @@map("wazuh_push_inbox_hints")
 }

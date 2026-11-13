@@ -136,6 +136,34 @@ export interface SourceHealth {
   readonly lastAttemptAt: string | null;
   readonly lastSuccessAt: string | null;
   readonly lastEventAt: string | null;
+  readonly eventLag: {
+    readonly sampleWindow: number;
+    readonly sampleCount: number;
+    readonly clockSkewSamples: number;
+    readonly measuredAt: string | null;
+    readonly p50Ms: number | null;
+    readonly p95Ms: number | null;
+    readonly p99Ms: number | null;
+  };
+  readonly processing: {
+    readonly attemptedAt: string;
+    readonly completedAt: string;
+    readonly outcome: 'success' | 'retryable_error' | 'permanent_error';
+    readonly recordsSeen: number;
+    /** Null for historic rows predating this counter. */
+    readonly normalized: number | null;
+    readonly quarantined: number;
+    readonly promoted: number;
+    /** Null for historic rows predating these counters. */
+    readonly duplicates: number | null;
+    /** Null for historic rows predating these counters. */
+    readonly notPromoted: number | null;
+    /** Subset of notPromoted below the B89 promotion score threshold. */
+    readonly belowThreshold: number | null;
+    /** Subset of notPromoted suppressed by a benign rule or maintenance window. */
+    readonly suppressed: number | null;
+    readonly errorClass: string | null;
+  } | null;
   readonly consecutiveFailures: number;
   readonly lastErrorClass: string | null;
   readonly policy: {
@@ -258,11 +286,19 @@ export interface RoleRequestView {
 }
 
 /** Estado del padrón cuando todavía no hay solicitudes posibles (sin grupo resuelto). */
+export interface DirectoryDiagnostic {
+  readonly status: number;
+  readonly errorCode: string | null;
+  readonly requestId: string | null;
+  readonly operation: 'resolveGroupId' | 'memberDelta' | 'owners' | 'userProfile';
+}
+
 export interface RoleRequestDirectoryState {
   readonly status: 'pending' | 'disabled';
   readonly lastErrorClass: string | null;
   /** Falta `GroupMember.Read.All` (consentimiento de administrador) en la app de Entra. */
   readonly permissionMissing: boolean;
+  readonly diagnostic?: DirectoryDiagnostic | null;
   readonly nextAttemptAt: string | null;
 }
 
@@ -310,6 +346,7 @@ export interface DirectorySync {
   readonly lastAttemptAt: string | null;
   readonly lastSuccessAt: string | null;
   readonly lastErrorClass: string | null;
+  readonly diagnostic?: DirectoryDiagnostic | null;
   readonly stale: boolean;
   /** `false` mientras el grupo Accesos_SOC no se ha podido resolver en Graph. */
   readonly groupResolved?: boolean;
@@ -345,9 +382,12 @@ export const NOTIFICATION_STATUSES = [
   'failed',
   'fallback',
   'acknowledged',
+  'suppressed',
+  'superseded',
 ] as const;
 export type NotificationStatus = (typeof NOTIFICATION_STATUSES)[number];
 export type NotificationChannel = 'teams' | 'fallback_email' | 'manual_console';
+export type NotificationDeliveryChannel = NotificationChannel | 'email' | 'console' | 'push';
 
 /** Estados en los que una persona puede acusar recibo (modules/soar/src/notification.ts). */
 export const ACKNOWLEDGEABLE: readonly NotificationStatus[] = ['sent', 'indeterminate', 'fallback'];
@@ -361,6 +401,28 @@ export interface NotificationAttempt {
   readonly acknowledgedAt: string | null;
   readonly acknowledgedBy: string | null;
   readonly lastFailureClass: string | null;
+  /** Campos que el API ya entrega en el nivel superior del DTO. */
+  readonly statusLabel?: string;
+  readonly deliveryState?: string;
+  readonly createdAt?: string;
+  readonly title?: string | null;
+  readonly priority?: Priority | null;
+  readonly severity?: string | null;
+  readonly source?: string | null;
+  readonly sourceId?: string | null;
+  readonly entity?: string | { readonly kind?: string; readonly display?: string } | null;
+  readonly ruleId?: string | null;
+  readonly summary?: string | null;
+  readonly whyItMatters?: string | null;
+  readonly nextStep?: string | null;
+  readonly occurredAt?: string | null;
+  readonly kind?: string | null;
+  readonly occurrences?: number;
+  readonly suppressionReason?: string | null;
+  readonly coveredBy?: string | null;
+  readonly digestId?: string | null;
+  readonly deepLink?: string | null;
+  readonly links?: Readonly<Record<string, string | null>> | null;
   /*
    * Campos opcionales pedidos al dispatcher (coordinación con el agente de notificaciones,
    * COORDINACION-CLAUDE-CODEX.md). La bandeja funciona sin ellos y los usa en cuanto llegan.
@@ -374,6 +436,8 @@ export interface NotificationAttempt {
   readonly subject?: NotificationSubject | null;
   /** Historial de entrega por canal e intento. */
   readonly deliveries?: readonly NotificationDelivery[];
+  /** Nombre que usa el DTO actual de OperationsController. */
+  readonly delivery?: readonly NotificationDelivery[];
   /** Enlace al mensaje en Teams («Ver en Teams»), si el canal lo devuelve. */
   readonly link?: string | null;
   readonly lastFailureReason?: string | null;
@@ -394,10 +458,13 @@ export interface NotificationSubject {
  * de notificaciones; ver COORDINACION-CLAUDE-CODEX.md). El secreto nunca viaja completo:
  * `target` es el webhook o buzón ya enmascarado por la API.
  */
-export type NotificationChannelState = 'active' | 'inactive' | 'failing' | 'unconfigured';
+export type NotificationChannelState =
+  'active' | 'inactive' | 'failing' | 'unconfigured' | 'unknown';
 
 export interface NotificationChannelView {
   readonly id: NotificationChannel;
+  /** ID wire del API (por compatibilidad con los nombres visibles de la UI). */
+  readonly apiId?: 'teams' | 'email' | 'push';
   readonly enabled: boolean;
   readonly configured: boolean;
   readonly state: NotificationChannelState;
@@ -418,6 +485,8 @@ export interface NotificationChannelsResponse {
 
 export interface NotificationChannelTest {
   readonly ok: boolean;
+  /** El proveedor aceptó la solicitud; no demuestra entrega o lectura humana. */
+  readonly accepted: boolean;
   readonly at: string;
   readonly reason?: string | null;
   readonly latencyMs?: number | null;
@@ -426,11 +495,16 @@ export interface NotificationChannelTest {
 export type NotificationDeliveryOutcome = 'sent' | 'delivered' | 'failed' | 'acknowledged';
 
 export interface NotificationDelivery {
-  readonly attempt: number;
-  readonly channel: NotificationChannel;
-  /** sent = aceptado por Microsoft 365/SMTP; delivered = confirmado en destino. */
-  readonly outcome: NotificationDeliveryOutcome;
+  /** Presente en el formato histórico `deliveries`; `delivery` del DTO actual lo omite. */
+  readonly attempt?: number;
+  readonly channel: NotificationDeliveryChannel;
+  /** accepted = el proveedor aceptó la solicitud; no demuestra lectura humana. */
+  readonly outcome: NotificationDeliveryOutcome | 'accepted' | 'indeterminate';
   readonly at: string;
+  readonly responseAt?: string;
+  readonly httpStatus?: number | null;
+  readonly providerMessageId?: string | null;
+  readonly providerLink?: string | null;
   readonly reason?: string | null;
   /** Quién reconoció (solo `acknowledged`). */
   readonly actor?: string | null;
@@ -453,6 +527,22 @@ export interface ChangesResponse {
 
 export type OperationsStatus = 'OK' | 'NO_DATA' | 'STALE' | 'DEGRADED';
 
+export type CorrelatorFeedbackStatus =
+  | 'ready'
+  | 'pending'
+  | 'failed'
+  | 'stale'
+  | 'unavailable'
+  | 'unconfigured';
+
+export interface SocCorrelatorHealth {
+  readonly status: OperationsStatus;
+  readonly ready: boolean | null;
+  readonly feedbackStatus: CorrelatorFeedbackStatus;
+  readonly feedbackAgeSeconds: number | null;
+  readonly lastFeedbackSuccess: string | null;
+}
+
 export interface OperationsHealth {
   readonly generatedAt: string;
   readonly status: OperationsStatus;
@@ -472,11 +562,56 @@ export interface OperationsHealth {
         readonly pending: number;
         readonly processing: number;
         readonly oldestPendingAgeSeconds: number | null;
+        readonly expiredProcessing: number;
+        readonly oldestExpiredLeaseAgeSeconds: number | null;
       };
       readonly notifications: {
         readonly windowHours: number;
         readonly byStatus: Readonly<Record<string, number>>;
       };
+      /** Optional while older API deployments do not yet return correlator readiness. */
+      readonly correlator?: SocCorrelatorHealth | null;
+      /** Outbox creation to first external provider HTTP 2xx; accepted does not mean read. */
+      readonly outboxToProviderAcceptanceMs: {
+        readonly status: OperationsStatus;
+        readonly windowHours: 24;
+        readonly sampleCount: number;
+        readonly excludedClockSkewCount: number;
+        readonly sampleCapReached: boolean;
+        readonly p50: number | null;
+        readonly p95: number | null;
+        readonly p99: number | null;
+        readonly acceptanceMeans: string;
+      };
+      readonly wazuhPushInbox: {
+        readonly counts: Readonly<
+          Record<'pending' | 'processing' | 'processed' | 'failed-terminal', number>
+        >;
+        readonly oldestPendingAgeSeconds: number | null;
+        readonly oldestProcessingAgeSeconds: number | null;
+        readonly oldestUnresolvedAgeSeconds: number | null;
+        readonly oldestTerminalAgeSeconds: number | null;
+        readonly lastProcessedAt: string | null;
+        readonly expiredProcessing: number;
+        readonly terminalFailuresRecent: number;
+        readonly terminalWindowHours: 24;
+        readonly sourceToReceiptMs: {
+          readonly windowHours: 24;
+          readonly sampleCount: number;
+          readonly clockSkewSamples: number;
+          readonly sampleCapReached: boolean;
+          readonly p50: number | null;
+          readonly p95: number | null;
+          readonly p99: number | null;
+        };
+        readonly receiptToHandlerMs: {
+          readonly windowHours: 24;
+          readonly sampleCount: number;
+          readonly p50: number | null;
+          readonly p95: number | null;
+          readonly p99: number | null;
+        };
+      } | null;
     };
     readonly platform?: {
       readonly status: OperationsStatus;

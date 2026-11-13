@@ -27,7 +27,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: terraform-demo
+  group: b89-secops-demo-wazuh-host-mutations
   cancel-in-progress: false
 
 jobs:

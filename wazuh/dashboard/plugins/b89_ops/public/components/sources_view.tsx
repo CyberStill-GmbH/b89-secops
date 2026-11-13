@@ -41,6 +41,12 @@ function minutes(ms: number): string {
   return value === 1 ? '1 min' : `${value} min`;
 }
 
+function lag(value: number | null): string {
+  if (value === null) return 'Sin muestra';
+  if (value < 1_000) return `${value} ms`;
+  return `${(value / 1_000).toFixed(1)} s`;
+}
+
 export function SourcesView() {
   const { can } = useConsole();
   if (!can(CAPABILITIES.sourcesRead)) {
@@ -127,7 +133,24 @@ function SourceCard({ source }: { source: SourceHealth }) {
             title: 'Última lectura correcta',
             description: <Timestamp iso={source.lastSuccessAt} />,
           },
-          { title: 'Último evento recibido', description: <Timestamp iso={source.lastEventAt} /> },
+          { title: 'Último evento de fuente', description: <Timestamp iso={source.lastEventAt} /> },
+          {
+            title: 'Lag evento → fin de lectura',
+            description: (
+              <>
+                <span className="b89Tabular">
+                  p50 {lag(source.eventLag.p50Ms)} · p95 {lag(source.eventLag.p95Ms)} · p99{' '}
+                  {lag(source.eventLag.p99Ms)} · muestras {source.eventLag.sampleCount}/
+                  {source.eventLag.sampleWindow}
+                  {source.eventLag.clockSkewSamples > 0
+                    ? ` · skew ${source.eventLag.clockSkewSamples}`
+                    : ''}
+                </span>
+                <br />
+                Medido <Timestamp iso={source.eventLag.measuredAt} />
+              </>
+            ),
+          },
           {
             title: 'Fallos consecutivos',
             description: (
@@ -145,45 +168,8 @@ function SourceCard({ source }: { source: SourceHealth }) {
           },
         ]}
       />
-      {source.subscriptions && (
-        <>
-          <EuiSpacer size="m" />
-          <EuiTitle size="xxs">
-            <h3>Actividad por flujo (últimas {source.subscriptions.windowHours} h)</h3>
-          </EuiTitle>
-          <EuiSpacer size="s" />
-          <EuiBasicTable<SubscriptionItem>
-            compressed
-            responsive
-            items={[...source.subscriptions.items]}
-            columns={[
-              {
-                field: 'stream',
-                name: 'Flujo',
-                render: (value: string) =>
-                  STREAM_LABEL[value] ? (
-                    <span>
-                      {STREAM_LABEL[value]} <Mono>{value}</Mono>
-                    </span>
-                  ) : (
-                    <Mono>{value}</Mono>
-                  ),
-              },
-              {
-                field: 'eventsInWindow',
-                name: 'Eventos',
-                align: 'right',
-                render: (value: number) => <span className="b89Tabular">{value}</span>,
-              },
-              {
-                field: 'lastEventAt',
-                name: 'Último',
-                render: (value: string | null) => <Timestamp iso={value} />,
-              },
-            ]}
-          />
-        </>
-      )}
+      <ProcessingSummary processing={source.processing} />
+      <SubscriptionActivity subscriptions={source.subscriptions} />
       {source.transitions.length > 0 && (
         <>
           <EuiSpacer size="m" />
@@ -212,5 +198,140 @@ function SourceCard({ source }: { source: SourceHealth }) {
         </>
       )}
     </EuiPanel>
+  );
+}
+
+export function ProcessingSummary({ processing }: { processing: SourceHealth['processing'] }) {
+  return (
+    <>
+      <EuiSpacer size="m" />
+      <EuiTitle size="xxs">
+        <h3>Último sondeo y procesamiento</h3>
+      </EuiTitle>
+      {processing ? (
+        <>
+          <EuiText size="xs" color="subdued">
+            <p>
+              Completado <Timestamp iso={processing.completedAt} /> · estado{' '}
+              {processing.outcome === 'success'
+                ? 'correcto'
+                : processing.outcome === 'retryable_error'
+                  ? 'error reintentable'
+                  : 'error permanente'}
+              {processing.errorClass ? ` · ${processing.errorClass}` : ''}
+            </p>
+          </EuiText>
+          <EuiDescriptionList
+            type="responsiveColumn"
+            compressed
+            className="b89Facts"
+            listItems={[
+              {
+                title: 'Documentos devueltos',
+                description: <span className="b89Tabular">{processing.recordsSeen}</span>,
+              },
+              { title: 'Normalizados', description: processingCount(processing.normalized) },
+              {
+                title: 'En cuarentena',
+                description: <span className="b89Tabular">{processing.quarantined}</span>,
+              },
+              {
+                title: 'Alertas creadas',
+                description: <span className="b89Tabular">{processing.promoted}</span>,
+              },
+              { title: 'Duplicados', description: processingCount(processing.duplicates) },
+              { title: 'Sin promoción', description: processingCount(processing.notPromoted) },
+              { title: 'Bajo umbral B89', description: processingCount(processing.belowThreshold) },
+              {
+                title: 'Suprimidos por política',
+                description: processingCount(processing.suppressed),
+              },
+            ]}
+          />
+          <EuiText size="xs" color="subdued">
+            <p>
+              “Bajo umbral B89” no alcanzó el puntaje mínimo; “Suprimidos” coincide con una regla
+              benigna o ventana de mantenimiento. “Documentos devueltos” cuenta los resultados del
+              sondeo, no la actividad total de la fuente.
+            </p>
+          </EuiText>
+        </>
+      ) : (
+        <EuiText size="xs" color="subdued">
+          <p>Aún no hay un sondeo registrado para esta fuente.</p>
+        </EuiText>
+      )}
+    </>
+  );
+}
+
+export function processingCount(value: number | null): string {
+  return value === null ? 'Sin desglose histórico' : String(value);
+}
+
+/** Separates a missing measurement from a successful measurement whose streams are quiet. */
+export function SubscriptionActivity({
+  subscriptions,
+}: {
+  subscriptions: SourceHealth['subscriptions'];
+}) {
+  if (!subscriptions) {
+    return (
+      <>
+        <EuiSpacer size="m" />
+        <EuiText size="xs" color="subdued">
+          <p>Actividad por flujo: aún no hay una medición disponible.</p>
+        </EuiText>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <EuiSpacer size="m" />
+      <EuiTitle size="xxs">
+        <h3>Actividad por flujo (últimas {subscriptions.windowHours} h)</h3>
+      </EuiTitle>
+      <EuiText size="xs" color="subdued">
+        <p>
+          Medida <Timestamp iso={subscriptions.measuredAt} />
+        </p>
+      </EuiText>
+      <EuiSpacer size="s" />
+      {subscriptions.items.length === 0 ? (
+        <EmptyLine>La medición terminó; no hay flujos registrados.</EmptyLine>
+      ) : (
+        <EuiBasicTable<SubscriptionItem>
+          compressed
+          responsive
+          items={[...subscriptions.items]}
+          columns={[
+            {
+              field: 'stream',
+              name: 'Flujo',
+              render: (value: string) =>
+                STREAM_LABEL[value] ? (
+                  <span>
+                    {STREAM_LABEL[value]} <Mono>{value}</Mono>
+                  </span>
+                ) : (
+                  <Mono>{value}</Mono>
+                ),
+            },
+            {
+              field: 'eventsInWindow',
+              name: 'Eventos',
+              align: 'right',
+              render: (value: number) => <span className="b89Tabular">{value}</span>,
+            },
+            {
+              field: 'lastEventAt',
+              name: 'Último',
+              render: (value: string | null) => <Timestamp iso={value} />,
+            },
+          ]}
+        />
+      )}
+    </>
   );
 }

@@ -132,13 +132,21 @@ func (h stageHistory) add(hit model.StageHit, horizon time.Duration) {
 // per stage, in stage order for ordered patterns) and whether every stage matched.
 func (p Pattern) Match(h stageHistory, now time.Time) ([]model.StageHit, bool) {
 	from := now.Add(-p.Window)
+	windowed := make(map[model.Stage][]model.StageHit, len(p.Stages))
 	inWindow := func(s model.Stage) []model.StageHit {
+		if hits, ok := windowed[s]; ok {
+			return hits
+		}
 		out := []model.StageHit{}
 		for _, hit := range h[s] {
 			if !hit.At.Before(from) && !hit.At.After(now) {
 				out = append(out, hit)
 			}
 		}
+		// Histories are sorted ascending, but keep this function correct if a caller
+		// provides an unsorted slice. Matching below chooses the newest evidence first.
+		sort.SliceStable(out, func(i, j int) bool { return out[i].At.Before(out[j].At) })
+		windowed[s] = out
 		return out
 	}
 	n := len(p.Stages)
@@ -150,7 +158,7 @@ func (p Pattern) Match(h stageHistory, now time.Time) ([]model.StageHit, bool) {
 				count++
 			}
 		}
-		if count < p.MinStages || count <= len(best) {
+		if count < p.MinStages || count < len(best) {
 			continue
 		}
 		ok := true
@@ -168,32 +176,67 @@ func (p Pattern) Match(h stageHistory, now time.Time) ([]model.StageHit, bool) {
 		if !ok {
 			continue
 		}
-		picked := []model.StageHit{}
-		var prev time.Time
-		for i := 0; i < n && ok; i++ {
-			if mask&(1<<i) == 0 {
-				continue
+		// Select the newest coherent chain. Choosing the oldest hit in each stage
+		// made the explanation point at stale evidence even when a tighter chain was
+		// present later in the same window. For ordered patterns, walk backward from
+		// the final stage and take the newest hit that still preserves stage order.
+		picked := make([]model.StageHit, 0, count)
+		selected := make([]int, 0, count)
+		for i := 0; i < n; i++ {
+			if mask&(1<<i) != 0 {
+				selected = append(selected, i)
 			}
-			hits := inWindow(p.Stages[i])
-			chosen := -1
-			for j, hit := range hits {
-				if !p.Ordered || prev.IsZero() || !hit.At.Before(prev) {
-					chosen = j
+		}
+		if p.Ordered {
+			chosen := make([]model.StageHit, len(selected))
+			ceiling := now
+			for j := len(selected) - 1; j >= 0; j-- {
+				stageHits := inWindow(p.Stages[selected[j]])
+				found := false
+				for k := len(stageHits) - 1; k >= 0; k-- {
+					if !stageHits[k].At.After(ceiling) {
+						chosen[j] = stageHits[k]
+						ceiling = stageHits[k].At
+						found = true
+						break
+					}
+				}
+				if !found {
+					ok = false
 					break
 				}
 			}
-			if chosen < 0 {
-				ok = false
-				break
+			if ok {
+				picked = append(picked, chosen...)
 			}
-			picked = append(picked, hits[chosen])
-			if p.Ordered {
-				prev = hits[chosen].At
+		} else {
+			for _, i := range selected {
+				stageHits := inWindow(p.Stages[i])
+				if len(stageHits) == 0 {
+					ok = false
+					break
+				}
+				picked = append(picked, stageHits[len(stageHits)-1])
 			}
 		}
-		if ok {
+		if ok && (len(picked) > len(best) || (len(picked) == len(best) && newerEvidenceChain(picked, best))) {
 			best = picked
 		}
 	}
 	return best, len(best) == n
+}
+
+// newerEvidenceChain lexicographically prefers the newest timestamp from the terminal stage
+// backward. It is used only for equal-size partial matches, so the pattern's score/completeness
+// and longest-match preference are unchanged.
+func newerEvidenceChain(candidate, current []model.StageHit) bool {
+	for i := len(candidate) - 1; i >= 0; i-- {
+		if candidate[i].At.After(current[i].At) {
+			return true
+		}
+		if candidate[i].At.Before(current[i].At) {
+			return false
+		}
+	}
+	return false
 }

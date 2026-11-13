@@ -178,6 +178,58 @@ func TestOrderedPatternRequiresOrder(t *testing.T) {
 	}
 }
 
+func TestPatternMatchUsesNewestCoherentEvidence(t *testing.T) {
+	p := DefaultPatterns()[1]
+	history := stageHistory{
+		model.StageAuthFailure: {
+			{Stage: model.StageAuthFailure, At: t0, RuleID: "old-failure"},
+			{Stage: model.StageAuthFailure, At: t0.Add(21 * time.Hour), RuleID: "new-failure"},
+		},
+		model.StageAuthSuccess: {
+			{Stage: model.StageAuthSuccess, At: t0.Add(2 * time.Hour), RuleID: "old-success"},
+			{Stage: model.StageAuthSuccess, At: t0.Add(22 * time.Hour), RuleID: "new-success"},
+		},
+		model.StagePrivilegedChange: {
+			{Stage: model.StagePrivilegedChange, At: t0.Add(23 * time.Hour), RuleID: "privilege"},
+		},
+	}
+	hits, complete := p.Match(history, t0.Add(24*time.Hour))
+	if !complete || len(hits) != 3 {
+		t.Fatalf("expected a complete chain, got complete=%v hits=%+v", complete, hits)
+	}
+	if hits[0].RuleID != "new-failure" || hits[1].RuleID != "new-success" || hits[2].RuleID != "privilege" {
+		t.Fatalf("expected the newest coherent evidence chain, got %+v", hits)
+	}
+}
+
+func TestNewerEvidenceChainBreaksEqualLengthPartialTieByTimeVector(t *testing.T) {
+	ab := []model.StageHit{
+		{Stage: model.StageAuthFailure, At: t0.Add(10 * time.Minute)},
+		{Stage: model.StageAuthSuccess, At: t0.Add(15 * time.Minute)},
+	}
+	ac := []model.StageHit{
+		{Stage: model.StageAuthFailure, At: t0.Add(20 * time.Minute)},
+		{Stage: model.StagePrivilegedChange, At: t0.Add(25 * time.Minute)},
+	}
+	if !newerEvidenceChain(ac, ab) {
+		t.Fatal("equal-length chain must prefer newer terminal and evidence timestamps")
+	}
+	if newerEvidenceChain(ab, ac) {
+		t.Fatal("older chain must not replace newer evidence")
+	}
+	sharedTerminalOldMiddle := []model.StageHit{
+		{Stage: model.StageAuthFailure, At: t0.Add(10 * time.Minute)},
+		{Stage: model.StagePrivilegedChange, At: t0.Add(25 * time.Minute)},
+	}
+	sharedTerminalNewMiddle := []model.StageHit{
+		{Stage: model.StageAuthSuccess, At: t0.Add(20 * time.Minute)},
+		{Stage: model.StagePrivilegedChange, At: t0.Add(25 * time.Minute)},
+	}
+	if !newerEvidenceChain(sharedTerminalNewMiddle, sharedTerminalOldMiddle) {
+		t.Fatal("when terminal marks tie, compare timestamps backward through the chain")
+	}
+}
+
 func TestUnorderedPatternAndWindow(t *testing.T) {
 	e := newEngine()
 	h := "host:pc-ep-a"

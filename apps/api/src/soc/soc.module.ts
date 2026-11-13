@@ -23,6 +23,7 @@ import { LocalAuthController } from './local-auth.controller.js';
 import { NotificationChannelsController } from './notification-channels.controller.js';
 import { OperationsController } from './operations.controller.js';
 import { SocController } from './soc.controller.js';
+import { WazuhPushController } from './wazuh-push.controller.js';
 import { SECOPS_RUNTIME } from './tokens.js';
 import type { SecOpsRuntime } from '../runtime/secops-runtime.js';
 
@@ -50,6 +51,7 @@ export class SocModule {
         AssistantMcpController,
         CorrelatorController,
         RiskController,
+        ...(runtime.canAcceptWazuhPush ? [WazuhPushController] : []),
         // Las rutas del emisor local solo se registran cuando ese emisor existe.
         ...(runtime.isLocalIdentity ? [LocalAuthController] : []),
       ],

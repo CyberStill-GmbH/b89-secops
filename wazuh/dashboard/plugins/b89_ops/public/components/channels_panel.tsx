@@ -26,11 +26,16 @@ import {
   NOTIFICATION_CHANNEL_LABEL,
   NotificationChannel,
   NotificationChannelState,
-  NotificationChannelsResponse,
   NotificationChannelTest,
   NotificationChannelView,
 } from '../../common';
 import { B89ApiError } from '../api/client';
+import {
+  channelTestSuccessLabel,
+  normalizeChannelTest,
+  normalizeChannelsResponse,
+} from './channels_contract';
+import { channelDestinationSummary } from './channels_display';
 import { useConsole } from './console_context';
 import { webhookProblem } from './notification_groups';
 import { EmptyLine, ErrorCallout, HealthMark, Mono, Timestamp, useAsync } from './primitives';
@@ -38,7 +43,7 @@ import { EmptyLine, ErrorCallout, HealthMark, Mono, Timestamp, useAsync } from '
 /**
  * «Canales»: estado de Microsoft Teams, correo y consola; webhook de Teams, prueba y
  * activación. Solo `notifications.manage` (b89.platform.admin) cambia algo; el resto lo ve en
- * lectura. El secreto nunca se muestra completo: la API devuelve el destino enmascarado.
+ * lectura. El destino sensible no se vuelve a renderizar en la interfaz.
  */
 
 export const WORKFLOWS_HELP_URL =
@@ -47,21 +52,23 @@ export const WORKFLOWS_HELP_URL =
 const STATE: Record<NotificationChannelState, { label: string; tone: HealthTone }> = {
   active: { label: 'Activo', tone: 'ok' },
   inactive: { label: 'Inactivo', tone: 'neutral' },
-  failing: { label: 'Con fallas', tone: 'fail' },
+  failing: { label: 'Con errores', tone: 'fail' },
   unconfigured: { label: 'No configurado', tone: 'warn' },
+  unknown: { label: 'Sin una prueba reciente', tone: 'neutral' },
 };
 
 const CHANNEL_HINT: Record<NotificationChannel, string> = {
-  teams: 'Tarjeta en el canal del SOC mediante un flujo de Workflows (Power Automate).',
-  fallback_email: 'Correo al buzón del SOC si Teams no confirma la entrega.',
-  manual_console: 'Bandeja de esta consola: siempre disponible como último recurso.',
+  teams: 'Envía avisos al canal del SOC mediante un flujo de Workflows en Microsoft Teams.',
+  fallback_email:
+    'Envía un correo al buzón del SOC si Teams no confirma. El destino se configura en el servicio.',
+  manual_console: 'Bandeja interna de B89. Siempre disponible como último canal de respaldo.',
 };
 
 export function ChannelsPanel() {
   const { api, can, notifications } = useConsole();
   const manage = can(CAPABILITIES.notificationsManage);
   const loaded = useAsync(
-    () => api.get<NotificationChannelsResponse>('/notifications/channels'),
+    async () => normalizeChannelsResponse(await api.get<unknown>('/notifications/channels')),
     [api],
   );
   const [editing, setEditing] = useState(false);
@@ -79,9 +86,10 @@ export function ChannelsPanel() {
   const runTest = async (channel: NotificationChannelView) => {
     setBusy(`test-${channel.id}`);
     try {
-      const result = await api.post<NotificationChannelTest>(
-        `/notifications/channels/${encodeURIComponent(channel.id)}/test`,
+      const response = await api.post<unknown>(
+        `/notifications/channels/${encodeURIComponent(channel.apiId ?? channel.id)}/test`,
       );
+      const result = normalizeChannelTest(response);
       setTests((current) => ({ ...current, [channel.id]: result }));
       loaded.reload();
     } catch (failure) {
@@ -101,7 +109,7 @@ export function ChannelsPanel() {
     setError(null);
     try {
       await api.post(
-        `/notifications/channels/${encodeURIComponent(channel.id)}/${enabled ? 'enable' : 'disable'}`,
+        `/notifications/channels/${encodeURIComponent(channel.apiId ?? channel.id)}/${enabled ? 'enable' : 'disable'}`,
         channel.revision !== undefined ? { expectedRevision: channel.revision } : {},
       );
       notifications.toasts.addSuccess({
@@ -148,9 +156,9 @@ export function ChannelsPanel() {
         </>
       )}
       {channels.length === 0 ? (
-        <EmptyLine>La API no informó canales de notificación.</EmptyLine>
+        <EmptyLine>No hay canales de notificación para mostrar.</EmptyLine>
       ) : (
-        <ul className="b89Channels">
+        <ul className="b89Channels" lang="es-PE" translate="no">
           {channels.map((channel) => {
             const state = STATE[channel.state] ?? STATE.unconfigured;
             const test = tests[channel.id];
@@ -161,10 +169,16 @@ export function ChannelsPanel() {
                   <HealthMark tone={state.tone} label={state.label} />
                 </div>
                 <p className="b89CellMeta">{CHANNEL_HINT[channel.id]}</p>
+                {channel.enabled && !channel.configured && channel.id !== 'manual_console' && (
+                  <p className="b89CellMeta" role="status">
+                    El canal está activado, pero falta configurar el destino. No podrá entregar
+                    avisos hasta que esté listo.
+                  </p>
+                )}
                 <dl className="b89KeyValues">
                   <dt>Destino</dt>
-                  <dd>{channel.target ? <Mono>{channel.target}</Mono> : 'Sin configurar'}</dd>
-                  <dt>Última entrega</dt>
+                  <dd>{channelDestinationSummary(channel)}</dd>
+                  <dt>Último intento de entrega</dt>
                   <dd>
                     {channel.lastDelivery ? (
                       <>
@@ -173,7 +187,7 @@ export function ChannelsPanel() {
                         {channel.lastDelivery.reason ? ` · ${channel.lastDelivery.reason}` : ''}
                       </>
                     ) : (
-                      'Sin entregas registradas'
+                      'Aún no hay intentos de entrega'
                     )}
                   </dd>
                   {channel.updatedAt && (
@@ -199,7 +213,7 @@ export function ChannelsPanel() {
                       ) : test.ok ? (
                         <HealthMark
                           tone="ok"
-                          label={`Prueba entregada${test.latencyMs ? ` en ${test.latencyMs} ms` : ''}`}
+                          label={`${channelTestSuccessLabel(test)}${test.latencyMs ? ` en ${test.latencyMs} ms` : ''}`}
                         />
                       ) : (
                         <HealthMark
@@ -210,33 +224,41 @@ export function ChannelsPanel() {
                     </p>
                   </EuiText>
                 )}
-                {manage && (
-                  <div className="b89Channel__actions">
-                    {channel.id === 'teams' && (
-                      <EuiButton size="s" onClick={() => setEditing(true)}>
-                        {channel.configured ? 'Cambiar webhook' : 'Configurar webhook'}
-                      </EuiButton>
-                    )}
-                    <EuiButtonEmpty
-                      size="s"
-                      iconType="email"
-                      isDisabled={!channel.configured}
-                      isLoading={busy === `test-${channel.id}`}
-                      onClick={() => runTest(channel)}
+                {manage &&
+                  (channel.id === 'manual_console' ? (
+                    <p className="b89CellMeta b89Channel__alwaysOn" role="note">
+                      Este canal de respaldo siempre está disponible y no se puede desactivar.
+                    </p>
+                  ) : (
+                    <div
+                      className="b89Channel__actions"
+                      role="group"
+                      aria-label={`Acciones para ${NOTIFICATION_CHANNEL_LABEL[channel.id]}`}
                     >
-                      Enviar prueba
-                    </EuiButtonEmpty>
-                    <EuiButtonEmpty
-                      size="s"
-                      color={channel.enabled ? 'danger' : 'primary'}
-                      isDisabled={!channel.configured && !channel.enabled}
-                      isLoading={busy === `toggle-${channel.id}`}
-                      onClick={() => setToggle(channel)}
-                    >
-                      {channel.enabled ? 'Desactivar' : 'Activar'}
-                    </EuiButtonEmpty>
-                  </div>
-                )}
+                      {channel.id === 'teams' && (
+                        <EuiButton size="s" onClick={() => setEditing(true)}>
+                          {channel.configured ? 'Cambiar configuración' : 'Configurar Teams'}
+                        </EuiButton>
+                      )}
+                      <EuiButtonEmpty
+                        size="s"
+                        isDisabled={!channel.configured}
+                        isLoading={busy === `test-${channel.id}`}
+                        onClick={() => runTest(channel)}
+                      >
+                        Enviar prueba
+                      </EuiButtonEmpty>
+                      <EuiButtonEmpty
+                        size="s"
+                        color={channel.enabled ? 'danger' : 'primary'}
+                        isDisabled={!channel.configured && !channel.enabled}
+                        isLoading={busy === `toggle-${channel.id}`}
+                        onClick={() => setToggle(channel)}
+                      >
+                        {channel.enabled ? 'Desactivar' : 'Activar'}
+                      </EuiButtonEmpty>
+                    </div>
+                  ))}
               </li>
             );
           })}
@@ -306,7 +328,7 @@ function WebhookModal({
   };
 
   return (
-    <EuiModal onClose={onClose} aria-labelledby="b89WebhookTitle">
+    <EuiModal onClose={onClose} aria-labelledby="b89WebhookTitle" lang="es-PE" translate="no">
       <EuiModalHeader>
         <EuiModalHeaderTitle>
           <h2 id="b89WebhookTitle">Webhook de Microsoft Teams</h2>
@@ -315,15 +337,16 @@ function WebhookModal({
       <EuiModalBody>
         <EuiText size="s">
           <p>
-            Crea en el canal del SOC un flujo «Post to a channel when a webhook request is received»
-            y pega aquí su URL HTTP POST.{' '}
+            En el canal del SOC, configura un flujo de Workflows para publicar los avisos de B89.
+            Después pega aquí la URL que genera el flujo.{' '}
             <EuiLink href={WORKFLOWS_HELP_URL} target="_blank" external>
               Instrucciones de Microsoft
             </EuiLink>
           </p>
           {channel.target && (
             <p>
-              Actual: <Mono>{channel.target}</Mono>
+              Actual: URL protegida. Para cambiarla, pega la nueva URL; la anterior no se puede
+              recuperar.
             </p>
           )}
         </EuiText>
@@ -334,7 +357,7 @@ function WebhookModal({
           fullWidth
           isInvalid={touched && problem !== null}
           error={touched && problem ? problem : undefined}
-          helpText="Se guarda cifrada en la API y nunca se vuelve a mostrar completa."
+          helpText="La URL se guarda cifrada y no volverá a mostrarse completa."
         >
           <EuiFieldText
             fullWidth

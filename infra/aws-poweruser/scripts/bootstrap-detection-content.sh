@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# B89 SOC · importa las vistas de análisis del programa de detección (docs/17) en el tenant global.
+# B89 SOC Â· importa las vistas de anÃ¡lisis del programa de detecciÃ³n (docs/17) en el tenant global.
 #
 #   sudo bash infra/aws-poweruser/scripts/bootstrap-detection-content.sh
 #
-# Igual que bootstrap-wazuh-app.sh: las peticiones salen DESDE el contenedor del dashboard (el único
-# proxy en el que confía el indexer) con la identidad de servicio b89-bootstrap y el rol
-# b89.platform.admin. Nunca usa el login de una persona (sesión única N9). Idempotente: IDs estables
+# Igual que bootstrap-wazuh-app.sh: las peticiones salen DESDE el contenedor del dashboard (el Ãºnico
+# proxy en el que confÃ­a el indexer) con la identidad de servicio b89-bootstrap y el rol
+# b89.platform.admin. Nunca usa el login de una persona (sesiÃ³n Ãºnica N9). Idempotente: IDs estables
 # `b89-det-*` + overwrite=true. Verifica al final que los seis dashboards existen.
 #
 # Variables: B89_DASHBOARD_CONTAINER (b89-wazuh.dashboard-1), B89_DETECTION_DASHBOARDS (ruta del NDJSON).
@@ -16,6 +16,7 @@ NDJSON="${B89_DETECTION_DASHBOARDS:-$repo/wazuh/dashboard/saved-objects/detectio
 log() { printf '[b89-detection] %s\n' "$*"; }
 osd() {
   docker exec -i "$C" curl -s -H 'osd-xsrf: true' \
+    -H 'securitytenant: global' \
     -H 'x-proxy-user: b89-bootstrap' -H 'x-proxy-roles: b89.platform.admin' \
     -H 'x-forwarded-for: 127.0.0.1' "$@"   # el proxy auth del indexer exige XFF resuelto
 }
@@ -35,10 +36,10 @@ done
 result="$(osd -F 'file=@-;filename=b89-detection-dashboards.ndjson' \
   'http://127.0.0.1:5601/api/saved_objects/_import?overwrite=true' <"$NDJSON")"
 if [[ $result != *'"success":true'* ]]; then
-  log "importación fallida: ${result:0:600}"
+  log "importaciÃ³n fallida: ${result:0:600}"
   exit 1
 fi
-log "vistas de detección importadas: $(grep -o '"successCount":[0-9]*' <<<"$result")"
+log "vistas de detecciÃ³n importadas: $(grep -o '"successCount":[0-9]*' <<<"$result")"
 
 missing=0
 for id in mitre vulnerabilities identity integrity hunting quality; do

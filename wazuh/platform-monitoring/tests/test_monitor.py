@@ -82,6 +82,40 @@ def test_heartbeat_dead_is_critical():
     assert found["aws"].problem and "sin latido" in found["aws"].summary
 
 
+def test_wazuh_agent_alert_quiet_is_not_source_silence_when_manager_is_alive():
+    config = {"sources": {
+        "wazuh-agents": {
+            "mode": "heartbeat",
+            "heartbeat": {"container": "b89-wazuh.manager-1"},
+            "max_silence_minutes": 15,
+            "event_window_hours": 0,
+        },
+    }}
+    found, = mon.check_sources(
+        config,
+        NOW,
+        {"wazuh-agents": NOW - timedelta(minutes=114)},
+        {},
+        {"b89-wazuh.manager-1": {"running": True, "health": "healthy"}},
+    )
+    assert not found.problem
+    assert "con latido" in found.summary
+
+    # A quiet alert stream with a live Manager must also close a stale finding
+    # created by the previous event-volume policy.
+    stale_key = found.key
+    stale_state = {"problems": {stale_key: {
+        "since": iso(NOW - timedelta(hours=2)),
+        "notified": iso(NOW - timedelta(hours=1)),
+        "check": "source_silent",
+        "severity": "warning",
+    }}}
+    events, reconciled = mon.reconcile([found], stale_state, NOW, 6)
+    assert len(events) == 1
+    assert events[0]["b89"]["health"]["status"] == "ok"
+    assert stale_key not in reconciled["problems"]
+
+
 def test_event_query_has_one_filter_per_source():
     query = mon.source_event_query({k: v for k, v in SOURCES["sources"].items() if v.get("enabled") is not False}, NOW)
     assert set(query["aggs"]) == {"cloudflare", "snyk", "aws"} and query["size"] == 0

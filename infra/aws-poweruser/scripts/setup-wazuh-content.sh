@@ -18,6 +18,10 @@ stage=$(mktemp -d); trap 'rm -rf "$stage"' EXIT
 
 mkdir -p "$stage/rules" "$stage/lists" "$stage/integrations" "$stage/groups"
 cp "$SRC"/wazuh/office365/rules/*.xml "$SRC"/infra/wazuh/{active-directory,endpoint,launch-detections}/rules/*.xml "$stage/rules/"
+# Estas reglas calibran la severidad Snyk (101732-101734), de la que dependen las reglas
+# b89_watch_vulnprio_rules.xml instaladas por platform-monitoring. Sin ellas, Wazuh las ignora.
+cp "$SRC/detections/snyk/severity-calibration/rule.xml" \
+  "$stage/rules/b89_soc_snyk_severity_calibration.xml"
 # La lista de break-glass se instala sin identidades (el ejemplo trae cuentas ficticias), con un
 # centinela que nunca coincide (TLD .invalid): una lista CDB vacía rompe GET /lists de la API del
 # manager («Bad format in CDB list») y la vista CDB lists de la app de Wazuh.

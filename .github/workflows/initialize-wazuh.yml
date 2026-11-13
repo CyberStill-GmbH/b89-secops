@@ -34,7 +34,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: initialize-wazuh
+  group: b89-secops-demo-wazuh-host-mutations
   cancel-in-progress: false
 
 jobs:

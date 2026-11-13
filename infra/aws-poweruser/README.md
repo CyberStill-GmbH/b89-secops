@@ -38,16 +38,45 @@ bucket S3 de evidencia (KMS, versionado, TLS-only, sin acceso público) y Budget
 
 ## Despliegue
 
+### Infraestructura
+
+Los cambios de infraestructura se operan desde el workflow manual **Terraform AWS PowerUser** y
+su flujo plan → revisión → apply documentado en [docs/06-operacion.md](../../docs/06-operacion.md).
+No usar `terraform apply` local ni el workflow `terraform-demo.yml`: este último apunta a otra
+cuenta y otra raíz. El workflow de PowerUser restringe la ejecución a `main`, asume el rol
+configurado por OIDC en la cuenta `061098277310`, publica un plan de vida corta y aplica únicamente
+ese plan cuando se vuelve a despachar con su run ID y SHA-256 revisados. Antes de usarlo, verificar
+que el rol y la variable de repositorio `B89_AWS_POWERUSER_TERRAFORM_ROLE_ARN` existan y que la trust
+policy corresponda al repositorio.
+
+### Publicación de código al nodo EC2 existente
+
+Un cambio solo de aplicación no requiere recrear recursos con Terraform. Usa el lock de host y
+`ship.sh` para actualizar el nodo existente. `ship.sh` empaqueta el árbol local y los artefactos
+generados necesarios, por lo que parte de un checkout revisado, sin trabajo ajeno en curso ni
+archivos locales no deseados. Si hay cambios Terraform, revisa y aplica primero el plan por el flujo
+anterior.
+
 ```bash
-cd infra/aws-poweruser
-terraform init -backend-config=backend.hcl
-terraform apply -var-file=environments/dev.tfvars
-SSH_KEY=<clave privada> HOST=$(terraform output -raw public_ip) SOC_HOSTNAME=dev.security.b89.io \
-  bash scripts/ship.sh
+# Preparar el backend de solo lectura para obtener el ID del mismo nodo.
+terraform -chdir=infra/aws-poweruser init -backend-config=backend.hcl
+EC2_INSTANCE_ID="$(terraform -chdir=infra/aws-poweruser output -raw instance_id)" \
+AWS_REGION=us-east-1 SOC_HOSTNAME=dev.security.b89.io \
+  bash infra/aws-poweruser/scripts/ship.sh
 ```
 
-`ship.sh` copia el árbol de trabajo (sin `.env*`, `.git` ni `node_modules`) a `/opt/b89/src`
-y ejecuta `scripts/deploy-host.sh`, que es idempotente.
+El comando solo consulta el estado existente para resolver `instance_id`; no hace apply, crea otra
+instancia ni cambia Terraform. `ship.sh` usa EC2 Instance Connect, genera una clave efímera y
+actualiza el mismo host bajo `/run/lock/b89-wazuh-deploy.lock`. Si el lock está tomado, falla sin
+reemplazar el despliegue en curso. La recuperación, staging y rollback están en el procedimiento de
+[operación](../../docs/06-operacion.md#1-regla-de-oro-del-despliegue).
+
+La ruta EC2 Instance Connect del comando anterior no requiere clave SSH persistente: genera una
+clave Ed25519 temporal, la publica para `ubuntu` inmediatamente antes de cada conexión, usa
+`open-tunnel` como `ProxyCommand` y elimina la clave al salir. El rol necesita
+`ec2:DescribeInstances`, `ec2-instance-connect:SendSSHPublicKey` y
+`ec2-instance-connect:OpenTunnel`; el endpoint y las reglas de red los administra Terraform. La
+ruta SSH directa sigue disponible con `SSH_KEY` y `HOST`.
 
 Credenciales generadas (en el host, solo root):
 

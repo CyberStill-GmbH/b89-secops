@@ -6,9 +6,11 @@ import type {
   AlertStatus,
   AlertVerdict,
   ApiErrorCode,
+  CorrelatorFeedbackStatus,
   IncidentSeverity,
   IncidentStatus,
   NotificationChannel,
+  NotificationDeliveryChannel,
   NotificationStatus,
   OperationsStatus,
   Priority,
@@ -168,6 +170,8 @@ export const NOTIFICATION_STATUS_LABEL: Record<NotificationStatus, string> = {
   failed: 'Fallida',
   fallback: 'Por canal alternativo',
   acknowledged: 'Reconocida',
+  suppressed: 'Agrupada o en resumen',
+  superseded: 'Sustituida',
 };
 
 export const NOTIFICATION_TONE: Record<NotificationStatus, HealthTone> = {
@@ -178,12 +182,17 @@ export const NOTIFICATION_TONE: Record<NotificationStatus, HealthTone> = {
   failed: 'fail',
   fallback: 'warn',
   acknowledged: 'ok',
+  suppressed: 'neutral',
+  superseded: 'neutral',
 };
 
-export const NOTIFICATION_CHANNEL_LABEL: Record<NotificationChannel, string> = {
+export const NOTIFICATION_CHANNEL_LABEL: Record<NotificationDeliveryChannel, string> = {
   teams: 'Microsoft Teams',
   fallback_email: 'Correo (alternativo)',
   manual_console: 'Consola',
+  email: 'Correo',
+  console: 'Consola',
+  push: 'Aviso push',
 };
 
 export const OPERATIONS_STATUS_LABEL: Record<OperationsStatus, string> = {
@@ -200,9 +209,31 @@ export const OPERATIONS_TONE: Record<OperationsStatus, HealthTone> = {
   DEGRADED: 'warn',
 };
 
+export const CORRELATOR_FEEDBACK_STATUS_LABEL: Record<CorrelatorFeedbackStatus, string> = {
+  ready: 'Listo',
+  pending: 'Inicializando',
+  failed: 'Refresh fallido',
+  stale: 'Atrasado',
+  unavailable: 'Sin respuesta',
+  unconfigured: 'No configurado',
+};
+
+export const CORRELATOR_FEEDBACK_STATUS_TONE: Record<CorrelatorFeedbackStatus, HealthTone> = {
+  ready: 'ok',
+  pending: 'info',
+  failed: 'fail',
+  stale: 'warn',
+  unavailable: 'neutral',
+  unconfigured: 'neutral',
+};
+
 export const DEGRADED_REASON_LABEL: Record<string, string> = {
   DISPATCHER_STOPPED: 'El despachador de notificaciones está detenido',
   OUTBOX_BACKLOG: 'Hay notificaciones pendientes desde hace más de 5 min',
+  OUTBOX_LEASE_EXPIRED: 'Hay mensajes del outbox con lease vencido',
+  WAZUH_PUSH_TERMINAL_FAILURES:
+    'El fast path de Wazuh terminó con eventos que requieren reconciliación',
+  WAZUH_PUSH_LEASE_EXPIRED: 'Hay trabajos del push Wazuh con lease vencido',
   PERSISTENCE_EPHEMERAL: 'La persistencia es en memoria (no durable)',
   NOTIFICATION_FAILED: 'Hubo notificaciones fallidas en la ventana',
   NOTIFICATION_INDETERMINATE: 'Hubo notificaciones con entrega incierta',

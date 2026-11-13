@@ -32,7 +32,25 @@ install -d -m 0750 -o "$RECEIVER_UID" -g root "$LOGVOL/b89-collectors/aws"
   install -m 0640 -o "$RECEIVER_UID" -g root /dev/null "$LOGVOL/b89-collectors/aws/aws-events.jsonl"
 log "salida: $LOGVOL/b89-collectors/aws/aws-events.jsonl"
 
-stage="$(mktemp -d)"; trap 'rm -rf "$stage"' EXIT
+stage="$(mktemp -d)"
+hostbak=''
+hosttmp=''
+manager_restarted=false
+cleanup() {
+  status=$?
+  if [[ $status -ne 0 && $manager_restarted == true && -n $hostbak && -f $hostbak ]]; then
+    docker cp "$hostbak" "$M:/tmp/b89-aws-events-host-rollback.conf" >/dev/null 2>&1 || true
+    docker exec -u 0 "$M" bash -euo pipefail -c \
+      'install -o root -g wazuh -m 0660 /tmp/b89-aws-events-host-rollback.conf /var/ossec/etc/ossec.conf; rm -f /tmp/b89-aws-events-host-rollback.conf; /var/ossec/bin/wazuh-control restart >/dev/null 2>&1' \
+      >/dev/null 2>&1 || true
+    log 'falló la persistencia host; ossec.conf del manager restaurado desde el backup'
+  fi
+  [[ -z $hosttmp ]] || rm -f "$hosttmp"
+  rm -rf "$stage"
+  exit "$status"
+}
+trap cleanup EXIT
+chmod 0700 "$stage"
 cp "$HERE/rules/b89_aws_rules.xml" "$stage/"
 sed -i 's/\r$//' "$stage/b89_aws_rules.xml"
 docker cp "$M:/var/ossec/etc/ossec.conf" "$stage/ossec.conf"
@@ -65,14 +83,31 @@ docker exec -u 0 -e RESTART="${B89_RESTART:-true}" "$M" bash -euo pipefail -c '
     echo "configuración inválida: revertida a $bak" >&2; exit 1
   fi
   rm -rf $S
-  if [ "$RESTART" = true ]; then $O/bin/wazuh-control restart >/dev/null 2>&1; fi
+  if [ "$RESTART" = true ] && ! $O/bin/wazuh-control restart >/dev/null 2>&1; then
+    cp -a "$bak/ossec.conf" $O/etc/ossec.conf
+    if [ -f "$bak/b89_aws_rules.xml" ]; then
+      cp -a "$bak/b89_aws_rules.xml" $O/etc/rules/b89_aws_rules.xml
+    else
+      rm -f $O/etc/rules/b89_aws_rules.xml
+    fi
+    $O/bin/wazuh-control restart >/dev/null 2>&1 || true
+    echo "reinicio falló; configuración AWS revertida a $bak" >&2
+    exit 1
+  fi
 '
+[[ ${B89_RESTART:-true} != true ]] || manager_restarted=true
 log 'reglas 101600-101699 y <localfile> instalados; wazuh-analysisd -t OK'
 HOSTCONF="$(docker inspect "$M" --format '{{range .Mounts}}{{if eq .Destination "/wazuh-config-mount/etc/ossec.conf"}}{{.Source}}{{end}}{{end}}')"
 if [[ -n $HOSTCONF && -f $HOSTCONF ]]; then
-  cp -p "$HOSTCONF" "${HOSTCONF}.b89-bak-$(date -u +%Y%m%dT%H%M%SZ)"
+  hostbak="${HOSTCONF}.b89-bak-$(date -u +%Y%m%dT%H%M%SZ)"
+  cp -p "$HOSTCONF" "$hostbak"
   docker cp "$M:/var/ossec/etc/ossec.conf" "$stage/persist.conf"
-  cat "$stage/persist.conf" >"$HOSTCONF"
+  hosttmp="$(mktemp "${HOSTCONF}.b89-new.XXXXXX")"
+  cat "$stage/persist.conf" >"$hosttmp"
+  chown --reference="$HOSTCONF" "$hosttmp"
+  chmod --reference="$HOSTCONF" "$hosttmp"
+  mv -f "$hosttmp" "$HOSTCONF"
+  hosttmp=''
   log 'ossec.conf persistido en el montaje del host'
 fi
 [[ ${B89_RESTART:-true} == true ]] && log 'manager reiniciado' || log 'manager NO reiniciado (B89_RESTART=false)'

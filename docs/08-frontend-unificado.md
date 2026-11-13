@@ -89,8 +89,11 @@ en el artefacto actual por incompatibilidad de plugins y protocolos.
    `/api`) y la allowlist de prefijos `/api/*` se traslada a sus *behaviors*; KrakenD se retira.
 4. **Roles distintos.** El fork da `wazuh-archives-*` (raw) también al analista. Este repo lo
    reserva al líder (minimización, N2). Hay que unificar en `wazuh/indexer/security/`.
-5. **Sin cambios en vivo.** El plugin carga al montar y no consume `/api/changes`, así que la cola
-   no se actualiza sola.
+5. **Cambios en vivo (actualización local 2026-11-11).** La auditoría anterior observó que el
+   plugin no consumía `/api/changes`. El código local ya incluye un `ChangeFeed` compartido por
+   las apps B89 y el aviso P1; los consumidores recargan alertas, incidentes, notificaciones,
+   salud de fuentes y sesiones por sus endpoints normales. Esto no prueba la latencia ni el
+   funcionamiento del servicio desplegado; ver el estado y sus límites abajo.
 6. **Proxy auth con la API en Lambda [propuesto].** Cada petición al Dashboard dispara
    `GET /api/auth/introspect`. Con Lambda añade latencia y arranques en frío: se mantiene el
    caché de 5 s en el edge del nodo y se evalúa concurrencia provisionada para esa ruta. La
@@ -104,17 +107,19 @@ Wazuh, un *field formatter* del plugin abre `/app/b89-alerts?id=<id>`.
 
 ## Cambios en vivo
 
-- **Backend hoy:** long-poll `GET /api/changes?after=<cursor>` (2,5 s, por secuencia de auditoría)
-  en `apps/api/src/soc/changes.controller.ts` [sin verificar en Lambda].
-- **En Lambda [propuesto]:** el long-poll de 2,5 s cabe en el límite de API Gateway HTTP (30 s) y
-  se mantiene, pero cada espera ocupa una invocación. El SSE `GET /api/changes/stream` **no es
-  viable** sobre API Gateway HTTP (no hace *streaming* de respuesta). Opciones a decidir en
-  [10](10-decisiones.md): Lambda Function URL con *response streaming* detrás de CloudFront, o
-  API Gateway WebSocket. Hasta decidir, se queda el long-poll. Sin Valkey, el long-poll consulta la
-  secuencia de auditoría con un intervalo mayor al de 400 ms actual ([11](11-cache-y-colas.md)).
-- El plugin lo usaría para refrescar la cola y los casos, el contador del header y avisos
-  `core.notifications.toasts` con las alertas P1 en cualquier pantalla (aún no lo consume).
-- OSD por sí mismo solo tiene *auto-refresh* por intervalo en Discover y en los dashboards.
+- **API local:** `GET /api/changes?after=<cursor>` usa long-poll de hasta 2,5 s y una secuencia
+  basada en auditoría. El feed entrega referencias de recursos, no su contenido; cada consumidor
+  vuelve a consultar el endpoint autorizado de alertas, incidentes, notificaciones, fuentes o
+  sesiones.
+- **Plugin local:** un solo `ChangeFeed` por página del Dashboard comparte la consulta entre las
+  apps B89 y el aviso P1. Las vistas activas se refrescan cuando cambia un recurso relevante; una
+  pestaña oculta pausa las consultas y el regreso a primer plano las reanuda. Ante errores, el feed
+  aplica backoff; no es una garantía de entrega instantánea ni una cola durable de cambios.
+- **Despliegue:** esta implementación local no está validada en el Dashboard publicado ni en AWS.
+  Si se retoma API Gateway HTTP con Lambda, hay que verificar el límite del long-poll, consumo de
+  invocaciones y latencia real antes de declarar el mecanismo operativo. El SSE de respuesta no se
+  considera disponible en API Gateway HTTP; las alternativas quedan sujetas a la decisión
+  [10](10-decisiones.md).
 
 ## Investigación de alertas
 
@@ -126,13 +131,77 @@ por entidad). Rutas del servidor del plugin, siempre `asCurrentUser` (proxy auth
 | --- | --- |
 | `GET /api/b89_ops/investigation/source?ruleId&at&description` | Documento de origen en `wazuh-alerts-*` (regla + descripción ±5 min; la API de alertas no guarda el `_id`) |
 | `GET /api/b89_ops/investigation/related?e=<tipo:valor>&at&window=1h\|24h\|7d&exclude` | Línea de tiempo de la misma entidad (equipo, usuario, IP, proyecto Snyk, zona Cloudflare, cuenta) y conteo por entidad |
-| `GET /api/b89_ops/investigation/event?id` | JSON completo de un evento de la línea de tiempo (recortado a 64 KB) |
+| `GET /api/b89_ops/investigation/event?id` | JSON del documento fuente para el visor, saneado y limitado a 64 KiB UTF-8; elimina recursivamente `full_log` y `previous_output`, además de los campos M365 sensibles |
 
 La vista muestra el logotipo del origen, chips MITRE (enlazan a attack.mitre.org), entidades con
 pivotes (Threat Hunting, Discover, alertas B89, investigar la entidad), el chip **Riesgo** del
-correlador (`/api/risk/entities`, solo si responde), el JSON crudo plegable, el incidente vinculado
-con sus notas (API de incidentes) y «Preguntar a Bunny» (evento `b89:bunny:ask`, ver
+correlador (`/api/risk/entities`, solo si responde), un visor JSON plegable del documento fuente
+saneado y limitado a 64 KiB UTF-8, el incidente vinculado con sus notas (API de incidentes) y «Preguntar
+a Bunny» (evento `b89:bunny:ask`, ver
 `common/bunny_bridge.ts`).
+
+La selección de entidades que aparece como pivotes queda alineada con el límite de consulta: se usan
+como máximo ocho y la misma selección alimenta el KQL de Threat Hunting/Discover y la búsqueda de la
+timeline. Las pruebas focalizadas del plugin y la suite Vitest integrada pasaron en la validación
+local del 2026-11-11; esto cubre código local, no una investigación M365 real ni el Dashboard
+desplegado.
+
+El origen de una alerta usa `_id` exacto cuando está disponible. Como la API de alertas no conserva
+siempre ese ID, el fallback consulta `ruleId + description` dentro de ±5 min; si no encuentra hit,
+reintenta sin descripción y elige el timestamp más cercano. No exige una coincidencia única, por lo
+que sigue siendo heurístico y puede seleccionar un documento distinto si hay eventos parecidos.
+
+Los reportes de investigación recogen páginas completas de la consulta autorizada antes de exportar;
+no se limitan a los eventos que el analista ya cargó en la timeline. La colección se hace desde el
+navegador con la identidad actual de OpenSearch Dashboards (`asCurrentUser`) y devuelve resúmenes
+`InvestigationEventSummary` allowlisted y saneados. El reporte nunca serializa `_source` ni `full_log`;
+los campos M365 `Parameters`, `ModifiedProperties`, `response`, `MailboxOwnerUPN`, `recipientList`,
+`InternetMessageId` y `NetworkMessageId` se excluyen del visor JSON sin procesar, mientras que los
+metadatos de correo que el contrato admite se exponen aparte en el DTO scrubbed.
+
+La UI permite descargar CSV UTF-8 con BOM y separador regional, un libro `.xlsx` OOXML con hojas de
+resumen, eventos, actividad agrupada e identificadores exactos de mensaje, o abrir un expediente A4
+horizontal para **Imprimir / guardar PDF** desde el navegador. El PDF es la impresión de HTML local:
+no existe renderer PDF server-side. La barra de progreso muestra avance por páginas y filas que se
+recibieron o serializaron; para XLSX continúa por preparación, XML y empaquetado. Se puede cancelar
+la consulta o generación y reintentar tras un error. Un fallo de acceso no produce un reporte parcial.
+
+La consulta conserva en memoria los DTO allowlisted hasta el límite de 10.000 eventos y no crea jobs durables. Con File System Access, XLSX se escribe por bloques en el archivo elegido; sin esa API, usa Blob en memoria con máximo de 50 MiB. La vista PDF se prepara como HTML local y va añadiendo las filas de las tablas en lotes mientras se serializan; al completar abre el diálogo de impresión del navegador. Es una vista previa HTML progresiva, no un PDF parcial ni un renderer server-side. Ninguno de estos flujos se reanuda al cerrar la sesión; no hay artifact store privado ni descarga con ACL de servidor. El CSV conserva los eventos recogidos y distingue el total encontrado.
+
+La timeline y los reportes agrupan **actividad** por entidad coincidente y hasta 15 minutos entre
+eventos consecutivos; un evento puede aparecer en varios grupos. El XLSX y el expediente imprimible
+añaden **IDs exactos de mensaje**, solo para coincidencias compartidas de `NetworkMessageId`, o de
+`InternetMessageId` cuando falta el primero. Solo presentan IDs compartidos por más de un evento;
+nunca combinan IDs de red distintos. El CSV solo incluye la agrupación temporal. La cercanía temporal
+no demuestra causalidad; un ID coincidente tampoco demuestra hilo ni dirección enviado/recibido. Los
+metadatos de correo son opcionales y dependen del esquema y evento del feed de auditoría M365. No se
+lee contenido de buzones, y no se ha validado la cobertura de estos campos en un tenant real.
+
+### Paginación e informes locales de investigación (estado al 2026-11-11)
+
+La ruta `related` acepta un cursor de continuación. Cada página tiene hasta 100 resúmenes allowlisted
+y usa PIT con `search_after`, timestamp descendente y `_shard_doc` para desempatar dentro del snapshot.
+El cursor contiene PIT, posición y fingerprint SHA-256 de entidades, ancla, ventana y exclusión; el
+servidor rechaza filtros alterados. Cada página busca con `asCurrentUser`; extiende el PIT por dos
+minutos y lo cierra al terminar. Si la consulta se abandona, el PIT vence por keep-alive. La timeline
+indica cargados frente al total, permite continuar y conserva lo ya mostrado si una página falla;
+el analista puede reintentar la página o reiniciar la consulta. Las páginas del mismo PIT ven un
+snapshot fijo; una consulta reiniciada abre un snapshot nuevo del Indexer.
+
+Los botones de reporte recorren las páginas completas desde la primera consulta, con los mismos
+filtros y sesión, y muestran progreso monotónico por trabajo recibido. CSV y expediente imprimible
+serializan filas en bloques de 250, ceden el hilo de UI entre bloques y actualizan el progreso de
+generación; XLSX informa el render por filas y el empaquetado por partes. Cancelar aborta la petición y
+la serialización; tras error, el analista puede volver a intentar. Para el límite de 10.000 eventos,
+el resultado indica truncamiento y requiere refinar filtros; no se presenta un parcial como completo.
+CSV/XLSX/PDF imprimible contienen el resumen de origen y los DTO scrubbed, no el JSON fuente. XLSX y
+la impresión incluyen grupos temporales y, cuando existen metadatos opcionales, una sección separada
+de coincidencias exactas por ID. El PDF depende del diálogo del navegador; no es generación PDF en
+servidor. La sesión no guarda un job durable ni puede reanudar el reporte tras cerrar el navegador.
+
+**Validación:** pruebas locales cubren paginación, cursor, ACL, sanitización M365, formato de reporte,
+progreso y cancelación. No equivalen a build/validación visual del Dashboard desplegado, acceso al
+Indexer de un tenant real ni comprobación de campos M365 reales.
 
 ## Navegación del SIEM (auditoría 2026-11-09)
 
@@ -148,7 +217,7 @@ Security plugin y la API B89). Recorrido con lider@b89.io en dev.security.b89.io
 | Detección | Vulnerabilidades, Malware y rootcheck, FIM, SCA, Inventario, Reglas, Decodificadores, Listas CDB, Probar reglas | Se mantienen | SCA pide elegir agente (estado vacío propio de Wazuh) |
 | Cumplimiento | Políticas, Auditoría e integridad, PCI DSS, GDPR, HIPAA, NIST 800-53, TSC | Se mantienen | ~4 000 eventos etiquetados en 30 días |
 | Integraciones | Integraciones + accesos B89 por proveedor con su logotipo (Microsoft 365 / Entra ID, Bitdefender, Snyk, Cloudflare, AWS → paneles B89), Docker | Se mantienen / nuevos | Los accesos abren los paneles B89 |
-| Integraciones | Office 365 (módulo Wazuh) | Se mantiene, renombrada | Funciona en cuanto Entra conceda `ActivityFeed.Read` |
+| Integraciones | Office 365 (módulo Wazuh) | Se mantiene, renombrada | `ActivityFeed.Read` y suscripciones están activos desde 2026-11-10. Confirma la salud y frescura en Salud de fuentes: muestra última lectura correcta, último evento y conteo/último evento por flujo M365. El permiso concedido no garantiza que cada flujo siga recibiendo eventos. |
 | — | Módulo AWS de Wazuh (`amazon-web-services`) | Oculta; «AWS» abre el panel B89 | Filtra `rule.groups: amazon` y el receptor B89 usa `aws`: salía siempre vacío |
 | Respuesta | **B89 Respond** (`b89-respond`, antes «SOAR») | Renombrado | «SOAR» queda como descripción |
 | Administración | Usuarios y sesiones, Mi sesión, Grupos de agentes, Estado/Estadísticas/Logs/Configuración del manager, Ajustes de la app SIEM, APIs del manager, Consola API, Roles del manager, Índices, Instantáneas, Consola del Indexer, Editor de visualizaciones, Administración del dashboard | Se mantienen | Uso de administración; Índices/Instantáneas muestran «sin permisos» a roles sin ISM |
@@ -160,3 +229,9 @@ Otros arreglos: el título de pestaña ya no repite «B89 SecOps», cada vista B
 pan (antes quedaba «Resumen» de la app de Wazuh) y el informe PDF de la app de Wazuh lleva cabecera,
 pie y color B89 (`customization.*` en el `wazuh.yml` que escribe `deploy-host.sh` y
 `REPORTS_PRIMARY_COLOR` en la imagen).
+
+### Escritura de informes XLSX desde Bunny
+
+Cuando el navegador admite File System Access, el analista elige el archivo y Bunny escribe el XLSX por bloques, esperando el destino entre escrituras y actualizando el progreso con filas ya serializadas. El estado de éxito aparece tras cerrar el archivo. El límite local es 50 MiB y 10.000 eventos. En navegadores sin esta capacidad, se usa descarga Blob en memoria y se comunica esa diferencia.
+
+El PDF de Bunny abre una vista HTML A4 con cabecera/contexto y añade filas en lotes de 250, mostrando el avance y cediendo el event loop entre lotes; al completarse abre la impresión del navegador. La persona elige **Guardar como PDF**. La salida no es un PDF incremental ni se genera en servidor. Cancelar detiene el render y cierra la ventana de trabajo. Para una respuesta sin cita se ofrece **Solo respuesta de Bunny**; un expediente requiere evidencia que la sesión pueda consultar.

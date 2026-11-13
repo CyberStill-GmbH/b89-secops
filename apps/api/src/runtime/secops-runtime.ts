@@ -68,8 +68,11 @@ import {
   InMemorySoc,
   ingestCandidate,
   type EntityRefFactory,
+  type OutboxLane,
   type SocDependencies,
   type SocPersistence,
+  type WazuhPushHint,
+  type WazuhPushInboxStore,
 } from '@b89/soc';
 import {
   ConsoleFallbackChannel,
@@ -107,7 +110,7 @@ import type { ProcessInfo } from '../soc/operations-health.js';
 import type { EventsReader } from './events-reader.js';
 import type { SourceHealthMonitor } from './source-health.js';
 import type { RoleGrantsConfig } from '@b89/configuration';
-import type { DirectoryStore, RoleAdministration } from '@b89/access';
+import type { DirectoryDiagnostic, DirectoryStore, RoleAdministration } from '@b89/access';
 import {
   notifyDevices,
   type FallbackChannel,
@@ -127,6 +130,7 @@ export type RuntimeDirectory =
       readonly mode: 'pending';
       readonly intervalMs: number;
       readonly lastErrorCode: string | null;
+      readonly diagnostic: DirectoryDiagnostic | null;
       readonly lastAttemptAt: Date | null;
       readonly nextAttemptAt: Date | null;
     }
@@ -247,6 +251,10 @@ export interface RuntimeOptions {
   ) => Promise<readonly string[]>;
   /** Explorador de eventos (fase 1). Sin lector, la fuente de eventos está deshabilitada. */
   readonly events?: EventsReader;
+  /** HMAC credential for Wazuh manager push wake-ups. Never serialized or logged. */
+  readonly wazuhPushSecret?: string;
+  /** PostgreSQL-backed accepted Wazuh hints; absent means push ingestion is disabled. */
+  readonly wazuhPushInbox?: WazuhPushInboxStore;
   /** Fuente vigilada por la salud por fuente (fase 2); existe aunque esté deshabilitada. */
   readonly sourceHealth?: SourceHealthMonitor;
   /** Padrón del grupo de admisión (fase 3); sin él, la sincronización está deshabilitada. */
@@ -340,6 +348,11 @@ export class SecOpsRuntime {
   public readonly soc: SocPersistence;
   public readonly notifications: AttemptStore;
   public readonly dispatcher: NotificationDispatcher;
+  private readonly urgentDispatcher: NotificationDispatcher;
+  public readonly wazuhPushSecret: string | undefined;
+  private readonly wazuhPushInbox: WazuhPushInboxStore | undefined;
+  private wazuhPushInboxDispatcher: NotificationDispatcher | undefined;
+  private wazuhIngestionWakeup: (() => void) | undefined;
   private readonly digests: NotificationDispatcher;
   public readonly correlatorServiceToken: string | undefined;
   public readonly correlatorRead: { readonly baseUrl: string; readonly token: string } | undefined;
@@ -379,6 +392,8 @@ export class SecOpsRuntime {
   private readonly signalCatalog: SignalCatalog;
 
   public constructor(private readonly options: RuntimeOptions) {
+    this.wazuhPushSecret = options.wazuhPushSecret;
+    this.wazuhPushInbox = options.wazuhPushInbox;
     this.correlatorServiceToken = options.correlatorServiceToken;
     this.correlatorRead = options.correlatorRead;
     this.clock = options.clock ?? (() => new Date());
@@ -386,10 +401,20 @@ export class SecOpsRuntime {
     this.soc = options.soc ?? new InMemorySoc();
     this.sessions = options.sessions ?? new InMemorySessionStore();
     this.notifications = options.notifications ?? new InMemoryNotificationStore();
-    this.dispatcher = new NotificationDispatcher({
-      drain: async () => (await drainOutbox(this.dispatchDependencies(), DISPATCH_BATCH)).length,
+    this.urgentDispatcher = new NotificationDispatcher({
+      drain: async () =>
+        (await drainOutbox(this.dispatchDependencies('urgent'), DISPATCH_BATCH, DISPATCH_BATCH))
+          .length,
       intervalMs: options.dispatchIntervalMs ?? DEFAULT_DISPATCH_INTERVAL_MS,
       onError: options.onDispatchError ?? (() => undefined),
+    });
+    this.dispatcher = new NotificationDispatcher({
+      drain: async () =>
+        (await drainOutbox(this.dispatchDependencies('normal'), DISPATCH_BATCH, DISPATCH_BATCH))
+          .length,
+      intervalMs: options.dispatchIntervalMs ?? DEFAULT_DISPATCH_INTERVAL_MS,
+      onError: options.onDispatchError ?? (() => undefined),
+      onKick: () => this.urgentDispatcher.kick(),
     });
     // Resúmenes (suprimidas y P3/P4): una pasada cada 5 min, en el mismo proceso.
     this.digests = new NotificationDispatcher({
@@ -441,6 +466,48 @@ export class SecOpsRuntime {
       });
   }
 
+  /** Attach the source poller after composition for independent pull reconciliation. */
+  public setWazuhIngestionWakeup(wakeup: (() => void) | undefined): void {
+    this.wazuhIngestionWakeup = wakeup;
+  }
+
+  public wakeWazuhIngestion(): boolean {
+    if (!this.wazuhPushSecret || !this.wazuhIngestionWakeup) return false;
+    this.wazuhIngestionWakeup();
+    return true;
+  }
+
+  /** Installs the durable hint consumer after the Indexer provider is composed. */
+  public setWazuhPushInboxProcessor(drain: () => Promise<number>): void {
+    if (!this.wazuhPushInbox) throw new Error('WAZUH_PUSH_INBOX_NOT_CONFIGURED');
+    if (this.wazuhPushInboxDispatcher) throw new Error('WAZUH_PUSH_INBOX_PROCESSOR_ALREADY_SET');
+    this.wazuhPushInboxDispatcher = new NotificationDispatcher({
+      drain,
+      intervalMs: 250,
+      errorIntervalMs: 5_000,
+      onError: this.options.onDispatchError ?? (() => undefined),
+    });
+  }
+
+  public get canAcceptWazuhPush(): boolean {
+    return Boolean(this.wazuhPushSecret && this.wazuhPushInbox && this.wazuhPushInboxDispatcher);
+  }
+
+  public async acceptWazuhPushHint(
+    hint: WazuhPushHint,
+  ): Promise<'inserted' | 'duplicate' | 'reopened-terminal'> {
+    const inbox = this.wazuhPushInbox;
+    const dispatcher = this.wazuhPushInboxDispatcher;
+    if (!this.wazuhPushSecret || !inbox || !dispatcher) {
+      throw new Error('WAZUH_PUSH_INBOX_NOT_CONFIGURED');
+    }
+    const accepted = await inbox.enqueue(hint);
+    dispatcher.kick();
+    // The durable worker handles the hinted event; this also advances the regular reconciler.
+    this.wakeWazuhIngestion();
+    return accepted;
+  }
+
   public now(): Date {
     return this.clock();
   }
@@ -480,6 +547,10 @@ export class SecOpsRuntime {
   /** Fuente vigilada por la salud por fuente; `undefined` solo en specs que no la declaran. */
   public get sourceHealth(): SourceHealthMonitor | undefined {
     return this.options.sourceHealth;
+  }
+
+  public wazuhPushInboxMetrics(at = this.now()) {
+    return this.wazuhPushInbox?.metrics(at) ?? Promise.resolve(null);
   }
 
   public get push(): RuntimeOptions['push'] {
@@ -554,10 +625,10 @@ export class SecOpsRuntime {
    * lo que el despacho no publicó sigue en la cola y vuelve a ser reclamable al vencer el
    * lease.
    */
-  private get outboxReader(): OutboxReader {
+  private outboxReader(lane: OutboxLane): OutboxReader {
     return {
       claimPending: async (limit, now) => {
-        const claimed = await this.soc.claimOutbox(now, limit, OUTBOX_LEASE_MS);
+        const claimed = await this.soc.claimOutbox(now, limit, OUTBOX_LEASE_MS, lane);
         for (const message of claimed) this.claimTokens.set(message.messageId, message.claimToken);
         return claimed;
       },
@@ -581,9 +652,9 @@ export class SecOpsRuntime {
    */
   private readonly claimTokens = new Map<string, string>();
 
-  public dispatchDependencies(): DispatchDependencies {
+  public dispatchDependencies(lane: OutboxLane = 'all'): DispatchDependencies {
     return {
-      outbox: this.outboxReader,
+      outbox: this.outboxReader(lane),
       attempts: this.notifications,
       transport: this.transport,
       fallback: this.fallback,
@@ -625,7 +696,7 @@ export class SecOpsRuntime {
    */
   public async promoteEvent(
     event: SecurityEvent,
-  ): Promise<'promoted' | 'duplicate' | 'not_promoted'> {
+  ): Promise<'promoted' | 'duplicate' | 'not_promoted' | 'below_threshold' | 'suppressed'> {
     const tenantId = event.tenant.id;
     const key = promotionKey(tenantId, event.recordId, PRIORITIZATION_RULESET_VERSION);
     const existingAlert = await this.soc.alertByEventRecordId(tenantId, event.recordId);
@@ -665,8 +736,20 @@ export class SecOpsRuntime {
       existing,
       this.now(),
     );
-    if (decision.outcome !== 'promoted') return decision.outcome;
-    await ingestCandidate(this.socDependencies(), decision.candidate);
+    if (decision.outcome === 'duplicate') return 'duplicate';
+    if (decision.outcome === 'not_promoted') {
+      return decision.reasonCode === 'SUPPRESSED' ? 'suppressed' : 'below_threshold';
+    }
+    const ingested = await ingestCandidate(this.socDependencies(), decision.candidate);
+    if (!ingested.ok) {
+      // Do not let the pull cursor advance as if an alert/outbox row had been created.
+      // The poller records a retryable error and the next pass replays this event.
+      throw Object.assign(new Error('SOC_ALERT_INGESTION_FAILED'), {
+        code: 'SOC_ALERT_INGESTION_FAILED',
+        retryable: true,
+      });
+    }
+    if (!ingested.value.created) return 'duplicate';
     this.dispatcher.kick();
     return 'promoted';
   }
@@ -762,14 +845,21 @@ export class SecOpsRuntime {
 
   /** Arranca el despacho continuo. Lo llama el entrypoint, no las specs. */
   public startDispatcher(): void {
+    this.urgentDispatcher.start();
     this.dispatcher.start();
     this.digests.start();
+    this.wazuhPushInboxDispatcher?.start();
     this.options.channels?.start();
   }
 
   public async stopDispatcher(): Promise<void> {
     this.options.channels?.stop();
-    await Promise.all([this.dispatcher.stop(), this.digests.stop()]);
+    await Promise.all([
+      this.urgentDispatcher.stop(),
+      this.dispatcher.stop(),
+      this.digests.stop(),
+      this.wazuhPushInboxDispatcher?.stop(),
+    ]);
   }
 
   public get channels(): NotificationChannelRegistry | undefined {

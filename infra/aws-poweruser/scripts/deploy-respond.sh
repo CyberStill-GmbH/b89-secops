@@ -12,6 +12,13 @@ WD=$ROOT/wazuh-docker/single-node
 HOST_DIR=$ROOT/src/infra/aws-poweruser/host
 log() { printf '[b89-respond] %s\n' "$*"; }
 
+# This override includes compose.b89.yaml, whose Manager mounts the host CA bundle.
+EDGE_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+[[ -s $EDGE_CA_BUNDLE && -r $EDGE_CA_BUNDLE ]] || {
+  echo "host CA bundle missing or unreadable: $EDGE_CA_BUNDLE" >&2
+  exit 1
+}
+
 [[ -s $R/frontend-source.tar.gz ]] || { echo "falta $R/frontend-source.tar.gz" >&2; exit 1; }
 
 if ! grep -q '^SHUFFLE_OPENSEARCH_PASSWORD=' "$SECRETS/compose.env"; then

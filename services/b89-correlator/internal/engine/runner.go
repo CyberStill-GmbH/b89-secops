@@ -5,9 +5,9 @@ package engine
 
 import (
 	"context"
-	"math"
 	"errors"
 	"log/slog"
+	"math"
 	"sort"
 	"strings"
 	"sync"
@@ -52,15 +52,16 @@ type Options struct {
 
 // Counters are monotonic metrics.
 type Counters struct {
-	GatewayErrors atomic.Int64
-	APIErrors     atomic.Int64
-	Emitted       atomic.Int64
-	EmitErrors    atomic.Int64
-	EmitSkipped   atomic.Int64
-	AuditRecorded atomic.Int64
-	Polls         atomic.Int64
-	Pages         atomic.Int64
-	Unparseable   atomic.Int64
+	GatewayErrors  atomic.Int64
+	APIErrors      atomic.Int64
+	FeedbackErrors atomic.Int64
+	Emitted        atomic.Int64
+	EmitErrors     atomic.Int64
+	EmitSkipped    atomic.Int64
+	AuditRecorded  atomic.Int64
+	Polls          atomic.Int64
+	Pages          atomic.Int64
+	Unparseable    atomic.Int64
 }
 
 // Runner owns the loops and the derived views.
@@ -74,20 +75,21 @@ type Runner struct {
 	Now     func() time.Time
 	C       Counters
 
-	mu           sync.RWMutex
-	fb           feedback.Result
-	alerts       []model.B89Alert
-	truncated    bool
-	dedup        risk.DedupResult
-	lastTo       time.Time
-	cursorAt     time.Time
-	ready        bool
-	backfilled   bool
-	lastPoll     time.Time
-	lastFeedback time.Time
-	lastPollErr  string
-	audited      map[string]bool
-	emitTimes    []time.Time
+	mu              sync.RWMutex
+	fb              feedback.Result
+	alerts          []model.B89Alert
+	truncated       bool
+	dedup           risk.DedupResult
+	lastTo          time.Time
+	cursorAt        time.Time
+	ready           bool
+	backfilled      bool
+	lastPoll        time.Time
+	lastFeedback    time.Time
+	lastPollErr     string
+	lastFeedbackErr string
+	audited         map[string]bool
+	emitTimes       []time.Time
 }
 
 // New builds a runner.
@@ -95,18 +97,27 @@ func New(opt Options, eng *risk.Engine, res *resolve.Resolver, gw Gateway, api A
 	if opt.MaxPagesPerPoll <= 0 {
 		opt.MaxPagesPerPoll = 200
 	}
-	return &Runner{Opt: opt, Eng: eng, Res: res, Gateway: gw, API: api, Log: log, Now: time.Now, audited: map[string]bool{}}
+	return &Runner{
+		Opt: opt, Eng: eng, Res: res, Gateway: gw, API: api, Log: log, Now: time.Now,
+		fb: feedback.Result{ReviewCoverageStatus: feedback.ReviewCoverageNoData}, audited: map[string]bool{},
+	}
 }
 
-// Readiness describes whether the initial backfill completed and upstream data remains fresh.
-// A failed poll degrades readiness immediately. Otherwise, polling older than three
-// configured intervals (at least 30 seconds) is considered stale.
+// Readiness describes whether the initial backfill completed, Wazuh polling is fresh, and
+// feedback from the B89 alert API was refreshed successfully and remains fresh. A failed poll
+// or feedback refresh degrades readiness immediately. Otherwise, either input older than
+// three configured intervals (at least 30 seconds) is considered stale.
 type Readiness struct {
-	Ready       bool      `json:"ready"`
-	Status      string    `json:"status"`
-	Reason      string    `json:"reason,omitempty"`
-	LastPoll    time.Time `json:"lastPoll,omitempty"`
-	PollAgeSecs float64   `json:"pollAgeSeconds,omitempty"`
+	Ready               bool       `json:"ready"`
+	Status              string     `json:"status"`
+	Reason              string     `json:"reason,omitempty"`
+	LastPoll            time.Time  `json:"lastPoll,omitempty"`
+	PollAgeSecs         float64    `json:"pollAgeSeconds,omitempty"`
+	FeedbackReady       bool       `json:"feedbackReady"`
+	FeedbackStatus      string     `json:"feedbackStatus"`
+	FeedbackReason      string     `json:"feedbackReason,omitempty"`
+	LastFeedbackSuccess *time.Time `json:"lastFeedbackSuccess,omitempty"`
+	FeedbackAgeSecs     *float64   `json:"feedbackAgeSeconds,omitempty"`
 }
 
 func (r *Runner) Readiness(at time.Time) Readiness {
@@ -117,6 +128,7 @@ func (r *Runner) Readiness(at time.Time) Readiness {
 
 func (r *Runner) readinessLocked(at time.Time) Readiness {
 	state := Readiness{Status: "backfilling", Reason: "initial_backfill_incomplete"}
+	feedbackReady := r.feedbackReadinessLocked(at, &state)
 	if !r.backfilled || !r.ready {
 		if r.lastPollErr != "" {
 			state.Status, state.Reason = "degraded", "upstream_backfill_failed"
@@ -148,11 +160,62 @@ func (r *Runner) readinessLocked(at time.Time) Readiness {
 		state.Status, state.Reason = "degraded", "upstream_poll_stale"
 		return state
 	}
+	if !feedbackReady {
+		state.Status, state.Reason = "degraded", state.FeedbackReason
+		return state
+	}
 	state.Ready, state.Status, state.Reason = true, "ready", ""
 	return state
 }
 
-// Ready reports whether backfill completed and upstream polling remains healthy.
+// feedbackReadinessLocked exposes feedback freshness independently from Wazuh poll freshness.
+func (r *Runner) feedbackReadinessLocked(at time.Time, state *Readiness) bool {
+	if r.lastFeedback.IsZero() {
+		state.FeedbackStatus = "pending"
+		state.FeedbackReason = "feedback_not_refreshed"
+		if r.lastFeedbackErr != "" {
+			state.FeedbackStatus = "failed"
+			state.FeedbackReason = r.lastFeedbackErr
+		}
+		return false
+	}
+
+	lastSuccess := r.lastFeedback
+	state.LastFeedbackSuccess = &lastSuccess
+	age := at.Sub(lastSuccess)
+	if age < 0 {
+		age = 0
+	}
+	ageSeconds := age.Seconds()
+	state.FeedbackAgeSecs = &ageSeconds
+	staleAfter := freshnessThreshold(r.Opt.FeedbackInterval)
+	if age > staleAfter {
+		state.FeedbackStatus = "stale"
+		state.FeedbackReason = "feedback_stale"
+		return false
+	}
+	if r.lastFeedbackErr != "" {
+		state.FeedbackStatus = "failed"
+		state.FeedbackReason = r.lastFeedbackErr
+		return false
+	}
+	state.FeedbackReady = true
+	state.FeedbackStatus = "ready"
+	return true
+}
+
+func freshnessThreshold(interval time.Duration) time.Duration {
+	staleAfter := time.Duration(1<<63 - 1)
+	if interval <= staleAfter/3 {
+		staleAfter = 3 * interval
+	}
+	if staleAfter < 30*time.Second {
+		staleAfter = 30 * time.Second
+	}
+	return staleAfter
+}
+
+// Ready reports whether backfill, upstream polling, and feedback refresh are healthy.
 func (r *Runner) Ready() bool { return r.Readiness(r.Now().UTC()).Ready }
 
 // ingest reads [from,to) page by page and processes it; returns the new candidates.
@@ -252,9 +315,32 @@ func (r *Runner) RefreshFeedback(ctx context.Context) error {
 	alerts, truncated, err := r.API.Alerts(ctx, now.Add(-r.Opt.FeedbackLookback))
 	if err != nil {
 		r.C.APIErrors.Add(1)
+		r.C.FeedbackErrors.Add(1)
+		r.mu.Lock()
+		r.lastFeedbackErr = "feedback_refresh_failed"
+		r.mu.Unlock()
 		return err
 	}
-	fb := feedback.Evaluate(alerts, r.Res.Canonical, r.Opt.Feedback, now)
+	completedAt := r.Now().UTC()
+	policy := r.Opt.Feedback
+	// The internal API intentionally caps the requested feedback feed at 29 days to
+	// leave margin under its 30-day validation limit. Report and evaluate the effective
+	// window so the denominator/coverage metadata never claims data we did not fetch.
+	if r.Opt.FeedbackLookback > 0 && (policy.Window <= 0 || r.Opt.FeedbackLookback < policy.Window) {
+		policy.Window = r.Opt.FeedbackLookback
+	}
+	if truncated {
+		// Keep counts and human-review proposals visible, but never derive active
+		// suppressions from a partial feed: it may omit a P1 or true-positive alert.
+		policy.AutoSuppress = false
+	}
+	fb := feedback.Evaluate(alerts, r.Res.Canonical, policy, now)
+	if truncated {
+		// A truncated denominator cannot support a coverage ratio, even when the
+		// visible subset contains adjudicated alerts.
+		fb.ReviewCoverage = nil
+		fb.ReviewCoverageStatus = feedback.ReviewCoverageIncomplete
+	}
 	r.Eng.SetSuppressor(fb)
 	since := now.Add(-r.Opt.Backfill)
 	recent := make([]model.B89Alert, 0, len(alerts))
@@ -265,7 +351,8 @@ func (r *Runner) RefreshFeedback(ctx context.Context) error {
 	}
 	dedup := risk.DedupAlerts(recent, r.Res.Canonical, r.Eng.P.GroupGap, r.Eng.P.GroupMaxSpan)
 	r.mu.Lock()
-	r.fb, r.alerts, r.truncated, r.dedup, r.lastFeedback = fb, alerts, truncated, dedup, now
+	r.fb, r.alerts, r.truncated, r.dedup, r.lastFeedback = fb, alerts, truncated, dedup, completedAt
+	r.lastFeedbackErr = ""
 	r.mu.Unlock()
 	r.attachAlerts()
 	return nil

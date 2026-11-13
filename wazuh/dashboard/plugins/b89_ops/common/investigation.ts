@@ -42,6 +42,8 @@ export const ENTITY_FIELDS: Readonly<Record<EntityKind, readonly string[]>> = {
   ],
   user: [
     'data.office365.UserId',
+    'data.office365.MailboxOwnerUPN',
+    'data.office365.recipientList.Address',
     'data.srcuser',
     'data.dstuser',
     'data.cloudflare.audit.actor_email',
@@ -89,9 +91,130 @@ export interface InvestigationEventSummary {
   readonly groups: readonly string[];
   readonly vendor: VendorId;
   readonly agent: string | null;
+  /** Optional Exchange/Defender message metadata; absence is common and is not inferred. */
+  readonly email?: {
+    readonly internetMessageId?: string;
+    readonly networkMessageId?: string;
+    readonly mailboxOwnerUpn?: string;
+    readonly recipients?: readonly string[];
+    readonly recipientCount?: number;
+    readonly recipientsTruncated?: boolean;
+    readonly operation?: string;
+  };
   readonly mitre: MitreInfo;
   /** Entidades de la consulta que aparecen en este evento (`kind:value`). */
   readonly matched: readonly string[];
+}
+
+export interface ExactEmailMessageGroup {
+  readonly idType: 'NetworkMessageId' | 'InternetMessageId';
+  readonly id: string;
+  readonly events: readonly InvestigationEventSummary[];
+}
+
+export type EmailMessageDirection = 'Salida' | 'Dirección no determinada';
+
+export interface ExactEmailMessageEvidence {
+  /** Direction is derived only from an explicit, recognized audit operation. */
+  readonly direction: string;
+  readonly operations: readonly string[];
+  /** MailboxOwnerUPN is an audited mailbox, not necessarily the human actor. */
+  readonly auditedMailboxes: readonly string[];
+  /** At most `EXACT_EMAIL_GROUP_RECIPIENT_LIMIT` unique addresses are retained for export. */
+  readonly recipients: readonly string[];
+  /** Minimum distinct addresses observed; capped at the display limit plus one overflow sentinel. */
+  readonly recipientCount: number;
+  readonly recipientsTruncated: boolean;
+}
+
+/** Bound report and DOM size when many events share one message identifier. */
+export const EXACT_EMAIL_GROUP_RECIPIENT_LIMIT = 100;
+
+/** Conservative mapping: unknown operations never imply a message direction. */
+export function emailOperationDirection(operation: string | undefined): EmailMessageDirection {
+  const normalized = operation
+    ?.trim()
+    .toLocaleLowerCase('en-US')
+    .replace(/[\s_-]/gu, '');
+  if (normalized === 'send' || normalized === 'sendas' || normalized === 'sendonbehalf') {
+    return 'Salida';
+  }
+  return 'Dirección no determinada';
+}
+
+/** Aggregate only metadata already present in the allowlisted investigation DTO. */
+export function summarizeExactEmailMessageGroup(
+  group: ExactEmailMessageGroup,
+): ExactEmailMessageEvidence {
+  const distinct = (values: readonly (string | undefined)[]) =>
+    [
+      ...new Set(
+        values.map((value) => value?.trim()).filter((value): value is string => Boolean(value)),
+      ),
+    ].sort((left, right) => left.localeCompare(right, 'es'));
+  const operations = distinct(group.events.map((event) => event.email?.operation));
+  const directions = new Set(
+    group.events.map((event) => emailOperationDirection(event.email?.operation)),
+  );
+  const hasUnknown = directions.has('Dirección no determinada');
+  const known = (['Salida'] as const).filter((direction) => directions.has(direction));
+  const direction = [
+    ...known,
+    ...(hasUnknown || known.length === 0 ? ['Dirección no determinada'] : []),
+  ].join('; ');
+  const auditedMailboxes = distinct(group.events.map((event) => event.email?.mailboxOwnerUpn));
+  const recipients = new Set<string>();
+  const sourceTruncated = group.events.some((event) => event.email?.recipientsTruncated === true);
+  let recipientLimitExceeded = false;
+  for (const event of group.events) {
+    for (const value of event.email?.recipients ?? []) {
+      const recipient = value?.trim();
+      if (!recipient || recipients.has(recipient)) continue;
+      if (recipients.size >= EXACT_EMAIL_GROUP_RECIPIENT_LIMIT) {
+        recipientLimitExceeded = true;
+        break;
+      }
+      recipients.add(recipient);
+    }
+    if (recipientLimitExceeded) break;
+  }
+  const recipientCount = recipients.size + (recipientLimitExceeded ? 1 : 0);
+  return {
+    direction: direction || 'Dirección no determinada',
+    operations,
+    auditedMailboxes,
+    recipients: [...recipients].sort((left, right) => left.localeCompare(right, 'es')),
+    recipientCount,
+    recipientsTruncated: recipientLimitExceeded || sourceTruncated,
+  };
+}
+
+/** Groups only events that share an explicit message identifier; time or user never forms a group. */
+export function groupExactEmailMessages(
+  events: readonly InvestigationEventSummary[],
+): ExactEmailMessageGroup[] {
+  const groups = new Map<
+    string,
+    { idType: ExactEmailMessageGroup['idType']; id: string; events: InvestigationEventSummary[] }
+  >();
+  for (const event of events) {
+    const networkMessageId = event.email?.networkMessageId?.trim().toLowerCase();
+    const internetMessageId = event.email?.internetMessageId?.trim();
+    const idType = networkMessageId
+      ? 'NetworkMessageId'
+      : internetMessageId
+        ? 'InternetMessageId'
+        : undefined;
+    const id = networkMessageId || internetMessageId;
+    if (!idType || !id) continue;
+    const key = `${idType}:${id}`;
+    const group = groups.get(key) ?? { idType, id, events: [] };
+    group.events.push(event);
+    groups.set(key, group);
+  }
+  return [...groups.values()]
+    .filter((group) => group.events.length > 1)
+    .map((group) => ({ ...group, events: [...group.events] }));
 }
 
 export interface InvestigationEvent extends InvestigationEventSummary {
@@ -117,6 +240,9 @@ export interface RelatedResponse {
   readonly to: string;
   readonly total: number;
   readonly events: readonly InvestigationEventSummary[];
+  /** Cursor opaco para continuar exactamente la misma consulta; null cuando no quedan filas. */
+  readonly nextCursor: string | null;
+  readonly pageSize: number;
   /** Eventos por entidad (`kind:value` → total en la ventana). */
   readonly perEntity: Readonly<Record<string, number>>;
 }
@@ -141,6 +267,20 @@ export const RELATED_WINDOW_LABEL: Readonly<Record<RelatedWindow, string>> = {
 
 export const MAX_ENTITY_VALUE = 256;
 export const MAX_QUERY_ENTITIES = 8;
+
+/**
+ * Apply the UI's visible selection and server query limit from the same entity list.
+ * Hidden entities must never remain silently active in an investigation query.
+ */
+export function selectQueryEntities<T extends { kind: string; value: string }>(
+  entities: readonly T[],
+  selectedKeys?: readonly string[] | null,
+): T[] {
+  const candidates = entities.slice(0, MAX_QUERY_ENTITIES);
+  if (selectedKeys == null) return candidates;
+  const selected = new Set(selectedKeys);
+  return candidates.filter((entity) => selected.has(entityKey(entity)));
+}
 
 const IPV4 = /^(?:\d{1,3}\.){3}\d{1,3}$/u;
 const IPV6 = /^[0-9a-f:]{2,39}$/iu;
@@ -183,11 +323,24 @@ export function extractEntities(source: unknown): InvestigationEntity[] {
   for (const kind of ENTITY_KINDS) {
     for (const field of ENTITY_FIELDS[kind]) {
       if (managerAgent && (field === 'agent.name' || field === 'agent.ip')) continue;
-      const raw = read(source, field);
-      const values = Array.isArray(raw) ? raw : [raw];
+      const raw =
+        field === 'data.office365.recipientList.Address'
+          ? read(source, 'data.office365.recipientList')
+          : read(source, field);
+      const values = Array.isArray(raw)
+        ? field === 'data.office365.recipientList.Address'
+          ? raw.slice(0, 50)
+          : raw
+        : [raw];
       for (const item of values) {
-        if (typeof item !== 'string' && typeof item !== 'number') continue;
-        const value = String(item).trim();
+        const candidate =
+          field === 'data.office365.recipientList.Address'
+            ? item && typeof item === 'object' && !Array.isArray(item)
+              ? (item as Record<string, unknown>).Address
+              : undefined
+            : item;
+        if (typeof candidate !== 'string' && typeof candidate !== 'number') continue;
+        const value = String(candidate).trim();
         if (!validEntity(kind, value)) continue;
         const key = entityKey({ kind, value });
         if (seen.has(key)) continue;

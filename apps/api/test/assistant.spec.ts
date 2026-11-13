@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { AssistantConfigError, loadAssistantConfig } from '../src/assistant/assistant-config.js';
+import { observeStreamDisconnect } from '../src/assistant/assistant.controller.js';
 import { createClaudeModel, type MessagesClient } from '../src/assistant/claude-model.js';
 import { createInternalGet } from '../src/assistant/internal-client.js';
 import { SOC_KNOWLEDGE } from '../src/assistant/soc-knowledge.generated.js';
@@ -54,6 +55,33 @@ describe('configuración de Bunny', () => {
     ]) {
       expect(() => loadAssistantConfig(env)).toThrow(AssistantConfigError);
     }
+  });
+});
+
+describe('cancelación del SSE de Bunny', () => {
+  it('aborta y libera el pump ante cierre abrupto, pero preserva el cierre completado', () => {
+    const listeners = new Set<() => void>();
+    const raw = {
+      writableFinished: false,
+      on(_event: 'close', listener: () => void) {
+        listeners.add(listener);
+      },
+      off(_event: 'close', listener: () => void) {
+        listeners.delete(listener);
+      },
+    };
+    let aborts = 0;
+    const remove = observeStreamDisconnect(raw, () => {
+      aborts += 1;
+    });
+    for (const listener of listeners) listener();
+    expect(aborts).toBe(1);
+
+    raw.writableFinished = true;
+    for (const listener of listeners) listener();
+    expect(aborts).toBe(1);
+    remove();
+    expect(listeners.size).toBe(0);
   });
 });
 
@@ -119,6 +147,47 @@ describe('adaptador de Claude', () => {
       input: { priority: 'P1' },
     });
   });
+
+  it.each(['bedrock', 'anthropic'] as const)(
+    'pasa la señal de cancelación al SDK de %s',
+    async (provider) => {
+      const providerConfig = loadAssistantConfig({
+        B89_BUNNY_ENABLED: 'true',
+        ...(provider === 'anthropic'
+          ? { B89_BUNNY_PROVIDER: 'anthropic', B89_BUNNY_API_KEY: 'test-key' }
+          : { AWS_REGION: 'us-east-1' }),
+      });
+      if (!providerConfig.enabled) throw new Error('config');
+      const controller = new AbortController();
+      let passedSignal: AbortSignal | undefined;
+      const create = (_params: Record<string, unknown>, options?: { signal?: AbortSignal }) => {
+        passedSignal = options?.signal;
+        return new Promise((_resolve, reject) => {
+          options?.signal?.addEventListener('abort', () => reject(new Error('aborted')), {
+            once: true,
+          });
+        });
+      };
+      const client = {
+        messages: { create },
+        ...(provider === 'anthropic' ? { beta: { messages: { create } } } : {}),
+      } as unknown as MessagesClient;
+      const pending = createClaudeModel(providerConfig, client).complete(
+        {
+          system: 's',
+          messages: [{ role: 'user', content: 'x' }],
+          tools: [],
+          maxTokens: 10,
+          allowTools: true,
+        },
+        controller.signal,
+      );
+      await Promise.resolve();
+      controller.abort();
+      await expect(pending).rejects.toThrow('aborted');
+      expect(passedSignal).toBe(controller.signal);
+    },
+  );
 
   it('pide resúmenes de razonamiento y reenvía los bloques de pensamiento sin tocarlos', async () => {
     let sent: Record<string, unknown> = {};
@@ -241,7 +310,6 @@ describe('herramientas del SOC', () => {
     }
     const context = tools.find((t) => t.name === 'get_alert_context');
     expect(await context?.run({ id: '../../admin' })).toMatchObject({ ok: false });
-    const risk = tools.find((t) => t.name === 'get_entity_risk');
     expect(called).toBe(false);
   });
 
@@ -287,12 +355,14 @@ describe('herramientas del SOC', () => {
         },
       };
     }, analyst);
-    const result = await tools.find((t) => t.name === 'find_alerts')?.run({
-      provider: 'cloudflare',
-      entity: '10.0.0.9',
-      from: '2026-11-01T00:00:00Z',
-      status: 'open',
-    });
+    const result = await tools
+      .find((t) => t.name === 'find_alerts')
+      ?.run({
+        provider: 'cloudflare',
+        entity: '10.0.0.9',
+        from: '2026-11-01T00:00:00Z',
+        status: 'open',
+      });
     expect(urls[0]).toBe('/api/alerts?pageSize=200&status=open');
     expect(result).toMatchObject({
       ok: true,
@@ -376,12 +446,21 @@ describe('herramientas del SOC', () => {
     const tools = buildSocTools(async (url) => {
       urls.push(url);
       if (url.startsWith('/api/risk/entities?')) {
-        return { status: 200, body: { items: [{ ref, kind: 'ip', label: '10.0.0.9', score: 71 }] } };
+        return {
+          status: 200,
+          body: { items: [{ ref, kind: 'ip', label: '10.0.0.9', score: 71 }] },
+        };
       }
       return {
         status: 200,
         body: {
-          entity: { ref, kind: 'ip', label: '10.0.0.9', score: 71, lastSeen: '2026-11-05T14:12:00Z' },
+          entity: {
+            ref,
+            kind: 'ip',
+            label: '10.0.0.9',
+            score: 71,
+            lastSeen: '2026-11-05T14:12:00Z',
+          },
           candidates: [{ id: 'c1', b89AlertIds: ['a-3'] }],
         },
       };
@@ -393,7 +472,10 @@ describe('herramientas del SOC', () => {
     expect(urls.join(' ')).not.toContain('10.0.0.9');
     expect(result).toMatchObject({
       ok: true,
-      data: { available: true, entity: { score: 71, lastSeenLima: '2026-11-05 09:12 Lima (14:12 UTC)' } },
+      data: {
+        available: true,
+        entity: { score: 71, lastSeenLima: '2026-11-05 09:12 Lima (14:12 UTC)' },
+      },
       citations: [{ kind: 'alert', id: 'a-3' }],
     });
   });
@@ -432,7 +514,9 @@ describe('herramientas del SOC', () => {
     );
     for (const runbook of SOC_KNOWLEDGE.runbooks) {
       expect(runbook.markdown, `regenera con generate-bunny-knowledge.py (${runbook.id})`).toBe(
-        readFileSync(join(dir, `${runbook.id}.md`), 'utf8').replace(/\r\n/gu, '\n').trim(),
+        readFileSync(join(dir, `${runbook.id}.md`), 'utf8')
+          .replace(/\r\n/gu, '\n')
+          .trim(),
       );
     }
   });
@@ -456,5 +540,24 @@ describe('cliente interno', () => {
     expect(await get('/api/alerts')).toEqual({ status: 200, body: { ok: true } });
     expect(calls).toHaveLength(1);
     expect(calls[0]?.headers['cookie']).toBe('b89_session=abc');
+  });
+
+  it('no inicia otra lectura interna cuando se cancela el turno', async () => {
+    let calls = 0;
+    const server = {
+      async inject() {
+        calls += 1;
+        return { statusCode: 200, body: '{}' };
+      },
+    };
+    const controller = new AbortController();
+    const get = createInternalGet(
+      server as never,
+      { headers: {}, ip: '127.0.0.1' },
+      controller.signal,
+    );
+    controller.abort();
+    await expect(get('/api/alerts')).rejects.toMatchObject({ name: 'AbortError' });
+    expect(calls).toBe(0);
   });
 });

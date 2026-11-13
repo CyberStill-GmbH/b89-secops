@@ -91,9 +91,9 @@ PROVIDERS = [
         "title": "B89 · Microsoft 365",
         "query": "rule.groups:office365",
         "rules": "100502–100530",
-        "about": "Auditoría unificada de Entra ID, Exchange, SharePoint y General (módulo office365 de "
-        "Wazuh). Requiere el permiso de aplicación **ActivityFeed.Read** (Office 365 Management APIs) "
-        "con consentimiento de administrador. El módulo nativo está en Cloud security → Office 365.",
+        "about": "Auditoría unificada de Entra ID, Exchange, SharePoint y General mediante el módulo "
+        "office365 de Wazuh. El mapamundi muestra ubicaciones solo cuando los eventos incluyen GeoIP "
+        "verificado.",
         "entity": ("data.office365.UserId", "Usuario"),
         "unique": ("data.office365.UserId", "Usuarios distintos"),
         "extra": ("data.office365.Operation", "Operación"),
@@ -132,14 +132,17 @@ def count_metric() -> dict:
     return {"id": "1", "enabled": True, "type": "count", "params": {}, "schema": "metric"}
 
 
-def visualization(vid: str, title: str, vis_type: str, aggs: list, params: dict, query: str | None):
+def visualization(
+    vid: str, title: str, vis_type: str, aggs: list, params: dict, query: str | None,
+    description: str = "",
+):
     attributes = {
         "title": title,
         "visState": json.dumps(
             {"title": title, "type": vis_type, "aggs": aggs, "params": params}, ensure_ascii=False
         ),
         "uiStateJSON": "{}",
-        "description": "",
+        "description": description,
         "version": 1,
         "kibanaSavedObjectMeta": {
             "searchSourceJSON": search_source(query)
@@ -155,7 +158,7 @@ def visualization(vid: str, title: str, vis_type: str, aggs: list, params: dict,
     }
 
 
-def markdown(vid: str, title: str, text: str):
+def markdown(vid: str, title: str, text: str, description: str = ""):
     return visualization(
         vid,
         title,
@@ -163,10 +166,14 @@ def markdown(vid: str, title: str, text: str):
         [],
         {"fontSize": 12, "openLinksInNewTab": False, "markdown": text},
         None,
+        description,
     )
 
 
-def metric(vid: str, title: str, query: str, agg: dict | None = None, label: str = "Eventos"):
+def metric(
+    vid: str, title: str, query: str, agg: dict | None = None, label: str = "Eventos",
+    description: str = "",
+):
     aggs = [agg or count_metric()]
     params = {
         "addTooltip": True,
@@ -186,10 +193,10 @@ def metric(vid: str, title: str, query: str, agg: dict | None = None, label: str
     }
     if agg is None:
         aggs[0]["params"] = {"customLabel": label}
-    return visualization(vid, title, "metric", aggs, params, query)
+    return visualization(vid, title, "metric", aggs, params, query, description)
 
 
-def severity_over_time(vid: str, title: str, query: str):
+def severity_over_time(vid: str, title: str, query: str, description: str = ""):
     aggs = [
         {**count_metric(), "params": {"customLabel": "Eventos"}},
         {
@@ -234,10 +241,13 @@ def severity_over_time(vid: str, title: str, query: str):
         "thresholdLine": {"show": False, "value": 10, "width": 1, "style": "full",
                           "color": "#E7664C"},
     }
-    return visualization(vid, title, "histogram", aggs, params, query)
+    return visualization(vid, title, "histogram", aggs, params, query, description)
 
 
-def top_table(vid: str, title: str, query: str, field: str, label: str, size: int = 10):
+def top_table(
+    vid: str, title: str, query: str, field: str, label: str, size: int = 10,
+    description: str = "",
+):
     aggs = [
         {**count_metric(), "params": {"customLabel": "Eventos"}},
         {
@@ -259,16 +269,16 @@ def top_table(vid: str, title: str, query: str, field: str, label: str, size: in
     ]
     params = {"perPage": 10, "showPartialRows": False, "showMetricsAtAllLevels": False,
               "showTotal": False, "totalFunc": "sum", "percentageCol": ""}
-    return visualization(vid, title, "table", aggs, params, query)
+    return visualization(vid, title, "table", aggs, params, query, description)
 
 
-def saved_search(sid: str, title: str, query: str, columns: list[str]):
+def saved_search(sid: str, title: str, query: str, columns: list[str], description: str = ""):
     return {
         "id": sid,
         "type": "search",
         "attributes": {
             "title": title,
-            "description": "",
+            "description": description,
             "hits": 0,
             "columns": columns,
             "sort": [["timestamp", "desc"]],
@@ -378,28 +388,40 @@ def build() -> list[dict]:
             f"### ![{LOGO_ALT[pid]}]({LOGO_PATH}/{LOGOS[pid]}) {name[6:]}\n\n{provider['about']}\n\n"
             f"**Reglas Wazuh:** {provider['rules']} · **Filtro:** `{query}` · "
             f"Estado y permisos en **B89 SOC → Integraciones**.",
+            description="Contexto de la fuente, cobertura de eventos y referencia de reglas.",
         )
-        events = metric(f"{prefix}-events", f"{name} · eventos", query)
+        events = metric(
+            f"{prefix}-events", f"{name} · eventos", query,
+            description="Total de alertas de esta fuente en el intervalo de tiempo seleccionado.",
+        )
         unique = metric(
             f"{prefix}-unique",
             f"{name} · {unique_label.lower()}",
             query,
             {"id": "1", "enabled": True, "type": "cardinality",
              "params": {"field": unique_field, "customLabel": unique_label}, "schema": "metric"},
+            description=f"Número de {unique_label.lower()} en el intervalo de tiempo seleccionado.",
         )
         high = metric(
             f"{prefix}-high",
             f"{name} · altas y críticas",
             f"({query}) and rule.level >= 8",
             label="Altas y críticas (nivel ≥ 8)",
+            description="Alertas con nivel Wazuh 8 o superior; prioriza hallazgos altos y críticos.",
         )
-        timeline = severity_over_time(f"{prefix}-severity", f"{name} · severidad en el tiempo", query)
+        timeline = severity_over_time(
+            f"{prefix}-severity", f"{name} · severidad en el tiempo", query,
+            description="Evolución de los eventos a lo largo del tiempo, separada por nivel de regla Wazuh.",
+        )
         entities = top_table(f"{prefix}-top-entities", f"{name} · top {entity_label.lower()}",
-                             query, entity_field, entity_label)
+                             query, entity_field, entity_label,
+                             description=f"Agrupa los eventos por {entity_label.lower()} y ordena por volumen; muestra el nivel máximo para priorizar.")
         rules = top_table(f"{prefix}-top-rules", f"{name} · top reglas", query,
-                          "rule.description", "Regla")
+                          "rule.description", "Regla",
+                          description="Reglas que más eventos generaron; muestra también el nivel Wazuh máximo.")
         latest = saved_search(f"{prefix}-latest", f"{name} · últimos eventos", query,
-                              provider["columns"])
+                              provider["columns"],
+                              description="Eventos más recientes primero, con los campos principales para iniciar el triage.")
         panels = [
             (note, {"x": 0, "y": 0, "w": 24, "h": 9}),
             (events, {"x": 24, "y": 0, "w": 8, "h": 9}),
@@ -414,7 +436,8 @@ def build() -> list[dict]:
         built = [note, events, unique, high, timeline, entities, rules]
         if extra:
             extra_table = top_table(f"{prefix}-top-extra", f"{name} · top {extra[1].lower()}",
-                                    query, extra[0], extra[1])
+                                    query, extra[0], extra[1],
+                                    description=f"Valores de {extra[1].lower()} más frecuentes en los eventos del periodo.")
             panels.append((extra_table, {"x": 0, "y": y, "w": 48, "h": 12}))
             built.append(extra_table)
             y += 12
@@ -440,6 +463,7 @@ def build() -> list[dict]:
                 "Para habilitar datos: incorporar enriquecimiento GeoIP confiable y mapear el campo "
                 "`data.office365.geoip.location` como `geo_point`. Confirmar que Maps está disponible en la imagen "
                 "Wazuh Dashboard 4.14.8.",
+                description="Explica cuándo el mapamundi podrá mostrar eventos con ubicaciones GeoIP verificadas.",
             )
             panels.append((empty_state, {"x": 0, "y": y + 16, "w": 48, "h": 8}))
             built.append(empty_state)

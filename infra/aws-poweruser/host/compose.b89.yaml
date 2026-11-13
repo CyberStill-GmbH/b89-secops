@@ -17,7 +17,12 @@ networks:
 services:
   wazuh.manager:
     image: wazuh/wazuh-manager:4.14.8
+    # Wazuh push uses the public certificate name but resolves it to this private edge address.
+    # The signed ingestion endpoint therefore traverses the same TLS gateway as other API calls.
+    extra_hosts:
+      - '${SOC_HOSTNAME}:172.30.89.11'
     environment:
+      - B89_INGEST_CA_FILE=/etc/b89-edge-ca/ca-bundle.pem
       - INDEXER_URL=https://wazuh.indexer:9200
       - INDEXER_USERNAME=admin
       - INDEXER_PASSWORD=${INDEXER_ADMIN_PASSWORD}
@@ -31,6 +36,8 @@ services:
       - '1514:1514'
       - '1515:1515'
       - '127.0.0.1:55000:55000'
+    volumes:
+      - /etc/ssl/certs/ca-certificates.crt:/etc/b89-edge-ca/ca-bundle.pem:ro
     restart: unless-stopped
 
   wazuh.indexer:
@@ -228,7 +235,13 @@ services:
     mem_limit: 128m
     pids_limit: 64
     healthcheck:
-      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
+        ]
       interval: 30s
       timeout: 5s
       retries: 3

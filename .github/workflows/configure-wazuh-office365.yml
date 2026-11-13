@@ -43,7 +43,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: configure-wazuh-office365
+  group: b89-secops-demo-wazuh-host-mutations
   cancel-in-progress: false
 
 jobs:

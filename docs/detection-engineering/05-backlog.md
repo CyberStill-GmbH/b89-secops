@@ -8,7 +8,7 @@ agentes Wazuh en endpoints/servidores; `Presupuesto` = licencia o gasto; `—` =
 
 | ID | Ítem | Por qué | Necesita | Owner |
 | --- | --- | --- | --- | --- |
-| BL-I01 | Conceder **`ActivityFeed.Read`** (Office 365 Management APIs) a la app de Wazuh | Hoy el módulo devuelve `AF10001`: las 27 reglas M365/Entra y la cadena 101700–101704 están cargadas pero ciegas | **Entra** | Platform + admin de Entra |
+| BL-I01 | ~~Conceder `ActivityFeed.Read` a la app de Wazuh~~ **Hecho 2026-11-10** segun verificacion documentada en [18](../18-integraciones.md); revisar frescura antes de declarar fuente sana | Sin actividad M365 el SOC queda ciego | Entra | Platform + admin de Entra |
 | BL-I04 | Poblar `b89-break-glass` con las cuentas de emergencia reales | 100530 (P1 no suprimible) no puede disparar con el centinela | — | Identidad |
 | BL-S01 | Poblar `b89-internet-facing-projects` (proyecto Snyk → zona Cloudflare); luego automatizarlo desde la API de zonas | Sin lista, 101730/101731 no disparan | — | Security Engineering |
 | BL-Q01 | ~~Afinar 521 (rootcheck, nivel 11)~~ **Hecho 2026-11-09**: exclusión de overlay en el agente, regla 101765 y 328 FP cerrados con auditoría ([07](07-ajuste-falsos-positivos.md)) | Ruido que tapaba P2 en el correo de nivel ≥ 8 | — | Ingeniería de detección |

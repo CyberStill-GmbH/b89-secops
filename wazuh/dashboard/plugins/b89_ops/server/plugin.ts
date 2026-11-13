@@ -53,6 +53,7 @@ interface RelatedQuery {
   at: string;
   window: string;
   exclude?: string;
+  cursor?: string;
 }
 
 const idValidator = (value: string) =>
@@ -138,6 +139,7 @@ export class B89OpsServerPlugin implements Plugin<void, void> {
             at: schema.string({ maxLength: 40 }),
             window: schema.string({ defaultValue: '24h', maxLength: 4 }),
             exclude: schema.maybe(docId),
+            cursor: schema.maybe(schema.string({ maxLength: 2048 })),
           }),
         },
       },
@@ -154,15 +156,22 @@ export class B89OpsServerPlugin implements Plugin<void, void> {
         if (!Number.isFinite(at) || entities.length === 0) {
           return response.badRequest({ body: 'Entidad u hora no válidas.' });
         }
-        return response.ok({
-          body: await findRelated(currentUser(context), {
-            entities,
-            at,
-            window,
-            excludeId: query.exclude,
-          }),
-          headers: json,
-        });
+        try {
+          return response.ok({
+            body: await findRelated(currentUser(context), {
+              entities,
+              at,
+              window,
+              excludeId: query.exclude,
+              cursor: query.cursor,
+            }),
+            headers: json,
+          });
+        } catch {
+          return response.badRequest({
+            body: 'Cursor de investigacion no valido para estos filtros.',
+          });
+        }
       },
     );
 

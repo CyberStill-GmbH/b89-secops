@@ -49,8 +49,6 @@ export function createRoleGrantResolver(
   const adminGroups = new Set(config.adminGroupIds);
   const accessApprovers = new Set(config.accessApproverOids ?? []);
   const securityApprovers = new Set(config.securityApproverOids ?? []);
-  const directoryIsAdmin =
-    directory?.groupId !== undefined && adminGroups.has(directory.groupId.toLowerCase());
 
   return async (oid, groups = []) => {
     if (!oid) return [];
@@ -64,6 +62,10 @@ export function createRoleGrantResolver(
       deployOwners.has(key) || groups.some((group) => adminGroups.has(group.toLowerCase()));
     if (!admin && directory) {
       try {
+        // `directory` may be a lazy source: its group ID is undefined at construction time and
+        // becomes available after Graph resolves the configured group name. Read it per login.
+        const directoryIsAdmin =
+          directory.groupId !== undefined && adminGroups.has(directory.groupId.toLowerCase());
         admin =
           (await directory.owners()).has(key) ||
           (directoryIsAdmin && (await directory.isMember?.(key)) === true);

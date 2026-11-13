@@ -7,7 +7,7 @@
  * la frontera HTTP no relaje ninguna decisión.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SecurityEventProviderError } from '@b89/connectors';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
@@ -16,7 +16,7 @@ import { buildApi } from '../src/bootstrap.js';
 import { SlidingWindowLimiter } from '../src/assistant/assistant-service.js';
 import type { EventsReader } from '../src/runtime/events-reader.js';
 import { wazuhRecordToEvent } from '../src/runtime/wazuh-ingestion.js';
-import type { InMemoryAttemptStore } from '@b89/soar';
+import { createAttempt, type InMemoryAttemptStore } from '@b89/soar';
 import type { InMemorySoc } from '@b89/soc';
 
 import type { RuntimeDirectory, SecOpsRuntime } from '../src/runtime/secops-runtime.js';
@@ -514,6 +514,7 @@ describe('C-16/C-17 · recorrido operativo sobre HTTP', () => {
     const ingested = await ingest('01890f47-7abc-7def-8abc-00000000a002', 'low');
 
     expect(JSON.parse(ingested.body).outcome).toBe('not_promoted');
+    expect(JSON.parse(ingested.body).reason).toBe('BELOW_THRESHOLD');
     expect(memorySoc().alertRows.size).toBe(0);
   });
 
@@ -1300,7 +1301,131 @@ describe('C-16 · correlación por entidad expuesta por la API', () => {
   });
 });
 
+describe('C-20 · acuse atómico de notificación', () => {
+  async function deliveredAttempt(id: string) {
+    const at = new Date('2026-11-12T10:00:00.000Z');
+    const created = createAttempt({
+      id,
+      tenantId: runtime.tenantId,
+      messageId: `message-${id}`,
+      idempotencyKey: `key-${id}`,
+      at,
+    });
+    const attempt = { ...created, status: 'sent' as const, sentAt: at };
+    await runtime.notifications.save(attempt);
+    return attempt;
+  }
+
+  async function acknowledge(id: string, mutation: Record<string, string>) {
+    return server().inject({
+      method: 'POST',
+      url: `/api/notifications/${id}/acknowledge`,
+      headers: mutation,
+      remoteAddress: OFFICE_IP,
+    });
+  }
+
+  it('cambia el estado y agrega el evento con actor, correlación y metadata mínima', async () => {
+    const id = '0199bf33-0000-7000-8000-000000000101';
+    const stale = await deliveredAttempt(id);
+    const before = await runtime.soc.audit.head(runtime.tenantId);
+    const analyst = await signIn('analista@b89.example');
+    const response = await acknowledge(id, analyst.mutation);
+    const body = JSON.parse(response.body);
+
+    expect(response.statusCode).toBe(201);
+    expect(body).toMatchObject({ status: 'acknowledged', acknowledgedBy: 'local-analyst-1' });
+    expect(body.acknowledgedAt).toBeTruthy();
+    const events = await runtime.soc.audit.range(
+      runtime.tenantId,
+      (before?.sequence ?? 0n) + 1n,
+      10,
+    );
+    const acknowledgements = events.filter(
+      (event) => event.action === 'soar.notification.acknowledged',
+    );
+    expect(acknowledgements).toHaveLength(1);
+    expect(acknowledgements[0]).toMatchObject({
+      action: 'soar.notification.acknowledged',
+      actor: { id: 'local-analyst-1', type: 'user' },
+      resource: { type: 'notification', id },
+      outcome: 'succeeded',
+      correlationId: body.correlationId,
+      metadata: { previousStatus: 'sent' },
+    });
+
+    // El dispatcher puede terminar después de la respuesta humana con una copia vieja.
+    await runtime.notifications.save(stale);
+    await expect(runtime.notifications.byId(runtime.tenantId, id)).resolves.toMatchObject({
+      status: 'acknowledged',
+      acknowledgedBy: 'local-analyst-1',
+    });
+  });
+
+  it('serializa dos solicitudes concurrentes y registra un solo acuse', async () => {
+    const id = '0199bf33-0000-7000-8000-000000000102';
+    await deliveredAttempt(id);
+    const before = await runtime.soc.audit.head(runtime.tenantId);
+    const analyst = await signIn('analista@b89.example');
+    const results = await Promise.all([
+      acknowledge(id, analyst.mutation),
+      acknowledge(id, analyst.mutation),
+    ]);
+
+    expect(results.map((response) => response.statusCode).sort()).toEqual([201, 409]);
+    const events = await runtime.soc.audit.range(
+      runtime.tenantId,
+      (before?.sequence ?? 0n) + 1n,
+      10,
+    );
+    expect(
+      events.filter((event) => event.action === 'soar.notification.acknowledged'),
+    ).toHaveLength(1);
+  });
+
+  it('revierte el estado si el append de auditoría falla', async () => {
+    const id = '0199bf33-0000-7000-8000-000000000103';
+    await deliveredAttempt(id);
+    const analyst = await signIn('analista@b89.example');
+    vi.spyOn(runtime.soc.audit, 'head').mockRejectedValueOnce(new Error('AUDIT_STORE_UNAVAILABLE'));
+
+    const response = await acknowledge(id, analyst.mutation);
+    expect(response.statusCode).toBe(500);
+    await expect(runtime.notifications.byId(runtime.tenantId, id)).resolves.toMatchObject({
+      status: 'sent',
+      acknowledgedAt: null,
+      acknowledgedBy: null,
+    });
+  });
+});
+
 describe('Observabilidad · GET /api/operations/health por rol', () => {
+  async function withCorrelatorResponse(
+    response: { readonly status: number; readonly body: unknown } | Error,
+    run: (fetchSpy: ReturnType<typeof vi.spyOn>) => Promise<void>,
+  ) {
+    const original = runtime.correlatorRead;
+    Object.defineProperty(runtime, 'correlatorRead', {
+      configurable: true,
+      writable: true,
+      value: { baseUrl: 'http://correlator.internal:8080', token: 'test-correlator-read-token' },
+    });
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      if (response instanceof Error) throw response;
+      return new Response(JSON.stringify(response.body), { status: response.status });
+    });
+    try {
+      await run(fetchSpy);
+    } finally {
+      fetchSpy.mockRestore();
+      Object.defineProperty(runtime, 'correlatorRead', {
+        configurable: true,
+        writable: true,
+        value: original,
+      });
+    }
+  }
+
   async function health(cookie: string) {
     return server().inject({
       method: 'GET',
@@ -1325,11 +1450,232 @@ describe('Observabilidad · GET /api/operations/health por rol', () => {
 
     expect(Object.keys(body.sections).sort()).toEqual(['soc', 'summary']);
     expect(body.sections.soc).toMatchObject({ persistence: 'memory', dispatcherRunning: false });
+    expect(body.sections.soc.correlator).toEqual({
+      status: 'NO_DATA',
+      ready: null,
+      feedbackStatus: 'unconfigured',
+      feedbackAgeSeconds: null,
+      lastFeedbackSuccess: null,
+    });
+    expect(body.sections.soc.outboxToProviderAcceptanceMs).toMatchObject({
+      status: 'NO_DATA',
+      sampleCount: 0,
+      p50: null,
+      p95: null,
+      p99: null,
+    });
     expect(body.sections.soc.outbox.pending).toBeGreaterThan(0);
+    expect(body.sections.soc.outbox).toMatchObject({
+      expiredProcessing: 0,
+      oldestExpiredLeaseAgeSeconds: null,
+    });
     // El harness no arranca el bucle y usa memoria: se reporta, no se oculta.
     expect(body.sections.soc.degradedReasons).toEqual(
       expect.arrayContaining(['DISPATCHER_STOPPED', 'PERSISTENCE_EPHEMERAL']),
     );
+  });
+
+  it('proyecta solo los campos permitidos de /readyz para operadores SOC', async () => {
+    const lead = await signIn('lider@b89.example');
+    const readyz = {
+      ready: true,
+      status: 'ready',
+      feedbackReady: true,
+      feedbackStatus: 'ready',
+      feedbackAgeSeconds: 12.5,
+      lastFeedbackSuccess: '2026-11-12T11:59:47.500Z',
+      reason: 'must not be forwarded',
+      debug: { token: 'must not be forwarded' },
+    };
+
+    await withCorrelatorResponse({ status: 200, body: readyz }, async () => {
+      const response = await health(lead.cookie);
+      const body = JSON.parse(response.body);
+      expect(response.statusCode).toBe(200);
+      expect(body.sections.soc.correlator).toEqual({
+        status: 'OK',
+        ready: true,
+        feedbackStatus: 'ready',
+        feedbackAgeSeconds: 12.5,
+        lastFeedbackSuccess: '2026-11-12T11:59:47.500Z',
+      });
+      expect(body.sections.soc.degradedReasons).not.toContain('CORRELATOR_NOT_READY');
+      expect(response.body).not.toContain('must not be forwarded');
+      expect(response.body).not.toContain('test-correlator-read-token');
+    });
+  });
+
+  it('degrada solo SOC si /readyz falla o informa que el correlador no está listo', async () => {
+    const lead = await signIn('lider@b89.example');
+    await withCorrelatorResponse(new Error('private transport detail'), async () => {
+      const response = await health(lead.cookie);
+      const body = JSON.parse(response.body);
+      expect(response.statusCode).toBe(200);
+      expect(body.status).toBe('DEGRADED');
+      expect(body.sections.soc.correlator).toEqual({
+        status: 'DEGRADED',
+        ready: null,
+        feedbackStatus: 'unavailable',
+        feedbackAgeSeconds: null,
+        lastFeedbackSuccess: null,
+      });
+      expect(body.sections.soc.degradedReasons).toContain('CORRELATOR_UNREACHABLE');
+      expect(response.body).not.toContain('private transport detail');
+    });
+
+    const leadAfter = await signIn('lider@b89.example');
+    await withCorrelatorResponse(
+      {
+        status: 503,
+        body: {
+          ready: false,
+          status: 'degraded',
+          feedbackReady: false,
+          feedbackStatus: 'failed',
+          feedbackAgeSeconds: 3,
+          lastFeedbackSuccess: '2026-11-12T11:59:57.000Z',
+        },
+      },
+      async () => {
+        const response = await health(leadAfter.cookie);
+        const body = JSON.parse(response.body);
+        expect(response.statusCode).toBe(200);
+        expect(body.sections.soc.correlator).toMatchObject({
+          status: 'DEGRADED',
+          ready: false,
+          feedbackStatus: 'failed',
+        });
+        expect(body.sections.soc.degradedReasons).toContain('CORRELATOR_NOT_READY');
+      },
+    );
+
+    await withCorrelatorResponse(
+      { status: 200, body: { ready: 'yes', reason: 'bad body' } },
+      async () => {
+        const response = await health(leadAfter.cookie);
+        const body = JSON.parse(response.body);
+        expect(response.statusCode).toBe(200);
+        expect(body.sections.soc.correlator.feedbackStatus).toBe('unavailable');
+        expect(body.sections.soc.degradedReasons).toContain('CORRELATOR_UNREACHABLE');
+        expect(response.body).not.toContain('bad body');
+      },
+    );
+  });
+
+  it('no expone métricas de la inbox Wazuh a un actor de otro tenant', async () => {
+    const lead = await signIn('lider@b89.example');
+    const sessionId = decodeURIComponent(lead.cookie.slice('b89_session='.length));
+    const session = await runtime.sessions.byId(sessionId);
+    expect(session).toBeDefined();
+    expect(session?.tenantId).toBe(runtime.sourceHealth?.key.tenantId);
+
+    const metrics = {
+      counts: { pending: 1, processing: 0, processed: 2, 'failed-terminal': 0 },
+      oldestPendingAt: new Date('2026-11-12T09:00:00.000Z'),
+      oldestProcessingAt: null,
+      oldestUnresolvedAt: new Date('2026-11-12T09:00:00.000Z'),
+      oldestTerminalAt: null,
+      lastProcessedAt: new Date('2026-11-12T09:00:01.000Z'),
+      expiredProcessing: 0,
+      terminalFailuresRecent: 0,
+      terminalWindowHours: 24 as const,
+      sourceToReceiptMs: {
+        windowHours: 24 as const,
+        sampleCount: 2,
+        clockSkewSamples: 0,
+        sampleCapReached: false,
+        p50: 10,
+        p95: 20,
+        p99: 20,
+      },
+      receiptToHandlerMs: {
+        windowHours: 24 as const,
+        sampleCount: 1,
+        p50: 5,
+        p95: 5,
+        p99: 5,
+      },
+    };
+    const readMetrics = vi.spyOn(runtime, 'wazuhPushInboxMetrics').mockResolvedValue(metrics);
+
+    try {
+      const ownTenantResponse = await health(lead.cookie);
+      expect(JSON.parse(ownTenantResponse.body).sections.soc.wazuhPushInbox.counts.pending).toBe(1);
+
+      readMetrics.mockClear();
+      const currentBeforeTenantChange = await runtime.sessions.byId(sessionId);
+      expect(currentBeforeTenantChange).toBeDefined();
+      expect(
+        await runtime.sessions.update(
+          { ...currentBeforeTenantChange!, tenantId: 'tenant-outside-wazuh-source' },
+          currentBeforeTenantChange!.revision,
+        ),
+      ).toBe(true);
+
+      const otherTenantResponse = await health(lead.cookie);
+      expect(JSON.parse(otherTenantResponse.body).sections.soc.wazuhPushInbox).toBeNull();
+      expect(readMetrics).not.toHaveBeenCalled();
+    } finally {
+      const current = await runtime.sessions.byId(sessionId);
+      if (current && current.tenantId !== session!.tenantId) {
+        await runtime.sessions.update(
+          { ...current, tenantId: session!.tenantId },
+          current.revision,
+        );
+      }
+      readMetrics.mockRestore();
+    }
+  });
+
+  it('no consulta ni expone la salud del correlador a un actor de otro tenant', async () => {
+    const lead = await signIn('lider@b89.example');
+    const sessionId = decodeURIComponent(lead.cookie.slice('b89_session='.length));
+    const originalSession = await runtime.sessions.byId(sessionId);
+    expect(originalSession?.tenantId).toBe(runtime.tenantId);
+    expect(originalSession).toBeDefined();
+    expect(
+      await runtime.sessions.update(
+        { ...originalSession!, tenantId: 'tenant-outside-correlator' },
+        originalSession!.revision,
+      ),
+    ).toBe(true);
+
+    try {
+      await withCorrelatorResponse(
+        {
+          status: 200,
+          body: {
+            ready: true,
+            status: 'ready',
+            feedbackReady: true,
+            feedbackStatus: 'ready',
+            feedbackAgeSeconds: 1,
+            lastFeedbackSuccess: '2026-11-12T12:00:00.000Z',
+          },
+        },
+        async (fetchSpy) => {
+          const response = await health(lead.cookie);
+          const body = JSON.parse(response.body);
+          expect(response.statusCode).toBe(200);
+          expect(body.sections.soc.correlator).toEqual({
+            status: 'NO_DATA',
+            ready: null,
+            feedbackStatus: 'unconfigured',
+            feedbackAgeSeconds: null,
+            lastFeedbackSuccess: null,
+          });
+          expect(fetchSpy).not.toHaveBeenCalled();
+        },
+      );
+    } finally {
+      const currentSession = await runtime.sessions.byId(sessionId);
+      if (currentSession && currentSession.tenantId !== originalSession!.tenantId) {
+        await runtime.sessions.update(
+          { ...currentSession, tenantId: originalSession!.tenantId },
+          currentSession.revision,
+        );
+      }
+    }
   });
 
   it('el administrador de plataforma ve las tres secciones', async () => {
@@ -1338,6 +1684,9 @@ describe('Observabilidad · GET /api/operations/health por rol', () => {
 
     expect(Object.keys(body.sections).sort()).toEqual(['platform', 'soc', 'summary']);
     expect(body.sections.platform.databaseLatencyMs).toBeGreaterThanOrEqual(0);
+    expect(body.sections.soc.outboxToProviderAcceptanceMs.acceptanceMeans).toContain(
+      'does not mean a person read it',
+    );
   });
 
   it('el auditor no tiene acceso y no se revela la existencia de la ruta', async () => {
@@ -1880,6 +2229,40 @@ describe('Sprint 5 · fase 2 · GET /api/sources/health', () => {
     expect((await health((await signIn('auditor@b89.example')).cookie)).status).toBe(200);
     expect((await health((await signIn('analista@b89.example')).cookie)).status).toBe(404);
   });
+
+  it('expone el desglose del último sondeo y conserva null en métricas históricas', async () => {
+    const key = runtime.sourceHealth!.key;
+    const attemptedAt = runtime.now();
+    await runtime.soc.ingestion.recordObservation({
+      id: '11111111-1111-4111-8111-111111111111',
+      ...key,
+      attemptedAt,
+      completedAt: attemptedAt,
+      outcome: 'success',
+      recordsSeen: 4,
+      normalized: 2,
+      promoted: 1,
+      quarantined: 1,
+      duplicates: null,
+      notPromoted: null,
+      belowThreshold: 1,
+      suppressed: 2,
+      newestEventAt: null,
+      errorClass: null,
+    });
+    const response = await health((await signIn('lider@b89.example')).cookie);
+    expect(response.body.sources[0].processing).toMatchObject({
+      outcome: 'success',
+      recordsSeen: 4,
+      normalized: 2,
+      promoted: 1,
+      quarantined: 1,
+      duplicates: null,
+      notPromoted: null,
+      belowThreshold: 1,
+      suppressed: 2,
+    });
+  });
 });
 
 describe('Sprint 5 · fase 3 · GET /api/admin/users', () => {
@@ -1903,7 +2286,13 @@ describe('Sprint 5 · fase 3 · GET /api/admin/users', () => {
     const pending: RuntimeDirectory = {
       mode: 'pending',
       intervalMs: 900_000,
-      lastErrorCode: 'DIRECTORY_FORBIDDEN',
+      lastErrorCode: 'DIRECTORY_PERMISSION_MISSING',
+      diagnostic: {
+        status: 403,
+        errorCode: 'Authorization_RequestDenied',
+        requestId: 'graph-request-123',
+        operation: 'resolveGroupId',
+      },
       lastAttemptAt: new Date(),
       nextAttemptAt: new Date(Date.now() + 60_000),
     };
@@ -1922,9 +2311,15 @@ describe('Sprint 5 · fase 3 · GET /api/admin/users', () => {
       expect(JSON.parse(users.body).sync).toMatchObject({
         mode: 'graph',
         status: 'failed',
-        lastErrorClass: 'DIRECTORY_FORBIDDEN',
+        lastErrorClass: 'DIRECTORY_PERMISSION_MISSING',
         groupResolved: false,
         permissionMissing: true,
+        diagnostic: {
+          status: 403,
+          errorCode: 'Authorization_RequestDenied',
+          requestId: 'graph-request-123',
+          operation: 'resolveGroupId',
+        },
         stale: true,
       });
       const requests = await call('/api/admin/role-requests');
@@ -2232,16 +2627,16 @@ describe('Bunny · asistente de IA', () => {
 
   it('lee el SOC con la sesión de la persona y ve solo las herramientas de su rol', async () => {
     await ingest('01890f47-7abc-7def-8abc-00000000b001');
-    const seen = fakeAssistant('list_alerts', { priority: 'P1' });
+    const seen = fakeAssistant('find_alerts', { priority: 'P1' });
     const analyst = await signIn('analista@b89.example');
     const response = await ask(analyst, '¿Qué alertas P1 hay?');
     expect(response.statusCode).toBe(200);
     const body = JSON.parse(response.body);
     expect(body.reply).toContain('DATOS DEL SOC');
-    expect(body.steps).toEqual([{ tool: 'list_alerts', label: 'Buscando alertas', ok: true }]);
-    expect(body.citations.length).toBeGreaterThan(0);
+    expect(body.steps).toEqual([{ tool: 'find_alerts', label: 'Buscando alertas', ok: true }]);
+    expect(body.citations).toEqual([]);
     // Un analista no tiene permisos de auditoría ni de administración de usuarios.
-    expect(seen).toContain('list_alerts');
+    expect(seen).toContain('find_alerts');
     expect(seen).not.toContain('audit_events');
     expect(seen).not.toContain('list_users');
   });
@@ -2257,7 +2652,7 @@ describe('Bunny · asistente de IA', () => {
   });
 
   it('exige el token CSRF y valida el cuerpo', async () => {
-    fakeAssistant('list_alerts');
+    fakeAssistant('find_alerts');
     const analyst = await signIn('analista@b89.example');
     const noCsrf = await server().inject({
       method: 'POST',
