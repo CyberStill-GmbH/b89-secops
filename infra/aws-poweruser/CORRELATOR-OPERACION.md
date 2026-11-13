@@ -67,6 +67,10 @@ sudo docker compose --env-file /opt/b89/secrets/compose.env \
 
 La ruta de notificación usa la infraestructura ya configurada en B89. Si el outbox/canal no está sano, mantener emisión apagada. No hay auto-remediación ni aislamiento de agentes desde este servicio.
 
+### Candidatos tardíos por acumulación de ingesta
+
+Un candidato es "fresco" si su evidencia más reciente tiene como máximo `B89_CORRELATOR_EMIT_MAX_AGE` (6 h). Si la ingesta estuvo atrasada (cursor atascado, reinicio tras una caída), cadenas reales llegan al correlador ya viejas y antes se descartaban todas como `stale`. Ahora los candidatos **P1/P2** con evidencia de hasta `B89_CORRELATOR_EMIT_LATE_MAX_AGE` (por defecto 72 h; `0` lo desactiva; debe ser 0 o >= `EMIT_MAX_AGE`) se emiten como alertas marcadas `[Detección tardía: ...]` en el resumen, comparten el límite `EMIT_MAX_PER_HOUR` y la idempotencia/auditoría normales, y el orden de emisión es prioridad y luego puntaje (los P1 usan primero los cupos). Los P3 y todo lo más viejo siguen descartándose. La métrica `b89_correlator_candidates_emitted_late_total` cuenta las tardías.
+
 ## Diagnóstico y rollback
 
 | Síntoma | Acción |

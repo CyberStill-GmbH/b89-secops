@@ -33,6 +33,7 @@ type Config struct {
 	HalfLife         time.Duration
 	Emit             bool
 	EmitMaxAge       time.Duration
+	EmitLateMaxAge   time.Duration
 	EmitMaxPerHour   int
 	AutoSuppress     bool
 	SuppressionTTL   time.Duration
@@ -89,7 +90,7 @@ func Load() (Config, error) {
 	for _, k := range []string{"LISTEN", "GATEWAY_URL", "GATEWAY_TOKEN_FILE", "CA_FILE", "API_URL",
 		"SERVICE_TOKEN_FILE", "READ_TOKEN_FILE", "BACKFILL", "POLL_INTERVAL", "FEEDBACK_INTERVAL",
 		"LAG", "OVERLAP", "MIN_LEVEL", "GROUP_MIN_LEVEL", "THRESHOLD", "HALF_LIFE", "EMIT",
-		"EMIT_MAX_AGE", "EMIT_MAX_PER_HOUR", "AUTO_SUPPRESS", "SUPPRESSION_TTL", "FP_MIN",
+		"EMIT_MAX_AGE", "EMIT_LATE_MAX_AGE", "EMIT_MAX_PER_HOUR", "AUTO_SUPPRESS", "SUPPRESSION_TTL", "FP_MIN",
 		"CRITICALITY_FILE", "ALIASES_FILE", "USER_DOMAIN", "PROTECTED_RULES", "PAGE_SIZE",
 		"FEEDBACK_LOOKBACK", "LOG_LEVEL", "ADMIN_IPS_FILE"} {
 		known["B89_CORRELATOR_"+k] = true
@@ -137,6 +138,11 @@ func Load() (Config, error) {
 	set(err)
 	c.EmitMaxAge, err = duration("B89_CORRELATOR_EMIT_MAX_AGE", "6h")
 	set(err)
+	c.EmitLateMaxAge, err = duration("B89_CORRELATOR_EMIT_LATE_MAX_AGE", "72h")
+	set(err)
+	if c.EmitLateMaxAge != 0 && c.EmitLateMaxAge < c.EmitMaxAge {
+		errs = append(errs, fmt.Errorf("B89_CORRELATOR_EMIT_LATE_MAX_AGE: must be 0 (disabled) or >= B89_CORRELATOR_EMIT_MAX_AGE"))
+	}
 	c.SuppressionTTL, err = duration("B89_CORRELATOR_SUPPRESSION_TTL", "72h")
 	set(err)
 	c.FeedbackLookback, err = duration("B89_CORRELATOR_FEEDBACK_LOOKBACK", "696h")

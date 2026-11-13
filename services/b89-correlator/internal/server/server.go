@@ -238,6 +238,7 @@ func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 	counter("b89_correlator_candidates_emitted_total", "Candidates materialized as B89 alerts", s.Runner.C.Emitted.Load())
 	counter("b89_correlator_candidates_emit_errors_total", "Failed candidate emissions", s.Runner.C.EmitErrors.Load())
 	counter("b89_correlator_candidates_emit_skipped_total", "Candidates not emitted (stale or rate limited)", s.Runner.C.EmitSkipped.Load())
+	counter("b89_correlator_candidates_emitted_late_total", "Candidates emitted after the fresh window (ingest backlog), flagged as late", s.Runner.C.EmittedLate.Load())
 	counter("b89_correlator_audit_recorded_total", "Feedback decisions recorded in the B89 audit chain", s.Runner.C.AuditRecorded.Load())
 	fmt.Fprintf(&b, "# HELP b89_correlator_entities Tracked entities\n# TYPE b89_correlator_entities gauge\n")
 	for _, t := range []string{"user", "host", "ip", "cloud"} {

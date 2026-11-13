@@ -32,14 +32,14 @@ import { DataZone, ErrorCallout, PriorityMark, Timestamp, useAsync } from './pri
 import { VendorLogo } from './vendor_logo';
 import { vendorOfProvider } from '../../common';
 import { ServiceCard, serviceModels } from './service_cards';
+import { AttentionAlert, loadAttentionTop } from './attention_queue';
 
 const REFRESH_MS = 60_000;
-const PRIORITY_RANK: Record<Priority, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
 
 interface QueueSummary {
   readonly open: number;
   readonly byPriority: Readonly<Record<Priority, number>>;
-  readonly top: readonly Alert[];
+  readonly top: readonly AttentionAlert[];
   readonly activeIncidents: number | null;
 }
 
@@ -62,13 +62,9 @@ function useQueueSummary() {
     const byPriority = Object.fromEntries(
       PRIORITIES.map((priority, index) => [priority, counts[index].totalCount ?? 0]),
     ) as Record<Priority, number>;
-    const top = [...open.items]
-      .sort(
-        (a, b) =>
-          PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority] ||
-          b.occurredAt.localeCompare(a.occurredAt),
-      )
-      .slice(0, 6);
+    // La API ordena por prioridad + riesgo de entidad del correlador + cadena; si no responde,
+    // se conserva el orden histórico sobre las alertas ya cargadas.
+    const top = await loadAttentionTop(api, open.items, 6);
     return {
       open: open.totalCount ?? open.items.length,
       byPriority,
@@ -190,7 +186,17 @@ export function OverviewView({ basePath }: { basePath: string }) {
                       href={`${basePath}${ALERTS_PATH}?id=${encodeURIComponent(alert.id)}`}
                     >
                       <PriorityMark priority={alert.priority} />
-                      <DataZone className="b89Feed__title">{alert.title}</DataZone>
+                      <span className="b89Feed__body">
+                        <DataZone className="b89Feed__title">{alert.title}</DataZone>
+                        {alert.attention?.why ? (
+                          <span
+                            className="b89Feed__why"
+                            title="Contexto del correlador de riesgo B89"
+                          >
+                            {alert.attention.why}
+                          </span>
+                        ) : null}
+                      </span>
                       <span className="b89Feed__time">
                         <Timestamp iso={alert.occurredAt} />
                       </span>
