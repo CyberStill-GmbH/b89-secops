@@ -512,7 +512,7 @@ function Timeline({
         throw new Error(
           page.access === 'forbidden'
             ? ACCESS_MESSAGE.forbidden
-            : 'El cursor PIT pudo expirar o el Indexer no respondió. Reintenta o reinicia la consulta.',
+            : 'El Indexer no respondió a esta página. Reintenta o reinicia la consulta.',
         );
       }
       setPageState((current) =>

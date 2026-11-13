@@ -34,7 +34,6 @@ type Json = Record<string, unknown>;
 export const RAW_LIMIT_BYTES = 64 * 1024;
 export const RELATED_PAGE_SIZE = 100;
 const RELATED_CURSOR_MAX_LENGTH = 2048;
-const RELATED_PIT_KEEP_ALIVE = '2m';
 /** Ventana para encontrar el documento de origen de una alerta B89 (regla + hora). */
 const SOURCE_MATCH_MS = 5 * 60000;
 const RAW_FIELDS_TO_OMIT = new Set(['full_log', 'previous_output']);
@@ -264,8 +263,7 @@ export function relatedQuery(params: {
   at: number;
   window: RelatedWindow;
   excludeId?: string;
-  searchAfter?: readonly [string, number];
-  pitId?: string;
+  searchAfter?: RelatedSort;
 }): Json {
   const span = RELATED_WINDOW_MS[params.window];
   const perEntity: Json = {};
@@ -294,9 +292,14 @@ export function relatedQuery(params: {
         ...(params.excludeId ? { must_not: [{ ids: { values: [params.excludeId] } }] } : {}),
       },
     },
-    sort: [{ timestamp: { order: 'desc' } }, { _shard_doc: { order: 'asc' } }],
+    // El Indexer de Wazuh (OpenSearch) no admite `_shard_doc`: el desempate es el `id` de la
+    // alerta Wazuh (keyword, único). Orden total y estable sin PIT; el PIT de wazuh-alerts-*
+    // abarca un índice por día y su id (>5 KB) no cabe en un cursor de URL.
+    sort: [
+      { timestamp: { order: 'desc' } },
+      { id: { order: 'asc', unmapped_type: 'keyword' } },
+    ],
     ...(params.searchAfter ? { search_after: params.searchAfter } : {}),
-    ...(params.pitId ? { pit: { id: params.pitId, keep_alive: RELATED_PIT_KEEP_ALIVE } } : {}),
     _source: {
       excludes: [
         'full_log',
@@ -310,11 +313,26 @@ export function relatedQuery(params: {
   };
 }
 
+/** Valores de orden de OpenSearch: `timestamp` en epoch ms e `id` de la alerta. */
+type RelatedSort = readonly [number, string];
+
 interface RelatedCursor {
   readonly filter: string;
-  readonly pitId: string;
-  readonly sort: readonly [string, number];
+  readonly sort: RelatedSort;
   readonly count: number;
+}
+
+function validSort(sort: unknown): sort is RelatedSort {
+  return (
+    Array.isArray(sort) &&
+    sort.length === 2 &&
+    typeof sort[0] === 'number' &&
+    Number.isSafeInteger(sort[0]) &&
+    sort[0] >= 0 &&
+    typeof sort[1] === 'string' &&
+    sort[1].length > 0 &&
+    sort[1].length <= 128
+  );
 }
 
 function relatedFilterFingerprint(params: {
@@ -343,16 +361,7 @@ function cursorOf(value: string | undefined, filter: string): RelatedCursor | nu
     ) as Partial<RelatedCursor>;
     if (
       decoded.filter !== filter ||
-      typeof decoded.pitId !== 'string' ||
-      decoded.pitId.length === 0 ||
-      decoded.pitId.length > 1024 ||
-      !Array.isArray(decoded.sort) ||
-      decoded.sort.length !== 2 ||
-      typeof decoded.sort[0] !== 'string' ||
-      !Number.isFinite(Date.parse(decoded.sort[0])) ||
-      typeof decoded.sort[1] !== 'number' ||
-      !Number.isSafeInteger(decoded.sort[1]) ||
-      decoded.sort[1] < 0 ||
+      !validSort(decoded.sort) ||
       !Number.isSafeInteger(decoded.count) ||
       (decoded.count ?? 0) < 1
     ) {
@@ -364,56 +373,11 @@ function cursorOf(value: string | undefined, filter: string): RelatedCursor | nu
   }
 }
 
-function encodeRelatedCursor(
-  filter: string,
-  pitId: string,
-  hit: Json,
-  count: number,
-): string | null {
+function encodeRelatedCursor(filter: string, hit: Json, count: number): string | null {
   const sort = list(hit.sort);
-  const timestamp = sort[0];
-  const shardDoc = sort[1];
-  if (pitId.length === 0 || pitId.length > 1024) return null;
-  if (typeof timestamp !== 'string' || !Number.isFinite(Date.parse(timestamp))) return null;
-  if (typeof shardDoc !== 'number' || !Number.isSafeInteger(shardDoc) || shardDoc < 0) return null;
-  const cursor: RelatedCursor = {
-    filter,
-    pitId,
-    sort: [timestamp, shardDoc],
-    count,
-  };
+  if (!validSort(sort)) return null;
+  const cursor: RelatedCursor = { filter, sort: [sort[0], sort[1]], count };
   return Buffer.from(JSON.stringify(cursor)).toString('base64url');
-}
-
-function supportsPit(client: SearchClient): boolean {
-  return Boolean((client.createPit && client.deletePit) || client.transport);
-}
-
-async function createRelatedPit(client: SearchClient): Promise<{ body: unknown }> {
-  if (client.createPit) {
-    return client.createPit({ index: ALERTS_INDEX, keep_alive: RELATED_PIT_KEEP_ALIVE });
-  }
-  return client.transport!.request({
-    method: 'POST',
-    path: `/${ALERTS_INDEX}/_search/point_in_time`,
-    querystring: { keep_alive: RELATED_PIT_KEEP_ALIVE },
-  });
-}
-
-async function closeRelatedPit(client: SearchClient, pitId: string): Promise<void> {
-  if (!pitId || !supportsPit(client)) return;
-  try {
-    if (client.deletePit) await client.deletePit({ body: { pit_id: [pitId] } });
-    else {
-      await client.transport!.request({
-        method: 'DELETE',
-        path: '/_search/point_in_time',
-        body: { pit_id: [pitId] },
-      });
-    }
-  } catch {
-    // PIT tiene keep_alive corto; un fallo al cerrarlo no debe convertir una página correcta en error.
-  }
 }
 
 /** El documento más cercano a `at` (o el primero si no hay hora). */
@@ -502,7 +466,7 @@ export function findRelated(
   const cursor = cursorOf(params.cursor, filter);
   if (
     cursor &&
-    (Date.parse(cursor.sort[0]) < Date.parse(from) || Date.parse(cursor.sort[0]) > Date.parse(to))
+    (cursor.sort[0] < Date.parse(from) || cursor.sort[0] > Date.parse(to))
   ) {
     throw new Error('Cursor de investigacion fuera de la ventana consultada.');
   }
@@ -520,51 +484,23 @@ export function findRelated(
   }
   return guarded<RelatedResponse>(
     async () => {
-      if (!supportsPit(client)) {
-        throw new Error('El cliente de Indexer no admite paginacion PIT.');
-      }
-      let pitId = cursor?.pitId;
-      const createdHere = !pitId;
-      if (!pitId) {
-        const pit = await createRelatedPit(client);
-        pitId = String(obj(pit.body).pit_id ?? '');
-        if (!pitId || pitId.length > 1024) throw new Error('Indexer no devolvio un PIT valido.');
-      }
-      let result: { body: unknown };
-      try {
-        result = await client.search({
-          body: relatedQuery({
-            ...params,
-            entities,
-            pitId,
-            searchAfter: cursor?.sort,
-          }),
-        });
-      } catch (error) {
-        if (createdHere) await closeRelatedPit(client, pitId);
-        throw error;
-      }
+      const result = await client.search({
+        index: ALERTS_INDEX,
+        body: relatedQuery({ ...params, entities, searchAfter: cursor?.sort }),
+      });
       const hits = hitsOf(result.body);
       const total = totalOf(result.body);
-      const responsePitId = String(obj(result.body).pit_id ?? pitId);
+      const seen = (cursor?.count ?? 0) + hits.length;
       const nextCursor =
-        cursor && total > cursor.count + hits.length
-          ? encodeRelatedCursor(
-              filter,
-              responsePitId,
-              hits[hits.length - 1] ?? {},
-              cursor.count + hits.length,
-            )
-          : !cursor && total > hits.length
-            ? encodeRelatedCursor(filter, responsePitId, hits[hits.length - 1] ?? {}, hits.length)
-            : null;
+        hits.length > 0 && total > seen
+          ? encodeRelatedCursor(filter, hits[hits.length - 1] ?? {}, seen)
+          : null;
       const buckets = obj(obj(obj(obj(result.body).aggregations).perEntity).buckets);
       const perEntity: Record<string, number> = {};
       for (const [key, bucket] of Object.entries(buckets)) {
         const count = obj(bucket).doc_count;
         perEntity[key] = typeof count === 'number' ? count : 0;
       }
-      if (!nextCursor) await closeRelatedPit(client, responsePitId);
       return {
         access: 'ok' as const,
         from,

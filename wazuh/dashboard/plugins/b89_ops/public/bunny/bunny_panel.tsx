@@ -1134,13 +1134,7 @@ export function BunnyPanel({
         </>
       )}
       <p className="b89Bunny__disclaimer">
-        <strong>IA generativa: verifica antes de actuar.</strong> {NAME} solo lee datos del SOC con
-        tus permisos; no ejecuta, aprueba ni solicita acciones (toda contención va por B89 Respond
-        con aprobación del Líder SOC). Horas en Lima (UTC−5). Tus conversaciones y valoraciones se
-        guardan en tu historial y solo tú puedes verlas.
-        {config?.enabled && config.redactsPersonalData
-          ? ' Correos e IP se seudonimizan antes de enviarse al modelo.'
-          : ''}
+        IA: verifica antes de actuar. Solo lectura, con tus permisos.
       </p>
     </aside>
   );

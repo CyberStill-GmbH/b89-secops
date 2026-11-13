@@ -28,8 +28,7 @@ export function InvestigationPagination({
         title="No se pudo cargar la siguiente página"
       >
         <p>
-          Los eventos ya cargados siguen disponibles. Reintenta para continuar la misma consulta o
-          reiníciala si el PIT expiró.
+          Los eventos ya cargados siguen disponibles. Reintenta para continuar la misma consulta.
         </p>
         <EuiButton size="s" onClick={() => void onLoadMore()}>
           Reintentar página

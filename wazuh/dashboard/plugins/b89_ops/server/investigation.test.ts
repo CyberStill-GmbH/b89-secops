@@ -34,26 +34,13 @@ const hit = (id: string, timestamp: string, extra: Json = {}) => ({
   } as Json,
 });
 
-function client(
-  responses: unknown[],
-  seen: Json[] = [],
-  lifecycle: { created: string[]; deleted: string[] } = { created: [], deleted: [] },
-): SearchClient {
+function client(responses: unknown[], seen: Json[] = []): SearchClient {
   return {
     search: async (params) => {
       seen.push(params);
       const next = responses.shift();
       if (next instanceof Error) throw next;
       return { body: next };
-    },
-    createPit: async () => {
-      const pitId = `pit-${lifecycle.created.length + 1}`;
-      lifecycle.created.push(pitId);
-      return { body: { pit_id: pitId } };
-    },
-    deletePit: async ({ body }) => {
-      lifecycle.deleted.push(...body.pit_id);
-      return { body: {} };
     },
   };
 }
@@ -220,17 +207,17 @@ describe('eventos relacionados', () => {
       entities: [{ kind: 'zone', value: 'b89.io' }],
       at: Date.parse('2026-11-08T12:00:00Z'),
       window: '1h',
-      searchAfter: ['2026-11-08T12:00:00.000Z', 100],
-      pitId: 'pit-1',
+      searchAfter: [Date.parse('2026-11-08T12:00:00.000Z'), 'id-100'],
     }) as Json;
     expect(first.size).toBe(100);
     expect(first.sort).toEqual([
       { timestamp: { order: 'desc' } },
-      { _shard_doc: { order: 'asc' } },
+      { id: { order: 'asc', unmapped_type: 'keyword' } },
     ]);
     expect(first.search_after).toBeUndefined();
-    expect(next.search_after).toEqual(['2026-11-08T12:00:00.000Z', 100]);
-    expect(next.pit).toEqual({ id: 'pit-1', keep_alive: '2m' });
+    expect(next.search_after).toEqual([Date.parse('2026-11-08T12:00:00.000Z'), 'id-100']);
+    // Sin PIT: el de wazuh-alerts-* abarca un índice por día y no cabe en el cursor de URL.
+    expect(next.pit).toBeUndefined();
     expect(next.query).toEqual(first.query);
     expect(next._source).toEqual(first._source);
   });
@@ -239,7 +226,7 @@ describe('eventos relacionados', () => {
     const seen: Json[] = [];
     const rows = Array.from({ length: 100 }, (_, index) => {
       const item = hit(`event-${index}`, '2026-11-08T12:00:00.000Z');
-      return { ...item, sort: ['2026-11-08T12:00:00.000Z', index] };
+      return { ...item, sort: [Date.parse('2026-11-08T12:00:00.000Z'), `id-${index}`] };
     });
     const first = await findRelated(
       client(
@@ -272,15 +259,14 @@ describe('eventos relacionados', () => {
 
   it('continúa con el cursor y deja de ofrecerlo al alcanzar el total real', async () => {
     const seen: Json[] = [];
-    const lifecycle = { created: [] as string[], deleted: [] as string[] };
     const firstRows = Array.from({ length: 100 }, (_, index) => {
       const item = hit(`event-${index}`, '2026-11-08T12:00:00.000Z');
-      return { ...item, sort: ['2026-11-08T12:00:00.000Z', index] };
+      return { ...item, sort: [Date.parse('2026-11-08T12:00:00.000Z'), `id-${index}`] };
     });
     const secondRows = [
       {
         ...hit('event-100', '2026-11-08T11:59:00.000Z'),
-        sort: ['2026-11-08T11:59:00.000Z', 100],
+        sort: [Date.parse('2026-11-08T11:59:00.000Z'), `id-${100}`],
       },
     ];
     const search = client(
@@ -295,7 +281,6 @@ describe('eventos relacionados', () => {
         },
       ],
       seen,
-      lifecycle,
     );
     const params = {
       entities: [{ kind: 'zone' as const, value: 'b89.io' }],
@@ -306,21 +291,19 @@ describe('eventos relacionados', () => {
     const second = await findRelated(search, { ...params, cursor: first.nextCursor ?? undefined });
     expect(second.events.map((event) => event.id)).toEqual(['event-100']);
     expect(second.nextCursor).toBeNull();
-    expect(seen[0].index).toBeUndefined();
-    expect(seen[0].body.pit.id).toBe('pit-1');
-    expect(seen[1].body.pit.id).toBe('pit-1');
-    expect(seen[1].body.search_after).toEqual(['2026-11-08T12:00:00.000Z', 99]);
-    expect(lifecycle.deleted).toEqual(['pit-1']);
+    expect(seen[0].index).toBe('wazuh-alerts-*');
+    expect(seen[0].body.pit).toBeUndefined();
+    expect(seen[1].body.search_after).toEqual([Date.parse('2026-11-08T12:00:00.000Z'), 'id-99']);
   });
 
   it('preserva el cursor ante un error transitorio y permite reintentar la misma página', async () => {
     const rows = Array.from({ length: 100 }, (_, index) => ({
       ...hit(`event-${index}`, '2026-11-08T12:00:00.000Z'),
-      sort: ['2026-11-08T12:00:00.000Z', index],
+      sort: [Date.parse('2026-11-08T12:00:00.000Z'), `id-${index}`],
     }));
     const last = {
       ...hit('event-100', '2026-11-08T11:59:00.000Z'),
-      sort: ['2026-11-08T11:59:00.000Z', 100],
+      sort: [Date.parse('2026-11-08T11:59:00.000Z'), `id-${100}`],
     };
     const failure = Object.assign(new Error('timeout'), { statusCode: 503 });
     const search = client([
@@ -353,44 +336,18 @@ describe('eventos relacionados', () => {
     expect(retriedPage.nextCursor).toBeNull();
   });
 
-  it('cierra el PIT si falla la consulta inicial', async () => {
-    const lifecycle = { created: [] as string[], deleted: [] as string[] };
-    const failure = Object.assign(new Error('Indexer no disponible'), { statusCode: 503 });
-    const result = await findRelated(client([failure], [], lifecycle), {
-      entities: [{ kind: 'zone', value: 'b89.io' }],
-      at: Date.parse('2026-11-08T12:00:00Z'),
-      window: '1h',
-    });
-
-    expect(result.access).toBe('error');
-    expect(lifecycle.created).toEqual(['pit-1']);
-    expect(lifecycle.deleted).toEqual(['pit-1']);
-  });
-
-  it('usa el transporte genérico cuando el cliente de OSD no trae createPit/deletePit', async () => {
-    const calls: Array<{ method: string; path: string }> = [];
-    const searches: Json[] = [];
-    const legacy: SearchClient = {
-      search: async (params) => {
-        searches.push(params);
-        return { body: { pit_id: 'pit-x', hits: { total: { value: 0 }, hits: [] } } };
-      },
-      transport: {
-        request: async ({ method, path }) => {
-          calls.push({ method, path });
-          return { body: method === 'POST' ? { pit_id: 'pit-x' } : {} };
-        },
-      },
-    };
-    const result = await findRelated(legacy, {
-      entities: [{ kind: 'zone', value: 'b89.io' }],
-      at: Date.parse('2026-11-08T12:00:00Z'),
-      window: '1h',
-    });
-
-    expect(result.access).toBe('ok');
-    expect(calls[0]).toEqual({ method: 'POST', path: '/wazuh-alerts-*/_search/point_in_time' });
-    expect(calls[1]).toEqual({ method: 'DELETE', path: '/_search/point_in_time' });
+  it('rechaza un cursor con el formato antiguo (timestamp texto + _shard_doc)', () => {
+    const legacy = Buffer.from(
+      JSON.stringify({ filter: 'x', pitId: 'p', sort: ['2026-11-08T12:00:00.000Z', 1], count: 1 }),
+    ).toString('base64url');
+    expect(() =>
+      findRelated(client([]), {
+        entities: [{ kind: 'zone', value: 'b89.io' }],
+        at: Date.parse('2026-11-08T12:00:00Z'),
+        window: '1h',
+        cursor: legacy,
+      }),
+    ).toThrow('Cursor de investigacion no valido.');
   });
 
   it('marca qué entidades aparecen en cada evento y cuenta por entidad', async () => {
@@ -477,8 +434,8 @@ describe('eventos relacionados', () => {
             hits: {
               total: { value: 2 },
               hits: [
-                { ...sourceHit, sort: ['2026-11-08T12:00:00.000Z', 1] },
-                { ...receiveHit, sort: ['2026-11-08T12:00:02.000Z', 2] },
+                { ...sourceHit, sort: [Date.parse('2026-11-08T12:00:00.000Z'), `id-${1}`] },
+                { ...receiveHit, sort: [Date.parse('2026-11-08T12:00:02.000Z'), `id-${2}`] },
               ],
             },
             aggregations: {
