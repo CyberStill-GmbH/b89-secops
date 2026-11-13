@@ -546,4 +546,8 @@ Validación local: suite del plugin `b89_ops`, 21 archivos y 167 pruebas aprobad
 
 ## 2026-11-12 · Verificación local cruzada del bloque actual
 
-Plugin `b89_ops`: 21 archivos y 167 pruebas aprobadas; typecheck OSD 2.19.6 aprobado. API BFF/SOAR: 6 archivos y 162 pruebas aprobadas; typechecks de API, SOAR, database y audit aprobados. Emisor Wazuh: 22 pruebas y 19 subtests aprobados. Integración PostgreSQL quedó omitida porque esta sesión no define `DATABASE_URL`; no se presenta como aprobada. Estos resultados son locales y no sustituyen CI, smoke autenticado ni despliegue.
+Plugin `b89_ops`: 21 archivos y 167 pruebas aprobadas; typecheck OSD 2.19.6 aprobado. API BFF/SOAR: 6 archivos y 162 pruebas aprobadas; typechecks de API, SOAR, database y audit aprobados. Emisor Wazuh: 22 pruebas y 19 subtests aprobados. Las dos suites de integración PostgreSQL C-20 pasaron 12/12 contra PostgreSQL 18.0 temporal. Estos resultados son locales y no sustituyen CI, smoke autenticado ni despliegue.
+
+## 2026-11-13 · Guardado PostgreSQL del dispatcher con filtro válido
+
+La primera integración con PostgreSQL real encontró que `PrismaNotificationAttemptStore.save` pasaba una clave compuesta de `WhereUniqueInput` a `updateMany`, que solo admite el `WhereInput` escalar. Prisma rechazaba la llamada y el dispatcher no podía persistir estados de intentos. El guardado ahora usa igualdad sobre `tenantId` e `idempotencyKey` más el predicado `status != acknowledged`, conservando el compare-and-set ante snapshots stale y la protección del acuse. PostgreSQL C-20 de `modules/soar` y `platform/database` pasó 12/12 en un contenedor PostgreSQL 18.0 limitado a loopback; se retiró al terminar.

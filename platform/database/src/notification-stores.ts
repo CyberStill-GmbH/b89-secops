@@ -509,7 +509,9 @@ export class PrismaNotificationAttemptStore {
       supersededBy: attempt.supersededBy ?? null,
       digestId: attempt.digestId ?? null,
     };
-    const where = { tenantId_idempotencyKey: { tenantId, idempotencyKey } };
+    // updateMany accepts the scalar WhereInput (not WhereUniqueInput), so keep the
+    // composite identity as its constituent equality predicates.
+    const where = { tenantId, idempotencyKey };
     if (existing) {
       this.assertIdentity(existing, attempt);
       // The dispatcher can hold a stale snapshot across provider I/O. Once a human
@@ -567,12 +569,18 @@ export class PrismaNotificationAttemptStore {
           id: attemptId,
           status: { in: ['sent', 'indeterminate', 'fallback'] },
         },
-        data: { status: 'acknowledged', acknowledgedAt: at, acknowledgedBy: actorId, updatedAt: at },
+        data: {
+          status: 'acknowledged',
+          acknowledgedAt: at,
+          acknowledgedBy: actorId,
+          updatedAt: at,
+        },
       });
       if (changed.count !== 1) return undefined;
       await appendAudit(tx, current.status);
       return (
-        (await tx.notificationAttempt.findFirst({ where: { tenantId, id: attemptId } })) ?? undefined
+        (await tx.notificationAttempt.findFirst({ where: { tenantId, id: attemptId } })) ??
+        undefined
       );
     });
   }

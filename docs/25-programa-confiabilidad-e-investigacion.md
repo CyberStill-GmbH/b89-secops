@@ -686,7 +686,7 @@ Contrato observado: `infra/aws-poweruser/main.tf` declara que el stack no tiene 
 
 El endpoint de acuse solo admite la transición desde `sent`, `indeterminate` o `fallback`. En memoria, una cola serializa cambios concurrentes y un fallo de auditoría conserva la fila previa. En PostgreSQL, el compare-and-set de `notification_attempts` y el append de `soar.notification.acknowledged` comparten el `tx` del pool de notificaciones; `PrismaAuditStore(tx)` encadena el evento bajo el lock de tenant. Actor, correlación, recurso y metadata mínima `previousStatus` forman la evidencia. Los `save` del dispatcher no actualizan una fila ya `acknowledged`, también bajo carrera.
 
-Las pruebas HTTP cubren éxito, duplicado concurrente y rollback de auditoría; la integración PostgreSQL cubre acuse concurrente entre stores, unicidad del AuditEvent y save stale. Cambio local solamente: no deploy y sin cambios al bloque push.
+Las pruebas HTTP cubren éxito, duplicado concurrente y rollback de auditoría. Las integraciones PostgreSQL de SOAR y database pasaron 12/12 contra PostgreSQL 18.0 temporal, incluyendo acuse concurrente entre stores, unicidad del AuditEvent, save stale, idempotencia, aislamiento de tenant y recuperación del dispatcher. La primera ejecución detectó que `updateMany` no acepta el selector compuesto `WhereUniqueInput`; `save` ahora expresa la identidad como los dos predicados escalares y mantiene el filtro terminal `status != acknowledged`. Cambio local solamente: no deploy y sin cambios al bloque push.
 
 ### Clasificación de fallos de exportación de investigación (2026-11-12)
 
