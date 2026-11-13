@@ -116,6 +116,9 @@ describe.skipIf(!databaseUrl)('C-1 · roles de mínimo privilegio', () => {
     await expect(run(runtimeUrl, 'TRUNCATE assistant_conversations')).rejects.toThrow(
       /permission/iu,
     );
+    // Archivos de informes de Bunny (efímeros): también DELETE sí, TRUNCATE no.
+    await expect(run(runtimeUrl, 'DELETE FROM assistant_artifacts')).resolves.toBeDefined();
+    await expect(run(runtimeUrl, 'TRUNCATE assistant_artifacts')).rejects.toThrow(/permission/iu);
   });
 
   it('el runtime no puede DDL', async () => {

@@ -14,6 +14,7 @@
  * en el mismo almacén cifrado en reposo que el resto. Nunca se escribe en logs ni en auditoría.
  */
 
+import type { ArtifactRef } from './artifacts.js';
 import type { Citation } from './ports.js';
 import type { AssistantStep } from './run.js';
 
@@ -44,6 +45,8 @@ export interface StoredMessage {
   readonly text: string;
   readonly steps?: readonly AssistantStep[];
   readonly citations?: readonly Citation[];
+  /** Archivos generados en este mensaje (informes); pueden haber vencido al releer. */
+  readonly artifacts?: readonly ArtifactRef[];
   readonly tone?: MessageTone;
   /** Valoración de la respuesta (solo mensajes de Bunny). */
   readonly feedback?: MessageFeedback;
@@ -180,7 +183,7 @@ function validMessage(message: StoredMessage): void {
   if (message.text.length > CONVERSATION_LIMITS.maxMessageChars) {
     throw new ConversationError('TEXT_TOO_LONG');
   }
-  for (const list of [message.steps, message.citations]) {
+  for (const list of [message.steps, message.citations, message.artifacts]) {
     if (list !== undefined && list.length > CONVERSATION_LIMITS.maxEntriesPerMessage) {
       throw new ConversationError('INVALID_MESSAGE');
     }

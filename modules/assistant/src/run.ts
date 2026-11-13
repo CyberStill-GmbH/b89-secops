@@ -382,7 +382,8 @@ export async function runAssistant(options: RunAssistantOptions): Promise<Assist
         const tool = toolByName.get(call.name);
         if (callIndex >= callsAllowed) return { call, tool, skipped: true as const };
         if (!tool) return { call, skipped: false as const, unknown: true as const };
-        options.onProgress?.({ type: 'tool_started', label: tool.label });
+        const label = tool.labelFor?.(call.input) ?? tool.label;
+        options.onProgress?.({ type: 'tool_started', label });
         let outcome: ToolOutcome;
         try {
           outcome = await tool.run(
@@ -393,8 +394,8 @@ export async function runAssistant(options: RunAssistantOptions): Promise<Assist
           if (options.signal?.aborted) throw new AssistantCancelledError({ ...usage });
           outcome = { ok: false as const, error: 'La herramienta falló al ejecutarse.' };
         }
-        options.onProgress?.({ type: 'tool_finished', label: tool.label, ok: outcome.ok });
-        return { call, tool, outcome, skipped: false as const };
+        options.onProgress?.({ type: 'tool_finished', label, ok: outcome.ok });
+        return { call, tool, label, outcome, skipped: false as const };
       }),
     );
     let remainingToolResultBudget = Math.max(0, limits.maxTotalToolResultChars - toolResultChars);
@@ -427,7 +428,7 @@ export async function runAssistant(options: RunAssistantOptions): Promise<Assist
       } else if (!execution.outcome.ok) {
         content = trimTo(execution.outcome.error, budget);
         isError = true;
-        step = { tool: execution.tool.name, label: execution.tool.label, ok: false };
+        step = { tool: execution.tool.name, label: execution.label, ok: false };
       } else {
         content = serializeToolData(
           execution.outcome.data,
@@ -435,7 +436,7 @@ export async function runAssistant(options: RunAssistantOptions): Promise<Assist
           budget,
           execution.outcome.citations,
         );
-        step = { tool: execution.tool.name, label: execution.tool.label, ok: true };
+        step = { tool: execution.tool.name, label: execution.label, ok: true };
         for (const citation of execution.outcome.citations ?? []) {
           if (content.includes(citation.id))
             citations.set(`${citation.kind}:${citation.id}`, citation);

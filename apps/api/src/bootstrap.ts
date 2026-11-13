@@ -32,6 +32,7 @@ import { entityRiskLookup } from './runtime/entity-risk.js';
 import type { SocPersistence, WazuhPushInboxStore } from '@b89/soc';
 import { composeApi } from './composition-root.js';
 import { createAssistantService } from './assistant/assistant-service.js';
+import { assistantArtifactStoreFor, startArtifactPurge } from './assistant/artifact-store.js';
 import { assistantConversationStoreFor } from './assistant/conversation-history.js';
 import type { InjectingServer } from './assistant/internal-client.js';
 import { ApiLifecycle, type ApiEvent } from './lifecycle.js';
@@ -572,8 +573,7 @@ export async function buildApi(
   });
   // Bunny (asistente de IA): solo existe con B89_BUNNY_ENABLED=true; sin él, el endpoint no responde.
   // Su historial va a PostgreSQL cuando el SOC es durable (pool propio y mínimo); si no, a memoria.
-  const assistantConversations = await assistantConversationStoreFor(
-    environment,
+  const assistantDatabase =
     persistenceConfig.mode === 'postgres'
       ? {
           connectionString: connectionStringFor(persistenceConfig),
@@ -581,9 +581,22 @@ export async function buildApi(
           statementTimeoutMs: persistenceConfig.postgres.statementTimeoutMs,
           maxConnections: 2,
         }
-      : undefined,
+      : undefined;
+  const assistantConversations = await assistantConversationStoreFor(
+    environment,
+    assistantDatabase,
   );
-  runtime.assistant = createAssistantService(environment, undefined, assistantConversations);
+  // Archivos de los informes de Bunny (24 h): mismo criterio de almacén; purga periódica.
+  const assistantArtifacts = await assistantArtifactStoreFor(environment, assistantDatabase);
+  runtime.assistant = createAssistantService(
+    environment,
+    undefined,
+    assistantConversations,
+    assistantArtifacts,
+  );
+  const stopArtifactPurge = runtime.assistant?.artifacts
+    ? startArtifactPurge(runtime.assistant.artifacts)
+    : undefined;
   const ingestion =
     eventProvider && ingestionConfig.source === 'wazuh'
       ? createWazuhIngestion({
@@ -703,7 +716,9 @@ export async function buildApi(
       await durable?.push.close();
       await durable?.roleAdministration.close();
       await durable?.wazuhPushInbox?.close();
+      stopArtifactPurge?.();
       await assistantConversations?.close();
+      await assistantArtifacts?.close();
     }, API_SHUTDOWN_TIMEOUT_MS);
   return {
     application,

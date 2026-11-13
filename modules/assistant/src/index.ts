@@ -1,3 +1,4 @@
+export * from './artifacts.js';
 export * from './conversations.js';
 export * from './ports.js';
 export * from './prompt.js';

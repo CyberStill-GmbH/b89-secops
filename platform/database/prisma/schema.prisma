@@ -786,6 +786,29 @@ model AssistantConversation {
   @@map("assistant_conversations")
 }
 
+// Archivos generados por Bunny (informes PDF/XLSX/CSV). Efimeros (`expires_at`), contenido en bytea,
+// aislados por (tenant, dueno). Borrado real: el runtime recibe DELETE solo sobre esta tabla y
+// `assistant_conversations` (`post-migrate.sql`).
+model AssistantArtifact {
+  id             String   @id @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Text
+  ownerId        String   @map("owner_id") @db.Text
+  conversationId String?  @map("conversation_id") @db.Uuid
+  filename       String   @db.Text
+  contentType    String   @map("content_type") @db.Text
+  format         String   @db.Text
+  title          String   @db.Text
+  size           Int
+  sha256         String   @db.Text
+  content        Bytes    @db.ByteA
+  createdAt      DateTime @map("created_at") @db.Timestamptz(3)
+  expiresAt      DateTime @map("expires_at") @db.Timestamptz(3)
+
+  @@index([tenantId, ownerId, expiresAt], map: "assistant_artifacts_owner_expiry_idx")
+  @@index([expiresAt], map: "assistant_artifacts_expiry_idx")
+  @@map("assistant_artifacts")
+}
+
 // Receipt-only queue for minimized Wazuh push hints. Never stores full alert bodies or full_log.
 model WazuhPushInboxHint {
   id             String    @id @db.Uuid

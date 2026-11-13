@@ -30,6 +30,11 @@ BEGIN
       GRANT DELETE ON public.assistant_conversations TO b89_soc_runtime;
       REVOKE TRUNCATE ON public.assistant_conversations FROM b89_soc_runtime;
     END IF;
+    -- Archivos de Bunny (informes): efimeros; el API purga los vencidos. DELETE si; TRUNCATE no.
+    IF to_regclass('public.assistant_artifacts') IS NOT NULL THEN
+      GRANT DELETE ON public.assistant_artifacts TO b89_soc_runtime;
+      REVOKE TRUNCATE ON public.assistant_artifacts FROM b89_soc_runtime;
+    END IF;
   END IF;
 END
 $hardening$;

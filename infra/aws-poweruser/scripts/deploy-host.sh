@@ -189,6 +189,11 @@ grep -q "'B89_DEMO_LOGIN_WITH_ENTRA'" "$SRC/platform/configuration/src/schema/en
 # La excepción demo vence como máximo a los 30 días del arranque: se renueva en cada despliegue.
 DEMO_UNTIL="$(date -u -d '+29 days' +%Y-%m-%dT%H:%M:%SZ)" SOC_HOSTNAME="$SOC_HOSTNAME" \
   envsubst '${SOC_HOSTNAME} ${DEMO_UNTIL}' <"$HOST_DIR/api.env.template" >"$ROOT/config/api.env"
+# Informes de Bunny: sin el servicio desplegado (SKIP_API_BUILD=1) o con código que aún no admite
+# B89_REPORTS_* (KNOWN_B89_VARIABLES), la URL tumbaría el arranque del API: se quita de la config.
+if [[ ${SKIP_API_BUILD:-0} == 1 ]]   || ! grep -q "'B89_REPORTS_TOKEN'" "$SRC/platform/configuration/src/schema/environment.schema.ts"; then
+  sed -i '/^B89_REPORTS_/d' "$ROOT/config/api.env"
+fi
 chmod 0644 "$ROOT/config/api.env"
 
 # Configuración pública del correlador; el helper conserva este archivo después de crearlo.
@@ -263,11 +268,11 @@ chmod 0755 /etc/letsencrypt/renewal-hooks/deploy/b89-edge.sh
 # SKIP_API_BUILD=1: conserva las imágenes vigentes del API y del migrador (p. ej. si apps/api
 # tiene trabajo en curso que aún no compila).
 if [[ ${SKIP_API_BUILD:-0} == 1 ]]; then
-  log 'construyendo imagen del dashboard B89 (API, migrador y correlador sin cambios)'
+  log 'construyendo imagen del dashboard B89 (API, migrador, correlador e informes sin cambios)'
   "${COMPOSE[@]}" build wazuh.dashboard
 else
-  log 'construyendo imágenes (dashboard B89, API, migrador y correlador)'
-  "${COMPOSE[@]}" --profile tools build wazuh.dashboard api migrator correlator
+  log 'construyendo imágenes (dashboard B89, API, migrador, correlador e informes)'
+  "${COMPOSE[@]}" --profile tools build wazuh.dashboard api migrator correlator reports
 fi
 log 'arrancando Wazuh y PostgreSQL'
 "${COMPOSE[@]}" up -d wazuh.indexer wazuh.manager postgres --wait
@@ -299,8 +304,15 @@ INDEXER_ADMIN_PASSWORD="$INDEXER_ADMIN_PASSWORD" bash "$SRC/infra/aws-poweruser/
 if [[ ${SKIP_API_BUILD:-0} != 1 ]]; then
   log 'preparando secretos del correlador privado'
   bash "$SRC/infra/aws-poweruser/scripts/bootstrap-correlator.sh"
+  log 'preparando el token del servicio de informes de Bunny'
+  bash "$SRC/infra/aws-poweruser/scripts/bootstrap-reports.sh"
 else
-  log 'SKIP_API_BUILD=1: correlador omitido para conservar el contrato API desplegado'
+  log 'SKIP_API_BUILD=1: correlador e informes omitidos para conservar el contrato API desplegado'
+fi
+# Informes de Bunny: el servicio debe estar sano antes de recrear el API que lo consume.
+if [[ ${SKIP_API_BUILD:-0} != 1 ]]; then
+  log 'arrancando el servicio de informes de Bunny'
+  "${COMPOSE[@]}" up -d --wait reports
 fi
 "${COMPOSE[@]}" up -d --force-recreate wazuh-gateway
 

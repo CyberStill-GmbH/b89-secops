@@ -13,6 +13,11 @@
       "types": "./src/infrastructure/postgres-conversation-store.ts",
       "development": "./src/infrastructure/postgres-conversation-store.ts",
       "default": "./dist/infrastructure/postgres-conversation-store.js"
+    },
+    "./postgres-artifacts": {
+      "types": "./src/infrastructure/postgres-artifact-store.ts",
+      "development": "./src/infrastructure/postgres-artifact-store.ts",
+      "default": "./dist/infrastructure/postgres-artifact-store.js"
     }
   },
   "scripts": {

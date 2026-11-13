@@ -165,6 +165,21 @@ server {
     proxy_read_timeout 5s;
   }
 
+  # Informes de Bunny: listado y descarga de los archivos propios (solo GET). La API exige sesión
+  # y responde 404 neutro a quien no es el dueño; aquí solo se admiten estas dos rutas exactas.
+  location ~ "^/api/assistant/artifacts(/[0-9a-fA-F-]{36})?$" {
+    limit_except GET { deny all; }
+    proxy_pass http://b89_api;;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto https;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header Sec-Fetch-Site $http_sec_fetch_site;
+    proxy_set_header x-proxy-user "";
+    proxy_set_header x-proxy-roles "";
+    proxy_buffering off;
+    proxy_read_timeout 65s;
+  }
+
   location ~ ^/api/(auth|alerts|incidents|changes|sources|operations|audit|admin|me|assistant|risk)(/|$) {
     proxy_pass http://b89_api;
     proxy_set_header Host $host;

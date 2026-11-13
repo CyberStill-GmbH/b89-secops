@@ -300,3 +300,12 @@ PDF sigue siendo un expediente HTML local: la ventana de vista previa muestra la
 El panel permite cancelar una consulta en curso con `AbortController`; el cierre del stream llega al servidor y la interfaz conserva el borrador para un reenvío explícito. Cancelar no reintenta ni afirma que el servidor no alcanzó a iniciar el turno. Si el proxy rechaza expresamente SSE antes de aceptar la solicitud (404/405/406/415/501 sin `correlationId` B89), el cliente usa una sola vez `POST /assistant/chat`. Los errores de red ambiguos, 5xx, respuestas SSE ya recibidas o streams cortados tras iniciar no se reenvían automáticamente para evitar doble invocación. Una respuesta JSON completa ya devuelta por el proxy se valida y se usa directamente.
 
 La disponibilidad de configuración tiene estados distintos: comprobando, disponible (incluye `enabled=false`) y no disponible. Un fallo de lectura no se interpreta como asistente deshabilitado y ofrece reintento. El progreso expone el fallback de transporte como tal; no inventa actividad del modelo ni muestra razonamiento privado.
+
+
+## Informes generados por Bunny (PDF, Excel, CSV)
+
+- Herramienta `generate_report` (`apps/api/src/assistant/report-tool.ts`): la API obtiene tablas, KPIs, gráficos y cronologías con los `GET` internos y los permisos de la persona; el modelo solo aporta título y narrativa (markdown sin HTML, acotada). Tipos: `alerts`, `investigation` (alerta + eventos relacionados) e `incident`.
+- La API arma el ReportSpec v1 y lo envía a `services/b89-reports` (`POST /render`, bearer `B89_REPORTS_TOKEN`, red interna `reports-internal`, 90 s de tiempo máximo, sin reintentos). Sin `B89_REPORTS_URL` y `B89_REPORTS_TOKEN` la función está apagada y la herramienta responde `unavailable`.
+- El archivo se guarda como artefacto (`assistant_artifacts`, bytea, dueño tenant + subject, vigencia de 24 h, tope de 25 MB y 20 por persona y día; purga cada 10 min). Descarga: `GET /api/assistant/artifacts/:id` (solo el dueño; otro caso 404 neutro; `content-disposition: attachment`, `nosniff`, `no-store`). Listado: `GET /api/assistant/artifacts`.
+- SSE de `/api/assistant/chat/stream`: evento `artifact` con la `ArtifactRef` en cuanto se guarda; la respuesta final y el historial incluyen `artifacts`.
+- Auditoría: `assistant.artifact.create` y `assistant.artifact.download` con id, tipo, formato, tamaño y hash; nunca el contenido. Al modelo solo vuelve `{ artifactId, filename, rows, pages }`.
