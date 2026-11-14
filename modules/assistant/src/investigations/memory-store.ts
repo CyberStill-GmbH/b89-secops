@@ -9,11 +9,14 @@ import { randomUUID } from 'node:crypto';
 
 import type { InvestigationAction } from './actions.js';
 import {
+  ACTIVITY_LIMITS,
   utcDayStart,
   type ActionMark,
   type BudgetSnapshot,
   type DispatchOutcome,
+  type EscalationOutcome,
   type HeartbeatOutcome,
+  type InvestigationActivityCounts,
   type InvestigationActionPlan,
   type InvestigationCheckpoint,
   type InvestigationCommandOutcome,
@@ -38,6 +41,8 @@ import {
   type InvestigationEvent,
   type InvestigationInvocation,
   type InvestigationJob,
+  type InvestigationPriority,
+  type InvestigationStatus,
   type InvestigationTerminalStatus,
   type NewInvestigationJob,
 } from './types.js';
@@ -670,5 +675,99 @@ export class InMemoryInvestigationStore implements InvestigationStore {
       limitMicroUsd,
       ...snapshot,
     };
+  }
+
+  public async activityCounts(
+    tenantId: string,
+    from: Date,
+    to: Date,
+  ): Promise<InvestigationActivityCounts> {
+    const byPriority: Record<InvestigationPriority, number> = { P1: 0, P2: 0, P3: 0, P4: 0 };
+    const byInference = { none: 0, economy: 0, advanced: 0 };
+    const byStatus: Partial<Record<InvestigationStatus, number>> = {};
+    let queued = 0;
+    let running = 0;
+    let oldest: Date | null = null;
+    let total = 0;
+    for (const job of this.jobs.values()) {
+      if (job.tenantId !== tenantId) continue;
+      if (job.status === 'queued') {
+        queued += 1;
+        byPriority[job.priority] += 1;
+        if (!oldest || job.createdAt < oldest) oldest = job.createdAt;
+      } else if (job.status === 'running') {
+        running += 1;
+      }
+      if (isTerminalStatus(job.status) && job.finishedAt && job.finishedAt >= from && job.finishedAt < to) {
+        total += 1;
+        byStatus[job.status] = (byStatus[job.status] ?? 0) + 1;
+        if (job.inference !== null) byInference[job.inference] += 1;
+      }
+    }
+    let settledMicroUsd = 0;
+    for (const row of this.ledger.values()) {
+      if (row.tenantId === tenantId && row.state === 'settled' && row.createdAt >= from && row.createdAt < to) {
+        settledMicroUsd += row.estimatedMicroUsd ?? 0;
+      }
+    }
+    return {
+      queue: { queued, running, oldestQueuedAt: oldest, byPriority },
+      finished: { total, byInference, byStatus },
+      settledMicroUsd,
+    };
+  }
+
+  public async recentJobs(
+    tenantId: string,
+    since: Date,
+    limit: number,
+  ): Promise<readonly InvestigationJob[]> {
+    const activity = (job: InvestigationJob) =>
+      (job.finishedAt ?? job.startedAt ?? job.updatedAt).getTime();
+    return [...this.jobs.values()]
+      .filter(
+        (job) =>
+          job.tenantId === tenantId &&
+          (job.status === 'running' ||
+            (isTerminalStatus(job.status) && job.finishedAt !== null && job.finishedAt >= since)),
+      )
+      .sort((left, right) => activity(right) - activity(left) || (left.id < right.id ? 1 : -1))
+      .slice(0, Math.max(1, Math.min(Math.trunc(limit) || 1, ACTIVITY_LIMITS.recentJobs)));
+  }
+
+  public async escalationOutcomes(
+    tenantId: string,
+    from: Date,
+    to: Date,
+  ): Promise<readonly EscalationOutcome[]> {
+    const out: EscalationOutcome[] = [];
+    for (const [jobId, log] of this.eventLog) {
+      if (this.jobs.get(jobId)?.tenantId !== tenantId) continue;
+      for (const event of log) {
+        const disposition = event.detail['incident'];
+        if (
+          event.stage === 'acting' &&
+          event.kind === 'completed' &&
+          event.detail['action'] === 'escalate' &&
+          (disposition === 'created' || disposition === 'attached') &&
+          event.at >= from &&
+          event.at < to
+        ) {
+          out.push({ jobId, at: event.at, disposition });
+        }
+      }
+    }
+    return out
+      .sort((left, right) => right.at.getTime() - left.at.getTime())
+      .slice(0, ACTIVITY_LIMITS.escalationOutcomes);
+  }
+
+  public async existingKeys(tenantId: string, keys: readonly string[]): Promise<ReadonlySet<string>> {
+    const wanted = new Set(keys.slice(0, ACTIVITY_LIMITS.existingKeys));
+    const found = new Set<string>();
+    for (const job of this.jobs.values()) {
+      if (job.tenantId === tenantId && wanted.has(job.idempotencyKey)) found.add(job.idempotencyKey);
+    }
+    return found;
   }
 }

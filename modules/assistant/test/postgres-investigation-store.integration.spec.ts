@@ -361,6 +361,50 @@ describe.skipIf(!databaseUrl)('Analista IA · almacén PostgreSQL', () => {
     expect((await store.budgetSnapshot(TENANT, clock.now())).runsToday.economy).toBe(1);
   });
 
+  it('panel de actividad: cola por prioridad, terminados en la ventana, recientes, escalaciones y claves', async () => {
+    await clearQueue();
+    const at = (ms: number) => new Date(BASE + ms);
+    const waiting = await store.enqueue(draft({ priority: 'P3', createdAt: at(-5_000) }));
+    const urgent = await store.enqueue(draft({ priority: 'P1' }));
+    await store.enqueue(draft({ tenantId: 'tenant-ajeno', priority: 'P4', idempotencyKey: 'ajena' }));
+    const job = (await store.claim(at(0), 60_000, 3))!;
+    expect(job.id).toBe(urgent.job.id);
+    let counts = await store.activityCounts(TENANT, at(-1), at(86_400_000));
+    expect(counts.queue).toEqual({
+      queued: 1,
+      running: 1,
+      oldestQueuedAt: at(-5_000),
+      byPriority: { P1: 0, P2: 0, P3: 1, P4: 0 },
+    });
+    const lease = { jobId: job.id, fencingToken: job.fencingToken };
+    await store.appendEvent(lease, {
+      at: at(10),
+      stage: 'acting',
+      kind: 'completed',
+      detail: { action: 'escalate', incident: 'created' },
+    });
+    await store.appendEvent(lease, { at: at(11), stage: 'acting', kind: 'completed', detail: { action: 'report' } });
+    await store.finish(lease, { at: at(20), status: 'failed', result: null, inference: 'none', errorCode: 'X_FAILED' });
+    counts = await store.activityCounts(TENANT, at(-1), at(86_400_000));
+    expect(counts.finished).toEqual({
+      total: 1,
+      byInference: { none: 1, economy: 0, advanced: 0 },
+      byStatus: { failed: 1 },
+    });
+    expect(counts.settledMicroUsd).toBe(0);
+    expect((await store.activityCounts(TENANT, at(21), at(86_400_000))).finished.total).toBe(0);
+    expect((await store.recentJobs(TENANT, at(0), 10)).map((row) => row.id)).toEqual([job.id]);
+    expect(await store.recentJobs(TENANT, at(21), 10)).toEqual([]);
+    expect(await store.escalationOutcomes(TENANT, at(0), at(100))).toEqual([
+      { jobId: job.id, at: at(10), disposition: 'created' },
+    ]);
+    expect(await store.escalationOutcomes('tenant-ajeno', at(0), at(100))).toEqual([]);
+    expect([
+      ...(await store.existingKeys(TENANT, [waiting.job.idempotencyKey, 'ajena', 'nada'])),
+    ]).toEqual([waiting.job.idempotencyKey]);
+    expect(await store.existingKeys(TENANT, [])).toEqual(new Set());
+  });
+
   it('los CHECK rechazan estados fuera de catálogo y leases incoherentes', async () => {
     const { job } = await store.enqueue(draft());
     await expect(

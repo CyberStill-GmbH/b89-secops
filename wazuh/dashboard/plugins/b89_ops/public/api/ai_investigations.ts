@@ -4,7 +4,9 @@
 
 import {
   AI_RUN_STATUSES,
+  AiActivity,
   AiBudget,
+  normalizeActivity,
   AiDigest,
   AiRunReport,
   AnalystSettingsInput,
@@ -88,6 +90,14 @@ export async function listAiRuns(
 
 export async function getAiBudget(api: B89ApiClient): Promise<AiBudget> {
   return normalizeBudget(await api.get<unknown>(`${BASE}/budget`));
+}
+
+/** Panel «Actividad»: estado del analista, cola, día de Lima y feed de las últimas 24 h. */
+export async function getAiActivity(api: B89ApiClient): Promise<AiActivity> {
+  const body = await api.get<unknown>(`${BASE}/activity`);
+  const activity = normalizeActivity(body);
+  if (!activity) throw new B89ApiError('DEPENDENCY_DEGRADED', 200, correlationOf(body));
+  return activity;
 }
 
 export async function getAiRun(api: B89ApiClient, id: string): Promise<AiRunDetail> {

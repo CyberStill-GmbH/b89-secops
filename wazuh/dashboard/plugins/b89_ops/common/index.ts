@@ -154,3 +154,4 @@ export * from './bunny_bridge';
 export * from './navigation';
 export * from './platform_health';
 export * from './ai_investigations';
+export * from './ai_activity';

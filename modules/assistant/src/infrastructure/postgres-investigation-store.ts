@@ -32,7 +32,9 @@ import {
   type ActionMark,
   type BudgetSnapshot,
   type DispatchOutcome,
+  type EscalationOutcome,
   type HeartbeatOutcome,
+  type InvestigationActivityCounts,
   type InvestigationActionPlan,
   type InvestigationCheckpoint,
   type InvestigationCommandOutcome,
@@ -74,7 +76,9 @@ import {
   type InvestigationEvidenceSummary,
   type InvestigationInvocation,
   type InvestigationJob,
+  type InvestigationPriority,
   type InvestigationResult,
+  type InvestigationStatus,
   type InvestigationTerminalStatus,
   type NewInvestigationJob,
 } from '../investigations/types.js';
@@ -578,5 +582,65 @@ export class PostgresInvestigationStore implements InvestigationStore {
         advanced: totals.runsAdvanced,
       },
     };
+  }
+
+  public async activityCounts(
+    tenantId: string,
+    from: Date,
+    to: Date,
+  ): Promise<InvestigationActivityCounts> {
+    const rows = await this.store.activityCounts(tenantId, from, to);
+    const byPriority: Record<InvestigationPriority, number> = { P1: 0, P2: 0, P3: 0, P4: 0 };
+    let queued = 0;
+    let running = 0;
+    let oldestQueuedAt: Date | null = null;
+    for (const row of rows.queue) {
+      if (row.status === 'running') {
+        running += row.total;
+        continue;
+      }
+      queued += row.total;
+      byPriority[oneOf(INVESTIGATION_PRIORITIES, row.priority, 'priority')] += row.total;
+      if (row.oldest && (!oldestQueuedAt || row.oldest < oldestQueuedAt)) oldestQueuedAt = row.oldest;
+    }
+    const byInference = { none: 0, economy: 0, advanced: 0 };
+    const byStatus: Partial<Record<InvestigationStatus, number>> = {};
+    let total = 0;
+    for (const row of rows.finished) {
+      const status = oneOf(INVESTIGATION_STATUSES, row.status, 'status');
+      total += row.total;
+      byStatus[status] = (byStatus[status] ?? 0) + row.total;
+      const inference = orNull(['none', ...INFERENCE_TIERS] as const, row.inference, 'inference');
+      if (inference) byInference[inference] += row.total;
+    }
+    return {
+      queue: { queued, running, oldestQueuedAt, byPriority },
+      finished: { total, byInference, byStatus },
+      settledMicroUsd: rows.settledMicroUsd,
+    };
+  }
+
+  public async recentJobs(
+    tenantId: string,
+    since: Date,
+    limit: number,
+  ): Promise<readonly InvestigationJob[]> {
+    return (await this.store.recentJobs(tenantId, since, limit)).map(toJob);
+  }
+
+  public async escalationOutcomes(
+    tenantId: string,
+    from: Date,
+    to: Date,
+  ): Promise<readonly EscalationOutcome[]> {
+    return (await this.store.escalationOutcomes(tenantId, from, to)).map((row) => ({
+      jobId: row.jobId,
+      at: row.at,
+      disposition: oneOf(['created', 'attached'] as const, row.disposition, 'detail.incident'),
+    }));
+  }
+
+  public async existingKeys(tenantId: string, keys: readonly string[]): Promise<ReadonlySet<string>> {
+    return new Set(await this.store.existingKeys(tenantId, keys));
   }
 }

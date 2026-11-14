@@ -17,6 +17,7 @@ import type {
   InvestigationInference,
   InvestigationInvocation,
   InvestigationJob,
+  InvestigationPriority,
   InvestigationResult,
   InvestigationStage,
   InvestigationStatus,
@@ -303,6 +304,61 @@ export interface InvestigationStore {
     at: Date,
     limitMicroUsd?: number | null,
   ): Promise<BudgetSnapshot>;
+
+  // ── Panel de actividad (lecturas acotadas: conteos agregados, nunca contenido) ──────────
+
+  /** Cola actual del tenant y trabajos terminados en `[from, to)` por nivel y estado. */
+  activityCounts(tenantId: string, from: Date, to: Date): Promise<InvestigationActivityCounts>;
+  /**
+   * Trabajos `running` y los terminados desde `since`, actividad más reciente primero
+   * (`finishedAt`, si no `startedAt`); a lo sumo `limit` (1–100).
+   */
+  recentJobs(tenantId: string, since: Date, limit: number): Promise<readonly InvestigationJob[]>;
+  /**
+   * Escalaciones ejecutadas en `[from, to)` con su disposición (incidente nuevo o adjuntado),
+   * tal como la dejó el runner en la bitácora; a lo sumo 1000, más recientes primero.
+   */
+  escalationOutcomes(tenantId: string, from: Date, to: Date): Promise<readonly EscalationOutcome[]>;
+  /** Cuáles de estas claves de idempotencia ya tienen trabajo en el tenant (a lo sumo 2000). */
+  existingKeys(tenantId: string, keys: readonly string[]): Promise<ReadonlySet<string>>;
+}
+
+export const ACTIVITY_LIMITS = Object.freeze({
+  recentJobs: 100,
+  escalationOutcomes: 1_000,
+  existingKeys: 2_000,
+});
+
+/** Cola en este instante: no depende de ninguna ventana. */
+export interface InvestigationQueueSnapshot {
+  readonly queued: number;
+  readonly running: number;
+  /** `createdAt` del trabajo `queued` más antiguo; `null` sin cola. */
+  readonly oldestQueuedAt: Date | null;
+  /** Trabajos `queued` por prioridad. */
+  readonly byPriority: Readonly<Record<InvestigationPriority, number>>;
+}
+
+export interface InvestigationActivityCounts {
+  readonly queue: InvestigationQueueSnapshot;
+  /** Trabajos con `finishedAt` en `[from, to)`. */
+  readonly finished: {
+    readonly total: number;
+    readonly byInference: {
+      readonly none: number;
+      readonly economy: number;
+      readonly advanced: number;
+    };
+    readonly byStatus: Readonly<Partial<Record<InvestigationStatus, number>>>;
+  };
+  /** Estimado de las invocaciones `settled` creadas en `[from, to)`. No es facturación. */
+  readonly settledMicroUsd: number;
+}
+
+export interface EscalationOutcome {
+  readonly jobId: string;
+  readonly at: Date;
+  readonly disposition: 'created' | 'attached';
 }
 
 /** Lector de evidencia (lo implementa el API con rutas allowlisted y alcance del tenant). */

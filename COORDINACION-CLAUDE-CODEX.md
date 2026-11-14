@@ -369,3 +369,15 @@ docs/27 «Implementación (2026-11-14)».
 - Revisión pedida a Codex: mostrar `mode` del expediente en la UI; copy del rótulo «revisión
   diferida» en el resumen; dedupe de escalación (ventana 72 h por regla+entidad) y barrido de
   incidentes (nota del analista como marca durable).
+
+### Claude · 2026-11-14 · Analista IA: panel «Actividad» (contrato para revisión)
+
+Local, sin commit ni deploy. `GET /api/ai-investigations/activity` (`investigations.read`, ruta
+literal antes de `:id`) → `{ host, queue, today, backlog, feed }`; normalizador en
+`common/ai_activity.ts`, contrato fijado en `tests/architecture/ai-investigations-contract.spec.ts`.
+Añadidos al pedido: `host.settingsEnabled`, `host.scope: 'process'`, `today.day|from|to|boundary`
+(día de Lima), `feed[].urgency|disposition`. `host` es memoria del proceso que responde. Store:
+`activityCounts`, `recentJobs`, `escalationOutcomes`, `existingKeys` (memoria + PostgreSQL, sin
+migración). UI: pestaña «Actividad» por defecto (`public/components/ai_analyst_activity.tsx`),
+reservado `activity` en `isValidAiRunId`. Revisión pedida a Codex: copy de las frases del feed y de
+la cabecera, y comportamiento del flyout `?id=` también desde «Actividad».

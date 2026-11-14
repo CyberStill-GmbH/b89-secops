@@ -16,6 +16,7 @@ import {
 } from '../../modules/assistant/src/index';
 
 import {
+  activityView,
   budgetView,
   digestView,
   reportView,
@@ -32,6 +33,7 @@ import {
   normalizeRunReport,
   normalizeSettingsView,
 } from '../../wazuh/dashboard/plugins/b89_ops/common/ai_investigations';
+import { feedSentence, normalizeActivity } from '../../wazuh/dashboard/plugins/b89_ops/common/ai_activity';
 
 const AT = new Date('2026-11-14T10:00:00.000Z');
 const ID = '0f8e2c1a-1111-4222-8333-444455556666';
@@ -215,5 +217,89 @@ describe('contrato del Analista IA (API ↔ consola)', () => {
 
   it('la consola tiene rótulo para cada motivo de acción del backend', () => {
     for (const code of ACTION_REASON_CODES) expect(actionReasonLabel(code)).not.toBeNull();
+  });
+});
+
+describe('contrato del panel de actividad (API ↔ consola)', () => {
+  it('lo que proyecta activityView lo lee normalizeActivity sin pérdidas (null ≠ 0)', () => {
+    const escalate: InvestigationAction = {
+      ...actions[0]!,
+      id: 'act-2',
+      kind: 'escalate',
+      reason: 'ESCALATE_CORRELATED_P1',
+      urgency: null,
+      groupKey: null,
+      ref: { kind: 'incident', id: 'inc-1' },
+    };
+    const view = JSON.parse(
+      JSON.stringify(
+        activityView({
+          status: {
+            enabled: true,
+            running: true,
+            lastTickAt: AT,
+            lastProcessedAt: null,
+            inFlight: 0,
+            concurrency: 2,
+            lastErrorCode: null,
+          },
+          settings: { ...DEFAULT_ANALYST_SETTINGS, enabled: true, mode: 'autonomous' },
+          counts: {
+            queue: { queued: 2, running: 1, oldestQueuedAt: AT, byPriority: { P1: 1, P2: 0, P3: 1, P4: 0 } },
+            finished: { total: 1, byInference: { none: 0, economy: 1, advanced: 0 }, byStatus: { completed: 1 } },
+            settledMicroUsd: 181,
+          },
+          actions: [...actions, escalate],
+          escalations: [{ jobId: ID, at: AT, disposition: 'attached' }],
+          jobs: new Map([[ID, job]]),
+          backlog: { openAlertsWithoutCaseFile: null, openIncidentsWithoutCaseFile: 0 },
+          today: { day: '2026-11-14', from: new Date('2026-11-14T05:00:00.000Z'), to: new Date('2026-11-15T05:00:00.000Z') },
+          since: new Date(AT.getTime() - 86_400_000),
+          inferenceConfigured: true,
+        }),
+      ),
+    );
+    const activity = normalizeActivity(view);
+    expect(activity).not.toBeNull();
+    expect(activity!.host).toEqual({
+      enabled: true,
+      running: true,
+      settingsEnabled: true,
+      mode: 'autonomous',
+      lastTickAt: AT.toISOString(),
+      lastProcessedAt: null,
+      inFlight: 0,
+      concurrency: 2,
+      lastErrorCode: null,
+    });
+    expect(activity!.queue).toEqual({
+      queued: 2,
+      running: 1,
+      oldestQueuedAt: AT.toISOString(),
+      byPriority: { P1: 1, P2: 0, P3: 1, P4: 0 },
+    });
+    expect(activity!.today).toMatchObject({
+      day: '2026-11-14',
+      runs: 1,
+      withoutInference: 0,
+      economy: 1,
+      escalated: 1,
+      incidentsCreated: 0,
+      incidentsAttached: 1,
+      reviewRequested: 1,
+      reviewImmediate: 1,
+      reviewDigest: 0,
+      failed: 0,
+      estimatedMicroUsd: 181,
+    });
+    expect(activity!.backlog).toEqual({ openAlertsWithoutCaseFile: null, openIncidentsWithoutCaseFile: 0 });
+    // Cada entrada del feed se lee entera; el título va enmascarado y sin texto del modelo.
+    expect(activity!.feed).toHaveLength(view.feed.length);
+    expect(activity!.feed.map((item) => item.kind)).toEqual(['run_finished', 'action', 'action', 'run_started']);
+    const sentences = activity!.feed.map((item) => feedSentence(item).text);
+    expect(sentences).toContain('Adjuntó a incidente existente');
+    expect(sentences).toContain('Pidió revisión humana (inmediata)');
+    expect(sentences).toContain('Terminó la investigación con modelo económico');
+    expect(JSON.stringify(view)).not.toContain('Resumen');
   });
 });

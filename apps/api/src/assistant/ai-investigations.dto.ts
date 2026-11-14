@@ -9,11 +9,14 @@
  */
 
 import {
+  ACTION_KINDS,
   ANALYST_MODES,
   type AnalystMode,
   type AnalystSettings,
   type BudgetSnapshot,
+  type EscalationOutcome,
   type InvestigationAction,
+  type InvestigationActivityCounts,
   type InvestigationCursor,
   type InvestigationEvent,
   type InvestigationInvocation,
@@ -23,6 +26,8 @@ import {
   type StoredAnalystSettings,
 } from '@b89/assistant';
 import { maskText } from '@b89/soar';
+
+import type { AnalystBacklog, AnalystHostStatus } from '../runtime/analyst-host.js';
 
 const UUID_LIKE = /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/iu;
 
@@ -257,4 +262,183 @@ export function digestView(digest: OperationsDigest) {
 
 export function reportView(report: RunReport, generatedAt: Date) {
   return { filename: report.filename, markdown: report.markdown, generatedAt: generatedAt.toISOString() };
+}
+
+// ── Panel de actividad (`GET /activity`) ───────────────────────────────────────────────────
+
+/** Tope de entradas del feed y su ventana. */
+export const ACTIVITY_FEED_LIMIT = 50;
+export const ACTIVITY_FEED_WINDOW_MS = 86_400_000;
+
+/** Motivos deterministas que explican mejor una corrida sin modelo, en orden de preferencia. */
+const HEADLINE_REASONS = [
+  'KNOWN_BENIGN_PATTERN',
+  'DUPLICATE_OF_OPEN_INCIDENT',
+  'EVIDENCE_INCOMPLETE',
+  'ISOLATED_LOW_SIGNAL',
+  'NOT_ELIGIBLE',
+] as const;
+
+function headlineReason(job: InvestigationJob): string | null {
+  if (job.status === 'failed' || job.status === 'usage_unreconciled') return job.lastErrorCode;
+  const reasons = job.result?.deterministic.reasons ?? [];
+  return HEADLINE_REASONS.find((code) => reasons.includes(code)) ?? reasons[0] ?? null;
+}
+
+export interface ActivityInput {
+  readonly status: AnalystHostStatus;
+  readonly settings: AnalystSettings;
+  readonly counts: InvestigationActivityCounts;
+  /** Acciones de la ventana del feed (que contiene la de hoy). */
+  readonly actions: readonly InvestigationAction[];
+  readonly escalations: readonly EscalationOutcome[];
+  /** Trabajos conocidos (recientes + los de las acciones del feed). */
+  readonly jobs: ReadonlyMap<string, InvestigationJob>;
+  readonly backlog: AnalystBacklog;
+  /** Día de Lima de «hoy» y su ventana `[from, to)`. */
+  readonly today: { readonly day: string; readonly from: Date; readonly to: Date };
+  readonly since: Date;
+  /** El despliegue no tiene techo de inferencia: sin uso, el costo es «sin dato», no 0. */
+  readonly inferenceConfigured: boolean;
+}
+
+type FeedKind = 'run_started' | 'run_finished' | 'action';
+
+export interface ActivityFeedItem {
+  readonly at: string;
+  readonly jobId: string;
+  readonly priority: string;
+  readonly subjectTitle: string;
+  readonly kind: FeedKind;
+  readonly status?: string;
+  readonly inference?: string | null;
+  readonly actionKind?: string;
+  readonly actionState?: string;
+  readonly reason?: string | null;
+  readonly urgency?: string | null;
+  readonly disposition?: 'created' | 'attached';
+  readonly ref?: { readonly kind: string; readonly id: string } | null;
+}
+
+const FEED_RANK: Readonly<Record<FeedKind, number>> = { run_finished: 0, action: 1, run_started: 2 };
+const actionOrder = (item: ActivityFeedItem): number =>
+  item.actionKind ? (ACTION_KINDS as readonly string[]).indexOf(item.actionKind) : -1;
+
+/** Feed: inicios, cierres y acciones (no `planned`) desde `since`, más reciente primero. */
+export function activityFeed(input: Pick<ActivityInput, 'actions' | 'escalations' | 'jobs' | 'since'>) {
+  const since = input.since.getTime();
+  const entries: { readonly time: number; readonly item: ActivityFeedItem }[] = [];
+  const base = (job: InvestigationJob) => ({
+    jobId: job.id,
+    priority: job.priority,
+    subjectTitle: maskText(job.subject.title).slice(0, 300),
+  });
+  for (const job of input.jobs.values()) {
+    if (job.startedAt && job.startedAt.getTime() >= since) {
+      entries.push({
+        time: job.startedAt.getTime(),
+        item: { at: job.startedAt.toISOString(), ...base(job), kind: 'run_started' },
+      });
+    }
+    if (job.finishedAt && job.finishedAt.getTime() >= since && job.status !== 'queued' && job.status !== 'running') {
+      entries.push({
+        time: job.finishedAt.getTime(),
+        item: {
+          at: job.finishedAt.toISOString(),
+          ...base(job),
+          kind: 'run_finished',
+          status: job.status,
+          inference: job.inference,
+          reason: headlineReason(job),
+        },
+      });
+    }
+  }
+  const disposition = new Map(input.escalations.map((row) => [row.jobId, row.disposition]));
+  for (const action of input.actions) {
+    const job = input.jobs.get(action.jobId);
+    const at = action.executedAt ?? action.at;
+    if (!job || action.state === 'planned' || at.getTime() < since) continue;
+    const escalated = action.kind === 'escalate' ? disposition.get(action.jobId) : undefined;
+    entries.push({
+      time: at.getTime(),
+      item: {
+        at: at.toISOString(),
+        ...base(job),
+        kind: 'action',
+        actionKind: action.kind,
+        actionState: action.state,
+        reason: action.reason,
+        urgency: action.urgency,
+        ...(escalated && action.state === 'executed' ? { disposition: escalated } : {}),
+        ref: action.ref,
+      },
+    });
+  }
+  return entries
+    .sort(
+      (left, right) =>
+        right.time - left.time ||
+        FEED_RANK[left.item.kind] - FEED_RANK[right.item.kind] ||
+        // Mismo instante: la acción ejecutada después (orden de `ACTION_KINDS`) va primero.
+        actionOrder(right.item) - actionOrder(left.item) ||
+        (left.item.jobId < right.item.jobId ? 1 : -1),
+    )
+    .slice(0, ACTIVITY_FEED_LIMIT)
+    .map((entry) => entry.item);
+}
+
+export function activityView(input: ActivityInput) {
+  const { counts, status, today } = input;
+  const inToday = (at: Date) => at >= today.from && at < today.to;
+  const executed = input.actions.filter((action) => action.state === 'executed' && inToday(action.at));
+  const ofKind = (kind: InvestigationAction['kind']) => executed.filter((action) => action.kind === kind);
+  const reviews = ofKind('request_review');
+  const escalations = input.escalations.filter((row) => inToday(row.at));
+  const settled = counts.settledMicroUsd;
+  return {
+    host: {
+      enabled: status.enabled,
+      running: status.running,
+      settingsEnabled: input.settings.enabled,
+      mode: input.settings.mode,
+      lastTickAt: iso(status.lastTickAt),
+      lastProcessedAt: iso(status.lastProcessedAt),
+      inFlight: status.inFlight,
+      concurrency: status.concurrency,
+      lastErrorCode: status.lastErrorCode,
+      scope: 'process',
+    },
+    queue: {
+      queued: counts.queue.queued,
+      running: counts.queue.running,
+      oldestQueuedAt: iso(counts.queue.oldestQueuedAt),
+      byPriority: { ...counts.queue.byPriority },
+    },
+    today: {
+      day: today.day,
+      from: today.from.toISOString(),
+      to: today.to.toISOString(),
+      boundary: 'America/Lima',
+      runs: counts.finished.total,
+      withoutInference: counts.finished.byInference.none,
+      economy: counts.finished.byInference.economy,
+      advanced: counts.finished.byInference.advanced,
+      escalated: ofKind('escalate').length,
+      incidentsCreated: escalations.filter((row) => row.disposition === 'created').length,
+      incidentsAttached: escalations.filter((row) => row.disposition === 'attached').length,
+      closedBenign: ofKind('close_benign').length,
+      acknowledged: ofKind('acknowledge').length,
+      reviewRequested: reviews.length,
+      reviewImmediate: reviews.filter((action) => action.urgency === 'immediate').length,
+      reviewDigest: reviews.filter((action) => action.urgency !== 'immediate').length,
+      failed: counts.finished.byStatus.failed ?? 0,
+      estimatedMicroUsd: !input.inferenceConfigured && settled === 0 ? null : settled,
+    },
+    backlog: {
+      openAlertsWithoutCaseFile: input.backlog.openAlertsWithoutCaseFile,
+      openIncidentsWithoutCaseFile: input.backlog.openIncidentsWithoutCaseFile,
+    },
+    feed: activityFeed(input),
+  };
 }

@@ -593,3 +593,17 @@ Se corrigió el HELP de Prometheus: `reviewCoverage` enumera también `duplicate
   (analista, líder, admin) y `investigations.configure` (admin). Herramientas MCP del analista.
 - Política `b89-analyst-2026-11-14.1` (paquete con contexto ampliado). Sin commit; sin evidencia de
   proveedor real. Ver docs/27 «Implementación (2026-11-14)».
+
+## 2026-11-14 · Analista IA: panel «Actividad» (local, sin deploy)
+
+- `GET /api/ai-investigations/activity` (`investigations.read`): estado del host **en memoria del
+  proceso que responde** (`AnalystHost.status()`), cola actual por prioridad, conteos del **día de
+  Lima** en curso (`today.from`–`today.to`, incluido el costo estimado de invocaciones creadas en esa
+  ventana; `/budget` sigue en día UTC), atraso sin expediente (caché 60 s; lectura incompleta ⇒
+  `null`) y feed de 24 h (≤ 50, sin texto del modelo, títulos enmascarados).
+- Store: `activityCounts`, `recentJobs`, `escalationOutcomes`, `existingKeys` (memoria y PostgreSQL,
+  sin migración: usan índices existentes).
+- Consola: pestaña «Actividad» (por defecto) con la mascota `b89-ai-analyst-bunny-160.webp` /
+  `b89-ai-analyst-bunny.webp` (2x), KPI del día, cola, atraso y feed con sondeo de 5 s.
+- Validación local: specs API/assistant/arquitectura, plugin, typecheck (incluido el del plugin con
+  TS 4.0.2), lint, boundaries e integración PostgreSQL 18.6 efímera del store. Sin deploy.

@@ -176,6 +176,21 @@ export interface AiBudgetTotalsRow {
   readonly runsAdvanced: number;
 }
 
+export interface AiActivityCountsRow {
+  readonly queue: readonly {
+    readonly status: string;
+    readonly priority: string;
+    readonly total: number;
+    readonly oldest: Date | null;
+  }[];
+  readonly finished: readonly {
+    readonly status: string;
+    readonly inference: string | null;
+    readonly total: number;
+  }[];
+  readonly settledMicroUsd: number;
+}
+
 export type AiCommandOutcome = 'ok' | 'conflict' | 'not_found' | 'terminal';
 
 const ACTIVE = ['queued', 'running'];
@@ -960,6 +975,94 @@ export class PrismaAiInvestigationStore {
       runsEconomy: run('economy'),
       runsAdvanced: run('advanced'),
     };
+  }
+
+  /**
+   * Panel de actividad: cola actual (índice de estado), terminados en `[from, to)` (índice
+   * `tenant_finished`) y estimado de invocaciones `settled` creadas en la ventana.
+   */
+  public async activityCounts(tenantId: string, from: Date, to: Date): Promise<AiActivityCountsRow> {
+    const queue = await this.client.$queryRaw<
+      { status: string; priority: string; total: bigint | number; oldest: Date | null }[]
+    >`
+      SELECT "status", "priority", COUNT(*)::bigint AS "total", MIN("created_at") AS "oldest"
+        FROM "ai_investigation_jobs"
+       WHERE "tenant_id" = ${tenantId} AND "status" IN ('queued', 'running')
+       GROUP BY "status", "priority"`;
+    const finished = await this.client.$queryRaw<
+      { status: string; inference: string | null; total: bigint | number }[]
+    >`
+      SELECT "status", "inference", COUNT(*)::bigint AS "total" FROM "ai_investigation_jobs"
+       WHERE "tenant_id" = ${tenantId} AND "finished_at" >= ${from} AND "finished_at" < ${to}
+       GROUP BY "status", "inference"`;
+    const [settled] = await this.client.$queryRaw<{ total: bigint | number | null }[]>`
+      SELECT COALESCE(SUM("estimated_micro_usd"), 0)::bigint AS "total"
+        FROM "ai_investigation_invocations"
+       WHERE "tenant_id" = ${tenantId} AND "state" = 'settled'
+         AND "created_at" >= ${from} AND "created_at" < ${to}`;
+    return {
+      queue: queue.map((row) => ({
+        status: row.status,
+        priority: row.priority,
+        total: Number(row.total),
+        oldest: row.oldest,
+      })),
+      finished: finished.map((row) => ({
+        status: row.status,
+        inference: row.inference,
+        total: Number(row.total),
+      })),
+      settledMicroUsd: Number(settled?.total ?? 0),
+    };
+  }
+
+  /** `running` + terminados desde `since`, actividad más reciente primero. */
+  public async recentJobs(
+    tenantId: string,
+    since: Date,
+    limit: number,
+  ): Promise<readonly AiInvestigationJobRow[]> {
+    const take = Math.min(Math.max(Math.trunc(limit) || 1, 1), 100);
+    return this.client.$queryRaw<AiInvestigationJobRow[]>`
+      SELECT ${JOB_COLUMNS} FROM (
+        (SELECT * FROM "ai_investigation_jobs"
+          WHERE "tenant_id" = ${tenantId} AND "status" = 'running'
+          ORDER BY "created_at" DESC LIMIT ${take}::int)
+        UNION ALL
+        (SELECT * FROM "ai_investigation_jobs"
+          WHERE "tenant_id" = ${tenantId} AND "finished_at" >= ${since}
+            AND "status" NOT IN ('queued', 'running')
+          ORDER BY "finished_at" DESC LIMIT ${take}::int)
+      ) AS recent
+       ORDER BY COALESCE("finished_at", "started_at", "updated_at") DESC, "id" DESC
+       LIMIT ${take}::int`;
+  }
+
+  /** Disposición de las escalaciones ejecutadas (bitácora `acting/completed`, índice `tenant, at`). */
+  public async escalationOutcomes(
+    tenantId: string,
+    from: Date,
+    to: Date,
+  ): Promise<readonly { jobId: string; at: Date; disposition: string }[]> {
+    return this.client.$queryRaw<{ jobId: string; at: Date; disposition: string }[]>`
+      SELECT "job_id"::text AS "jobId", "at", "detail"->>'incident' AS "disposition"
+        FROM "ai_investigation_events"
+       WHERE "tenant_id" = ${tenantId} AND "at" >= ${from} AND "at" < ${to}
+         AND "stage" = 'acting' AND "kind" = 'completed'
+         AND "detail"->>'action' = 'escalate'
+         AND "detail"->>'incident' IN ('created', 'attached')
+       ORDER BY "at" DESC
+       LIMIT 1000`;
+  }
+
+  /** Claves de idempotencia existentes (índice único `tenant_id, idempotency_key`). */
+  public async existingKeys(tenantId: string, keys: readonly string[]): Promise<readonly string[]> {
+    const wanted = [...new Set(keys)].slice(0, 2_000);
+    if (wanted.length === 0) return [];
+    const rows = await this.client.$queryRaw<{ key: string }[]>`
+      SELECT "idempotency_key" AS "key" FROM "ai_investigation_jobs"
+       WHERE "tenant_id" = ${tenantId} AND "idempotency_key" = ANY(${wanted}::text[])`;
+    return rows.map((row) => row.key);
   }
 
   public async getSettings(tenantId: string): Promise<AiAnalystSettingsRow | undefined> {

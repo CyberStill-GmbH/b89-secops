@@ -3,6 +3,7 @@
  *
  * - `GET  /`                lista paginada (`status`, `cursor`, `pageSize`)    investigations.read
  * - `GET  /budget`          presupuesto y consumo estimado del día            investigations.read
+ * - `GET  /activity`        estado del host, cola, día de Lima, atraso y feed  investigations.read
  * - `GET  /settings`        ajustes y `canConfigure`                           investigations.read
  * - `PUT  /settings`        `{ settings, expectedRevision }`                   investigations.configure + step-up
  * - `GET  /digest`          resumen `from`/`to` (días de Lima, ambos incluidos) investigations.read
@@ -22,6 +23,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { Actor, Capability } from '@b89/access';
 import {
+  ACTIVITY_LIMITS,
   buildRunReport,
   INVESTIGATION_STATUSES,
   isInvestigationId,
@@ -35,12 +37,15 @@ import { recordAudit } from '@b89/audit';
 import { ApiError } from '../http/api-error.js';
 import type { IncomingRequest } from '../http/http-contracts.js';
 import type { AnalystHost } from '../runtime/analyst-host.js';
-import { limaDayStart } from '../runtime/analyst-host.js';
+import { limaClock, limaDayStart } from '../runtime/analyst-host.js';
 import type { SecOpsRuntime } from '../runtime/secops-runtime.js';
 import { RECENT_AUTH_MS } from '../soc/notification-channels.controller.js';
 import { mutatingActor, readingActor } from '../soc/session-actor.js';
 import { SECOPS_RUNTIME } from '../soc/tokens.js';
 import {
+  ACTIVITY_FEED_LIMIT,
+  ACTIVITY_FEED_WINDOW_MS,
+  activityView,
   budgetView,
   decodeCursor,
   digestView,
@@ -208,6 +213,60 @@ export class AiInvestigationsController {
         rateCardVersion: host.config.rateCard.version,
       }),
       deploymentCeilingMicroUsd: host.config.dailyCeilingMicroUsd,
+    };
+  }
+
+  /**
+   * Cómo está actuando el analista: estado del host (en memoria, de ESTE proceso), cola actual,
+   * conteos del día de Lima en curso, atraso sin expediente y feed de las últimas 24 h. Solo
+   * campos estructurados: ni texto del modelo ni evidencia; títulos enmascarados.
+   */
+  @Get('activity')
+  public async activity(@Req() request: IncomingRequest) {
+    const { correlationId, host } = await this.reader(request);
+    const tenantId = this.runtime.tenantId;
+    const now = this.runtime.now();
+    const { day } = limaClock(now);
+    const from = limaDayStart(day);
+    const today = { day, from, to: new Date(from.getTime() + 86_400_000) };
+    // La ventana del feed (24 h hacia atrás) contiene siempre el inicio del día de Lima.
+    const since = new Date(now.getTime() - ACTIVITY_FEED_WINDOW_MS);
+    const [{ settings }, counts, actions, escalations, recent, backlog] = await Promise.all([
+      host.currentSettings(),
+      host.store.activityCounts(tenantId, today.from, today.to),
+      host.store.actionsBetween(tenantId, since, today.to),
+      host.store.escalationOutcomes(tenantId, since, today.to),
+      host.store.recentJobs(tenantId, since, ACTIVITY_LIMITS.recentJobs),
+      host.backlog(),
+    ]);
+    const jobs = new Map(recent.map((job) => [job.id, job]));
+    // Acciones de trabajos que no están entre los recientes: solo las del tope del feed.
+    const missing = [
+      ...new Set(
+        [...actions]
+          .sort((left, right) => (right.executedAt ?? right.at).getTime() - (left.executedAt ?? left.at).getTime())
+          .slice(0, ACTIVITY_FEED_LIMIT)
+          .map((action) => action.jobId)
+          .filter((id) => !jobs.has(id)),
+      ),
+    ];
+    for (const job of await Promise.all(missing.map((id) => host.store.byId(tenantId, id)))) {
+      if (job) jobs.set(job.id, job);
+    }
+    return {
+      correlationId,
+      ...activityView({
+        status: host.status(),
+        settings,
+        counts,
+        actions,
+        escalations,
+        jobs,
+        backlog,
+        today,
+        since,
+        inferenceConfigured: host.config.dailyCeilingMicroUsd !== null,
+      }),
     };
   }
 

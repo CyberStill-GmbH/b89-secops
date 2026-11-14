@@ -668,7 +668,7 @@ export function canRetry(run: Actionable): boolean {
 
 const RUN_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/u;
 /** Segmentos de ruta reservados bajo `/ai-investigations/`: nunca son un id. */
-const RESERVED_IDS: readonly string[] = ['budget', 'settings', 'digest'];
+const RESERVED_IDS: readonly string[] = ['budget', 'settings', 'digest', 'activity'];
 
 export function isValidAiRunId(id: unknown): id is string {
   return typeof id === 'string' && RUN_ID.test(id) && !RESERVED_IDS.includes(id.toLowerCase());

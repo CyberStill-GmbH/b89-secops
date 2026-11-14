@@ -52,6 +52,7 @@ import {
 } from '../api/ai_investigations';
 import { B89ApiError } from '../api/client';
 import { askBunny } from '../bunny_bridge';
+import { AiActivityTab } from './ai_analyst_activity';
 import { AiBudgetPanel, AiModeLine } from './ai_analyst_budget';
 import { AiCaseFile, AiCaseFileActions, primaryAlertId, runQuestion } from './ai_analyst_case_file';
 import { downloadMarkdown } from './ai_analyst_download';
@@ -69,9 +70,10 @@ const STALE_REFRESH_MAX = 10;
 const PAGE_DESCRIPTION =
   'Investigaciones automáticas de alertas con su evidencia, citas, acciones, uso y costo estimado.';
 
-type AnalystTab = 'operation' | 'reports' | 'settings';
+type AnalystTab = 'activity' | 'operation' | 'reports' | 'settings';
 
 const TABS: ReadonlyArray<{ id: AnalystTab; label: string }> = [
+  { id: 'activity', label: 'Actividad' },
   { id: 'operation', label: 'Operación' },
   { id: 'reports', label: 'Informes' },
   { id: 'settings', label: 'Configuración' },
@@ -171,7 +173,7 @@ function AiAnalystConsole({
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreError, setMoreError] = useState<unknown>(null);
   const [liveBudget, setLiveBudget] = useState<AiBudget | null>(null);
-  const [tab, setTab] = useState<AnalystTab>('operation');
+  const [tab, setTab] = useState<AnalystTab>('activity');
 
   const page = useAsync(() => listAiRuns(api, { status: filter || null }), [api, filter]);
   const budget = useAsync(() => getAiBudget(api), [api]);
@@ -281,6 +283,8 @@ function AiAnalystConsole({
       )}
       {unavailable ? (
         <UnavailableCallout onRetry={page.reload} />
+      ) : tab === 'activity' ? (
+        <AiActivityTab basePath={basePath} visible={visible} onSelect={onSelect} />
       ) : tab === 'reports' ? (
         <AiReportsTab />
       ) : tab === 'settings' ? (
@@ -385,7 +389,7 @@ function AiAnalystConsole({
           )}
         </>
       )}
-      {selectedId && !unavailable && tab === 'operation' && (
+      {selectedId && !unavailable && (tab === 'operation' || tab === 'activity') && (
         <RunFlyout
           key={selectedId}
           runId={selectedId}

@@ -709,3 +709,67 @@ describe('evidencia ampliada (mismo alcance que Bunny, sin modelo)', () => {
     }
   });
 });
+
+describe('estado del host y panel de actividad', () => {
+  it('estado en memoria: apagado, sin iniciar, activo, pasadas, fallo superado y detenido', async () => {
+    const off = await harness({}, { config: { enabled: false } });
+    expect(off.host.status()).toMatchObject({ enabled: false, running: false, inFlight: 0, lastTickAt: null });
+    off.host.start();
+    expect(off.host.status().running).toBe(false);
+
+    const { host, store } = await harness({ mode: 'shadow' }, { config: { backlogSweep: false } });
+    expect(host.status()).toMatchObject({
+      enabled: true,
+      running: false,
+      concurrency: 1,
+      lastTickAt: null,
+      lastProcessedAt: null,
+      lastErrorCode: null,
+    });
+    await host.enqueueAlert(putAlert({ priority: 'P4' }), { source: 'new_alert' });
+    expect(await host.runOnce()).toBe('processed');
+    const afterRun = host.status();
+    expect(afterRun.lastTickAt).toBeInstanceOf(Date);
+    expect(afterRun.lastProcessedAt).toBeInstanceOf(Date);
+    expect(afterRun.inFlight).toBe(0);
+    expect(await host.runOnce()).toBe('idle');
+    expect(host.status().lastProcessedAt).toEqual(afterRun.lastProcessedAt);
+
+    const claim = store.claim.bind(store);
+    store.claim = () => Promise.reject(new Error('db down'));
+    await expect(host.runOnce()).rejects.toThrow('db down');
+    expect(host.status().lastErrorCode).toBe('RUNNER_FAILED');
+    store.claim = claim;
+    expect(await host.runOnce()).toBe('idle');
+    expect(host.status().lastErrorCode).toBeNull();
+
+    host.start();
+    expect(host.status().running).toBe(true);
+    await host.stop();
+    expect(host.status().running).toBe(false);
+  });
+
+  it('atraso sin expediente: alertas sin trabajo del sistema e incidentes sin trabajo ni nota', async () => {
+    const { host } = await harness({ mode: 'shadow' }, { config: { backlogSweep: false } });
+    const covered = putAlert({ priority: 'P3' });
+    putAlert({ priority: 'P2' });
+    putAlert({ priority: 'P4', status: 'closed' });
+    await host.enqueueAlert(covered, { source: 'new_alert' });
+    expect(await host.backlog()).toEqual({ openAlertsWithoutCaseFile: 1, openIncidentsWithoutCaseFile: 0 });
+
+    // Lectura incompleta (más filas que las devueltas) y sin lector de incidentes ⇒ sin dato.
+    const partial = new AnalystHost({
+      tenantId: T,
+      config: config({ backlogSweep: false }),
+      store: new InMemoryInvestigationStore(),
+      settings: new InMemoryAnalystSettingsStore(),
+      evidence: { collect: () => Promise.reject(new Error('unused')) },
+      actions: {} as never,
+      models: {},
+      soc: { listAlerts: async () => ({ items: [], total: 5 }) },
+      clock: () => new Date(),
+      consoleBaseUrl: 'https://soc.example',
+    });
+    expect(await partial.backlog()).toEqual({ openAlertsWithoutCaseFile: null, openIncidentsWithoutCaseFile: null });
+  });
+});

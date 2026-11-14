@@ -105,6 +105,41 @@ export interface AnalystHostOptions {
   readonly retryDelayMs?: (attempt: number) => number;
 }
 
+/**
+ * Estado del host EN ESTE PROCESO (memoria, se pierde al reiniciar; con varias réplicas cada una
+ * informa el suyo). Solo lectura: lo consume `GET /api/ai-investigations/activity`.
+ */
+export interface AnalystHostStatus {
+  /** `B89_ANALYST_ENABLED` del despliegue. */
+  readonly enabled: boolean;
+  /** Bucles iniciados y no detenidos. */
+  readonly running: boolean;
+  /** Última pasada de un worker (haya o no trabajo). */
+  readonly lastTickAt: Date | null;
+  /** Último trabajo que un worker terminó de procesar. */
+  readonly lastProcessedAt: Date | null;
+  /** Pasadas del runner en curso ahora. */
+  readonly inFlight: number;
+  readonly concurrency: number;
+  /** Código del fallo más reciente aún no superado (worker, barrido o resumen); nunca mensajes. */
+  readonly lastErrorCode: string | null;
+}
+
+export interface AnalystBacklog {
+  /** `null`: sin dato (lectura incompleta o fallida). */
+  readonly openAlertsWithoutCaseFile: number | null;
+  readonly openIncidentsWithoutCaseFile: number | null;
+}
+
+/** Tope de alertas/incidentes leídos para el atraso y su vigencia en memoria. */
+export const ANALYST_BACKLOG_LIMITS = Object.freeze({
+  maxAlerts: 2_000,
+  maxIncidentNoteReads: 200,
+  cacheMs: 60_000,
+});
+
+const INCIDENT_SWEEP_STATUSES = ['open', 'contained', 'eradicated', 'resolved'] as const;
+
 /** Ajustes efectivos para el runner: el techo diario nunca supera el del despliegue. */
 export function clampSettings(settings: AnalystSettings, deploymentCeiling: number | null): AnalystSettings {
   const ceiling = settings.budget.dailyCeilingMicroUsd;
@@ -160,6 +195,15 @@ export class AnalystHost {
   private readonly known = new Set<string>();
   /** Incidentes con expediente (nota del analista) o con trabajo ya encolado. */
   private readonly documented = new Set<string>();
+  // Estado en memoria de este proceso (`status()`).
+  private started = false;
+  private stopped = false;
+  private lastTickAt: Date | null = null;
+  private lastProcessedAt: Date | null = null;
+  private inFlight = 0;
+  /** Fallo vigente por componente; el orden de inserción da el más reciente. */
+  private readonly failures = new Map<'worker' | 'sweep' | 'digest', string>();
+  private backlogCache: { readonly at: number; readonly value: Promise<AnalystBacklog> } | undefined;
 
   public constructor(private readonly options: AnalystHostOptions) {
     this.store = options.store;
@@ -195,8 +239,7 @@ export class AnalystHost {
     for (let slot = 0; slot < options.config.concurrency; slot += 1) {
       this.workers.push(
         new NotificationDispatcher({
-          drain: async () =>
-            (await this.runner.runOnce(this.abort.signal)) === 'processed' ? 1 : 0,
+          drain: async () => ((await this.pass()) === 'processed' ? 1 : 0),
           intervalMs: intervals.workIntervalMs,
           errorIntervalMs: Math.max(intervals.workIntervalMs, 60_000),
           onError: () => this.log('analyst.worker.failed', { code: 'RUNNER_FAILED' }),
@@ -207,21 +250,29 @@ export class AnalystHost {
       ? new NotificationDispatcher({
           drain: async () => {
             const created = (await this.sweepBacklog()) + (await this.sweepIncidents());
+            this.failures.delete('sweep');
             if (created > 0) this.kick();
             return 0;
           },
           intervalMs: intervals.sweepIntervalMs,
-          onError: () => this.log('analyst.sweep.failed', { code: 'SWEEP_FAILED' }),
+          onError: () => {
+            this.fail('sweep', 'SWEEP_FAILED');
+            this.log('analyst.sweep.failed', { code: 'SWEEP_FAILED' });
+          },
         })
       : undefined;
     this.digester = options.sendDigest
       ? new NotificationDispatcher({
           drain: async () => {
             await this.runDailyDigest();
+            this.failures.delete('digest');
             return 0;
           },
           intervalMs: intervals.digestIntervalMs,
-          onError: () => this.log('analyst.digest.failed', { code: 'DIGEST_FAILED' }),
+          onError: () => {
+            this.fail('digest', 'DIGEST_FAILED');
+            this.log('analyst.digest.failed', { code: 'DIGEST_FAILED' });
+          },
         })
       : undefined;
   }
@@ -374,7 +425,7 @@ export class AnalystHost {
     const severityRank: Readonly<Record<string, number>> = { critical: 0, high: 1, medium: 2, low: 3 };
     const page = await soc.listIncidents({
       tenantId: this.options.tenantId,
-      statuses: ['open', 'contained', 'eradicated', 'resolved'],
+      statuses: [...INCIDENT_SWEEP_STATUSES],
     });
     const pending = [...page.items]
       .filter((incident) => incident.tenantId === this.options.tenantId)
@@ -477,7 +528,110 @@ export class AnalystHost {
 
   /** Una pasada del runner (pruebas y drenado manual). */
   public runOnce(): Promise<'idle' | 'processed'> {
-    return this.runner.runOnce(this.abort.signal);
+    return this.pass();
+  }
+
+  /** Pasada del runner con el estado en memoria al día (`status()`). */
+  private async pass(): Promise<'idle' | 'processed'> {
+    this.lastTickAt = this.options.clock();
+    this.inFlight += 1;
+    try {
+      const outcome = await this.runner.runOnce(this.abort.signal);
+      this.failures.delete('worker');
+      if (outcome === 'processed') this.lastProcessedAt = this.options.clock();
+      return outcome;
+    } catch (error) {
+      this.fail('worker', 'RUNNER_FAILED');
+      throw error;
+    } finally {
+      this.inFlight -= 1;
+    }
+  }
+
+  private fail(component: 'worker' | 'sweep' | 'digest', code: string): void {
+    this.failures.delete(component);
+    this.failures.set(component, code);
+  }
+
+  /** Foto de solo lectura del host en este proceso. */
+  public status(): AnalystHostStatus {
+    const codes = [...this.failures.values()];
+    return {
+      enabled: this.enabled,
+      running: this.enabled && this.started && !this.stopped,
+      lastTickAt: this.lastTickAt,
+      lastProcessedAt: this.lastProcessedAt,
+      inFlight: this.inFlight,
+      concurrency: this.options.config.concurrency,
+      lastErrorCode: codes.length > 0 ? codes[codes.length - 1]! : null,
+    };
+  }
+
+  /**
+   * Atraso sin expediente (vigencia `cacheMs`, una lectura a la vez): alertas abiertas sin trabajo
+   * del sistema (`alert:<id>`) e incidentes abiertos sin trabajo (`incident:<id>`) ni nota del
+   * analista. Lectura incompleta (más filas que el tope) o fallida ⇒ `null`, nunca un número parcial.
+   */
+  public backlog(): Promise<AnalystBacklog> {
+    const now = Date.now();
+    if (this.backlogCache && now - this.backlogCache.at < ANALYST_BACKLOG_LIMITS.cacheMs) {
+      return this.backlogCache.value;
+    }
+    const value = Promise.all([
+      this.alertsWithoutCaseFile().catch(() => {
+        this.log('analyst.backlog.failed', { code: 'BACKLOG_ALERTS_FAILED' });
+        return null;
+      }),
+      this.incidentsWithoutCaseFile().catch(() => {
+        this.log('analyst.backlog.failed', { code: 'BACKLOG_INCIDENTS_FAILED' });
+        return null;
+      }),
+    ]).then(([openAlertsWithoutCaseFile, openIncidentsWithoutCaseFile]) => ({
+      openAlertsWithoutCaseFile,
+      openIncidentsWithoutCaseFile,
+    }));
+    this.backlogCache = { at: now, value };
+    return value;
+  }
+
+  private async alertsWithoutCaseFile(): Promise<number | null> {
+    const page = await this.options.soc.listAlerts({ tenantId: this.options.tenantId, status: 'open' });
+    const items = page.items.filter((alert) => alert.tenantId === this.options.tenantId);
+    if (items.length < page.total || items.length > ANALYST_BACKLOG_LIMITS.maxAlerts) return null;
+    if (items.length === 0) return 0;
+    const found = await this.store.existingKeys(
+      this.options.tenantId,
+      items.map((alert) => `alert:${alert.id}`),
+    );
+    return items.filter((alert) => !found.has(`alert:${alert.id}`)).length;
+  }
+
+  private async incidentsWithoutCaseFile(): Promise<number | null> {
+    const soc = this.options.soc;
+    if (!soc.listIncidents || !soc.listIncidentNotes) return null;
+    const page = await soc.listIncidents({
+      tenantId: this.options.tenantId,
+      statuses: [...INCIDENT_SWEEP_STATUSES],
+    });
+    const items = page.items.filter((incident) => incident.tenantId === this.options.tenantId);
+    if (items.length < page.total || items.length > ANALYST_BACKLOG_LIMITS.maxAlerts) return null;
+    if (items.length === 0) return 0;
+    const found = await this.store.existingKeys(
+      this.options.tenantId,
+      items.map((incident) => `incident:${incident.id}`),
+    );
+    const pending = items.filter(
+      (incident) => !found.has(`incident:${incident.id}`) && !this.documented.has(incident.id),
+    );
+    // La nota del analista es la marca durable (p. ej. un incidente creado por una escalación).
+    if (pending.length > ANALYST_BACKLOG_LIMITS.maxIncidentNoteReads) return null;
+    let without = 0;
+    for (const incident of pending) {
+      const notes = await soc.listIncidentNotes(this.options.tenantId, incident.id);
+      if (notes.some((note) => note.authorId === ANALYST_ACTOR)) this.documented.add(incident.id);
+      else without += 1;
+    }
+    return without;
   }
 
   public kick(): void {
@@ -486,6 +640,7 @@ export class AnalystHost {
 
   public start(): void {
     if (!this.enabled) return;
+    this.started = true;
     for (const worker of this.workers) worker.start();
     this.sweeper?.start();
     this.digester?.start();
@@ -498,6 +653,7 @@ export class AnalystHost {
 
   /** Aborta el trabajo en curso (el intento se devuelve) y espera las pasadas. */
   public async stop(): Promise<void> {
+    this.stopped = true;
     this.abort.abort();
     await Promise.all([
       ...this.workers.map((worker) => worker.stop()),

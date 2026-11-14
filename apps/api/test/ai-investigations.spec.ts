@@ -297,3 +297,108 @@ describe('investigaciones', () => {
     expect(maskActorRef(null)).toBeNull();
   });
 });
+
+describe('GET /activity', () => {
+  it('exige investigations.read y el analista publicado', async () => {
+    const none = harness({ capabilities: ['alerts.read'] });
+    expect(await code(none.controller.activity(none.request))).toBe('RESOURCE_UNAVAILABLE');
+    const unpublished = harness({ capabilities: ['investigations.read'], withAnalyst: false });
+    expect(await code(unpublished.controller.activity(unpublished.request))).toBe('RESOURCE_UNAVAILABLE');
+    // La ruta literal no se confunde con un expediente.
+    const reader = harness({ capabilities: ['investigations.read'] });
+    expect(await code(reader.controller.get(reader.request, 'activity'))).toBe('RESOURCE_UNAVAILABLE');
+  });
+
+  it('vacío: ceros contados, sin dato donde no hay medida y feed vacío', async () => {
+    const h = harness({ capabilities: ['investigations.read'], deploymentCeiling: null });
+    const view = (await h.controller.activity(h.request)) as Record<string, any>;
+    expect(view['correlationId']).toEqual(expect.any(String));
+    expect(view['host']).toMatchObject({
+      enabled: true,
+      running: false,
+      settingsEnabled: false,
+      mode: 'shadow',
+      lastTickAt: null,
+      lastProcessedAt: null,
+      inFlight: 0,
+      concurrency: 1,
+      lastErrorCode: null,
+      scope: 'process',
+    });
+    expect(view['queue']).toEqual({ queued: 0, running: 0, oldestQueuedAt: null, byPriority: { P1: 0, P2: 0, P3: 0, P4: 0 } });
+    expect(view['today']).toMatchObject({ boundary: 'America/Lima', runs: 0, failed: 0, estimatedMicroUsd: null });
+    // Día de Lima: empieza a las 05:00 UTC.
+    expect(view['today'].from).toMatch(/T05:00:00\.000Z$/u);
+    expect(view['backlog']).toEqual({ openAlertsWithoutCaseFile: 0, openIncidentsWithoutCaseFile: 0 });
+    expect(view['feed']).toEqual([]);
+  });
+
+  it('cola, conteos del día y feed con escalación, revisión y cierre; títulos enmascarados', async () => {
+    const h = harness({ capabilities: ['investigations.read', 'investigations.run'] });
+    const queued = putAlert(h.soc);
+    await h.controller.start(h.request, { alertId: queued.id });
+    const worked = putAlert(h.soc);
+    const { job } = await h.store.enqueue({
+      id: randomUUID(),
+      tenantId: T,
+      subject: { kind: 'alert', id: worked.id, title: worked.title },
+      alertIds: [worked.id],
+      priority: 'P1',
+      trigger: 'system',
+      source: 'backlog',
+      initiatedBy: null,
+      idempotencyKey: `alert:${worked.id}`,
+      fingerprint: 'fp-1',
+      policyVersion: 'p',
+      createdAt: new Date(NOW.getTime() - 60_000),
+    });
+    // El claim toma el P1 primero.
+    const claimed = (await h.store.claim(NOW, 60_000, 3))!;
+    expect(claimed.id).toBe(job.id);
+    const lease = { jobId: job.id, fencingToken: claimed.fencingToken };
+    await h.store.planActions(lease, {
+      at: NOW,
+      status: 'completed',
+      result: null,
+      inference: 'none',
+      actions: [
+        { kind: 'escalate', reason: 'ESCALATE_CORRELATED_P1' },
+        { kind: 'request_review', reason: 'REVIEW_STATE_CHANGE_NOTICE', urgency: 'immediate', groupKey: 'g' },
+      ],
+    });
+    await h.store.markAction(lease, 'escalate', { at: NOW, state: 'executed', ref: { kind: 'incident', id: 'inc-1' } });
+    await h.store.appendEvent(lease, { at: NOW, stage: 'acting', kind: 'completed', detail: { action: 'escalate', incident: 'created' } });
+    await h.store.markAction(lease, 'request_review', { at: NOW, state: 'executed', ref: { kind: 'notification', id: 'n-1' } });
+    await h.store.finish(lease, { at: NOW, status: 'completed', result: null, inference: 'none' });
+
+    const view = (await h.controller.activity(h.request)) as Record<string, any>;
+    expect(view['queue']).toMatchObject({ queued: 1, running: 0, byPriority: { P1: 0, P3: 1 } });
+    expect(view['queue'].oldestQueuedAt).toEqual(expect.any(String));
+    expect(view['today']).toMatchObject({
+      runs: 1,
+      withoutInference: 1,
+      escalated: 1,
+      incidentsCreated: 1,
+      incidentsAttached: 0,
+      reviewRequested: 1,
+      reviewImmediate: 1,
+      reviewDigest: 0,
+      closedBenign: 0,
+      failed: 0,
+      estimatedMicroUsd: 0,
+    });
+    // La alerta cubierta por `alert:<id>` no cuenta; la del pedido manual sí (sin trabajo del sistema).
+    expect(view['backlog'].openAlertsWithoutCaseFile).toBe(1);
+    const kinds = (view['feed'] as Array<Record<string, unknown>>).map((item) => `${item['kind']}:${item['actionKind'] ?? item['status'] ?? ''}`);
+    expect(kinds).toEqual(['run_finished:completed', 'action:request_review', 'action:escalate', 'run_started:']);
+    const escalation = (view['feed'] as Array<Record<string, unknown>>)[2]!;
+    expect(escalation).toMatchObject({
+      jobId: job.id,
+      priority: 'P1',
+      actionState: 'executed',
+      disposition: 'created',
+      ref: { kind: 'incident', id: 'inc-1' },
+    });
+    expect(JSON.stringify(view)).not.toContain('jperez@');
+  });
+});
