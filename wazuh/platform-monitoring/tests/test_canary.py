@@ -113,13 +113,15 @@ def test_monitor_watchdog(tmp_path):
     assert recovered["b89"]["health"]["status"] == "ok"
 
 
-def test_linux_servers_journald_filter_lets_canary_logger_through():
-    """El grupo linux-servers filtra journald por _COMM; si `logger` no está, el canario «agent» nunca llega."""
+def test_linux_servers_journald_lets_only_the_canary_tag_through():
+    """El grupo linux-servers filtra journald por _COMM; el canario «agent» entra por su propio bloque."""
     import re
     from pathlib import Path
 
     conf = Path(__file__).resolve().parents[2] / "manager" / "policy" / "shared" / "linux-servers" / "agent.conf"
-    match = re.search(r'<filter field="_COMM">([^<]+)</filter>', conf.read_text(encoding="utf-8"))
-    assert match, "linux-servers/agent.conf debe filtrar journald por _COMM"
-    assert re.search(match.group(1), "logger")
-    assert re.search(match.group(1), "sshd")
+    text = conf.read_text(encoding="utf-8")
+    comm = re.search(r'<filter field="_COMM">([^<]+)</filter>', text)
+    assert comm and re.search(comm.group(1), "sshd")
+    assert not re.search(comm.group(1), "logger"), "no abrir journald a cualquier logger del host"
+    tag = re.search(r'<filter field="SYSLOG_IDENTIFIER">([^<]+)</filter>', text)
+    assert tag and re.fullmatch(tag.group(1).strip("^$"), "b89-canary")
