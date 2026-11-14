@@ -376,6 +376,9 @@ describe('configuración del analista', () => {
     expect(normalizeSettingsView({ settings: SETTINGS })!.canConfigure).toBe(false);
     expect(normalizeSettingsView({ settings: SETTINGS, canConfigure: true })!.canConfigure).toBe(true);
     expect(normalizeSettingsView({ settings: {}, canConfigure: true })).toBeNull();
+    expect(normalizeSettingsView({ settings: SETTINGS })!.deploymentEnabled).toBeNull();
+    expect(normalizeSettingsView({ settings: SETTINGS, deploymentEnabled: false })!.deploymentEnabled).toBe(false);
+    expect(normalizeSettingsView({ settings: SETTINGS, deploymentEnabled: true })!.deploymentEnabled).toBe(true);
   });
 
   it('convierte US$ ↔ micro-USD sin perder precisión', () => {

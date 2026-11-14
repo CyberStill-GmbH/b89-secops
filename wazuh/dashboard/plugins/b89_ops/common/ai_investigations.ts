@@ -1090,6 +1090,11 @@ export interface AnalystSettings extends AnalystSettingsInput {
 export interface AnalystSettingsView {
   readonly settings: AnalystSettings;
   readonly canConfigure: boolean;
+  /**
+   * Interruptor del despliegue (`B89_ANALYST_ENABLED`). `false`: el proceso del analista no corre
+   * en este entorno y lo guardado aquí no tiene efecto hasta encenderlo. `null`: la API no lo dijo.
+   */
+  readonly deploymentEnabled: boolean | null;
 }
 
 /** Lista de enums estricta: un elemento desconocido invalida la lectura completa. */
@@ -1200,7 +1205,9 @@ export function normalizeSettingsView(raw: unknown): AnalystSettingsView | null 
   const settings = value ? normalizeSettings(value.settings) : null;
   if (!value || !settings) return null;
   // Sin `canConfigure: true` explícito el formulario queda en solo lectura.
-  return { settings, canConfigure: value.canConfigure === true };
+  const deploymentEnabled =
+    typeof value.deploymentEnabled === 'boolean' ? value.deploymentEnabled : null;
+  return { settings, canConfigure: value.canConfigure === true, deploymentEnabled };
 }
 
 /** Texto en US$ («1,50» o «1.50») → micro-USD; `null` si no es un monto válido y positivo. */

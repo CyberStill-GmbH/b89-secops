@@ -550,3 +550,13 @@ describe('resumen del periodo', () => {
     expect(markup).toContain('no entregó el texto');
   });
 });
+
+import { DeploymentOffCallout } from './ai_analyst_settings';
+
+describe('DeploymentOffCallout', () => {
+  it('explica que lo guardado no se aplica mientras el despliegue tenga el analista apagado', () => {
+    const html = renderToStaticMarkup(<DeploymentOffCallout />);
+    expect(html).toContain('apagado en este despliegue');
+    expect(html).toContain('B89_ANALYST_ENABLED=true');
+  });
+});

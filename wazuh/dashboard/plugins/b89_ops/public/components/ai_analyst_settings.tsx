@@ -560,11 +560,31 @@ export function serverFieldErrors(fields: readonly string[]): Record<string, str
   return out;
 }
 
+/** El interruptor del despliegue manda sobre esta pantalla: sin él, nada de lo guardado corre. */
+export function DeploymentOffCallout() {
+  return (
+    <EuiCallOut
+      size="s"
+      color="warning"
+      iconType="alert"
+      title="El analista está apagado en este despliegue"
+    >
+      <p>
+        El servicio del analista no se está ejecutando en este entorno, así que lo que guardes aquí
+        se conserva pero no se aplica. Para encenderlo, quien opera la plataforma debe desplegar con{' '}
+        <code>B89_ANALYST_ENABLED=true</code> (es el valor por defecto del script de despliegue) y
+        reiniciar el API.
+      </p>
+    </EuiCallOut>
+  );
+}
+
 export function AiSettingsTab({ onSaved }: { onSaved?: () => void }) {
   const { api, can } = useConsole();
   const loaded = useAsync(() => getAiSettings(api), [api]);
   const [saved, setSaved] = useState<AnalystSettings | null>(null);
   const [canConfigure, setCanConfigure] = useState(false);
+  const [deploymentEnabled, setDeploymentEnabled] = useState<boolean | null>(null);
   const [draft, setDraft] = useState<AiSettingsDraft | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -576,6 +596,7 @@ export function AiSettingsTab({ onSaved }: { onSaved?: () => void }) {
     if (!loaded.data) return;
     setSaved(loaded.data.settings);
     setCanConfigure(loaded.data.canConfigure);
+    setDeploymentEnabled(loaded.data.deploymentEnabled);
     setDraft(draftFromSettings(loaded.data.settings));
     setRejected({});
   }, [loaded.data]);
@@ -624,6 +645,7 @@ export function AiSettingsTab({ onSaved }: { onSaved?: () => void }) {
     try {
       const view = await saveAiSettings(api, parsed.input, saved.revision);
       setSaved(view.settings);
+      setDeploymentEnabled(view.deploymentEnabled);
       setDraft(draftFromSettings(view.settings));
       setRejected({});
       setNotice('saved');
@@ -653,10 +675,20 @@ export function AiSettingsTab({ onSaved }: { onSaved?: () => void }) {
 
   return (
     <>
+      {deploymentEnabled === false && (
+        <>
+          <DeploymentOffCallout />
+          <EuiSpacer size="m" />
+        </>
+      )}
       {notice === 'saved' && (
         <>
           <EuiCallOut size="s" color="success" iconType="check" title="Configuración guardada">
-            <p role="status">Se aplica a las investigaciones que empiecen desde ahora.</p>
+            <p role="status">
+              {deploymentEnabled === false
+                ? 'Quedó guardada, pero no se aplicará hasta que el despliegue encienda el analista.'
+                : 'Se aplica a las investigaciones que empiecen desde ahora.'}
+            </p>
           </EuiCallOut>
           <EuiSpacer size="m" />
         </>

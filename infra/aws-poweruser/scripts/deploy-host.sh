@@ -226,6 +226,37 @@ else
 fi
 unset bunny_key
 
+# Analista IA (24/7): el proceso vive dentro del API y lo enciende B89_ANALYST_ENABLED. Por decisión
+# del dueño queda ENCENDIDO por defecto; services.env puede apagarlo (B89_ANALYST_ENABLED=false) o
+# cambiar el techo diario de gasto estimado (B89_ANALYST_DAILY_CEILING_USD, por defecto 2 USD).
+# Sin clave de Claude no hay inferencia: el techo no se escribe y todo se resuelve por reglas.
+# Lo que el admin elige en Analista IA → Configuración (modo, acciones, techo menor) se aplica
+# encima de esto: la configuración solo puede restringir lo que el despliegue habilita.
+if ! grep -q "'B89_ANALYST_ENABLED'" "$SRC/platform/configuration/src/schema/environment.schema.ts"; then
+  log 'Analista IA: el código aún no admite B89_ANALYST_*; analista apagado'
+else
+  analyst_enabled="$(grep -s '^B89_ANALYST_ENABLED=' "$SECRETS/services.env" | tail -1 | cut -d= -f2- || true)"
+  analyst_enabled="${analyst_enabled:-true}"
+  [[ $analyst_enabled == true || $analyst_enabled == false ]] || {
+    echo 'B89_ANALYST_ENABLED inválido en secrets/services.env (true|false)' >&2; exit 1;
+  }
+  printf 'B89_ANALYST_ENABLED=%s\n' "$analyst_enabled" >>"$ROOT/config/api.env"
+  if [[ $analyst_enabled == true ]] && grep -q '^B89_BUNNY_API_KEY=.' "$SECRETS/api.env"; then
+    analyst_ceiling="$(grep -s '^B89_ANALYST_DAILY_CEILING_USD=' "$SECRETS/services.env" | tail -1 | cut -d= -f2- || true)"
+    analyst_ceiling="${analyst_ceiling:-2}"
+    [[ $analyst_ceiling =~ ^[0-9]{1,4}(\.[0-9]{1,2})?$ ]] || {
+      echo 'B89_ANALYST_DAILY_CEILING_USD inválido en secrets/services.env' >&2; exit 1;
+    }
+    printf 'B89_ANALYST_DAILY_CEILING_USD=%s\n' "$analyst_ceiling" >>"$ROOT/config/api.env"
+    log "Analista IA: encendido; techo diario estimado ${analyst_ceiling} USD"
+  elif [[ $analyst_enabled == true ]]; then
+    log 'Analista IA: encendido sin clave de Claude; solo reglas deterministas (sin inferencia)'
+  else
+    log 'Analista IA: apagado por secrets/services.env'
+  fi
+  unset analyst_enabled analyst_ceiling
+fi
+
 # Teams Workflow: el webhook firmado es una credencial y solo vive en services.env (0600).
 # Se copia al env privado del API para activar el transporte SOC ya implementado; si no existe,
 # el canal queda apagado. Nunca mostrar ni pasar la URL por argumentos o logs.
