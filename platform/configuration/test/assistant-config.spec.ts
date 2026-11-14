@@ -119,6 +119,7 @@ describe('variables de informes de Bunny (B89_REPORTS_*)', () => {
       'B89_REPORTS_TOKEN',
     );
   });
+});
 
 const RATE_CARD = JSON.stringify({
   version: 'test-2026-11',
