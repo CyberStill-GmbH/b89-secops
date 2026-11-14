@@ -56,6 +56,14 @@ export const B89_APPS = [
     category: 'soc',
   },
   {
+    id: 'b89-ai-analyst',
+    view: 'ai_analyst',
+    title: 'Analista IA',
+    icon: 'b89-ai-analyst.svg',
+    order: 25,
+    category: 'soc',
+  },
+  {
     id: 'b89-notifications',
     view: 'notifications',
     title: 'Notificaciones',
@@ -145,3 +153,4 @@ export * from './investigation';
 export * from './bunny_bridge';
 export * from './navigation';
 export * from './platform_health';
+export * from './ai_investigations';

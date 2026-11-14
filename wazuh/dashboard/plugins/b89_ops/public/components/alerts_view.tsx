@@ -387,6 +387,15 @@ function AlertFlyout({
             >
               Investigar: línea de tiempo, entidades y evento
             </EuiButton>
+            {can(CAPABILITIES.investigationsRun) && (
+              <EuiButtonEmpty
+                size="s"
+                href={`${basePath}/app/b89-ai-analyst?alertId=${encodeURIComponent(alert.id)}`}
+                data-test-subj="b89InvestigateWithAnalyst"
+              >
+                Investigar con Analista IA
+              </EuiButtonEmpty>
+            )}
           </>
         )}
       </EuiFlyoutHeader>

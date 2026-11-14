@@ -35,6 +35,10 @@ BEGIN
       GRANT DELETE ON public.assistant_artifacts TO b89_soc_runtime;
       REVOKE TRUNCATE ON public.assistant_artifacts FROM b89_soc_runtime;
     END IF;
+    -- Bitácora de progreso del Analista IA append-only (docs/27): solo SELECT e INSERT.
+    IF to_regclass('public.ai_investigation_events') IS NOT NULL THEN
+      REVOKE UPDATE, DELETE, TRUNCATE ON public.ai_investigation_events FROM b89_soc_runtime;
+    END IF;
   END IF;
 END
 $hardening$;

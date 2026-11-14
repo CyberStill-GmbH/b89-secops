@@ -3,15 +3,18 @@
  */
 
 import React from 'react';
+import { attentionQuery, ServiceAttentionList } from './service_attention';
 import { EuiButtonEmpty, EuiText } from '@elastic/eui';
 import {
   INTEGRATIONS,
   IntegrationSpec,
   ProviderId,
   PROVIDER_IDS,
+  discoverUrlForQuery,
   ServiceId,
   SOURCE_STATE_LABEL,
   SOURCE_TONE,
+  ServiceAttention,
 } from '../../common';
 import {
   formatNumber,
@@ -28,6 +31,7 @@ import { ServiceMark } from './vendor_logo';
 import { declaredStatus, providerStatus, ServiceStatus, wazuhStatus } from './service_status';
 
 export interface ServiceModel {
+  readonly attention?: ServiceAttention;
   readonly spec: IntegrationSpec;
   readonly status: ServiceStatus;
   readonly metrics: readonly Metric[];
@@ -39,6 +43,26 @@ export interface ServiceModel {
 
 const isProvider = (id: ServiceId): id is ProviderId =>
   (PROVIDER_IDS as readonly string[]).includes(id);
+
+/** Eventos Snyk de una severidad: la lista donde se investiga cada hallazgo contado. */
+function snykDrill(severity: string): Metric['drill'] {
+  return {
+    kql: `rule.groups: "snyk" and data.snyk.issue.severity: "${severity}" and data.snyk.issue.status: "open"`,
+    from: 'now-30d',
+  };
+}
+
+/** Convierte cada conteo con consulta en un enlace a Discover con esas alertas. */
+export function linkedMetrics(metrics: readonly Metric[], basePath: string): Metric[] {
+  return metrics.map((metric) =>
+    metric.drill
+      ? {
+          ...metric,
+          href: discoverUrlForQuery(basePath, metric.drill.kql, metric.drill.from, 'now'),
+        }
+      : metric,
+  );
+}
 
 function providerMetrics(id: ProviderId, data: PlatformData): Metric[] {
   const stats = data.overview.data?.providers?.[id];
@@ -65,15 +89,25 @@ function providerMetrics(id: ProviderId, data: PlatformData): Metric[] {
         {
           label: 'Críticas',
           value: formatNumber(m.open_critical ?? 0),
+          drill: snykDrill('critical'),
           emphasis: (m.open_critical ?? 0) > 0 ? 'danger' : undefined,
         },
         {
           label: 'Altas',
           value: formatNumber(m.open_high ?? 0),
+          drill: snykDrill('high'),
           emphasis: (m.open_high ?? 0) > 0 ? 'warning' : undefined,
         },
-        { label: 'Medias', value: formatNumber(m.open_medium ?? 0) },
-        { label: 'Bajas', value: formatNumber(m.open_low ?? 0) },
+        {
+          label: 'Medias',
+          value: formatNumber(m.open_medium ?? 0),
+          drill: snykDrill('medium'),
+        },
+        {
+          label: 'Bajas',
+          value: formatNumber(m.open_low ?? 0),
+          drill: snykDrill('low'),
+        },
       ];
     case 'cloudflare':
       return [
@@ -87,6 +121,7 @@ function providerMetrics(id: ProviderId, data: PlatformData): Metric[] {
         {
           label: 'Altas y críticas 24 h',
           value: formatNumber(stats.levels24h.high + stats.levels24h.critical),
+          drill: { kql: attentionQuery(id, false), from: 'now-24h' },
         },
       ];
   }
@@ -124,6 +159,7 @@ function serviceModel(spec: IntegrationSpec, data: PlatformData): ServiceModel {
       metrics.push({
         label: 'Altas y críticas',
         value: formatNumber(overview.siem.levels24h.high + overview.siem.levels24h.critical),
+        drill: { kql: attentionQuery('wazuh', false), from: 'now-24h' },
       });
     }
     if (source) {
@@ -224,7 +260,10 @@ function errorStatus(): ServiceStatus {
 }
 
 export function serviceModels(data: PlatformData): ServiceModel[] {
-  return INTEGRATIONS.map((spec) => serviceModel(spec, data));
+  return INTEGRATIONS.map((spec) => ({
+    ...serviceModel(spec, data),
+    attention: data.overview.data?.attention?.[spec.id],
+  }));
 }
 
 export function ServiceCard({
@@ -256,7 +295,15 @@ export function ServiceCard({
           </EuiText>
         )}
       </div>
-      <MetricList metrics={model.metrics} />
+      <MetricList metrics={linkedMetrics(model.metrics, basePath)} />
+      {(spec.id === 'wazuh' || isProvider(spec.id)) && (
+        <ServiceAttentionList
+          service={spec.id}
+          name={spec.name}
+          data={model.attention}
+          basePath={basePath}
+        />
+      )}
       <footer className="b89Service__footer">
         {model.lastEventAt !== undefined ? <LastEvent iso={model.lastEventAt} /> : <span />}
         <span className="b89Service__links">

@@ -17,6 +17,7 @@ import { AuditController } from './audit.controller.js';
 import { AuthController } from './auth.controller.js';
 import { AssistantController } from '../assistant/assistant.controller.js';
 import { AssistantMcpController } from '../assistant/mcp.controller.js';
+import { AiInvestigationsController } from '../assistant/ai-investigations.controller.js';
 import { CorrelatorController } from './correlator.controller.js';
 import { RiskController } from './risk.controller.js';
 import { LocalAuthController } from './local-auth.controller.js';
@@ -49,6 +50,7 @@ export class SocModule {
         MePushController,
         AssistantController,
         AssistantMcpController,
+        AiInvestigationsController,
         CorrelatorController,
         RiskController,
         ...(runtime.canAcceptWazuhPush ? [WazuhPushController] : []),

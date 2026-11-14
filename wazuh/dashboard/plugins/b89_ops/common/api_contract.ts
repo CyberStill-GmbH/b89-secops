@@ -476,7 +476,10 @@ export interface NotificationChannelView {
   } | null;
   readonly updatedAt?: string | null;
   readonly updatedBy?: string | null;
+  /** Revisión de la configuración; se devuelve como `expectedRevision` en cada cambio. */
   readonly revision?: number;
+  /** El API indica que el canal aún no demostró que puede entregar (falta configurar, activar o probar). */
+  readonly needsSetup?: boolean;
 }
 
 export interface NotificationChannelsResponse {
@@ -684,4 +687,8 @@ export const CAPABILITIES = {
   notificationsManage: 'notifications.manage',
   observabilitySoc: 'observability.read_soc',
   observabilityPlatform: 'observability.read_platform',
+  /** Analista IA: ver investigaciones / iniciar, detener y reintentar / configurar (admin). */
+  investigationsRead: 'investigations.read',
+  investigationsRun: 'investigations.run',
+  investigationsConfigure: 'investigations.configure',
 } as const;

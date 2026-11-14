@@ -30,7 +30,7 @@ import {
 } from './overview_parts';
 import { DataZone, ErrorCallout, PriorityMark, Timestamp, useAsync } from './primitives';
 import { VendorLogo } from './vendor_logo';
-import { vendorOfProvider } from '../../common';
+import { discoverUrlForQuery, vendorOfProvider } from '../../common';
 import { ServiceCard, serviceModels } from './service_cards';
 import { AttentionAlert, loadAttentionTop } from './attention_queue';
 
@@ -302,9 +302,12 @@ function KpiRow({
         {siem ? (
           <>
             <SeverityBar levels={siem.levels24h} label="Eventos 24 h por severidad" />
-            <span className="b89Kpi__sub">
-              {formatNumber(siem.levels24h.high + siem.levels24h.critical)} altas o críticas
-            </span>
+            <a
+              className="b89Kpi__sub b89Kpi__drill"
+              href={discoverUrlForQuery(basePath, 'rule.level >= 8', 'now-24h', 'now')}
+            >
+              {formatNumber(siem.levels24h.high + siem.levels24h.critical)} altas o críticas →
+            </a>
           </>
         ) : (
           <span className="b89Kpi__sub">wazuh-alerts-*</span>

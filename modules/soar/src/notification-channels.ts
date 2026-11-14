@@ -31,12 +31,29 @@ export interface ChannelRecord extends ChannelHealth {
   readonly secretHint: string | null;
   readonly updatedAt: Date;
   readonly updatedBy: string | null;
+  /**
+   * Revisión de la **configuración** (`enabled`, webhook, autor). `0` = aún sin fila; la siembra
+   * del arranque escribe `1` y cada cambio de configuración suma uno. La salud no la mueve.
+   */
+  readonly revision: number;
 }
 
 export interface ChannelStore {
   list(tenantId: string): Promise<readonly ChannelRecord[]>;
   get(tenantId: string, channelId: ChannelId): Promise<ChannelRecord | undefined>;
-  save(record: ChannelRecord): Promise<void>;
+  /** Inserta la fila solo si no existe. `false` = ya había una (la base manda; no se toca). */
+  create(record: ChannelRecord): Promise<boolean>;
+  /**
+   * Guarda un cambio de configuración (fila completa, con `record.revision` ya incrementada)
+   * solo si la revisión guardada sigue siendo `expectedRevision`; `0` = la fila aún no existe.
+   * `false` = otra escritura llegó antes: no se guardó nada.
+   */
+  saveConfig(record: ChannelRecord, expectedRevision: number): Promise<boolean>;
+  /**
+   * Guarda solo la salud (resultado de envíos y pruebas). No toca `enabled`, el secreto ni la
+   * revisión, así que nunca pisa ni invalida un cambio de configuración. `false` = no hay fila.
+   */
+  saveHealth(tenantId: string, channelId: ChannelId, health: ChannelHealth, expectedRevision?: number): Promise<boolean>;
 }
 
 export const EMPTY_HEALTH: ChannelHealth = Object.freeze({
@@ -54,11 +71,13 @@ export function emptyChannel(tenantId: string, channelId: ChannelId, at: Date): 
   return {
     tenantId,
     channelId,
-    enabled: true,
+    // Sin fila no hay decisión guardada: el registro decide (configurado ⇒ activo).
+    enabled: false,
     secretCiphertext: null,
     secretHint: null,
     updatedAt: at,
     updatedBy: null,
+    revision: 0,
     ...EMPTY_HEALTH,
   };
 }
@@ -143,8 +162,40 @@ export class InMemoryChannelStore implements ChannelStore {
     return Promise.resolve(this.rows.get(`${tenantId}|${channelId}`));
   }
 
-  public save(record: ChannelRecord): Promise<void> {
-    this.rows.set(`${record.tenantId}|${record.channelId}`, record);
-    return Promise.resolve();
+  public create(record: ChannelRecord): Promise<boolean> {
+    const key = `${record.tenantId}|${record.channelId}`;
+    if (this.rows.has(key)) return Promise.resolve(false);
+    this.rows.set(key, record);
+    return Promise.resolve(true);
+  }
+
+  public saveConfig(record: ChannelRecord, expectedRevision: number): Promise<boolean> {
+    const key = `${record.tenantId}|${record.channelId}`;
+    if ((this.rows.get(key)?.revision ?? 0) !== expectedRevision) return Promise.resolve(false);
+    this.rows.set(key, record);
+    return Promise.resolve(true);
+  }
+
+  public saveHealth(
+    tenantId: string,
+    channelId: ChannelId,
+    health: ChannelHealth,
+    expectedRevision?: number,
+  ): Promise<boolean> {
+    const key = `${tenantId}|${channelId}`;
+    const row = this.rows.get(key);
+    if (!row || (expectedRevision !== undefined && row.revision !== expectedRevision)) return Promise.resolve(false);
+    this.rows.set(key, {
+      ...row,
+      lastSuccessAt: health.lastSuccessAt,
+      lastFailureAt: health.lastFailureAt,
+      lastHttpStatus: health.lastHttpStatus,
+      lastFailureReason: health.lastFailureReason,
+      lastTestAt: health.lastTestAt,
+      lastTestOutcome: health.lastTestOutcome,
+      lastTestHttpStatus: health.lastTestHttpStatus,
+      lastTestProviderId: health.lastTestProviderId,
+    });
+    return Promise.resolve(true);
   }
 }

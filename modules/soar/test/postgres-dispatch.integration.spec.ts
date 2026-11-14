@@ -200,7 +200,15 @@ describe.skipIf(!databaseUrl)('C-20 · despacho durable sobre PostgreSQL', () =>
   it('un despachador que cae después de entregar no provoca una segunda notificación', async () => {
     const crashing = new CountingTransport(true);
     // El primer proceso reclama y entrega, pero muere antes de registrar el resultado.
-    await expect(drainOutbox(dispatchDependencies(crashing, AT))).rejects.toThrow(
+    // Dispatch only the first notification: a process death stops all workers, whereas
+    // drainOutbox now isolates a per-message exception and finishes the remaining claims.
+    const crashedDependencies = dispatchDependencies(crashing, AT);
+    const claimed = await crashedDependencies.outbox.claimPending(5, AT);
+    const firstNotification = claimed.find(
+      (message) => message.messageType === 'soc.alert.created',
+    );
+    expect(firstNotification).toBeDefined();
+    await expect(dispatchMessage(crashedDependencies, firstNotification!)).rejects.toThrow(
       'PROCESS_CRASHED_AFTER_DELIVERY',
     );
     expect(crashing.sent).toBe(1);

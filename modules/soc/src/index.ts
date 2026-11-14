@@ -63,6 +63,8 @@ export {
 } from './events.js';
 export {
   addIncidentNote,
+  attachAlertToIncident,
+  type AttachAlertRequest,
   createIncidentTask,
   executeAlertCommand,
   executeIncidentCommand,
@@ -72,8 +74,10 @@ export {
   type TaskCommandRequest,
   ingestCandidate,
   openIncidentFromAlert,
+  requestAlertReview,
   SOC_FAILURE_CODES,
   type AlertCommandRequest,
+  type AlertReviewRequest,
   type EntityRefFactory,
   type IdFactory,
   type IncidentCommandRequest,

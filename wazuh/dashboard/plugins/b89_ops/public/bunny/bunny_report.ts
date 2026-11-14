@@ -7,6 +7,7 @@ import type { InvestigationReportData } from '../components/investigation_report
 import type { Alert, EventResponse, InvestigationEntity, InvestigationEvent } from '../../common';
 import type { RelatedWindow } from '../../common/investigation';
 import { ENTITY_KINDS } from '../../common/investigation';
+import { B89ApiError } from '../api/client';
 import { collectInvestigationReport } from '../components/investigation_report';
 import type {
   RelatedPageLoader,
@@ -29,10 +30,13 @@ function cells(line: string): string[] {
 }
 
 function numericCell(value: string): number | null {
-  const cleaned = value.replace(/,/gu, '').trim();
+  // A comma may be a decimal or a thousands separator. Never silently change its meaning.
+  const cleaned = value.trim();
   if (!/^-?\d+(?:\.\d+)?$/u.test(cleaned)) return null;
   const number = Number(cleaned);
-  return Number.isFinite(number) ? number : null;
+  if (!Number.isFinite(number) || (Number.isInteger(number) && !Number.isSafeInteger(number)))
+    return null;
+  return number;
 }
 
 /** Detect only complete Markdown tables with explicit category and numeric columns. */
@@ -57,8 +61,9 @@ export function bunnyNumericTable(markdown: string): BunnyNumericTable | null {
       const row = cells(lines[rowIndex]!);
       if (row.length !== headers.length) break;
       const parsed = row.map((value, column) => (column === 0 ? value : numericCell(value)));
-      if (parsed[0] && parsed.slice(1).some((value) => typeof value === 'number')) {
-        rows.push(parsed.map((value) => value ?? ''));
+      if (parsed[0]) {
+        // Preserve absent/ambiguous cells and categories; an unknown value is never zero.
+        rows.push(parsed.map((value, column) => value ?? row[column]!));
       }
     }
     const numericColumns = headers
@@ -67,6 +72,43 @@ export function bunnyNumericTable(markdown: string): BunnyNumericTable | null {
     if (rows.length > 0 && numericColumns > 0) return { headers, rows };
   }
   return null;
+}
+
+export function bunnyNumericColumns(table: BunnyNumericTable): number[] {
+  return table.headers
+    .map((_, column) => column)
+    .filter((column) => column > 0 && table.rows.some((row) => typeof row[column] === 'number'));
+}
+
+/** One named metric shared by the preview, printable report and Excel data sheet. */
+export function bunnyChartSeries(table: BunnyNumericTable, column?: number) {
+  const columns = bunnyNumericColumns(table);
+  const selected = column === undefined ? columns[0] : column;
+  if (selected === undefined || !columns.includes(selected)) return null;
+  const rows = table.rows.map((row) => {
+    const cell = row[selected];
+    return { label: String(row[0]), value: typeof cell === 'number' ? cell : null };
+  });
+  const values = rows.map(({ value }) => value ?? 0);
+  const minimum = Math.min(0, ...values);
+  const maximum = Math.max(0, ...values);
+  const span = maximum - minimum || 1;
+  const zeroPercent = (-minimum / span) * 100;
+  return {
+    column: selected,
+    label: table.headers[selected]!,
+    zeroPercent,
+    rows: rows.map((row) => ({
+      ...row,
+      fromPercent:
+        row.value === null ? zeroPercent : ((Math.min(0, row.value) - minimum) / span) * 100,
+      widthPercent: row.value === null ? 0 : (Math.abs(row.value) / span) * 100,
+    })),
+    table: {
+      headers: [table.headers[0]!, table.headers[selected]!],
+      rows: table.rows.map((row) => [row[0]!, row[selected] ?? '']),
+    } as BunnyNumericTable,
+  };
 }
 
 function xml(value: string): string {
@@ -79,26 +121,36 @@ function xml(value: string): string {
 }
 
 /** Small print-safe chart from explicit numeric table cells. No inferred or fabricated values. */
-export function bunnyNumericChartSvg(table: BunnyNumericTable): string {
-  const values = table.rows.map(
-    (row) => row.slice(1).find((cell): cell is number => typeof cell === 'number') ?? 0,
-  );
-  const maximum = Math.max(1, ...values.map((value) => Math.abs(value)));
+export function bunnyNumericChartSvg(table: BunnyNumericTable, column?: number): string {
+  const series = bunnyChartSeries(table, column);
+  if (!series) return '';
   const width = 680;
-  const plotWidth = 520;
+  const plotWidth = 390;
+  const plotLeft = 145;
+  const zero = plotLeft + (series.zeroPercent / 100) * plotWidth;
   const barHeight = 22;
   const rowHeight = 34;
   const height = Math.max(100, 54 + table.rows.length * rowHeight);
-  const bars = table.rows
+  const bars = series.rows
     .map((row, index) => {
       const y = 38 + index * rowHeight;
-      const label = String(row[0]);
-      const amount = values[index]!;
-      const bar = Math.max(2, (Math.abs(amount) / maximum) * plotWidth);
-      return `<text x="0" y="${y + 16}" font-size="12" fill="#263444">${xml(label.slice(0, 38))}</text><rect x="145" y="${y}" width="${bar.toFixed(1)}" height="${barHeight}" rx="4" fill="#1677a8"/><text x="${Math.min(650, 152 + bar)}" y="${y + 16}" font-size="12" fill="#17212b">${amount}</text>`;
+      const amount = row.value === null ? 'Sin dato' : String(row.value);
+      const bar =
+        row.value === null || row.value === 0
+          ? ''
+          : `<rect x="${(plotLeft + (row.fromPercent / 100) * plotWidth).toFixed(1)}" y="${y}" width="${((row.widthPercent / 100) * plotWidth).toFixed(1)}" height="${barHeight}" rx="3" fill="#1677a8"/>`;
+      return `<g><title>${xml(`${row.label}: ${amount}`)}</title><text x="0" y="${y + 16}" font-size="12" fill="#263444">${xml(row.label.slice(0, 22))}</text>${bar}<text x="550" y="${y + 16}" font-size="12" fill="#17212b">${amount}</text></g>`;
     })
     .join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${xml(`${table.headers[0]}: ${table.headers.slice(1).join(', ')}`)}" viewBox="0 0 ${width} ${height}" width="100%" height="${height}"><rect width="100%" height="100%" fill="#fff"/><text x="0" y="20" font-size="14" font-weight="bold" fill="#263444">${xml(table.headers.slice(1).join(' · '))}</text>${bars}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${xml(`${table.headers[0]}: ${series.label}`)}" viewBox="0 0 ${width} ${height}" width="100%" height="${height}"><title>${xml(series.label)}</title><desc>Una sola métrica. Las barras parten de cero; los valores ausentes o ambiguos se muestran como Sin dato.</desc><rect width="100%" height="100%" fill="#fff"/><text x="0" y="20" font-size="14" font-weight="bold" fill="#263444">${xml(series.label)}</text><line x1="${zero.toFixed(1)}" x2="${zero.toFixed(1)}" y1="30" y2="${height - 12}" stroke="#89919a"/>${bars}</svg>`;
+}
+
+function reportChart(text: string, include: boolean, column?: number) {
+  const table = include ? bunnyNumericTable(text) : null;
+  const series = table ? bunnyChartSeries(table, column) : null;
+  return series
+    ? { assistantChartSvg: bunnyNumericChartSvg(series.table), assistantChartData: series.table }
+    : {};
 }
 
 export function bunnyReportData(input: {
@@ -106,9 +158,9 @@ export function bunnyReportData(input: {
   readonly citations: readonly BunnyCitation[];
   readonly title?: string;
   readonly includeChart: boolean;
+  readonly chartColumn?: number;
   readonly now?: Date;
 }): InvestigationReportData {
-  const table = input.includeChart ? bunnyNumericTable(input.text) : null;
   return {
     alert: null,
     title: input.title?.trim() || 'Análisis de Bunny',
@@ -119,7 +171,7 @@ export function bunnyReportData(input: {
     truncated: false,
     assistantAnalysis: input.text,
     assistantCitations: input.citations,
-    ...(table ? { assistantChartSvg: bunnyNumericChartSvg(table), assistantChartData: table } : {}),
+    ...reportChart(input.text, input.includeChart, input.chartColumn),
   };
 }
 
@@ -137,6 +189,41 @@ function isEntityKind(value: string): value is InvestigationEntity['kind'] {
   return (ENTITY_KINDS as readonly string[]).includes(value);
 }
 
+/** Stop immediately even when a legacy read client cannot cancel its own network request. */
+async function readEvidence<T>(load: () => Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) throw new DOMException('Informe cancelado', 'AbortError');
+  try {
+    return await new Promise<T>((resolve, reject) => {
+      const onAbort = () => reject(new DOMException('Informe cancelado', 'AbortError'));
+      signal.addEventListener('abort', onAbort, { once: true });
+      Promise.resolve()
+        .then(() => {
+          if (signal.aborted) throw new DOMException('Informe cancelado', 'AbortError');
+          return load();
+        })
+        .then(resolve, reject)
+        .finally(() => signal.removeEventListener('abort', onAbort));
+    });
+  } catch (error) {
+    if (signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
+      throw new DOMException('Informe cancelado', 'AbortError');
+    }
+    if (error instanceof B89ApiError) {
+      if (error.status === 401 || error.status === 403)
+        throw new BunnyInvestigationError('forbidden');
+      if (error.status === 404) throw new BunnyInvestigationError('not-found');
+    }
+    throw new BunnyInvestigationError('unavailable');
+  }
+}
+
+function requireSourceEvent(response: EventResponse): InvestigationEvent {
+  if (response.access === 'forbidden') throw new BunnyInvestigationError('forbidden');
+  if (response.access === 'error') throw new BunnyInvestigationError('unavailable');
+  if (response.access !== 'ok' || !response.event) throw new BunnyInvestigationError('not-found');
+  return response.event;
+}
+
 /** Collects the cited source and every authorized related page before producing a real case report. */
 export async function collectBunnyInvestigationReport(input: {
   readonly citation: BunnyCitation | null;
@@ -144,6 +231,7 @@ export async function collectBunnyInvestigationReport(input: {
   readonly analysis: string;
   readonly citations: readonly BunnyCitation[];
   readonly includeChart: boolean;
+  readonly chartColumn?: number;
   readonly loadAlert: (id: string) => Promise<Alert>;
   readonly loadEvent: (id: string) => Promise<EventResponse>;
   readonly loadPage: RelatedPageLoader;
@@ -155,38 +243,31 @@ export async function collectBunnyInvestigationReport(input: {
   if (!citation || (citation.kind !== 'alert' && citation.kind !== 'event')) {
     throw new BunnyInvestigationError('no-citation');
   }
+  if (input.signal.aborted) throw new DOMException('Informe cancelado', 'AbortError');
+  input.onProgress?.({
+    phase: 'query',
+    completed: 0,
+    total: 0,
+    message:
+      citation.kind === 'alert' ? 'Verificando la alerta citada…' : 'Verificando el evento citado…',
+  });
   let alert: Alert | null = null;
   let sourceEvent: InvestigationEvent | null = null;
   if (citation.kind === 'alert') {
-    try {
-      alert = await input.loadAlert(citation.id);
-    } catch {
-      throw new BunnyInvestigationError('not-found');
-    }
+    alert = await readEvidence(() => input.loadAlert(citation.id), input.signal);
     const rawId = alert.rawRef?.replace(/^raw:/u, '');
     if (rawId) {
-      try {
-        const response = await input.loadEvent(rawId);
-        if (response.access === 'forbidden') throw new BunnyInvestigationError('forbidden');
-        if (response.access === 'ok' && response.event) sourceEvent = response.event;
-      } catch (error) {
-        if (error instanceof BunnyInvestigationError) throw error;
-      }
+      const response = await readEvidence(() => input.loadEvent(rawId), input.signal);
+      sourceEvent = requireSourceEvent(response);
     }
   } else {
-    let response: EventResponse;
-    try {
-      response = await input.loadEvent(citation.id);
-    } catch {
-      throw new BunnyInvestigationError('unavailable');
-    }
-    if (response.access === 'forbidden') throw new BunnyInvestigationError('forbidden');
-    if (response.access !== 'ok' || !response.event) throw new BunnyInvestigationError('not-found');
-    sourceEvent = response.event;
+    const response = await readEvidence(() => input.loadEvent(citation.id), input.signal);
+    sourceEvent = requireSourceEvent(response);
   }
 
   const entities: InvestigationEntity[] =
-    sourceEvent?.entities?.filter((entity) => isEntityKind(entity.kind)) ?? [];
+    sourceEvent?.entities?.filter((entity) => isEntityKind(entity.kind) && entity.value.trim()) ??
+    [];
   if (entities.length === 0 && alert) {
     for (const entity of alert.entities) {
       if (isEntityKind(entity.kind) && entity.label.trim()) {
@@ -217,11 +298,10 @@ export async function collectBunnyInvestigationReport(input: {
     onProgress: input.onProgress,
     now: input.now,
   });
-  const table = input.includeChart ? bunnyNumericTable(input.analysis) : null;
   return {
     ...report,
     assistantAnalysis: input.analysis,
     assistantCitations: input.citations,
-    ...(table ? { assistantChartData: table, assistantChartSvg: bunnyNumericChartSvg(table) } : {}),
+    ...reportChart(input.analysis, input.includeChart, input.chartColumn),
   };
 }

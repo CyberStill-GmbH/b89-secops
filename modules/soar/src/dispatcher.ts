@@ -209,6 +209,15 @@ export async function dispatchMessage(
     return { code: 'already_delivered', attempt: existing };
   }
 
+  // Pedido de revisión del Analista IA: texto fijo del outbox (sin enriquecer con la alerta), grupo
+  // propio y, si es `digest`, directo al resumen de lo suprimido (un mensaje por ventana).
+  const review = message.messageType === 'soc.alert.review_requested';
+  const reviewGroup =
+    review && typeof message.payload['groupKey'] === 'string'
+      ? `ai-review:${message.payload['groupKey']}`
+      : undefined;
+  const reviewDigest = review && message.payload['urgency'] !== 'immediate';
+
   // Contexto: en el primer intento se arma (y se guarda); en reintentos se reutiliza tal cual.
   let context = existing ? contextOf(existing) : undefined;
   let entityKeys: readonly string[] = [];
@@ -217,9 +226,10 @@ export async function dispatchMessage(
     occurredAt = new Date(context.occurredAt);
   } else {
     try {
-      const enriched = dependencies.enricher
-        ? await dependencies.enricher.contextFor(message)
-        : undefined;
+      const enriched =
+        dependencies.enricher && !review
+          ? await dependencies.enricher.contextFor(message)
+          : undefined;
       if (enriched) {
         context = enriched.context;
         entityKeys = enriched.entityKeys;
@@ -229,10 +239,16 @@ export async function dispatchMessage(
       // Un enriquecedor caído no bloquea el aviso: sale con lo mínimo.
       context = undefined;
     }
-    context ??= contextFromMessage(message);
+    context ??= review
+      ? {
+          ...contextFromMessage(message),
+          nextStep: 'Abre el expediente del Analista IA desde la alerta y decide el siguiente paso.',
+        }
+      : contextFromMessage(message);
   }
   const groupKey =
     existing?.groupKey ??
+    reviewGroup ??
     groupKeyFor({
       messageType: message.messageType,
       aggregateType: message.aggregateType,
@@ -259,7 +275,7 @@ export async function dispatchMessage(
     });
 
   let notice = existing ? noticeOf(existing) : undefined;
-  const usesP2Slot = context.priority === 'P2';
+  const usesP2Slot = context.priority === 'P2' && !reviewDigest;
   let p2SlotReserved = false;
   if (!notice) {
     const last = await dependencies.attempts.lastNotifiedInGroup(
@@ -277,7 +293,8 @@ export async function dispatchMessage(
         )
       : [];
     let decision = decideNotification({
-      priority: context.priority,
+      // Un pedido `digest` se trata como baja prioridad: el resumen periódico lo agrupa.
+      priority: reviewDigest ? null : context.priority,
       incident: message.aggregateType === 'incident',
       occurredAt,
       now: at,
@@ -518,13 +535,15 @@ export async function dispatchMessage(
     detail: 'Fallo sin clasificar.',
   };
   if (shouldRetry(failure, sending.attemptCount)) {
+    // A slow failure must not consume its own backoff while the request is in flight.
+    const failedAt = dependencies.clock.now();
     const retrying: NotificationAttempt = {
       ...sending,
       status: failure.class === 'ambiguous' ? 'indeterminate' : 'pending',
-      availableAt: new Date(at.getTime() + nextDelayMs(sending.attemptCount)),
+      availableAt: new Date(failedAt.getTime() + nextDelayMs(sending.attemptCount)),
       lastFailureCode: failure.code,
       lastFailureClass: failure.class,
-      updatedAt: at,
+      updatedAt: failedAt,
       delivery,
     };
     await dependencies.attempts.save(retrying);
@@ -533,7 +552,7 @@ export async function dispatchMessage(
       await dependencies.attempts.settleP2ImmediateSlot(
         message.tenantId,
         message.idempotencyKey,
-        at,
+        failedAt,
         failure.class === 'ambiguous' ? 'uncertain' : 'failed',
       );
     }
@@ -590,25 +609,22 @@ export async function drainOutbox(
   const workerCount = Math.min(Math.max(Math.floor(concurrency), 1), batchLimit);
   const now = dependencies.clock.now();
   const messages = await dependencies.outbox.claimPending(batchLimit, now);
-  if (workerCount === 1) {
-    const results: DispatchResult[] = [];
-    for (const message of messages) results.push(await dispatchMessage(dependencies, message));
-    return results;
-  }
-  const results = new Array<DispatchResult>(messages.length);
+  const results: DispatchResult[] = [];
   let nextIndex = 0;
-  let failure: unknown;
+  let failure: { readonly error: unknown } | undefined;
   const worker = async () => {
     while (nextIndex < messages.length) {
       const index = nextIndex++;
       try {
         results[index] = await dispatchMessage(dependencies, messages[index]!);
       } catch (error) {
-        failure ??= error;
+        // Finish every claimed message, even with one worker. Otherwise a single failure
+        // abandons healthy notifications until their leases expire. Keep the error visible.
+        failure ??= { error };
       }
     }
   };
   await Promise.all(Array.from({ length: workerCount }, worker));
-  if (failure !== undefined) throw failure;
+  if (failure !== undefined) throw failure.error;
   return results;
 }

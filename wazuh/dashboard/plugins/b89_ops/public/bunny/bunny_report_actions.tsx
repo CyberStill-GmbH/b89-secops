@@ -2,19 +2,22 @@
  * Copyright B89. SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { Alert, RelatedWindow } from '../../common';
 import type { B89ApiClient } from '../api/client';
 import { fetchEvent, fetchRelated } from '../api/investigation';
 import type { BunnyCitation } from './chat_client';
 import {
   BunnyInvestigationError,
+  bunnyChartSeries,
+  bunnyNumericColumns,
   bunnyNumericTable,
   bunnyReportData,
   collectBunnyInvestigationReport,
 } from './bunny_report';
 import {
   createInvestigationXlsx,
+  ReportCollectionError,
   writeInvestigationPrintWindowWithProgress,
   writeInvestigationXlsx,
 } from '../components/investigation_report';
@@ -54,28 +57,54 @@ export function BunnyReportActions({
 }) {
   const [open, setOpen] = useState(false);
   const [format, setFormat] = useState<Format>('pdf');
-  const [kind, setKind] = useState<ReportKind>('investigation');
+  const [requestedKind, setKind] = useState<ReportKind>(() =>
+    citations.some((citation) => citation.kind === 'alert' || citation.kind === 'event')
+      ? 'investigation'
+      : 'answer',
+  );
   const [windowRange, setWindowRange] = useState<RelatedWindow>('24h');
   const [citationId, setCitationId] = useState('');
   const [includeChart, setIncludeChart] = useState(false);
+  const [chartColumn, setChartColumn] = useState<number | undefined>();
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState('');
-  const [progressPercent, setProgressPercent] = useState(0);
+  const [progressPercent, setProgressPercent] = useState<number | undefined>();
   const [status, setStatus] = useState('');
+  const [failed, setFailed] = useState(false);
   const activeRun = useRef<AbortController | null>(null);
   const startingExport = useRef(false);
-  const chart = bunnyNumericTable(text);
-  const evidenceCitations = citations.filter(
-    (citation) => citation.kind === 'alert' || citation.kind === 'event',
+  const mounted = useRef(true);
+  useEffect(
+    () => () => {
+      mounted.current = false;
+      activeRun.current?.abort();
+    },
+    [],
   );
+  const chart = useMemo(() => bunnyNumericTable(text), [text]);
+  const chartColumns = chart ? bunnyNumericColumns(chart) : [];
+  const series = chart ? bunnyChartSeries(chart, chartColumn) : null;
+  const evidenceCitations = useMemo(
+    () =>
+      citations.filter(
+        (citation, index) =>
+          (citation.kind === 'alert' || citation.kind === 'event') &&
+          citations.findIndex(
+            (other) => other.kind === citation.kind && other.id === citation.id,
+          ) === index,
+      ),
+    [citations],
+  );
+  const kind = evidenceCitations.length > 0 ? requestedKind : 'answer';
   const selectedCitation =
-    evidenceCitations.find((citation) => citation.id === citationId) ??
+    evidenceCitations.find((citation) => `${citation.kind}:${citation.id}` === citationId) ??
     evidenceCitations[0] ??
     null;
 
   const exportReport = async () => {
     if (busy || startingExport.current) return;
     startingExport.current = true;
+    setFailed(false);
     const filename = `b89-bunny-${kind === 'investigation' ? 'investigacion' : 'respuesta'}-${new Date().toISOString().slice(0, 10)}.xlsx`;
     const picker =
       format === 'xlsx' && typeof (window as SavePickerWindow).showSaveFilePicker === 'function';
@@ -94,19 +123,23 @@ export function BunnyReportActions({
           ],
         });
       } catch (error) {
+        if (!mounted.current) return;
         if (error instanceof Error && error.name === 'AbortError') {
           setStatus('Selecci\u00f3n del destino cancelada. No se gener\u00f3 ning\u00fan archivo.');
           startingExport.current = false;
           return;
         }
         setStatus('No se pudo abrir el selector de archivos del navegador.');
+        setFailed(true);
         startingExport.current = false;
         return;
       }
     }
+    if (!mounted.current) return;
     const printWindow = format === 'pdf' ? window.open('', '_blank') : null;
     if (format === 'pdf' && !printWindow) {
       setStatus('Permite la ventana emergente para previsualizar e imprimir el PDF.');
+      setFailed(true);
       startingExport.current = false;
       return;
     }
@@ -120,7 +153,7 @@ export function BunnyReportActions({
     setBusy(true);
     startingExport.current = false;
     setStatus('');
-    setProgressPercent(0);
+    setProgressPercent(undefined);
     setProgress('Preparando el contenido validado…');
     const controller = new AbortController();
     activeRun.current = controller;
@@ -133,9 +166,13 @@ export function BunnyReportActions({
               analysis: text,
               citations,
               includeChart,
+              chartColumn: series?.column,
               loadAlert: async (id) =>
                 (await api.get<{ alert: Alert }>(`/alerts/${encodeURIComponent(id)}`)).alert,
-              loadEvent: (id) => fetchEvent(basePath, id),
+              loadEvent: (id) =>
+                fetchEvent(basePath, id, (url, init) =>
+                  globalThis.fetch(url, { ...init, signal: controller.signal }),
+                ),
               loadPage: (query, cursor, signal) =>
                 fetchRelated(
                   basePath,
@@ -151,9 +188,10 @@ export function BunnyReportActions({
                 ),
               signal: controller.signal,
               onProgress: (next) => {
+                if (!mounted.current || controller.signal.aborted) return;
                 setProgress(next.message);
                 if (next.percent !== undefined) {
-                  setProgressPercent((current) => Math.max(current, next.percent!));
+                  setProgressPercent((current) => Math.max(current ?? 0, next.percent!));
                 }
                 if (
                   next.phase === 'query' &&
@@ -165,16 +203,25 @@ export function BunnyReportActions({
                 }
               },
             })
-          : bunnyReportData({ text, citations, title, includeChart, now: new Date() });
+          : bunnyReportData({
+              text,
+              citations,
+              title,
+              includeChart,
+              chartColumn: series?.column,
+              now: new Date(),
+            });
+      if (controller.signal.aborted) throw new DOMException('Informe cancelado', 'AbortError');
       if (format === 'pdf' && printWindow) {
         await writeInvestigationPrintWindowWithProgress(
           printWindow,
           report,
           controller.signal,
           (next) => {
+            if (!mounted.current || controller.signal.aborted) return;
             setProgress(next.message);
             if (next.percent !== undefined) {
-              setProgressPercent((current) => Math.max(current, next.percent!));
+              setProgressPercent((current) => Math.max(current ?? 0, next.percent!));
             }
           },
         );
@@ -185,9 +232,10 @@ export function BunnyReportActions({
             report,
             writable,
             (next) => {
+              if (!mounted.current || controller.signal.aborted) return;
               setProgress(next.message);
               if (next.percent !== undefined) {
-                setProgressPercent((current) => Math.max(current, next.percent!));
+                setProgressPercent((current) => Math.max(current ?? 0, next.percent!));
               }
             },
             controller.signal,
@@ -196,9 +244,10 @@ export function BunnyReportActions({
           const blob = await createInvestigationXlsx(
             report,
             (next) => {
+              if (!mounted.current || controller.signal.aborted) return;
               setProgress(next.message);
               if (next.percent !== undefined) {
-                setProgressPercent((current) => Math.max(current, next.percent!));
+                setProgressPercent((current) => Math.max(current ?? 0, next.percent!));
               }
             },
             controller.signal,
@@ -213,6 +262,7 @@ export function BunnyReportActions({
           window.setTimeout(() => URL.revokeObjectURL(url), 1500);
         }
       }
+      if (!mounted.current) return;
       setProgress(
         format === 'pdf'
           ? 'Vista imprimible completa. Revisa el contenido antes de guardarlo como PDF.'
@@ -228,32 +278,47 @@ export function BunnyReportActions({
       );
     } catch (error) {
       if (printWindow && !printWindow.closed) printWindow.close();
+      if (!mounted.current) return;
       if (controller.signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
         setStatus('Preparación cancelada.');
-      } else if (error instanceof BunnyInvestigationError) {
-        const messages: Record<BunnyInvestigationError['reason'], string> = {
-          'no-citation':
-            'Esta respuesta no tiene una alerta o evento citado para iniciar una investigación.',
-          forbidden:
-            'Tu sesión no tiene acceso a la evidencia citada; no se generó un expediente parcial.',
-          'not-found': 'La evidencia citada ya no está disponible para tu sesión.',
-          unavailable:
-            'Wazuh Indexer o la API de investigación no respondió. No se generó un expediente parcial; reintenta y, si persiste, revisa Salud de fuentes.',
-          'no-entities':
-            'La evidencia no contiene entidades consultables; no se inventaron filtros.',
-        };
-        setStatus(messages[error.reason]);
       } else {
-        setStatus(
-          error instanceof Error
-            ? `No se pudo preparar el informe: ${error.message}`
-            : 'No se pudo preparar el informe. Inténtalo de nuevo.',
-        );
+        setFailed(true);
+        if (error instanceof BunnyInvestigationError) {
+          const messages: Record<BunnyInvestigationError['reason'], string> = {
+            'no-citation':
+              'Esta respuesta no tiene una alerta o evento citado para iniciar una investigación.',
+            forbidden:
+              'Tu sesión no tiene acceso a la evidencia citada; no se generó un expediente parcial.',
+            'not-found': 'La evidencia citada ya no está disponible para tu sesión.',
+            unavailable:
+              'Wazuh Indexer o la API de investigación no respondió. No se generó un expediente parcial; reintenta y, si persiste, revisa Salud de fuentes.',
+            'no-entities':
+              'La evidencia no contiene entidades consultables; no se inventaron filtros.',
+          };
+          setStatus(messages[error.reason]);
+        } else if (error instanceof ReportCollectionError) {
+          const messages = {
+            forbidden:
+              'Tu sesión no tiene acceso a todos los eventos relacionados. No se generó un expediente parcial.',
+            unavailable:
+              'La consulta de eventos no se pudo completar. Reintenta o revisa Salud de fuentes; no se generó un expediente parcial.',
+            invalid:
+              'Los resultados de investigación no fueron consistentes. Vuelve a consultar la evidencia antes de generar el informe.',
+            rejected:
+              'La API rechazó la consulta. Vuelve a abrir la evidencia y revisa el alcance del informe.',
+          };
+          setStatus(messages[error.kind]);
+        } else
+          setStatus(
+            error instanceof Error
+              ? `No se pudo preparar el informe: ${error.message}`
+              : 'No se pudo preparar el informe. Inténtalo de nuevo.',
+          );
       }
     } finally {
       activeRun.current = null;
       startingExport.current = false;
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   };
 
@@ -270,7 +335,7 @@ export function BunnyReportActions({
             relacionados que tu sesión puede ver. Exportar respuesta conserva solo el texto de
             Bunny.
           </p>
-          <fieldset>
+          <fieldset disabled={busy}>
             <legend>Contenido del informe</legend>
             <label>
               <input
@@ -297,12 +362,16 @@ export function BunnyReportActions({
               <label>
                 Alerta o evento de referencia
                 <select
+                  disabled={busy}
                   aria-label="Evidencia para la investigación"
-                  value={selectedCitation?.id ?? ''}
+                  value={selectedCitation ? `${selectedCitation.kind}:${selectedCitation.id}` : ''}
                   onChange={(event) => setCitationId(event.target.value)}
                 >
                   {evidenceCitations.map((citation) => (
-                    <option key={`${citation.kind}:${citation.id}`} value={citation.id}>
+                    <option
+                      key={`${citation.kind}:${citation.id}`}
+                      value={`${citation.kind}:${citation.id}`}
+                    >
                       {citation.kind === 'alert' ? 'Alerta' : 'Evento'} · {citation.label}
                     </option>
                   ))}
@@ -311,6 +380,7 @@ export function BunnyReportActions({
               <label>
                 Ventana de actividad
                 <select
+                  disabled={busy}
                   aria-label="Ventana de actividad"
                   value={windowRange}
                   onChange={(event) => setWindowRange(event.target.value as RelatedWindow)}
@@ -322,13 +392,13 @@ export function BunnyReportActions({
               </label>
             </>
           )}
-          {kind === 'investigation' && evidenceCitations.length === 0 && (
+          {evidenceCitations.length === 0 && (
             <p className="b89Bunny__reportHint">
               Bunny no citó una alerta o evento en esta respuesta. Puedes exportar el texto; para un
               expediente de investigación, abre Bunny desde una alerta o evento.
             </p>
           )}
-          <fieldset>
+          <fieldset disabled={busy}>
             <legend>Formato</legend>
             <label>
               <input
@@ -353,6 +423,7 @@ export function BunnyReportActions({
             <label className="b89Bunny__chartToggle">
               <input
                 type="checkbox"
+                disabled={busy}
                 checked={includeChart}
                 onChange={(event) => setIncludeChart(event.target.checked)}
               />
@@ -373,34 +444,36 @@ export function BunnyReportActions({
             <small>
               {citations.length} fuente(s) citada(s) · {new Date().toLocaleString('es-PE')}
             </small>
-            {chart && includeChart && (
-              <div
-                className="b89Bunny__chartPreview"
-                role="img"
-                aria-label={`Gráfico de ${chart.headers[0]}`}
-              >
-                {chart.rows.map((row, index) => {
-                  const value =
-                    row.slice(1).find((cell): cell is number => typeof cell === 'number') ?? 0;
-                  const max = Math.max(
-                    1,
-                    ...chart.rows.map((candidate) =>
-                      Math.abs(
-                        candidate
-                          .slice(1)
-                          .find((cell): cell is number => typeof cell === 'number') ?? 0,
-                      ),
-                    ),
-                  );
-                  return (
-                    <div className="b89Bunny__chartRow" key={`${String(row[0])}-${index}`}>
-                      <span>{String(row[0])}</span>
-                      <i style={{ width: `${Math.max(2, (Math.abs(value) / max) * 100)}%` }} />
-                      <b>{value}</b>
+            {chart && includeChart && series && (
+              <>
+                <label>
+                  M?trica del gr?fico
+                  <select
+                    disabled={busy}
+                    value={series.column}
+                    onChange={(event) => setChartColumn(Number(event.target.value))}
+                  >
+                    {chartColumns.map((column) => (
+                      <option key={column} value={column}>
+                        {chart.headers[column]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div
+                  className="b89Bunny__chartPreview"
+                  role="img"
+                  aria-label={`Gr?fico de ${series.label}`}
+                >
+                  {series.rows.map((row, index) => (
+                    <div className="b89Bunny__chartRow" key={`${row.label}-${index}`}>
+                      <span>{row.label}</span>
+                      <i style={{ width: `${row.widthPercent}%` }} />
+                      <b>{row.value === null ? 'Sin dato' : row.value}</b>
                     </div>
-                  );
-                })}
-              </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
           <button

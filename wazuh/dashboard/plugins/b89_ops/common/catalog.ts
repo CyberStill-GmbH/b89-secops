@@ -238,6 +238,9 @@ export const DEGRADED_REASON_LABEL: Record<string, string> = {
   NOTIFICATION_FAILED: 'Hubo notificaciones fallidas en la ventana',
   NOTIFICATION_INDETERMINATE: 'Hubo notificaciones con entrega incierta',
   NOTIFICATION_FALLBACK: 'Hubo notificaciones por el canal alternativo',
+  NOTIFICATION_TEAMS_NOT_CONFIGURED: 'Microsoft Teams no tiene un webhook configurado',
+  NOTIFICATION_NO_P1_CHANNEL:
+    'Ningún canal (Teams o correo) puede entregar un aviso P1; solo queda la bandeja',
   DATABASE_UNAVAILABLE: 'La base de datos no respondió',
   DATABASE_SLOW: 'La base de datos responde lento (> 1 s)',
 };

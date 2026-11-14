@@ -71,6 +71,7 @@ diseño, no la plataforma vigente:
 - [25 · Programa de confiabilidad e investigación SOC](25-programa-confiabilidad-e-investigacion.md): auditoría, secuencia, criterios de aceptación, privacidad y gates de liberación.
 - [23 · Claude y Wazuh MCP para operaciones SOC](23-claude-wazuh-mcp-soc.md): propuesta de triaje asistido, MCP privado, UX de administración, respuesta gobernada y control de costos.
 - [24 · Operación gobernada de Bunny](24-bunny-operacion-gobernada.md): contratos pendientes para sugerencias revisables, configuración, presupuesto compartido y documentos versionados.
+- [27 · Evaluación AiSOC y plan del analista Python/MCP](27-aisoc-mcp-evaluacion-y-plan.md): comparación upstream/B89, brechas confirmadas, arquitectura de trabajos durables, costos, seguridad, UX, pruebas y gates antes de implementar.
 
 - `reference/`: archivos que el código o la CI leen (catálogo de errores, inventario de fuentes,
   guía de extensión de proveedores, baseline de toolchain, gates de release) y decisiones heredadas.

@@ -189,6 +189,37 @@ export interface SocSectionInput {
   readonly providerAcceptanceLatency?: ProviderAcceptanceLatency | null;
   readonly wazuhPushInbox?: WazuhPushInboxMetrics | null;
   readonly correlator?: CorrelatorHealth;
+  /**
+   * Estado de los canales de aviso (sin destino ni secreto). Ausente = el runtime no tiene
+   * registro de canales y no se opina sobre ellos.
+   */
+  readonly notificationChannels?: readonly NotificationChannelHealth[];
+}
+
+export interface NotificationChannelHealth {
+  readonly id: string;
+  readonly enabled: boolean;
+  readonly configured: boolean;
+  readonly setup: string;
+}
+
+/**
+ * Problemas de puesta en marcha de los canales. Un P1 sale por Teams y, si Teams no confirma,
+ * por correo; el push a navegadores es complementario y no cuenta como entrega de un P1.
+ */
+export function notificationChannelIssues(
+  channels: readonly NotificationChannelHealth[] | undefined,
+): readonly string[] {
+  if (!channels) return [];
+  const teams = channels.find((channel) => channel.id === 'teams');
+  const delivers = channels.some(
+    (channel) =>
+      (channel.id === 'teams' || channel.id === 'email') && channel.configured && channel.enabled,
+  );
+  return [
+    ...(teams && !teams.configured ? ['NOTIFICATION_TEAMS_NOT_CONFIGURED'] : []),
+    ...(delivers ? [] : ['NOTIFICATION_NO_P1_CHANNEL']),
+  ];
 }
 
 export function socSection(input: SocSectionInput, at: Date) {
@@ -216,6 +247,7 @@ export function socSection(input: SocSectionInput, at: Date) {
     ...Object.entries(NOTIFICATION_DEGRADING)
       .filter(([status]) => (input.notificationsByStatus[status] ?? 0) > 0)
       .map(([, reason]) => reason),
+    ...notificationChannelIssues(input.notificationChannels),
     ...(correlator.feedbackStatus === 'unavailable' ? ['CORRELATOR_UNREACHABLE'] : []),
     ...(correlator.ready === false ? ['CORRELATOR_NOT_READY'] : []),
   ];
@@ -239,6 +271,7 @@ export function socSection(input: SocSectionInput, at: Date) {
         at.getTime() - HEALTH_THRESHOLDS.notificationWindowHours * 3_600_000,
       ).toISOString(),
       byStatus: input.notificationsByStatus,
+      channels: input.notificationChannels ?? null,
     },
     outboxToProviderAcceptanceMs: {
       status: input.providerAcceptanceLatency?.sampleCount ? 'OK' : 'NO_DATA',

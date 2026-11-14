@@ -10,6 +10,7 @@ import './bunny/bunny.scss';
 import './overview.scss';
 import './investigation.scss';
 import './investigation_activity_groups.scss';
+import './ai_analyst.scss';
 import { B89OpsPublicPlugin } from './plugin';
 
 export function plugin(initializerContext: PluginInitializerContext<PublicConfigSchema>) {

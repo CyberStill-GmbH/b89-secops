@@ -34,6 +34,8 @@ import { composeApi } from './composition-root.js';
 import { createAssistantService } from './assistant/assistant-service.js';
 import { assistantArtifactStoreFor, startArtifactPurge } from './assistant/artifact-store.js';
 import { assistantConversationStoreFor } from './assistant/conversation-history.js';
+import { composeAnalyst } from './assistant/analyst-wiring.js';
+import type { AnalystLog } from './runtime/analyst-host.js';
 import type { InjectingServer } from './assistant/internal-client.js';
 import { ApiLifecycle, type ApiEvent } from './lifecycle.js';
 import { resolveApiSecretEnvironment } from './runtime/secret-environment.js';
@@ -249,6 +251,8 @@ export async function buildApi(
   demoMfaExceptionUntil?: Date,
   /** Inicios de sesión rechazados: etapa y código técnico, sin datos de la cuenta. */
   onSignInDenied?: (diagnostic: SignInDiagnostic) => void,
+  /** Eventos del Analista IA: códigos, etapas e ids; nunca prompts ni evidencia. */
+  onAnalystEvent?: AnalystLog,
 ) {
   const environment = await resolveApiSecretEnvironment(unresolvedEnvironment);
   const config = loadApiConfig(environment);
@@ -354,17 +358,18 @@ export async function buildApi(
   // del grupo en vez del ID, se resuelve una vez aquí con tiempo acotado. Si no se puede (sin
   // consentimiento, nombre ambiguo, red), el API arranca igual con el padrón deshabilitado y el
   // código queda en el log: Graph nunca impide servir el SOC.
-  const directoryReader =
-    directoryConfig.mode === 'graph' && clientSecret
-      ? new GraphDirectoryReader({
-          accessToken: new EntraClientCredentialsTokenSource({
-            tenantId: access.tenantId,
-            clientId: access.clientId,
-            clientSecret,
-            scope: 'https://graph.microsoft.com/.default',
-          }).token,
-        })
-      : undefined;
+  const directoryTokens = directoryConfig.mode === 'graph' && clientSecret
+    ? new EntraClientCredentialsTokenSource({
+        tenantId: access.tenantId,
+        clientId: access.clientId,
+        clientSecret,
+        scope: 'https://graph.microsoft.com/.default',
+      }) : undefined;
+  const directoryReader = directoryTokens
+    ? new GraphDirectoryReader({
+        accessToken: directoryTokens.token,
+        refreshRejectedToken: directoryTokens.refreshRejected,
+      }) : undefined;
   // Si el nombre no se resuelve al arrancar (sin consentimiento, red), se reintenta en segundo
   // plano con espera exponencial y el padrón se activa solo al resolverse, sin reiniciar.
   // El ciclo de sincronización existe después; al resolverse el grupo se le pide una pasada.
@@ -571,6 +576,9 @@ export async function buildApi(
         }
       : {}),
   });
+  // Inicialización de canales: una fila por canal que aún no la tenga (`system:bootstrap`,
+  // auditada). Idempotente; una fila existente no se toca (la base manda sobre el entorno).
+  const channelInitialization = await channels.initialize({ audit: runtime.audit });
   // Bunny (asistente de IA): solo existe con B89_BUNNY_ENABLED=true; sin él, el endpoint no responde.
   // Su historial va a PostgreSQL cuando el SOC es durable (pool propio y mínimo); si no, a memoria.
   const assistantDatabase =
@@ -597,6 +605,24 @@ export async function buildApi(
   const stopArtifactPurge = runtime.assistant?.artifacts
     ? startArtifactPurge(runtime.assistant.artifacts)
     : undefined;
+  // Analista IA (docs/27): la consola siempre ve lista, ajustes y presupuesto; el bucle solo corre
+  // con B89_ANALYST_ENABLED=true. Pool propio y mínimo en PostgreSQL; memoria en otro caso.
+  const analyst = await composeAnalyst({
+    environment,
+    runtime,
+    ...(persistenceConfig.mode === 'postgres'
+      ? {
+          connection: {
+            connectionString: connectionStringFor(persistenceConfig),
+            connectionTimeoutMs: persistenceConfig.postgres.connectionTimeoutMs,
+            statementTimeoutMs: persistenceConfig.postgres.statementTimeoutMs,
+            maxConnections: 2,
+          },
+        }
+      : {}),
+    ...(onAnalystEvent ? { log: onAnalystEvent } : {}),
+  });
+  runtime.analyst = analyst.host;
   const ingestion =
     eventProvider && ingestionConfig.source === 'wazuh'
       ? createWazuhIngestion({
@@ -707,6 +733,8 @@ export async function buildApi(
       await ingestion?.stop();
       await activation?.stop();
       await directorySync?.stop();
+      // El analista se drena antes que el despacho: sus acciones pueden encolar avisos.
+      await analyst.host?.stop();
       await runtime.stopDispatcher();
       await application.close();
       await runtime.soc.close();
@@ -719,6 +747,7 @@ export async function buildApi(
       stopArtifactPurge?.();
       await assistantConversations?.close();
       await assistantArtifacts?.close();
+      await analyst.close();
     }, API_SHUTDOWN_TIMEOUT_MS);
   return {
     application,
@@ -729,6 +758,25 @@ export async function buildApi(
     persistence: runtime.soc.kind,
     /** Fuente de ingesta efectiva, para el registro de arranque. */
     ingestion: ingestionConfig.source,
+    /** Estado de cada canal de aviso al arrancar (sin secretos), para el registro de arranque. */
+    notificationChannels: channels.views().map((view) => {
+      const seed = channelInitialization.seeded.find((item) => item.channelId === view.id);
+      return {
+        channel: view.id,
+        status: view.status,
+        setup: view.setup,
+        enabled: view.enabled,
+        configured: view.configured,
+        source: view.source,
+        revision: view.revision,
+        initialized: seed
+          ? 'seeded'
+          : channelInitialization.failed.includes(view.id)
+            ? 'failed'
+            : 'existing',
+        secretSkipped: seed?.secretSkipped ?? null,
+      };
+    }),
     /** Vencimiento de la excepción demo de contraseña, para la advertencia del arranque. */
     demoAdminLoginUntil: demoAdminLogin?.until,
     /** Despliegue que justificó la excepción (`entra` = convivencia con Entra real). */
@@ -745,6 +793,7 @@ export async function buildApi(
           // El despacho arranca con el servidor listo; las specs que no llaman `start` no lo
           // activan y despachan con `POST /api/notifications/drain`.
           runtime.startDispatcher();
+          analyst.host?.start();
           ingestion?.start();
           directorySync?.start();
           activation?.start();

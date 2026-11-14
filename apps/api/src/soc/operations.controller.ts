@@ -339,6 +339,16 @@ export class OperationsController {
           providerAcceptanceLatency,
           wazuhPushInbox,
           correlator,
+          ...(this.runtime.channels
+            ? {
+                notificationChannels: this.runtime.channels.views().map((view) => ({
+                  id: view.id,
+                  enabled: view.enabled,
+                  configured: view.configured,
+                  setup: view.setup,
+                })),
+              }
+            : {}),
         },
         at,
       );

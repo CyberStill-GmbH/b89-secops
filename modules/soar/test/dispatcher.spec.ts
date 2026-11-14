@@ -77,6 +77,97 @@ beforeEach(() => {
   sequence = 0;
 });
 
+describe('notification batch failure isolation', () => {
+  it.each([1, 2])(
+    'finishes healthy claimed messages with %i workers and reports the first failure',
+    async (concurrency) => {
+      const firstFailure = new Error('ATTEMPT_STORE_UNAVAILABLE');
+      const secondFailure = new Error('SECOND_ATTEMPT_STORE_FAILURE');
+      const originalLookup = attempts.byIdempotencyKey.bind(attempts);
+      vi.spyOn(attempts, 'byIdempotencyKey').mockImplementation((tenantId, key) => {
+        if (key === 'failed-first') return Promise.reject(firstFailure);
+        if (key === 'failed-second') return Promise.reject(secondFailure);
+        return originalLookup(tenantId, key);
+      });
+      for (const id of ['failed-first', 'failed-second', 'healthy']) {
+        outbox.enqueue(criticalMessage({ messageId: id, aggregateId: id, idempotencyKey: id }));
+      }
+      const transport = new ScriptedTransport([{ delivered: true, httpStatus: 202 }]);
+      const deps = dependencies(transport);
+
+      await expect(drainOutbox(deps, 3, concurrency)).rejects.toBe(firstFailure);
+
+      expect(transport.calls.map((call) => call.message.b89.aggregateId)).toEqual(['healthy']);
+      expect(outbox.rows.get('healthy')?.status).toBe('published');
+      expect((await attempts.byIdempotencyKey('tenant-1', 'healthy'))?.status).toBe('sent');
+      expect(outbox.rows.get('failed-first')?.status).toBe('processing');
+      expect(outbox.rows.get('failed-second')?.status).toBe('processing');
+      expect((await audit.range('tenant-1', 1n, 10)).map((event) => event.action)).toEqual([
+        'soar.notification.sent',
+      ]);
+      expect(await drainOutbox(deps, 3, concurrency)).toEqual([]);
+      expect(transport.calls).toHaveLength(1);
+    },
+  );
+
+  it('propagates an undefined rejection after completing the rest of the claimed batch', async () => {
+    const originalLookup = attempts.byIdempotencyKey.bind(attempts);
+    vi.spyOn(attempts, 'byIdempotencyKey').mockImplementation((tenantId, key) =>
+      key === 'failed' ? Promise.reject(undefined) : originalLookup(tenantId, key),
+    );
+    for (const id of ['failed', 'healthy']) {
+      outbox.enqueue(criticalMessage({ messageId: id, aggregateId: id, idempotencyKey: id }));
+    }
+    const transport = new ScriptedTransport([{ delivered: true }]);
+
+    await expect(drainOutbox(dependencies(transport), 2, 2)).rejects.toBeUndefined();
+
+    expect(outbox.rows.get('healthy')?.status).toBe('published');
+    expect(transport.calls).toHaveLength(1);
+  });
+});
+
+describe('notification backoff after slow failures', () => {
+  it.each([
+    { class: 'transient' as const, code: 'HTTP_429', result: 'retry_scheduled' },
+    { class: 'ambiguous' as const, code: 'REQUEST_TIMEOUT', result: 'indeterminate_retry' },
+  ])('waits after a slow $code and preserves the idempotency key', async (failure) => {
+    let now = AT;
+    const clientRequestIds: string[] = [];
+    const transport: NotificationTransport = {
+      destinationRef: 'teams:canal-soc',
+      async send(_message, clientRequestId) {
+        clientRequestIds.push(clientRequestId);
+        if (clientRequestIds.length > 1) return { delivered: true, httpStatus: 202 };
+        now = new Date(AT.getTime() + RETRY_POLICY.requestTimeoutMs);
+        return {
+          delivered: false,
+          failure: { class: failure.class, code: failure.code, detail: 'slow response' },
+        };
+      },
+    };
+    const deps = { ...dependencies(transport), clock: { now: () => now } };
+    outbox.enqueue(criticalMessage());
+
+    const [first] = await drainOutbox(deps);
+    const failedAt = now;
+    const retryAt = new Date(failedAt.getTime() + nextDelayMs(1));
+
+    expect(first?.code).toBe(failure.result);
+    expect(first?.attempt?.updatedAt).toEqual(failedAt);
+    expect(first?.attempt?.availableAt).toEqual(retryAt);
+    expect(outbox.rows.get('msg-1')?.availableAt).toEqual(retryAt);
+    expect(await drainOutbox(deps)).toEqual([]);
+    now = new Date(retryAt.getTime() - 1);
+    expect(await drainOutbox(deps)).toEqual([]);
+    now = retryAt;
+    expect((await drainOutbox(deps)).map((result) => result.code)).toEqual(['delivered']);
+    expect(clientRequestIds).toHaveLength(2);
+    expect(clientRequestIds[0]).toBe(clientRequestIds[1]);
+    expect(outbox.rows.get('msg-1')?.status).toBe('published');
+  });
+});
+
 describe('C-20 · despacho de críticos', () => {
   it('despacha concurrentemente una tanda acotada y conserva el resultado de cada aviso', async () => {
     let active = 0;

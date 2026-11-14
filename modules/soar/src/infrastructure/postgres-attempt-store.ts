@@ -74,7 +74,10 @@ export class PostgresNotificationAttemptStore implements AttemptStore {
           return record ? [record] : [];
         }),
       get: async (tenantId, channelId) => toRecord(await channelStore.get(tenantId, channelId)),
-      save: (record) => channelStore.save(record),
+      create: (record) => channelStore.create(record),
+      saveConfig: (record, expectedRevision) => channelStore.saveConfig(record, expectedRevision),
+      saveHealth: (tenantId, channelId, health, expectedRevision) =>
+        channelStore.saveHealth(tenantId, channelId, health, expectedRevision),
     };
   }
 

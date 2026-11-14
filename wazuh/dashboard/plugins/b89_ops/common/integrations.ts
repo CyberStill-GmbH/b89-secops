@@ -16,7 +16,14 @@ import type { PlatformHealth } from './platform_health';
 export const OVERVIEW_ROUTE = '/api/b89_ops/overview';
 
 /** Proveedores medidos en `wazuh-alerts-*` por su grupo de regla. */
-export const PROVIDER_IDS = ['office365', 'sharepoint', 'bitdefender', 'snyk', 'cloudflare', 'aws'] as const;
+export const PROVIDER_IDS = [
+  'office365',
+  'sharepoint',
+  'bitdefender',
+  'snyk',
+  'cloudflare',
+  'aws',
+] as const;
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 
 /** Servicios de la plataforma que no son proveedores de eventos. */
@@ -141,7 +148,8 @@ export const INTEGRATIONS: readonly IntegrationSpec[] = [
     interval: 'Auditoría cada 5 min; postura cada 60 min',
     ruleRange: '101900–101979',
     ruleGroup: 'b89_sharepoint',
-    policy: 'Doble vía de auditoría sin duplicación, allowlist de cuentas de servicio/sincronización y collector apagado hasta validar permisos.',
+    policy:
+      'Doble vía de auditoría sin duplicación, allowlist de cuentas de servicio/sincronización y collector apagado hasta validar permisos.',
     permissions: [
       'ActivityFeed.Read (Management APIs) o AuditLogsQuery-SharePoint.Read.All (Graph)',
       'AuditLogsQuery-OneDrive.Read.All (Graph)',
@@ -151,7 +159,12 @@ export const INTEGRATIONS: readonly IntegrationSpec[] = [
       'Verificar permisos de aplicación y consentimiento de administrador en Entra ID.',
       'Activar B89_ENABLE_SHAREPOINT solo después de que el chequeo de acceso confirme HTTP 200 para la vía elegida.',
     ],
-    links: [{ label: 'Dashboard SharePoint y OneDrive', href: dashboardHref('b89-dashboard-sharepoint-onedrive') }],
+    links: [
+      {
+        label: 'Dashboard SharePoint y OneDrive',
+        href: dashboardHref('b89-dashboard-sharepoint-onedrive'),
+      },
+    ],
   },
   {
     id: 'bitdefender',
@@ -445,6 +458,12 @@ export interface AgentsSummary {
   readonly measuredAt: string | null;
 }
 
+export interface ServiceAttention {
+  readonly access: Readability;
+  readonly total: number | null;
+  readonly events: readonly TopEvent[];
+}
+
 export interface OverviewResponse {
   readonly generatedAt: string;
   readonly alertsAccess: Readability;
@@ -458,6 +477,7 @@ export interface OverviewResponse {
   } | null;
   readonly providers: Readonly<Record<ProviderId, ProviderStats>> | null;
   readonly topEvents: readonly TopEvent[];
+  readonly attention?: Readonly<Partial<Record<ServiceId, ServiceAttention>>>;
   readonly agents: AgentsSummary | null;
   readonly integrations: IntegrationsConfig;
   /** Monitor de plataforma (docs/20); ausente en respuestas de versiones anteriores. */

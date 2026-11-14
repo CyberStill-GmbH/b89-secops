@@ -243,6 +243,26 @@ else
 fi
 unset teams_workflow_url
 
+# Respaldo por correo: el buzón remitente (UPN) también vive en services.env y se copia igual que
+# el webhook de Teams. Sin él, el canal de correo queda «sin configurar» y el respaldo de un P1 es
+# solo la bandeja. Guarda: el código debe admitir la variable (una desconocida tumba el arranque)
+# y el valor debe ser una dirección de una sola línea. La dirección no se muestra en el log.
+sed -i '/^B89_ALERT_MAIL_SENDER=/d' "$SECRETS/api.env"
+alert_mail_sender="$(grep -s '^B89_ALERT_MAIL_SENDER=.' "$SECRETS/services.env" | cut -d= -f2- || true)"
+if ! grep -q "'B89_ALERT_MAIL_SENDER'" "$SRC/platform/configuration/src/schema/environment.schema.ts"; then
+  log 'Correo: el código aún no admite B89_ALERT_MAIL_SENDER; respaldo por correo apagado'
+elif [[ -n $alert_mail_sender ]]; then
+  [[ $alert_mail_sender =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,24}$ ]] || {
+    echo 'B89_ALERT_MAIL_SENDER inválido en secrets/services.env' >&2; exit 1;
+  }
+  printf 'B89_ALERT_MAIL_SENDER=%s\n' "$alert_mail_sender" >>"$SECRETS/api.env"
+  chmod 600 "$SECRETS/api.env"
+  log 'Correo: buzón remitente del respaldo configurado'
+else
+  log 'Correo: falta B89_ALERT_MAIL_SENDER en secrets/services.env; respaldo por correo sin configurar'
+fi
+unset alert_mail_sender
+
 COMPOSE=(docker compose --env-file "$SECRETS/compose.env" -f "$WD/docker-compose.yml" -f "$HOST_DIR/compose.b89.yaml")
 # Con B89 Respond ya desplegado (deploy-respond.sh), el proyecto incluye sus servicios.
 [[ -d $ROOT/respond/frontend ]] && COMPOSE+=(-f "$HOST_DIR/compose.respond.yaml")

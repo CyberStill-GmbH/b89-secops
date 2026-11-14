@@ -8,6 +8,7 @@ import type { SecOpsRuntime } from '../runtime/secops-runtime.js';
 import { createInternalGet } from './internal-client.js';
 import { dispatchMcpRequest } from './mcp-protocol.js';
 import { buildSocTools } from './soc-tools.js';
+import { startInvestigationAction } from './analyst-tools.js';
 
 const READ_CAPABILITIES = [
   'alerts.read',
@@ -18,6 +19,7 @@ const READ_CAPABILITIES = [
   'audit.read',
   'observability.read_soc',
   'users.read',
+  'investigations.read',
 ] as const;
 
 @Controller('api/assistant')
@@ -37,10 +39,12 @@ export class AssistantMcpController {
       throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
     }
     if (!this.runtime.internalServer) throw new ApiError('DEPENDENCY_DEGRADED', correlationId);
-    const tools = buildSocTools(createInternalGet(this.runtime.internalServer, request), {
-      roles: actor.roles,
-      capabilities: [...actor.capabilities],
-    });
+    const startInvestigation = startInvestigationAction(this.runtime, actor, correlationId, 'mcp');
+    const tools = buildSocTools(
+      createInternalGet(this.runtime.internalServer, request),
+      { roles: actor.roles, capabilities: [...actor.capabilities] },
+      startInvestigation ? { startInvestigation } : {},
+    );
     const result = await dispatchMcpRequest(body, tools);
     if (result === null) {
       response.status(202).send();

@@ -37,6 +37,7 @@ import { contextOf } from './dispatcher.js';
 export const DIGEST_GROUPS = Object.freeze({
   suppressed: 'digest:suppressed',
   lowPriority: 'digest:low_priority',
+  aiAnalyst: 'digest:ai_analyst',
 });
 
 export interface LowPriorityAlert {
@@ -343,6 +344,72 @@ export async function runLowPriorityDigest(
       to: now.toISOString(),
       lines,
       total: alerts.total,
+      consoleBaseUrl: dependencies.consoleBaseUrl,
+      timeZone: policy.timeZone,
+    },
+    ['b89.soc.lead'],
+  );
+  if (saved.status === 'pending') {
+    await dependencies.attempts.save({
+      ...saved,
+      availableAt: new Date(now.getTime() + 15 * 60_000),
+    });
+  }
+  return saved;
+}
+
+/** Resumen diario del Analista IA ya armado por el host (sin texto de modelo). */
+export interface AnalystDigestInput {
+  /** Día local `AAAA-MM-DD` del resumen: clave de idempotencia (uno por día). */
+  readonly date: string;
+  readonly from: Date;
+  readonly to: Date;
+  readonly lines: readonly DigestLine[];
+  /** Casos que esperan a una persona en la ventana. */
+  readonly total: number;
+}
+
+/**
+ * Envía el resumen diario del Analista IA por el mismo canal y con la misma evidencia que los
+ * demás resúmenes. Idempotente por día: un resumen ya entregado (o agotado) no se repite; uno
+ * pendiente de reintento espera su `availableAt`.
+ */
+export async function runAnalystDigest(
+  dependencies: DigestDependencies,
+  input: AnalystDigestInput,
+): Promise<NotificationAttempt | undefined> {
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(input.date)) return undefined;
+  const policy = dependencies.policy ?? DEFAULT_NOTIFICATION_POLICY;
+  const now = dependencies.clock.now();
+  const idempotencyKey = `digest:ai:${input.date}`;
+  const existing = await dependencies.attempts.byIdempotencyKey(
+    dependencies.tenantId,
+    idempotencyKey,
+  );
+  if (
+    existing &&
+    (existing.status !== 'pending' || existing.availableAt.getTime() > now.getTime())
+  ) {
+    return undefined;
+  }
+  const digest = digestAttempt(
+    dependencies,
+    existing,
+    idempotencyKey,
+    DIGEST_GROUPS.aiAnalyst,
+    `Analista IA · resumen del ${input.date}`,
+    now,
+  );
+  const saved = await send(
+    dependencies,
+    digest,
+    {
+      digestId: digest.id,
+      kind: 'ai_analyst',
+      from: input.from.toISOString(),
+      to: input.to.toISOString(),
+      lines: input.lines,
+      total: input.total,
       consoleBaseUrl: dependencies.consoleBaseUrl,
       timeZone: policy.timeZone,
     },

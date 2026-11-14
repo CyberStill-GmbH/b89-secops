@@ -265,6 +265,8 @@ export class CorrelatorController {
     );
     if (!result.ok) throw new ApiError('DEPENDENCY_DEGRADED', correlationId);
     this.runtime.dispatcher.kick();
+    // Post-commit: el analista encola su investigación; un fallo no afecta esta respuesta.
+    if (result.value.created) this.runtime.analyst?.alertCreated(result.value.alert);
     return { alertId: result.value.alert.id, created: result.value.created, correlationId };
   }
 

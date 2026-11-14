@@ -602,7 +602,21 @@ export interface NotificationChannelRow {
   readonly lastTestOutcome: string | null;
   readonly lastTestHttpStatus: number | null;
   readonly lastTestProviderId: string | null;
+  /** Revisión de la configuración; la salud no la mueve. */
+  readonly revision: number;
 }
+
+export type NotificationChannelHealthRow = Pick<
+  NotificationChannelRow,
+  | 'lastSuccessAt'
+  | 'lastFailureAt'
+  | 'lastHttpStatus'
+  | 'lastFailureReason'
+  | 'lastTestAt'
+  | 'lastTestOutcome'
+  | 'lastTestHttpStatus'
+  | 'lastTestProviderId'
+>;
 
 /** Canales de aviso administrables: una fila por (tenant, canal). */
 export class PrismaNotificationChannelStore {
@@ -625,12 +639,49 @@ export class PrismaNotificationChannelStore {
     return row ?? undefined;
   }
 
-  public async save(row: NotificationChannelRow): Promise<void> {
-    const { tenantId, channelId, ...data } = row;
-    await this.client.notificationChannel.upsert({
-      where: { tenantId_channelId: { tenantId, channelId } },
-      create: row,
-      update: data,
+  /** Inserta solo si no existe (`ON CONFLICT DO NOTHING`): la fila guardada nunca se pisa. */
+  public async create(row: NotificationChannelRow): Promise<boolean> {
+    const created = await this.client.notificationChannel.createMany({
+      data: [row],
+      skipDuplicates: true,
     });
+    return created.count === 1;
+  }
+
+  /**
+   * Compare-and-set de la configuración: escribe la fila completa solo si la revisión guardada
+   * es `expectedRevision` (`0` = la fila no existe todavía y se inserta).
+   */
+  public async saveConfig(row: NotificationChannelRow, expectedRevision: number): Promise<boolean> {
+    if (expectedRevision === 0) return this.create(row);
+    const { tenantId, channelId, ...data } = row;
+    const changed = await this.client.notificationChannel.updateMany({
+      where: { tenantId, channelId, revision: expectedRevision },
+      data,
+    });
+    return changed.count === 1;
+  }
+
+  /** Solo columnas de salud: no toca `enabled`, el secreto ni `revision`. */
+  public async saveHealth(
+    tenantId: string,
+    channelId: string,
+    health: NotificationChannelHealthRow,
+    expectedRevision?: number,
+  ): Promise<boolean> {
+    const changed = await this.client.notificationChannel.updateMany({
+      where: { tenantId, channelId, ...(expectedRevision === undefined ? {} : { revision: expectedRevision }) },
+      data: {
+        lastSuccessAt: health.lastSuccessAt,
+        lastFailureAt: health.lastFailureAt,
+        lastHttpStatus: health.lastHttpStatus,
+        lastFailureReason: health.lastFailureReason,
+        lastTestAt: health.lastTestAt,
+        lastTestOutcome: health.lastTestOutcome,
+        lastTestHttpStatus: health.lastTestHttpStatus,
+        lastTestProviderId: health.lastTestProviderId,
+      },
+    });
+    return changed.count === 1;
   }
 }

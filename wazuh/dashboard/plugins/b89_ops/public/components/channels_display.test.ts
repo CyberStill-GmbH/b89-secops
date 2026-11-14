@@ -1,7 +1,12 @@
 /* Copyright B89. SPDX-License-Identifier: Apache-2.0 */
 
 import type { NotificationChannelView } from '../../common';
-import { channelDestinationSummary } from './channels_display';
+import {
+  channelDestinationSummary,
+  channelHint,
+  channelName,
+  isConsoleChannel,
+} from './channels_display';
 
 const channel = (overrides: Partial<NotificationChannelView>): NotificationChannelView => ({
   id: 'teams',
@@ -38,5 +43,28 @@ describe('resumen seguro del destino de cada canal', () => {
         channel({ id: 'manual_console', target: 'b89-internal://notification-inbox' }),
       ),
     ).toBe('Bandeja interna de B89');
+  });
+});
+
+describe('el push del API es un canal propio, no la bandeja de respaldo', () => {
+  const push = channel({ id: 'manual_console', apiId: 'push' });
+  const inbox = channel({ id: 'manual_console' });
+
+  it('solo la bandeja sin apiId push es el respaldo siempre disponible', () => {
+    expect(isConsoleChannel(push)).toBe(false);
+    expect(isConsoleChannel(inbox)).toBe(true);
+    expect(isConsoleChannel(channel({ id: 'teams', apiId: 'teams' }))).toBe(false);
+  });
+
+  it('nombra y describe el push como avisos al navegador', () => {
+    expect(channelName(push)).toBe('Avisos al navegador');
+    expect(channelName(inbox)).toBe('Consola');
+    expect(channelHint(push)).toContain('navegadores registrados');
+    expect(channelHint(inbox)).toContain('Bandeja interna de B89');
+  });
+
+  it('resume el destino del push sin confundirlo con la bandeja', () => {
+    expect(channelDestinationSummary(push)).toContain('Web Push');
+    expect(channelDestinationSummary({ ...push, configured: false })).toBe('Sin configurar');
   });
 });

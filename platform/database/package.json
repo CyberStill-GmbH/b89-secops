@@ -43,6 +43,11 @@
       "types": "./src/assistant-artifact-stores.ts",
       "development": "./src/assistant-artifact-stores.ts",
       "default": "./dist/src/assistant-artifact-stores.js"
+    },
+    "./ai-investigation-store": {
+      "types": "./src/ai-investigation-store.ts",
+      "development": "./src/ai-investigation-store.ts",
+      "default": "./dist/src/ai-investigation-store.js"
     }
   },
   "scripts": {

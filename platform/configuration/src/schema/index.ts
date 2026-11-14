@@ -1,8 +1,13 @@
 export { KNOWN_B89_VARIABLES } from './environment.schema.js';
 export {
+  ANALYST_VARIABLES,
   ASSISTANT_PROVIDERS,
   ASSISTANT_VARIABLES,
+  parseAnalystCeilingUsd,
+  parseAnalystRateCard,
   validateAssistantEnvironment,
+  type AnalystRateCardInput,
+  type AnalystTierRates,
 } from './assistant.schema.js';
 export {
   DETECTION_CONTEXT_LIMITS,

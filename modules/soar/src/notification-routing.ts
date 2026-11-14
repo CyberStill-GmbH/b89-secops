@@ -11,6 +11,7 @@
  * | `soc.alert.created` P1                | analista, lead              | triage inmediato    |
  * | `soc.alert.escalated` P1              | lead, admin de plataforma   | decisión de caso    |
  * | `soc.incident.opened` crítico         | lead, admin de plataforma   | conducción del caso |
+ * | `soc.alert.review_requested`          | analista, lead              | revisión pedida (IA) |
  *
  * Cualquier otro evento no se notifica. El canal sigue siendo uno solo (el Teams Workflow del
  * SOC): los destinatarios llegan como menciones y Teams avisa a cada uno.
@@ -42,6 +43,12 @@ export const NOTIFICATION_ROUTES: readonly Route[] = Object.freeze([
     messageType: 'soc.incident.opened',
     matches: (payload) => payload['severity'] === 'critical',
     roles: ['b89.soc.lead', 'b89.platform.admin'],
+  },
+  {
+    // Analista IA: pide a una persona que revise (inmediato o en el resumen, según `urgency`).
+    messageType: 'soc.alert.review_requested',
+    matches: () => true,
+    roles: ['b89.soc.analyst', 'b89.soc.lead'],
   },
 ]);
 

@@ -194,7 +194,7 @@ server {
     proxy_read_timeout 180s;
   }
 
-  location ~ ^/api/(auth|alerts|incidents|changes|sources|operations|audit|admin|me|assistant|risk)(/|$) {
+  location ~ ^/api/(auth|alerts|incidents|ai-investigations|changes|sources|operations|audit|admin|me|assistant|risk)(/|$) {
     proxy_pass http://b89_api;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-Proto https;

@@ -69,11 +69,50 @@ type Cursor struct {
 	Sort []json.RawMessage
 }
 
+// ErrIncompleteSearch prevents a partial or malformed HTTP 200 response from being
+// mistaken for the end of a window. Reasons contain no event or credential data.
+type ErrIncompleteSearch struct {
+	Reason string
+}
+
+func (e ErrIncompleteSearch) Error() string { return "gateway search incomplete: " + e.Reason }
+
+// sortPosition follows the explicit timestamp/id sort requested below. Dates without
+// a custom sort format are returned as epoch milliseconds; ids are keyword strings.
+type sortPosition struct {
+	timestamp int64
+	id        string
+}
+
+func position(sort []json.RawMessage) (sortPosition, bool) {
+	var p sortPosition
+	if len(sort) != 2 || string(sort[0]) == "null" || string(sort[1]) == "null" {
+		return p, false
+	}
+	if json.Unmarshal(sort[0], &p.timestamp) != nil || json.Unmarshal(sort[1], &p.id) != nil || p.id == "" {
+		return p, false
+	}
+	return p, true
+}
+
+func (p sortPosition) after(previous sortPosition) bool {
+	return p.timestamp > previous.timestamp || (p.timestamp == previous.timestamp && p.id > previous.id)
+}
+
 // sourceFields limits the payload to what entity resolution and classification read.
 var sourceFields = []string{"timestamp", "id", "rule", "agent", "data", "predecoder.hostname", "decoder.name", "location"}
 
 // Page fetches alerts with timestamp in [from, to) after the cursor, ascending.
 func (g *WazuhGateway) Page(ctx context.Context, from, to time.Time, after *Cursor) ([]map[string]any, *Cursor, error) {
+	var previous sortPosition
+	hasPrevious := after != nil
+	if after != nil {
+		var valid bool
+		previous, valid = position(after.Sort)
+		if !valid {
+			return nil, nil, ErrIncompleteSearch{Reason: "invalid_request_cursor"}
+		}
+	}
 	size := g.PageSize
 	if size <= 0 {
 		size = 500
@@ -110,7 +149,12 @@ func (g *WazuhGateway) Page(ctx context.Context, from, to time.Time, after *Curs
 		return nil, nil, ErrStatus{Op: "gateway search", Status: resp.StatusCode}
 	}
 	var parsed struct {
-		Hits struct {
+		TimedOut        bool `json:"timed_out"`
+		TerminatedEarly bool `json:"terminated_early"`
+		Shards          struct {
+			Failed int `json:"failed"`
+		} `json:"_shards"`
+		Hits *struct {
 			Hits []struct {
 				Source map[string]any    `json:"_source"`
 				Sort   []json.RawMessage `json:"sort"`
@@ -121,13 +165,34 @@ func (g *WazuhGateway) Page(ctx context.Context, from, to time.Time, after *Curs
 	if err := dec.Decode(&parsed); err != nil {
 		return nil, nil, fmt.Errorf("gateway search decode: %w", err)
 	}
+	if parsed.TimedOut {
+		return nil, nil, ErrIncompleteSearch{Reason: "timed_out"}
+	}
+	if parsed.TerminatedEarly {
+		return nil, nil, ErrIncompleteSearch{Reason: "terminated_early"}
+	}
+	if parsed.Shards.Failed > 0 {
+		return nil, nil, ErrIncompleteSearch{Reason: "failed_shards"}
+	}
+	if parsed.Hits == nil || parsed.Hits.Hits == nil || len(parsed.Hits.Hits) > size {
+		return nil, nil, ErrIncompleteSearch{Reason: "invalid_hits"}
+	}
 	docs := make([]map[string]any, 0, len(parsed.Hits.Hits))
 	var next *Cursor
 	for _, h := range parsed.Hits.Hits {
-		docs = append(docs, h.Source)
-		if len(h.Sort) == 2 {
-			next = &Cursor{Sort: h.Sort}
+		if len(h.Source) == 0 {
+			return nil, nil, ErrIncompleteSearch{Reason: "missing_source"}
 		}
+		current, valid := position(h.Sort)
+		if !valid {
+			return nil, nil, ErrIncompleteSearch{Reason: "invalid_hit_cursor"}
+		}
+		if hasPrevious && !current.after(previous) {
+			return nil, nil, ErrIncompleteSearch{Reason: "non_advancing_cursor"}
+		}
+		previous, hasPrevious = current, true
+		docs = append(docs, h.Source)
+		next = &Cursor{Sort: h.Sort}
 	}
 	if len(docs) < size {
 		next = nil
@@ -210,24 +275,24 @@ func (a *B89API) Alerts(ctx context.Context, since time.Time) ([]model.B89Alert,
 
 // CandidateRequest is the body of POST /internal/correlator/candidates.
 type CandidateRequest struct {
-	IdempotencyKey   string           `json:"idempotencyKey"`
-	PatternID        string           `json:"patternId"`
-	Kind             string           `json:"kind"`
-	Title            string           `json:"title"`
-	Summary          string           `json:"summary"`
-	Priority         string           `json:"priority"`
-	Score            int              `json:"score"`
-	RiskScore        float64          `json:"riskScore"`
-	Signal           string           `json:"signal"`
-	PrimaryEntityKey string           `json:"primaryEntityKey"`
-	EntityKeys       []string         `json:"entityKeys"`
-	RelatedAlertIDs  []string         `json:"relatedAlertIds"`
-	OccurredAt       time.Time        `json:"occurredAt"`
-	FirstSeen        time.Time        `json:"firstSeen"`
-	MemberCount      int              `json:"memberCount"`
-	Stages           []model.StageHit `json:"stages"`
-	Sources          []string         `json:"sources"`
-	Tactics          []string         `json:"tactics"`
+	IdempotencyKey   string              `json:"idempotencyKey"`
+	PatternID        string              `json:"patternId"`
+	Kind             string              `json:"kind"`
+	Title            string              `json:"title"`
+	Summary          string              `json:"summary"`
+	Priority         string              `json:"priority"`
+	Score            int                 `json:"score"`
+	RiskScore        float64             `json:"riskScore"`
+	Signal           string              `json:"signal"`
+	PrimaryEntityKey string              `json:"primaryEntityKey"`
+	EntityKeys       []string            `json:"entityKeys"`
+	RelatedAlertIDs  []string            `json:"relatedAlertIds"`
+	OccurredAt       time.Time           `json:"occurredAt"`
+	FirstSeen        time.Time           `json:"firstSeen"`
+	MemberCount      int                 `json:"memberCount"`
+	Stages           []model.StageHit    `json:"stages"`
+	Sources          []string            `json:"sources"`
+	Tactics          []string            `json:"tactics"`
 	Explanation      *ExplanationRequest `json:"explanation,omitempty"`
 }
 

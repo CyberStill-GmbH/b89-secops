@@ -72,6 +72,7 @@ import { createInternalGet } from './internal-client.js';
 import { buildReportTool, type StoredReport } from './report-tool.js';
 import { buildSocTools } from './soc-tools.js';
 import { connectMcpInProcess } from './mcp-protocol.js';
+import { startInvestigationAction } from './analyst-tools.js';
 
 /** Capacidades de lectura: haber una basta para usar a Bunny (las herramientas filtran el resto). */
 const READ_CAPABILITIES = [
@@ -493,10 +494,12 @@ export class AssistantController {
     const server = this.runtime.internalServer;
     if (!server) throw new ApiError('DEPENDENCY_DEGRADED', correlationId);
     const capabilities = [...actor.capabilities].sort();
-    const handlers = buildSocTools(createInternalGet(server, request, signal), {
-      roles: actor.roles,
-      capabilities,
-    });
+    const startInvestigation = startInvestigationAction(this.runtime, actor, correlationId, 'bunny');
+    const handlers = buildSocTools(
+      createInternalGet(server, request, signal),
+      { roles: actor.roles, capabilities },
+      startInvestigation ? { startInvestigation } : {},
+    );
     const connected = await connectMcpInProcess(handlers);
     // Informes: la herramienta escribe un archivo propio de la persona (no es una lectura MCP), así
     // que se añade aquí y no en `buildSocTools`. Disponible con alguna capacidad de lectura de

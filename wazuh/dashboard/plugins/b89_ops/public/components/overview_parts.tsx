@@ -124,6 +124,10 @@ export interface Metric {
   readonly value: React.ReactNode;
   readonly hint?: string;
   readonly emphasis?: 'danger' | 'warning';
+  /** Consulta KQL de las alertas que cuenta la métrica; la tarjeta la convierte en enlace. */
+  readonly drill?: { readonly kql: string; readonly from: string };
+  /** Destino del valor: la lista de alertas contadas, para investigarlas una a una. */
+  readonly href?: string;
 }
 
 export function MetricList({ metrics }: { metrics: readonly Metric[] }) {
@@ -134,7 +138,17 @@ export function MetricList({ metrics }: { metrics: readonly Metric[] }) {
         <div key={metric.label} className="b89Metrics__item" data-emphasis={metric.emphasis}>
           <dt>{metric.label}</dt>
           <dd className="b89Tabular" title={metric.hint}>
-            {metric.value}
+            {metric.href ? (
+              <a
+                className="b89Metrics__link"
+                href={metric.href}
+                aria-label={`${metric.label}: investigar estas alertas`}
+              >
+                {metric.value}
+              </a>
+            ) : (
+              metric.value
+            )}
           </dd>
         </div>
       ))}

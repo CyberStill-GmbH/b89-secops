@@ -103,6 +103,7 @@ import {
   type DemoAdminLogin,
 } from '../access/demo-admin-credentials.js';
 import type { AssistantService } from '../assistant/assistant-service.js';
+import type { AnalystHost } from './analyst-host.js';
 import type { InjectingServer } from '../assistant/internal-client.js';
 import { csrfTokenFor } from '../http/csrf.js';
 import { DEFAULT_RETURN_TO } from '../http/return-to.js';
@@ -143,8 +144,10 @@ export type RuntimeDirectory =
 import { NotificationDispatcher } from './notification-dispatcher.js';
 import type { NotificationChannelRegistry } from './notification-channels.js';
 import {
+  runAnalystDigest,
   runLowPriorityDigest,
   runSuppressedDigest,
+  type AnalystDigestInput,
   type MailChannel,
   type NotificationEnricher,
   type NotificationPolicyConfig,
@@ -371,6 +374,11 @@ export class SecOpsRuntime {
   public readonly localIssuer: LocalDevelopmentIssuer | undefined;
   /** Bunny (asistente de IA); `undefined` si `B89_BUNNY_ENABLED` no está activo. */
   public assistant: AssistantService | undefined;
+  /**
+   * Analista IA (docs/27): lista, ajustes y presupuesto siempre; bucle solo con
+   * `B89_ANALYST_ENABLED=true`. `undefined` si su almacén no está disponible.
+   */
+  public analyst: AnalystHost | undefined;
   /** Servidor HTTP para las lecturas internas de Bunny (lo asigna el arranque; ver bootstrap). */
   public internalServer: InjectingServer | undefined;
   public readonly networkPolicy: NetworkPolicy;
@@ -652,6 +660,13 @@ export class SecOpsRuntime {
    */
   private readonly claimTokens = new Map<string, string>();
 
+  /** El canal push apagado desde la consola no avisa a ningún dispositivo. */
+  private pushGate(
+    inner: NonNullable<DispatchDependencies['devices']>,
+  ): NonNullable<DispatchDependencies['devices']> {
+    return this.options.channels ? this.options.channels.devices(inner) : inner;
+  }
+
   public dispatchDependencies(lane: OutboxLane = 'all'): DispatchDependencies {
     return {
       outbox: this.outboxReader(lane),
@@ -668,7 +683,7 @@ export class SecOpsRuntime {
       ...(this.options.notificationPolicy ? { policy: this.options.notificationPolicy } : {}),
       ...(this.options.push
         ? {
-            devices: {
+            devices: this.pushGate({
               notify: (tenantId: string, subjectKeys: readonly string[]) =>
                 notifyDevices({
                   store: this.options.push!.store,
@@ -677,7 +692,7 @@ export class SecOpsRuntime {
                   subjectKeys,
                   now: () => this.now(),
                 }),
-            },
+            }),
           }
         : {}),
     };
@@ -751,6 +766,8 @@ export class SecOpsRuntime {
     }
     if (!ingested.value.created) return 'duplicate';
     this.dispatcher.kick();
+    // Después del commit, nunca dentro de la transacción: un fallo del analista solo se registra.
+    this.analyst?.alertCreated(ingested.value.alert);
     return 'promoted';
   }
 
@@ -925,6 +942,24 @@ export class SecOpsRuntime {
     };
     await runSuppressedDigest(dependencies);
     await runLowPriorityDigest(dependencies);
+  }
+
+  /** Resumen diario del Analista IA por el mismo canal y evidencia que los demás resúmenes. */
+  public async sendAnalystDigest(input: AnalystDigestInput): Promise<void> {
+    await runAnalystDigest(
+      {
+        tenantId: this.tenantId,
+        attempts: this.notifications,
+        transport: this.transport,
+        audit: this.soc.audit,
+        clock: { now: () => this.now() },
+        consoleBaseUrl: this.options.access.consoleBaseUrl,
+        ...(this.options.notificationPolicy ? { policy: this.options.notificationPolicy } : {}),
+        ...(this.options.recipients ? { recipients: this.options.recipients } : {}),
+        ...(this.options.mail ? { mail: this.options.mail } : {}),
+      },
+      input,
+    );
   }
 
   /** Token CSRF de la sesión: se entrega en `GET /api/auth/session` y se exige al mutar. */

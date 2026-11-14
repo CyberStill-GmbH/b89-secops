@@ -152,6 +152,75 @@ describe('operations/health · estados', () => {
     ]);
   });
 
+  it('degrada el SOC si Teams no está configurado o ningún canal puede entregar un P1', () => {
+    const base = {
+      persistence: 'postgres' as const,
+      dispatcherRunning: true,
+      outbox: {
+        pending: 0,
+        processing: 0,
+        oldestPendingAt: null,
+        expiredProcessing: 0,
+        oldestExpiredProcessingLeaseUntil: null,
+      },
+      notificationsByStatus: {},
+    };
+    const channel = (id: string, configured: boolean, enabled: boolean) => ({
+      id,
+      configured,
+      enabled,
+      setup: !configured ? 'configure' : !enabled ? 'enable' : 'ready',
+    });
+    // Sin registro de canales no se opina.
+    expect(socSection(base, AT).notifications.channels).toBeNull();
+    const fresh = socSection(
+      {
+        ...base,
+        notificationChannels: [
+          channel('teams', false, false),
+          channel('email', false, false),
+          channel('push', true, true),
+        ],
+      },
+      AT,
+    );
+    expect(fresh.status).toBe('DEGRADED');
+    // El push a navegadores no cuenta como entrega de un P1.
+    expect(fresh.degradedReasons).toEqual([
+      'NOTIFICATION_TEAMS_NOT_CONFIGURED',
+      'NOTIFICATION_NO_P1_CHANNEL',
+    ]);
+    expect(fresh.notifications.channels).toHaveLength(3);
+    expect(
+      socSection(
+        {
+          ...base,
+          notificationChannels: [channel('teams', false, false), channel('email', true, true)],
+        },
+        AT,
+      ).degradedReasons,
+    ).toEqual(['NOTIFICATION_TEAMS_NOT_CONFIGURED']);
+    // Configurado pero apagado: Teams existe, pero nadie entrega.
+    expect(
+      socSection(
+        {
+          ...base,
+          notificationChannels: [channel('teams', true, false), channel('email', false, false)],
+        },
+        AT,
+      ).degradedReasons,
+    ).toEqual(['NOTIFICATION_NO_P1_CHANNEL']);
+    expect(
+      socSection(
+        {
+          ...base,
+          notificationChannels: [channel('teams', true, true), channel('email', false, false)],
+        },
+        AT,
+      ).status,
+    ).toBe('OK');
+  });
+
   it('degrada el SOC si en la ventana hubo intentos fallidos, indeterminados o por fallback', () => {
     const section = socSection(
       {

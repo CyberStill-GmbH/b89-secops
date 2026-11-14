@@ -41,6 +41,20 @@ const ok = () =>
   new Response(JSON.stringify({ access_token: TOKEN, expires_in: 3600 }), { status: 200 });
 
 describe('token de workload por client credentials', () => {
+  it('refreshes rejected tokens once, coalesces failures and preserves a newer cached token', async () => {
+    const newer = TOKEN + '-renewed';
+    const { instance, bodies } = source(
+      [ok, () => new Response(JSON.stringify({ access_token: newer, expires_in: 3600 }))],
+      () => 0,
+    );
+    await instance.token();
+    expect(
+      await Promise.all([instance.refreshRejected(TOKEN), instance.refreshRejected(TOKEN)]),
+    ).toEqual([newer, newer]);
+    expect(await instance.refreshRejected(TOKEN)).toBe(newer);
+    expect(await instance.refreshRejected(newer)).toBeNull();
+    expect(bodies).toHaveLength(2);
+  });
   it('pide con client credentials y reutiliza el token hasta el margen de vencimiento', async () => {
     let now = 0;
     const { instance, bodies } = source([ok, ok], () => now);

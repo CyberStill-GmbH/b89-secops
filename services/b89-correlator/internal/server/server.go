@@ -208,6 +208,15 @@ func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 		ready = 1
 	}
 	gauge("b89_correlator_ready", "1 when backfill, upstream polling, and feedback refresh are ready", ready)
+	pending := 0.0
+	if readiness.PollWindowPending {
+		pending = 1
+	}
+	gauge("b89_correlator_poll_window_pending", "1 when a fixed poll window still has unread or failed pages", pending)
+	if readiness.CoverageLagSecs != nil {
+		gauge("b89_correlator_coverage_lag_seconds", "Seconds between the polling target and the last completely read window; not source delivery latency", *readiness.CoverageLagSecs)
+	}
+	counter("b89_correlator_poll_yields_total", "Poll batches that exhausted their page budget and preserved a continuation", s.Runner.C.PollYields.Load())
 	feedbackReady := 0.0
 	if readiness.FeedbackReady {
 		feedbackReady = 1

@@ -158,6 +158,50 @@ y relanzando `setup-ingestion.sh` + recrear `api` y `wazuh-gateway`. La clave de
 cambian en `demo-accounts.txt` borrando la línea `B89_DEMO_ACCOUNTS` de `api.env` antes de
 redesplegar (**por verificar** de punta a punta).
 
+### Inicialización de canales de aviso
+
+Procedimiento para un nodo nuevo o para activar un canal (detalle en
+[18 · Integraciones](18-integraciones.md#inicialización-de-canales-de-aviso)):
+
+1. En `/opt/b89/secrets/services.env` deja, si existen, `B89_TEAMS_WORKFLOW_URL` (webhook del
+   Workflow; es una credencial) y `B89_ALERT_MAIL_SENDER` (buzón remitente del respaldo por correo).
+2. Ejecuta `deploy-host.sh`: copia ambas a `secrets/api.env` y registra solo si están o faltan.
+   La migración `20261113120000_notification_channel_revision` debe estar aplicada antes de que
+   arranque el API nuevo (la aplica el migrador del despliegue).
+3. Al arrancar, el API crea la fila de cada canal que no la tenga (`system:bootstrap`, auditado
+   como `notifications.channel.initialized`) y escribe una línea `notifications.channel.status`
+   por canal. Compruébalo sin exponer secretos:
+   en los logs del servicio `api` del compose, filtra `notifications.channel` (**por verificar**
+   en el nodo: aún no se ha desplegado). `setup` indica lo que falta: `configure`, `enable`, `verify` o `ready`.
+   `notifications.channels.no_p1_delivery` significa que ni Teams ni correo pueden entregar un P1.
+4. En la consola, **Notificaciones → Canales**: sigue la guía «Puesta en marcha de Microsoft
+   Teams» (configurar → activar → enviar prueba → verificar la tarjeta en el canal). «Aceptada por
+   el proveedor» es el HTTP 2xx de Microsoft, no la publicación ni la lectura.
+5. `GET /api/operations/health` (sección `soc`) deja de reportar
+   `NOTIFICATION_TEAMS_NOT_CONFIGURED` y `NOTIFICATION_NO_P1_CHANNEL`.
+
+La base manda sobre el entorno: una vez creada la fila, redesplegar con otra URL en
+`services.env` **no** reemplaza el webhook ni reactiva un canal apagado; se cambia desde la consola.
+
+### Activación del Analista IA
+
+Apagado por defecto. Detalle en [27 · Implementación](27-aisoc-mcp-evaluacion-y-plan.md#implementación-2026-11-14).
+
+1. Confirma que la migración `20261113130000_ai_investigations` está aplicada (la aplica el migrador
+   del despliegue). Sin ella y con el analista apagado, el API arranca y la consola muestra «no
+   habilitado»; con el analista activo, el API no arranca.
+2. Proveedor: el de Bunny (`B89_BUNNY_PROVIDER`, `B89_BUNNY_API_KEY` en `services.env`). No hay
+   secretos nuevos.
+3. En `api.env`: `B89_ANALYST_ENABLED=true` y, para usar modelo, `B89_ANALYST_DAILY_CEILING_USD`
+   (p. ej. `2`). Sin techo todo se resuelve con reglas deterministas (costo 0).
+4. Reinicia `api`; en los logs busca `analyst.started` (`inference=true|false`).
+5. Consola (administración de plataforma, sesión de menos de 30 min): **Analista IA →
+   Configuración** → activar, modo `shadow` primero, techo ≤ el del despliegue. Las personas que ya
+   tenían sesión deben volver a iniciarla para recibir `investigations.*`.
+6. Verifica `GET /api/ai-investigations/budget` y que aparezcan investigaciones en **Operación**.
+
+Rollback: `B89_ANALYST_ENABLED=false` y reiniciar `api`. La migración es aditiva; no se revierte.
+
 ## 6. Respaldos y restauración
 
 Sin IAM no hay DLM ni subida automática a S3 desde el host: los respaldos son **manuales** y su

@@ -309,3 +309,16 @@ La disponibilidad de configuración tiene estados distintos: comprobando, dispon
 - El archivo se guarda como artefacto (`assistant_artifacts`, bytea, dueño tenant + subject, vigencia de 24 h, tope de 25 MB y 20 por persona y día; purga cada 10 min). Descarga: `GET /api/assistant/artifacts/:id` (solo el dueño; otro caso 404 neutro; `content-disposition: attachment`, `nosniff`, `no-store`). Listado: `GET /api/assistant/artifacts`.
 - SSE de `/api/assistant/chat/stream`: evento `artifact` con la `ArtifactRef` en cuanto se guarda; la respuesta final y el historial incluyen `artifacts`.
 - Auditoría: `assistant.artifact.create` y `assistant.artifact.download` con id, tipo, formato, tamaño y hash; nunca el contenido. Al modelo solo vuelve `{ artifactId, filename, rows, pages }`.
+
+### Herramientas del Analista IA (2026-11-14)
+
+Mismo servidor MCP (`POST /api/assistant/mcp`) y mismo bucle de Bunny; no hay un segundo servidor.
+
+- `list_investigations`, `get_investigation_run`, `get_investigation_report`: lecturas `GET` de
+  `/api/ai-investigations` con la sesión de la persona; requieren `investigations.read`.
+- `start_investigation {alertId}`: **acción** (encola una investigación manual idempotente);
+  requiere `investigations.run`, se publica con `readOnlyHint: false` y su descripción obliga a
+  pedir confirmación explícita antes de usarla. Auditada como `ai.analyst.investigation.requested`
+  (`via: mcp|bunny`). Con el analista apagado responde un error legible y no encola.
+- El expediente es dato, no instrucción. Detalle y guardas en
+  [27 · Implementación](27-aisoc-mcp-evaluacion-y-plan.md#implementación-2026-11-14).

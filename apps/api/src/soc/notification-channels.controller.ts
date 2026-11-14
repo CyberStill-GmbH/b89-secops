@@ -6,6 +6,10 @@
  * - `POST /api/notifications/channels/:id/test`   envía una prueba rotulada y devuelve el resultado.
  * - `POST /api/notifications/channels/:id/enable|disable`.
  *
+ * `PUT teams` y `enable|disable` aceptan `expectedRevision` (la `revision` del listado): si la
+ * fila cambió entretanto responden `STATE_CONFLICT` sin escribir. Cada ítem trae `setup` y
+ * `needsSetup` para la puesta en marcha.
+ *
  * Las mutaciones exigen sesión, CSRF, la capability `notifications.manage` (solo
  * `b89.platform.admin`) y un inicio de sesión reciente (`STEP_UP_REQUIRED` si la sesión tiene más
  * de `RECENT_AUTH_MS`): el BFF no recibe `auth_time`, así que la edad de la sesión es la prueba
@@ -27,6 +31,20 @@ import { SECOPS_RUNTIME } from './tokens.js';
 /** Edad máxima de la sesión para cambiar un canal. */
 export const RECENT_AUTH_MS = 30 * 60_000;
 const TEST_TITLE = '[B89 SOC] Prueba de notificación';
+
+/**
+ * `expectedRevision` es opcional (clientes anteriores no lo envían); si viene, debe ser un entero
+ * no negativo y coincidir con la revisión guardada o la mutación responde `STATE_CONFLICT`.
+ */
+function expectedRevisionOf(body: unknown, correlationId: string): number | undefined {
+  const value =
+    body && typeof body === 'object' ? (body as Record<string, unknown>)['expectedRevision'] : undefined;
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    throw new ApiError('VALIDATION_FAILED', correlationId, ['expectedRevision']);
+  }
+  return value;
+}
 
 function channelIdOf(value: string, correlationId: string): ChannelId {
   const id = CHANNEL_IDS.find((candidate) => candidate === value);
@@ -99,10 +117,12 @@ export class NotificationChannelsController {
     const registry = this.registry(correlationId);
     const raw =
       body && typeof body === 'object' ? (body as Record<string, unknown>)['webhookUrl'] : undefined;
-    const result = await registry.setTeamsUrl(raw, actor.subjectId);
+    const expectedRevision = expectedRevisionOf(body, correlationId);
+    const result = await registry.setTeamsUrl(raw, actor.subjectId, expectedRevision);
     if (!result.ok) {
       await this.audit(actor, correlationId, 'notifications.channel.webhook_rejected', 'teams', 'failed', { code: result.code }, result.code);
       if (result.code === 'ENCRYPTION_KEY_MISSING') throw new ApiError('DEPENDENCY_DEGRADED', correlationId);
+      if (result.code === 'REVISION_CONFLICT') throw new ApiError('STATE_CONFLICT', correlationId);
       throw new ApiError('VALIDATION_FAILED', correlationId, [`webhookUrl:${result.code}`]);
     }
     await this.audit(actor, correlationId, 'notifications.channel.webhook_updated', 'teams', 'succeeded', {
@@ -113,19 +133,38 @@ export class NotificationChannelsController {
   }
 
   @Post(':id/enable')
-  public enable(@Req() request: IncomingRequest, @Param('id') id: string) {
-    return this.toggle(request, id, true);
+  public enable(@Req() request: IncomingRequest, @Param('id') id: string, @Body() body?: unknown) {
+    return this.toggle(request, id, true, body);
   }
 
   @Post(':id/disable')
-  public disable(@Req() request: IncomingRequest, @Param('id') id: string) {
-    return this.toggle(request, id, false);
+  public disable(@Req() request: IncomingRequest, @Param('id') id: string, @Body() body?: unknown) {
+    return this.toggle(request, id, false, body);
   }
 
-  private async toggle(request: IncomingRequest, id: string, enabled: boolean) {
+  private async toggle(request: IncomingRequest, id: string, enabled: boolean, body: unknown) {
     const { actor, correlationId } = await this.manager(request);
     const channelId = channelIdOf(id, correlationId);
-    const view = await this.registry(correlationId).setEnabled(channelId, enabled, actor.subjectId);
+    const expectedRevision = expectedRevisionOf(body, correlationId);
+    const change = await this.registry(correlationId).setEnabled(
+      channelId,
+      enabled,
+      actor.subjectId,
+      expectedRevision,
+    );
+    if (!change.ok) {
+      await this.audit(
+        actor,
+        correlationId,
+        `notifications.channel.${enabled ? 'enable' : 'disable'}_rejected`,
+        channelId,
+        'failed',
+        { code: change.code },
+        change.code,
+      );
+      throw new ApiError('STATE_CONFLICT', correlationId);
+    }
+    const view = change.view;
     await this.audit(
       actor,
       correlationId,
@@ -143,6 +182,7 @@ export class NotificationChannelsController {
     const channelId = channelIdOf(id, correlationId);
     const registry = this.registry(correlationId);
     const at = this.runtime.now();
+    const expectedRevision = registry.view(channelId).revision;
     let evidence: DeliveryEvidence;
     if (channelId === 'teams') {
       const attemptId = randomUUID();
@@ -216,7 +256,7 @@ export class NotificationChannelsController {
         reason: delivered > 0 ? null : 'NO_DEVICES',
       };
     }
-    await registry.recordOutcome(channelId, evidence, true);
+    await registry.recordOutcome(channelId, evidence, true, expectedRevision);
     await this.audit(
       actor,
       correlationId,

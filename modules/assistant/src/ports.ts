@@ -25,6 +25,11 @@ export interface AssistantTool {
   readonly label: string;
   /** Etiqueta según la entrada («Generando informe PDF»); por defecto `label`. */
   labelFor?(input: ToolInput): string;
+  /**
+   * `false`: la herramienta tiene un efecto (p. ej. encolar una investigación). Sin el campo se
+   * considera de solo lectura; el servidor MCP lo publica como `readOnlyHint`.
+   */
+  readonly readOnly?: boolean;
   run(input: ToolInput, signal?: AbortSignal): Promise<ToolOutcome>;
 }
 

@@ -67,4 +67,9 @@ Volúmenes antes/después: ver [§ Medición](#medición).
 
 ## Medición
 
+Evaluación reproducible del correlador en Docker, 2026-11-13:
+[resultados, evidencia y límites](evidence/2026-11-13/README.md). Base: 62 pruebas/subpruebas;
+candidato: 83; ambas sin fallos con `-race`. Los controles sintéticos de ruido pasan en ambas.
+No se demostró reducción adicional de FP; falta corpus real adjudicado y predicciones comparables.
+
 Se completa después de cada despliegue con la consulta de volumen por regla (24 h comparables).

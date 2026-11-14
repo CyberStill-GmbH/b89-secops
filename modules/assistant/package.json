@@ -18,6 +18,11 @@
       "types": "./src/infrastructure/postgres-artifact-store.ts",
       "development": "./src/infrastructure/postgres-artifact-store.ts",
       "default": "./dist/infrastructure/postgres-artifact-store.js"
+    },
+    "./postgres-investigations": {
+      "types": "./src/infrastructure/postgres-investigation-store.ts",
+      "development": "./src/infrastructure/postgres-investigation-store.ts",
+      "default": "./dist/infrastructure/postgres-investigation-store.js"
     }
   },
   "scripts": {

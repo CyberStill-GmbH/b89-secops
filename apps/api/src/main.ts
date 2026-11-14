@@ -138,10 +138,48 @@ export async function main(): Promise<void> {
           correlationId: diagnostic.correlationId,
           ...(diagnostic.code ? { detail: diagnostic.code } : {}),
         }),
+      // Analista IA: códigos, etapas e ids ya saneados; nunca prompts ni evidencia.
+      (event, fields) =>
+        log(
+          event,
+          typeof fields['code'] === 'string' ? fields['code'] : undefined,
+          Object.fromEntries(
+            Object.entries(fields)
+              .filter(([key]) => key !== 'code')
+              .map(([key, value]) => [key, String(value)]),
+          ),
+        ),
     );
     // Solo el modo (`memory` o `postgres`), nunca datos de conexión.
     log(`soc.persistence.${runtime.persistence}`);
     log(`ingestion.source.${runtime.ingestion}`);
+    // Una línea por canal de aviso: estado y paso de puesta en marcha pendiente. Nunca el destino.
+    for (const channel of runtime.notificationChannels) {
+      log(
+        'notifications.channel.status',
+        channel.setup === 'ready' ? undefined : `CHANNEL_SETUP_${channel.setup.toUpperCase()}`,
+        {
+          channel: channel.channel,
+          status: channel.status,
+          setup: channel.setup,
+          enabled: String(channel.enabled),
+          configured: String(channel.configured),
+          source: channel.source,
+          revision: String(channel.revision),
+          initialized: channel.initialized,
+          ...(channel.secretSkipped ? { secretSkipped: channel.secretSkipped } : {}),
+        },
+      );
+    }
+    if (
+      !runtime.notificationChannels.some(
+        (channel) => channel.channel !== 'push' && channel.enabled && channel.configured,
+      )
+    ) {
+      log('notifications.channels.no_p1_delivery', 'NOTIFICATION_NO_P1_CHANNEL', {
+        warning: 'ningún canal (Teams o correo) puede entregar un P1; solo queda la consola',
+      });
+    }
     // Advertencia visible: la excepción demo de contraseña rebaja la política de autenticación.
     if (runtime.demoAdminLoginUntil) {
       const until = runtime.demoAdminLoginUntil.toISOString();

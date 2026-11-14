@@ -66,6 +66,12 @@ export const NAV_PLACEMENT: Readonly<Record<string, NavPlacement>> = {
   'b89-sources': { category: 'monitoring', order: 40, title: 'Salud de fuentes' },
   // Investigación
   'b89-incidents': { category: 'investigation', order: 10, title: 'Incidentes' },
+  'b89-ai-analyst': {
+    category: 'investigation',
+    order: 15,
+    title: 'Analista IA',
+    tooltip: 'Investigación automática de alertas, con evidencia y costo estimado',
+  },
   'threat-hunting': { category: 'investigation', order: 20, title: 'Threat Hunting' },
   'data-explorer': { category: 'investigation', order: 30, title: 'Discover' },
   discover: { category: 'investigation', order: 30, title: 'Discover' },

@@ -23,19 +23,25 @@ import {
 import {
   CAPABILITIES,
   HealthTone,
-  NOTIFICATION_CHANNEL_LABEL,
-  NotificationChannel,
   NotificationChannelState,
   NotificationChannelTest,
   NotificationChannelView,
 } from '../../common';
 import { B89ApiError } from '../api/client';
 import {
+  channelsDeliveryWarning,
+  channelsLoadProblem,
   channelTestSuccessLabel,
   normalizeChannelTest,
   normalizeChannelsResponse,
 } from './channels_contract';
-import { channelDestinationSummary } from './channels_display';
+import {
+  channelDestinationSummary,
+  channelHint,
+  channelName,
+  isConsoleChannel,
+} from './channels_display';
+import { TeamsSetupGuide, teamsSetupStep } from './channels_setup';
 import { useConsole } from './console_context';
 import { webhookProblem } from './notification_groups';
 import { EmptyLine, ErrorCallout, HealthMark, Mono, Timestamp, useAsync } from './primitives';
@@ -57,16 +63,36 @@ const STATE: Record<NotificationChannelState, { label: string; tone: HealthTone 
   unknown: { label: 'Sin una prueba reciente', tone: 'neutral' },
 };
 
-const CHANNEL_HINT: Record<NotificationChannel, string> = {
-  teams: 'Envía avisos al canal del SOC mediante un flujo de Workflows en Microsoft Teams.',
-  fallback_email:
-    'Envía un correo al buzón del SOC si Teams no confirma. El destino se configura en el servicio.',
-  manual_console: 'Bandeja interna de B89. Siempre disponible como último canal de respaldo.',
-};
+/** Estado de carga que no es un error con reintento: sin permiso o gestión no servida. */
+export function ChannelsUnavailable({ problem }: { problem: 'forbidden' | 'unavailable' }) {
+  return problem === 'forbidden' ? (
+    <EuiCallOut
+      size="s"
+      iconType="lock"
+      title="Tu cuenta no tiene permiso para ver los canales de notificación."
+    >
+      <p>Requiere la capacidad de lectura de notificaciones. La bandeja no cambia.</p>
+    </EuiCallOut>
+  ) : (
+    <EuiCallOut
+      size="s"
+      color="warning"
+      iconType="alert"
+      title="La API B89 no está sirviendo la gestión de canales."
+    >
+      <p>
+        Tu cuenta sí puede verla, así que no es un problema de permisos: la versión desplegada de
+        la API no publica GET /api/notifications/channels o su registro de canales no inició. La
+        bandeja sigue funcionando; avisa al equipo de plataforma.
+      </p>
+    </EuiCallOut>
+  );
+}
 
 export function ChannelsPanel() {
   const { api, can, notifications } = useConsole();
   const manage = can(CAPABILITIES.notificationsManage);
+  const canRead = can(CAPABILITIES.notificationsRead);
   const loaded = useAsync(
     async () => normalizeChannelsResponse(await api.get<unknown>('/notifications/channels')),
     [api],
@@ -79,9 +105,7 @@ export function ChannelsPanel() {
   );
   const [error, setError] = useState<unknown>(null);
 
-  const unavailable =
-    loaded.error instanceof B89ApiError &&
-    (loaded.error.status === 404 || loaded.error.code === 'RESOURCE_UNAVAILABLE');
+  const loadProblem = channelsLoadProblem(loaded.error, canRead);
 
   const runTest = async (channel: NotificationChannelView) => {
     setBusy(`test-${channel.id}`);
@@ -113,11 +137,13 @@ export function ChannelsPanel() {
         channel.revision !== undefined ? { expectedRevision: channel.revision } : {},
       );
       notifications.toasts.addSuccess({
-        title: `${NOTIFICATION_CHANNEL_LABEL[channel.id]} ${enabled ? 'activado' : 'desactivado'}`,
+        title: `${channelName(channel)}: ${enabled ? 'activado' : 'desactivado'}`,
       });
       loaded.reload();
     } catch (failure) {
       setError(failure);
+      // STATE_CONFLICT: otra persona cambió el canal; se recarga para traer la revisión vigente.
+      loaded.reload();
     } finally {
       setBusy(null);
       setToggle(null);
@@ -125,20 +151,42 @@ export function ChannelsPanel() {
   };
 
   if (loaded.loading && !loaded.data) return <EuiLoadingContent lines={4} />;
-  if (unavailable) {
-    return (
-      <EmptyLine>
-        La gestión de canales todavía no está publicada en la API B89 (GET
-        /api/notifications/channels). La bandeja sigue funcionando.
-      </EmptyLine>
-    );
-  }
+  if (loadProblem) return <ChannelsUnavailable problem={loadProblem} />;
   if (loaded.error) return <ErrorCallout error={loaded.error} onRetry={loaded.reload} />;
   const channels = loaded.data?.channels ?? [];
   const teams = channels.find((channel) => channel.id === 'teams') ?? null;
+  const teamsTest = tests.teams;
+  // Puesta en marcha: mientras Teams no esté configurado, activo y con un envío aceptado; y tras
+  // una prueba aceptada en esta sesión, para recordar la verificación en el propio canal.
+  const showSetup =
+    teams !== null &&
+    (teams.needsSetup === true ||
+      teamsSetupStep(teams) !== 'verify' ||
+      (teamsTest !== undefined && !('error' in teamsTest) && teamsTest.ok));
+  const deliveryWarning = channelsDeliveryWarning(channels);
 
   return (
     <>
+      {deliveryWarning && (
+        <>
+          <EuiCallOut size="s" color="warning" iconType="alert" title={deliveryWarning} />
+          <EuiSpacer size="m" />
+        </>
+      )}
+      {showSetup && teams && (
+        <>
+          <TeamsSetupGuide
+            channel={teams}
+            canManage={manage}
+            busy={busy !== null}
+            onConfigure={() => setEditing(true)}
+            onEnable={() => setToggle(teams)}
+            onTest={() => runTest(teams)}
+            onRefresh={loaded.reload}
+          />
+          <EuiSpacer size="m" />
+        </>
+      )}
       {!manage && (
         <>
           <EuiCallOut
@@ -162,17 +210,28 @@ export function ChannelsPanel() {
           {channels.map((channel) => {
             const state = STATE[channel.state] ?? STATE.unconfigured;
             const test = tests[channel.id];
+            const consoleFallback = isConsoleChannel(channel);
             return (
-              <li key={channel.id} className="b89Channel" data-state={channel.state}>
+              <li
+                key={channel.apiId ?? channel.id}
+                className="b89Channel"
+                data-state={channel.state}
+              >
                 <div className="b89Channel__head">
-                  <h3>{NOTIFICATION_CHANNEL_LABEL[channel.id] ?? channel.id}</h3>
+                  <h3>{channelName(channel)}</h3>
                   <HealthMark tone={state.tone} label={state.label} />
                 </div>
-                <p className="b89CellMeta">{CHANNEL_HINT[channel.id]}</p>
-                {channel.enabled && !channel.configured && channel.id !== 'manual_console' && (
+                <p className="b89CellMeta">{channelHint(channel)}</p>
+                {!channel.configured && !consoleFallback && (
                   <p className="b89CellMeta" role="status">
-                    El canal está activado, pero falta configurar el destino. No podrá entregar
-                    avisos hasta que esté listo.
+                    {channel.id === 'teams'
+                      ? 'Falta el webhook de Teams. Hasta guardarlo, este canal no entrega avisos.'
+                      : 'Falta la configuración del servicio (la define el despliegue). Hasta entonces, este canal no entrega avisos.'}
+                  </p>
+                )}
+                {channel.configured && !channel.enabled && !consoleFallback && (
+                  <p className="b89CellMeta" role="status">
+                    Configurado, pero desactivado: no entrega avisos hasta que se active.
                   </p>
                 )}
                 <dl className="b89KeyValues">
@@ -225,7 +284,7 @@ export function ChannelsPanel() {
                   </EuiText>
                 )}
                 {manage &&
-                  (channel.id === 'manual_console' ? (
+                  (consoleFallback ? (
                     <p className="b89CellMeta b89Channel__alwaysOn" role="note">
                       Este canal de respaldo siempre está disponible y no se puede desactivar.
                     </p>
@@ -233,7 +292,7 @@ export function ChannelsPanel() {
                     <div
                       className="b89Channel__actions"
                       role="group"
-                      aria-label={`Acciones para ${NOTIFICATION_CHANNEL_LABEL[channel.id]}`}
+                      aria-label={`Acciones para ${channelName(channel)}`}
                     >
                       {channel.id === 'teams' && (
                         <EuiButton size="s" onClick={() => setEditing(true)}>
@@ -268,6 +327,7 @@ export function ChannelsPanel() {
         <WebhookModal
           channel={teams}
           onClose={() => setEditing(false)}
+          onStale={loaded.reload}
           onSaved={() => {
             setEditing(false);
             notifications.toasts.addSuccess({ title: 'Webhook de Teams actualizado' });
@@ -277,7 +337,7 @@ export function ChannelsPanel() {
       )}
       {toggle && (
         <EuiConfirmModal
-          title={`¿${toggle.enabled ? 'Desactivar' : 'Activar'} ${NOTIFICATION_CHANNEL_LABEL[toggle.id]}?`}
+          title={`¿${toggle.enabled ? 'Desactivar' : 'Activar'} ${channelName(toggle)}?`}
           onCancel={() => setToggle(null)}
           onConfirm={() => setEnabled(toggle, !toggle.enabled)}
           cancelButtonText="Cancelar"
@@ -299,10 +359,13 @@ function WebhookModal({
   channel,
   onClose,
   onSaved,
+  onStale,
 }: {
   channel: NotificationChannelView;
   onClose: () => void;
   onSaved: () => void;
+  /** El canal cambió en el servidor: recargar para reintentar con la revisión vigente. */
+  onStale: () => void;
 }) {
   const { api } = useConsole();
   const [value, setValue] = useState('');
@@ -322,6 +385,7 @@ function WebhookModal({
       onSaved();
     } catch (failure) {
       setError(failure);
+      if (failure instanceof B89ApiError && failure.code === 'STATE_CONFLICT') onStale();
     } finally {
       setBusy(false);
     }

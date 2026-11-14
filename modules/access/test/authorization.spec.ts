@@ -42,6 +42,29 @@ describe('C-18 · capabilities por rol y scope', () => {
     expect(administrator).toContain('secrets.write');
   });
 
+  it('Analista IA: leer y pedir para el SOC; configurar solo la administración de plataforma', () => {
+    for (const role of ['b89.soc.analyst', 'b89.soc.lead', 'b89.platform.admin']) {
+      const granted = capabilitiesForRoles([role]);
+      expect(granted).toContain('investigations.read');
+      expect(granted).toContain('investigations.run');
+    }
+    expect(capabilitiesForRoles(['b89.platform.admin'])).toContain('investigations.configure');
+    for (const role of ['b89.soc.analyst', 'b89.soc.lead', 'b89.auditor']) {
+      expect(capabilitiesForRoles([role])).not.toContain('investigations.configure');
+    }
+    expect(capabilitiesForRoles(['b89.auditor'])).not.toContain('investigations.run');
+    // El scope de lectura no basta para configurar ni para pedir.
+    expect(effectiveCapabilities(['b89.platform.admin'], ['soc.read'])).toContain(
+      'investigations.read',
+    );
+    expect(effectiveCapabilities(['b89.platform.admin'], ['soc.read'])).not.toContain(
+      'investigations.configure',
+    );
+    expect(effectiveCapabilities(['b89.platform.admin'], ['soc.read', 'soc.write'])).toContain(
+      'investigations.configure',
+    );
+  });
+
   it('no concede nada ante un rol desconocido', () => {
     expect(capabilitiesForRoles(['rol.inventado']).size).toBe(0);
     expect(capabilitiesForRoles([]).size).toBe(0);

@@ -72,8 +72,10 @@ export {
 } from './notification-content.js';
 export {
   DIGEST_GROUPS,
+  runAnalystDigest,
   runLowPriorityDigest,
   runSuppressedDigest,
+  type AnalystDigestInput,
   type DigestDependencies,
   type LowPriorityAlert,
 } from './notification-digest.js';

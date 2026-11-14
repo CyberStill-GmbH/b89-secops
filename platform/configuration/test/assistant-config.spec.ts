@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  ANALYST_VARIABLES,
   ASSISTANT_VARIABLES,
+  parseAnalystCeilingUsd,
+  parseAnalystRateCard,
   ConfigurationError,
   KNOWN_B89_VARIABLES,
   loadApiConfig,
@@ -115,5 +118,76 @@ describe('variables de informes de Bunny (B89_REPORTS_*)', () => {
       'CONFIG_REQUIRED_VALUE_MISSING',
       'B89_REPORTS_TOKEN',
     );
+  });
+
+const RATE_CARD = JSON.stringify({
+  version: 'test-2026-11',
+  tiers: {
+    economy: {
+      inputMicroUsdPerMTok: 100_000,
+      outputMicroUsdPerMTok: 500_000,
+      cacheReadMicroUsdPerMTok: 10_000,
+      cacheWriteMicroUsdPerMTok: 125_000,
+    },
+    advanced: {
+      inputMicroUsdPerMTok: 2_000_000,
+      outputMicroUsdPerMTok: 10_000_000,
+      cacheReadMicroUsdPerMTok: 100_000,
+      cacheWriteMicroUsdPerMTok: 2_500_000,
+    },
+  },
+});
+
+describe('variables del Analista IA en platform/configuration', () => {
+  it('todas son conocidas y un despliegue completo arranca', () => {
+    for (const name of ANALYST_VARIABLES) expect(KNOWN_B89_VARIABLES.has(name)).toBe(true);
+    expect(() =>
+      loadApiConfig({
+        B89_PROFILE: 'production',
+        B89_BUNNY_PROVIDER: 'anthropic',
+        B89_BUNNY_API_KEY: 'sk-ant-api03-test-value',
+        B89_ANALYST_ENABLED: 'true',
+        B89_ANALYST_ECONOMY_MODEL: 'claude-haiku-5-5',
+        B89_ANALYST_ADVANCED_MODEL: 'claude-sonnet-5-5',
+        B89_ANALYST_DAILY_CEILING_USD: '2.50',
+        B89_ANALYST_RATE_CARD: RATE_CARD,
+        B89_ANALYST_CONCURRENCY: '2',
+        B89_ANALYST_BACKLOG_SWEEP: 'false',
+      }),
+    ).not.toThrow();
+  });
+
+  it('apagado por defecto no exige nada', () => {
+    expect(() => loadApiConfig({ B89_PROFILE: 'test', B89_ANALYST_ENABLED: 'false' })).not.toThrow();
+  });
+
+  it('rechaza valores inválidos sin exponerlos', () => {
+    expectInvalid({ B89_ANALYST_ENABLED: 'yes' }, 'CONFIG_VALUE_INVALID', 'B89_ANALYST_ENABLED');
+    expectInvalid({ B89_ANALYST_BACKLOG_SWEEP: '1' }, 'CONFIG_VALUE_INVALID', 'B89_ANALYST_BACKLOG_SWEEP');
+    expectInvalid({ B89_ANALYST_ECONOMY_MODEL: 'a b' }, 'CONFIG_VALUE_INVALID', 'B89_ANALYST_ECONOMY_MODEL');
+    expectInvalid({ B89_ANALYST_CONCURRENCY: '5' }, 'CONFIG_VALUE_INVALID', 'B89_ANALYST_CONCURRENCY');
+    expectInvalid({ B89_ANALYST_CONCURRENCY: '0' }, 'CONFIG_VALUE_INVALID', 'B89_ANALYST_CONCURRENCY');
+    expectInvalid({ B89_ANALYST_DAILY_CEILING_USD: '0' }, 'CONFIG_VALUE_INVALID', 'B89_ANALYST_DAILY_CEILING_USD');
+    expectInvalid({ B89_ANALYST_DAILY_CEILING_USD: '-1' }, 'CONFIG_VALUE_INVALID', 'B89_ANALYST_DAILY_CEILING_USD');
+    expectInvalid({ B89_ANALYST_DAILY_CEILING_USD: '1001' }, 'CONFIG_VALUE_INVALID', 'B89_ANALYST_DAILY_CEILING_USD');
+    expectInvalid({ B89_ANALYST_RATE_CARD: '{"version":"x"}' }, 'CONFIG_VALUE_INVALID', 'B89_ANALYST_RATE_CARD');
+  });
+
+  it('activo con anthropic exige la clave de Bunny (no hay secreto propio)', () => {
+    expectInvalid(
+      { B89_ANALYST_ENABLED: 'true', B89_BUNNY_PROVIDER: 'anthropic' },
+      'CONFIG_REQUIRED_VALUE_MISSING',
+      'B89_BUNNY_API_KEY',
+    );
+  });
+
+  it('techo y tarifa se interpretan sin ambigüedad', () => {
+    expect(parseAnalystCeilingUsd('2.5')).toBe(2_500_000);
+    expect(parseAnalystCeilingUsd('0.000001')).toBe(1);
+    expect(parseAnalystCeilingUsd('1,5')).toBeUndefined();
+    expect(parseAnalystRateCard(RATE_CARD)?.tiers.economy.outputMicroUsdPerMTok).toBe(500_000);
+    const extra = JSON.parse(RATE_CARD) as Record<string, unknown>;
+    expect(parseAnalystRateCard(JSON.stringify({ ...extra, billing: true }))).toBeUndefined();
+    expect(parseAnalystRateCard('no-json')).toBeUndefined();
   });
 });

@@ -571,3 +571,25 @@ Se corrigió el HELP de Prometheus: `reviewCoverage` enumera también `duplicate
 - Runbooks alineados con el plan guardado y la publicación al EC2 existente mediante EC2 Instance Connect/`ship.sh`; el nodo se actualiza bajo su lock, sin crear una instancia duplicada. Se eliminó el comando local directo `terraform apply` de la guía PowerUser.
 - Validación local: suite de política de workflows 13/13 PASS, YAML parseado; typecheck OSD 2.19.6 PASS con el volumen Docker fijado; `go test ./...` y `gofmt` PASS en `golang:1.23.12-bookworm`; `git diff --check` PASS. La revisión de CI, OIDC efectivo, canario y runtime quedan pendientes.
 - **Despliegue:** no se ejecutó Terraform ni `ship.sh`. La identidad AWS de `.env` falló STS y los perfiles locales probados tampoco autenticaron; el servicio live conserva el release previamente documentado.
+
+## 2026-11-13 · Inicialización explícita de los canales de aviso (local, sin deploy)
+
+- **Arranque:** `NotificationChannelRegistry.initialize()` crea la fila de cada canal sin fila (`system:bootstrap`, auditada como `notifications.channel.initialized`, solo con máscara). Si el despliegue trae `B89_TEAMS_WORKFLOW_URL` y hay clave, la guarda cifrada; configurado ⇒ activo, sin configurar ⇒ apagado y visible como pendiente. Una fila existente no se toca (la base manda). Antes no se escribía nada y un canal sin configurar figuraba `enabled`.
+- **Visibilidad:** una línea de arranque `notifications.channel.status` por canal (sin destino) y `notifications.channels.no_p1_delivery`; `GET /api/operations/health` añade `NOTIFICATION_TEAMS_NOT_CONFIGURED` y `NOTIFICATION_NO_P1_CHANNEL`.
+- **Concurrencia:** migración `20261113120000_notification_channel_revision` (columna `revision`, aditiva). `PUT …/channels/teams` y `enable|disable` aceptan `expectedRevision` → `STATE_CONFLICT`. La salud de los envíos se guarda aparte: ya no reescribe la fila completa ni puede pisar un cambio de la consola hecho en otra réplica.
+- **Push:** el canal `push` apagado ya no avisa a dispositivos en el despacho.
+- **Consola (`b89_ops`):** guía «Puesta en marcha de Microsoft Teams» en la pestaña Canales, `push` como «Avisos al navegador» con activar/probar, aviso cuando ni Teams ni correo pueden entregar, y distinción entre falta de permiso y API que no sirve los canales.
+- **Despliegue:** `deploy-host.sh` copia `B89_ALERT_MAIL_SENDER` de `services.env` a `api.env` como el webhook de Teams. Sin variables `B89_*` nuevas.
+- **Validación local:** specs de API/SOAR/base/configuración y del plugin en verde; typecheck de API, `@b89/soar` y `@b89/database`. **Sin desplegar:** no se aplicó la migración a ninguna base real ni se probó contra Teams/Graph reales. Procedimiento en `docs/06` §5 y `docs/18`.
+
+## 2026-11-14 · Analista IA conectado al API (local, sin deploy)
+
+- Bucle del Analista IA dentro del API (apagado por defecto, `B89_ANALYST_*`), adaptador de Claude
+  sin reintentos, lector de evidencia con el alcance de Bunny sin modelo, acciones con la identidad
+  `svc:b89-ai-analyst`, escalación sin duplicados (asocia a incidente abierto del grupo en 72 h),
+  barrido de alertas e incidentes sin expediente, pedidos de revisión por el outbox
+  (`soc.alert.review_requested`) y resumen diario.
+- API `/api/ai-investigations` con el contrato de la consola; capacidades `investigations.read|run`
+  (analista, líder, admin) y `investigations.configure` (admin). Herramientas MCP del analista.
+- Política `b89-analyst-2026-11-14.1` (paquete con contexto ampliado). Sin commit; sin evidencia de
+  proveedor real. Ver docs/27 «Implementación (2026-11-14)».

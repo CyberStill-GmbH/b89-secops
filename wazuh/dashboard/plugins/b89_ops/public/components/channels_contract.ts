@@ -63,10 +63,42 @@ export function normalizeChannelsResponse(value: unknown): NotificationChannelsR
           ...(typeof row.updatedAt === 'string' ? { updatedAt: row.updatedAt } : {}),
           ...(typeof row.updatedBy === 'string' ? { updatedBy: row.updatedBy } : {}),
           ...(typeof row.revision === 'number' ? { revision: row.revision } : {}),
+          ...(typeof row.needsSetup === 'boolean' ? { needsSetup: row.needsSetup } : {}),
         },
       ];
     }),
   };
+}
+
+export type ChannelsLoadProblem = 'forbidden' | 'unavailable';
+
+/**
+ * The API answers 404/RESOURCE_UNAVAILABLE both when the caller lacks `notifications.read` and
+ * when the channel registry is not served. The session capability tells them apart; any other
+ * failure is a regular error with retry.
+ */
+export function channelsLoadProblem(error: unknown, canRead: boolean): ChannelsLoadProblem | null {
+  if (!isRecord(error)) return null;
+  if (error.status === 403) return 'forbidden';
+  if (error.status === 404 || error.code === 'RESOURCE_UNAVAILABLE') {
+    return canRead ? 'unavailable' : 'forbidden';
+  }
+  return null;
+}
+
+/**
+ * Critical notices leave through Teams and, if Teams does not confirm, through email. Browser
+ * push and the B89 inbox do not count as external delivery.
+ */
+export function channelsDeliveryWarning(
+  channels: readonly NotificationChannelView[],
+): string | null {
+  const external = channels.filter(
+    (channel) => channel.id === 'teams' || channel.id === 'fallback_email',
+  );
+  if (external.length === 0) return null;
+  if (external.some((channel) => channel.configured && channel.enabled)) return null;
+  return 'Ningún canal externo (Teams o correo) puede entregar avisos críticos ahora. Hasta configurarlo y activarlo, solo quedan en la bandeja de B89.';
 }
 
 export function normalizeChannelTest(value: unknown): NotificationChannelTest {

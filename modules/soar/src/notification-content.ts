@@ -483,7 +483,7 @@ export interface DigestLine {
 
 export interface DigestInput {
   readonly digestId: string;
-  readonly kind: 'suppressed' | 'low_priority';
+  readonly kind: 'suppressed' | 'low_priority' | 'ai_analyst';
   readonly from: string;
   readonly to: string;
   readonly lines: readonly DigestLine[];
@@ -497,10 +497,13 @@ export const DIGEST_REASON_LABELS: Readonly<Record<string, string>> = Object.fre
   grouped: 'agrupadas en un aviso previo',
   stale_backlog: 'atrasadas (procesadas tras una interrupción)',
   rate_limited: 'por encima del tope de avisos por hora',
-  digest: 'prioridad P3/P4',
+  digest: 'prioridad P3/P4 o revisión diferida del Analista IA',
 });
 
 function digestHeading(input: DigestInput): string {
+  if (input.kind === 'ai_analyst') {
+    return `Analista IA · resumen diario · ${input.total} caso(s) por revisar`;
+  }
   return input.kind === 'low_priority'
     ? `Resumen P3/P4 · ${input.total} alerta(s)`
     : `Resumen de alertas agrupadas · ${input.total} ocurrencia(s)`;

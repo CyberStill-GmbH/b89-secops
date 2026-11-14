@@ -757,3 +757,99 @@ En los navegadores con File System Access, el informe relacionado de investigaci
 Los grupos de correo por ID exacto limitan la lista exportada y el conjunto temporal a 100 destinatarios distintos por mensaje. El informe cuenta hasta 101 para señalar el exceso sin retener el resto; el indicador de recorte distingue una lista completa de un mínimo conocido. La fuente también puede limitar destinatarios por evento, así que no se presenta un total global del mensaje cuando el DTO señala truncamiento. PDF sigue siendo una vista HTML local que se completa por lotes y usa el diálogo de impresión del navegador; no se ofrece como descarga PDF server-side ni como PDF parcial en streaming.
 
 Verificación local de esta edición: suite `b89_ops` 21 archivos y 169 pruebas PASS; el typecheck OSD 2.19.6 pasó en Node 18.19.0 con las dependencias fijadas en el volumen Docker (`B89_TOOLS_DIR=/work/osd`); Prettier y `git diff --check` PASS. `go test ./...` pasó en `golang:1.23.12-bookworm`. Sin verificación visual ni despliegue del bundle.
+
+## 2026-11-13 · Flujo verificable de evidencia, investigación y respuesta
+
+**Estado inicial: auditoría del código y plan aprobado para implementación local.** Este bloque mejora
+la integridad de la investigación y la continuidad de respuesta; su aceptación en AWS requiere una
+prueba posterior al despliegue. El servicio Go es un correlador que consulta Wazuh Indexer; no sustituye
+el almacenamiento ni el motor de reglas de Wazuh.
+
+### Hallazgos y decisiones de implementación
+
+| Punto del flujo | Defecto observado | Corrección y criterio de aceptación |
+| --- | --- | --- |
+| Indexer → correlador Go | HTTP 200 parcial o sin estructura de resultados puede tratarse como consulta completa; al agotar páginas por poll se vuelve a comenzar sin cursor | Rechazar respuestas incompletas, mantener ventana/cursor entre polls y avanzar la marca de tiempo solo al terminar. Probar error parcial, recuperación y eventos con el mismo timestamp |
+| Outbox → aviso operativo | Con concurrencia uno, una excepción abandona los demás mensajes reclamados; el backoff parte del inicio de un envío lento | Aislar fallos por mensaje, conservar error observable y calcular el siguiente intento desde la finalización fallida. Probar tandas seriales/paralelas y timeout lento |
+| Bunny → expediente del equipo | Un gráfico toma el primer número de cada fila y puede mezclar métricas; un error de acceso puede parecer ausencia de evidencia | Selección explícita de métrica, coherencia de vista/PDF/XLSX, alcance visible, controles estables durante exportación y cancelación. No entregar un expediente parcial como completo |
+| Cliente MCP → consultas SOC | El endpoint externo no registra cada invocación de herramienta en la cadena de auditoría | Auditar autorización antes de consultar y resultado antes de devolver datos, con actor/correlación y nombre permitido; sin argumentos ni contenido. Si falla la auditoría, no devolver la evidencia |
+
+### Funcionalidad concreta: investigar una alerta con evidencia íntegra
+
+```mermaid
+flowchart LR
+  I[Wazuh Indexer] --> V{Respuesta íntegra}
+  V -->|No| R[Reintento sin avanzar cobertura]
+  R --> I
+  V -->|Sí| G[Correlación Go con ventana y cursor]
+  G --> A[Alerta y evidencia enlazada]
+  A --> O[Outbox durable]
+  O --> N[Aviso con resultado de canal]
+  N --> H[Acuse y revisión humana]
+  A --> B[Bunny con permisos del analista]
+  M[Cliente MCP autorizado] --> U[Auditoría de consulta]
+  U --> B
+  B --> E[Expediente con alcance y referencias]
+  E --> H
+```
+
+La persona inicia desde una alerta/evento citado, consulta el contexto disponible, distingue hechos
+de hipótesis y selecciona la métrica del gráfico. El expediente conserva el alcance de la consulta,
+referencias y limitaciones; un fallo de permisos o de dependencia interrumpe la exportación y permite
+reintentar. PDF continúa siendo la vista imprimible del navegador; Excel es OOXML real. El acuse de
+aviso registra la atención humana; una aceptación HTTP de Teams no equivale a lectura ni resuelve
+un incidente. El escalamiento sigue las políticas vigentes y su prueba operativa debe incluir un aviso
+sin acuse; este bloque no cambia arbitrariamente plazos ni destinatarios.
+
+### Precisión de detección y límites de la mejora
+
+Recuperar cobertura y evitar evidencia incompleta reduce decisiones apoyadas en datos defectuosos.
+Eso no demuestra un porcentaje de reducción de falsos positivos. No se cambian umbrales, severidad
+ni allowlists automáticamente. Para ajustar reglas se necesita un corpus adjudicado por analistas,
+separación temporal entre ajuste y evaluación, comparación por regla/fuente y conteo explícito de
+verdaderos positivos omitidos. El factor de agrupación del correlador no es precisión ni tasa de FP.
+Los grupos temporales por entidad no prueban causalidad ni hilo de correo.
+
+La entrega se valida por cuatro capas: pruebas de regresión del componente, revisión cruzada del
+contrato, pruebas locales de integración y canario autenticado en el servicio desplegado. Hasta
+completar la última capa, el resultado se describe como código local verificado y no como servicio
+renovado en AWS. Las limitaciones de checkpoint ante reinicio, índices en mutación, entrega de canal
+y generación de artefactos durables deben quedar registradas con el resultado final de las pruebas.
+
+### Resultado local de este bloque
+
+Implementados: validaci?n de respuestas completas y cursor continuable del correlador, estado
+`catching_up` y cobertura temporal; aislamiento de fallos por aviso y backoff desde el final del
+fallo; selecci?n coherente de m?trica, evidencia y alcance de informes Bunny. El checkpoint Go
+es en memoria: un reinicio reconstruye la ventana de backfill, no conserva un cursor durable.
+La paginaci?n sin snapshot no garantiza una vista inmutable del Indexer.
+
+Validaci?n ejecutada: `go test ./...` PASS en Go 1.23.12; SOAR 58/58 pruebas y typecheck PASS;
+plugin 185/185 pruebas y typecheck OSD (TypeScript 4.0.2, OUI 1.19.0, React 16.14) PASS;
+`git diff --check` PASS. La integraci?n PostgreSQL modificada no se ejecut? en este bloque.
+No hubo prueba visual autenticada ni env?o real a Teams. La auditor?a por invocaci?n MCP de la tabla
+anterior permanece como dise?o pendiente, sin implementaci?n. No se alteraron umbrales ni se
+midi? reducci?n de falsos positivos. Por instrucci?n del usuario, el despliegue queda a su cargo.
+
+## 2026-11-13 ? Atenci?n prioritaria visible por servicio
+
+Las tarjetas del resumen muestran directamente eventos altos/cr?ticos de las ?ltimas 24 horas,
+ordenados por nivel y fecha, con t?tulo, regla, equipo, hora y enlace al evento exacto en Discover.
+Incluyen filtro de cr?ticas (escala B89: nivel >= 12), b?squeda sobre filas cargadas y lista con
+scroll accesible. La consulta completa mantiene el servicio, severidad y ventana seleccionados.
+El bloque aparece tambi?n en las tarjetas de integraciones.
+
+El servidor OSD realiza una b?squeda adicional agregada para todas las tarjetas usando la identidad
+actual; solicita solo campos resumidos y hasta 100 eventos por servicio. El total independiente y el
+aviso de truncamiento evitan presentar esta vista como exhaustiva cuando supera 100. Wazuh incluye
+el conjunto SIEM y SharePoint puede estar tambi?n en M365: no deben sumarse las tarjetas como conjuntos
+excluyentes. Las cifras de Snyk conservan su sem?ntica de hallazgos; la lista nueva indica eventos 24 h.
+Un fallo parcial, timeout o falta de estructura no se muestra como cero. La ausencia de permiso y la
+indisponibilidad se distinguen. No se inventa estado de respuesta en eventos SIEM ni se equipara su
+severidad a la prioridad P1/P2 de la cola B89.
+
+La actualizaci?n utiliza el ciclo existente del resumen y su bot?n Actualizar. La lista completa abre
+Discover para paginar todos los resultados; el filtro de texto de la tarjeta solo busca los cargados.
+No se despliega por instrucci?n del usuario. Pendiente aceptaci?n visual autenticada en el entorno.
+
+Validaci?n local: 23 archivos, 193 pruebas aprobadas; typecheck OSD 2.19.6 con TypeScript 4.0.2, OUI 1.19.0 y React 16.14 aprobado; diff sin errores de espacios.

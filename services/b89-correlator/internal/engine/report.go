@@ -13,6 +13,7 @@ import (
 // Report is the replay / stats summary.
 type Report struct {
 	GeneratedAt  time.Time            `json:"generatedAt"`
+	Readiness    Readiness            `json:"readiness"`
 	Window       map[string]time.Time `json:"window"`
 	Observations map[string]any       `json:"observations"`
 	Entities     map[string]int       `json:"entities"`
@@ -99,6 +100,7 @@ func (r *Runner) BuildReport(from, to time.Time, top int, redact bool) Report {
 	}
 	return Report{
 		GeneratedAt: r.Now().UTC(),
+		Readiness:   r.Readiness(r.Now().UTC()),
 		Window:      map[string]time.Time{"from": from, "to": to},
 		Observations: map[string]any{
 			"total": stats.Observations, "duplicates": stats.Duplicates,

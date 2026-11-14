@@ -11,6 +11,8 @@ import {
   LevelBand,
   LevelCounts,
   OverviewResponse,
+  ServiceAttention,
+  ServiceId,
   PROVIDER_IDS,
   ProviderId,
   ProviderStats,
@@ -181,6 +183,63 @@ export function topEventsQuery(): Json {
       'agent.name',
     ],
   };
+}
+
+/** Bounded, per-service previews share one request and the caller's Indexer identity. */
+export function serviceAttentionQuery(): Json {
+  const filters: Json = { wazuh: { match_all: {} } };
+  for (const id of PROVIDER_IDS) filters[id] = groupFilter(PROVIDER_GROUP[id]);
+  return {
+    size: 0,
+    query: {
+      bool: {
+        filter: [
+          { range: { timestamp: { gte: 'now-24h', lte: 'now' } } },
+          { range: { 'rule.level': { gte: 8 } } },
+        ],
+      },
+    },
+    aggs: {
+      services: {
+        filters: { filters },
+        aggs: {
+          events: {
+            top_hits: {
+              size: 100,
+              sort: [{ 'rule.level': { order: 'desc' } }, { timestamp: { order: 'desc' } }],
+              _source: [
+                'timestamp',
+                'rule.id',
+                'rule.level',
+                'rule.description',
+                'rule.groups',
+                'agent.name',
+              ],
+            },
+          },
+        },
+      },
+    },
+  };
+}
+
+export function parseServiceAttention(body: unknown): Partial<Record<ServiceId, ServiceAttention>> {
+  const root = obj(body);
+  const buckets = obj(obj(obj(root.aggregations).services).buckets);
+  const partial =
+    root.timed_out === true || root.terminated_early === true || num(obj(root._shards).failed) > 0;
+  const result: Partial<Record<ServiceId, ServiceAttention>> = {};
+  for (const id of ['wazuh', ...PROVIDER_IDS] as ServiceId[]) {
+    const bucket = obj(buckets[id]);
+    const valid =
+      !partial &&
+      typeof bucket.doc_count === 'number' &&
+      Array.isArray(obj(obj(bucket.events).hits).hits);
+    result[id] = valid
+      ? { access: 'ok', total: num(bucket.doc_count), events: parseTopEvents(bucket.events) }
+      : { access: 'error', total: null, events: [] };
+  }
+  return result;
 }
 
 /** Estado vigente de cada agente según el último muestreo de `wazuh-monitoring-*`. */
@@ -387,14 +446,24 @@ export async function buildOverview(
   integrations: IntegrationsConfig,
   now: Date = new Date(),
 ): Promise<OverviewResponse> {
-  const [alerts, top, agents, platform] = await Promise.all([
+  const [alerts, top, agents, platform, attention] = await Promise.all([
     settle(client.search({ index: ALERTS_INDEX, body: alertsAggregationQuery() })),
     settle(client.search({ index: ALERTS_INDEX, body: topEventsQuery() })),
     settle(client.search({ index: MONITORING_INDEX, body: agentsQuery() })),
     settle(client.search({ index: ALERTS_INDEX, body: platformHealthQuery() })),
+    settle(client.search({ index: ALERTS_INDEX, body: serviceAttentionQuery() })),
   ]);
   const parsed = alerts.status === 'fulfilled' ? parseAlertsAggregation(alerts.value.body) : null;
   return {
+    attention:
+      attention.status === 'fulfilled'
+        ? parseServiceAttention(attention.value.body)
+        : Object.fromEntries(
+            ['wazuh', ...PROVIDER_IDS].map((id) => [
+              id,
+              { access: readabilityOf(attention.reason), total: null, events: [] },
+            ]),
+          ),
     generatedAt: now.toISOString(),
     alertsAccess: alerts.status === 'fulfilled' ? 'ok' : readabilityOf(alerts.reason),
     monitoringAccess: agents.status === 'fulfilled' ? 'ok' : readabilityOf(agents.reason),

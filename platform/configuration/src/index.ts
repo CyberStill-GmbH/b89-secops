@@ -42,8 +42,11 @@ export type {
 export { SecretValue } from './configuration.types.js';
 export { CONFIGURATION_LIMITS, REDACTED_VALUE } from './limits.js';
 export {
+  ANALYST_VARIABLES,
   ASSISTANT_PROVIDERS,
   ASSISTANT_VARIABLES,
+  parseAnalystCeilingUsd,
+  parseAnalystRateCard,
   KNOWN_B89_VARIABLES,
   DEMO_ACCOUNT_ROLES,
   DEMO_ACCOUNTS_MAX,
@@ -59,6 +62,8 @@ export {
 } from './schema/index.js';
 export type {
   AccessConfig,
+  AnalystRateCardInput,
+  AnalystTierRates,
   DemoAccountConfig,
   DemoAccountRole,
   DemoAdminLoginConfig,

@@ -1,0 +1,455 @@
+// B89 SecOps · Analista IA: presupuesto, lista de investigaciones, expediente y configuración.
+// Mismos tokens que index.scss / investigation.scss (variables OUI del tema B89).
+
+$b89AiMobile: 767px;
+
+// ------------------------------------------------------------ Franja de modo y presupuesto
+.b89Ai__budget {
+  padding: $ouiSizeM $ouiSize;
+  border: 1px solid $ouiBorderColor;
+  border-radius: 14px;
+  background: $ouiColorEmptyShade;
+}
+
+.b89Ai__mode {
+  margin: 0 0 $ouiSizeS;
+  padding-left: $ouiSizeS;
+  border-left: 3px solid #7f95aa;
+  color: $ouiTitleColor;
+  font-size: $ouiFontSizeS;
+
+  &[data-mode='assisted'] {
+    border-left-color: #8fb3d9;
+  }
+
+  &[data-mode='autonomous'] {
+    border-left-color: #f0904a;
+  }
+
+  &[data-mode='unknown'] {
+    border-left-color: #d8c35c;
+  }
+}
+
+.b89Ai__note {
+  margin: $ouiSizeS 0 0;
+  color: $ouiTextSubduedColor;
+  font-size: $ouiFontSizeXS;
+  line-height: 1.5;
+}
+
+.b89Ai__stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: $ouiSizeM $ouiSize;
+  margin: $ouiSizeM 0;
+}
+
+.b89Ai__stat {
+  min-width: 0;
+
+  dt {
+    color: $ouiTextSubduedColor;
+    font-size: $ouiFontSizeXS;
+  }
+
+  dd {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 2px 0 0;
+  }
+}
+
+.b89Ai__statValue {
+  color: $ouiTitleColor;
+  font-size: $ouiFontSizeM;
+  font-variant-numeric: tabular-nums;
+  font-weight: $ouiFontWeightMedium;
+  overflow-wrap: anywhere;
+}
+
+// ------------------------------------------------------------ Lista
+.b89Ai__open {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: $ouiTitleColor;
+  cursor: pointer;
+  font: inherit;
+  overflow-wrap: anywhere;
+  text-align: left;
+
+  &:hover,
+  &:focus-visible {
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 2px solid #ff5899;
+    outline-offset: 2px;
+  }
+}
+
+.b89Ai__tier {
+  display: inline-block;
+  padding: 1px 8px;
+  border: 1px solid $ouiBorderColor;
+  border-radius: 999px;
+  font-size: $ouiFontSizeXS;
+  white-space: nowrap;
+
+  &[data-tier='none'] {
+    border-color: rgba(#5fb98a, 0.6);
+  }
+
+  &[data-tier='advanced'] {
+    border-color: rgba(#f0904a, 0.7);
+  }
+}
+
+.b89Ai__actionKinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.b89Ai__actionKind {
+  padding: 1px 8px;
+  border: 1px solid rgba(#f0904a, 0.6);
+  border-radius: 6px;
+  font-size: $ouiFontSizeXS;
+  white-space: nowrap;
+}
+
+.b89Ai__start {
+  min-width: 320px;
+
+  @media (max-width: $b89AiMobile) {
+    min-width: 0;
+    width: 100%;
+  }
+}
+
+// ------------------------------------------------------------ Expediente
+.b89Ai__caseFile {
+  display: flex;
+  flex-direction: column;
+  gap: $ouiSize;
+  font-size: $ouiFontSizeS;
+}
+
+.b89Ai__section {
+  padding-top: $ouiSizeM;
+  border-top: 1px solid $ouiColorLightShade;
+}
+
+.b89Ai__sectionTitle {
+  margin: 0 0 $ouiSizeS;
+  color: $ouiTitleColor;
+  font-size: $ouiFontSizeS;
+  font-weight: 700;
+}
+
+.b89Ai__subhead {
+  margin: $ouiSizeM 0 $ouiSizeXS;
+  color: $ouiTextSubduedColor;
+  font-size: $ouiFontSizeXS;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.b89Ai__statements,
+.b89Ai__reasons,
+.b89Ai__sources,
+.b89Ai__actionList,
+.b89Ai__steps,
+.b89Ai__byPriority,
+.b89Ai__toggles {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.b89Ai__statements > li,
+.b89Ai__reasons > li,
+.b89Ai__sources > li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: $ouiSizeS 0;
+  border-bottom: 1px solid $ouiColorLightShade;
+
+  &:last-child {
+    border-bottom: 0;
+  }
+}
+
+a.b89Ai__cite {
+  text-decoration: none;
+
+  &:hover,
+  &:focus-visible {
+    border-color: #ff5899;
+    text-decoration: underline;
+  }
+}
+
+.b89Ai__coverage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $ouiSizeS $ouiSize;
+  margin-bottom: $ouiSizeS;
+}
+
+// Progreso: solo etapas registradas, con marca por estado (forma + rótulo, no solo color).
+.b89Ai__step {
+  display: flex;
+  gap: $ouiSizeS;
+  padding: 6px 0;
+}
+
+.b89Ai__stepMark {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  margin-top: 5px;
+  border: 2px solid #7f95aa;
+  border-radius: 50%;
+
+  [data-status='completed'] > & {
+    border-color: #5fb98a;
+    background: #5fb98a;
+  }
+
+  [data-status='running'] > & {
+    border-color: #8fb3d9;
+  }
+
+  [data-status='failed'] > & {
+    border-color: #ff5f57;
+    border-radius: 2px;
+    background: #ff5f57;
+  }
+
+  [data-status='skipped'] > &,
+  [data-status='interrupted'] > & {
+    border-style: dashed;
+  }
+}
+
+.b89Ai__stepBody {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+
+  strong {
+    color: $ouiTitleColor;
+    font-weight: $ouiFontWeightMedium;
+  }
+}
+
+.b89Ai__detail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px $ouiSizeS;
+}
+
+.b89Ai__action {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: $ouiSizeS;
+  padding: $ouiSizeS $ouiSizeM;
+  border: 1px solid $ouiBorderColor;
+  border-left-width: 3px;
+  border-radius: 10px;
+
+  &[data-state='executed'] {
+    border-left-color: #5fb98a;
+  }
+
+  &[data-state='failed'] {
+    border-left-color: #ff5f57;
+  }
+
+  &[data-state='skipped'],
+  &[data-state='planned'] {
+    border-left-style: dashed;
+  }
+}
+
+.b89Ai__actionHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px $ouiSizeM;
+
+  strong {
+    color: $ouiTitleColor;
+  }
+}
+
+.b89Ai__tableWrap {
+  margin-top: $ouiSizeS;
+  overflow-x: auto;
+}
+
+.b89Ai__invocations {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: $ouiFontSizeXS;
+
+  th,
+  td {
+    padding: 6px $ouiSizeS 6px 0;
+    border-bottom: 1px solid $ouiColorLightShade;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  th {
+    color: $ouiTextSubduedColor;
+    font-weight: $ouiFontWeightMedium;
+  }
+}
+
+.b89Ai__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: $ouiSizeS;
+}
+
+// ------------------------------------------------------------ Informes
+.b89Ai__range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: $ouiSizeM;
+}
+
+.b89Ai__byPriority {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $ouiSizeS $ouiSizeL;
+  margin-bottom: $ouiSizeM;
+
+  > li {
+    display: inline-flex;
+    align-items: center;
+    gap: $ouiSizeS;
+  }
+}
+
+// ------------------------------------------------------------ Configuración
+.b89Ai__settings {
+  display: flex;
+  max-width: 880px;
+  flex-direction: column;
+  gap: $ouiSize;
+}
+
+.b89Ai__group {
+  padding: $ouiSize;
+  border: 1px solid $ouiBorderColor;
+  border-radius: 14px;
+  background: $ouiColorEmptyShade;
+
+  > * + * {
+    margin-top: $ouiSizeM;
+  }
+}
+
+.b89Ai__groupTitle {
+  margin: 0;
+  color: $ouiTitleColor;
+  font-size: $ouiFontSizeM;
+  font-weight: 700;
+}
+
+.b89Ai__checks {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+
+  legend {
+    margin-bottom: $ouiSizeXS;
+    color: $ouiTitleColor;
+    font-size: $ouiFontSizeXS;
+    font-weight: $ouiFontWeightMedium;
+  }
+
+  .euiRadio + .euiRadio {
+    margin-top: $ouiSizeS;
+  }
+}
+
+.b89Ai__checkRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $ouiSizeS $ouiSizeL;
+}
+
+.b89Ai__fieldError {
+  margin: $ouiSizeXS 0 0;
+  color: $ouiColorDanger;
+  font-size: $ouiFontSizeXS;
+}
+
+.b89Ai__toggles > li {
+  padding: $ouiSizeS 0;
+  border-bottom: 1px solid $ouiColorLightShade;
+
+  &:last-child {
+    border-bottom: 0;
+  }
+
+  .b89CellMeta {
+    margin: 2px 0 0;
+  }
+}
+
+.b89Ai__guardBox {
+  margin-top: $ouiSizeS;
+  padding: $ouiSizeS $ouiSizeM;
+  border-left: 3px solid #d8c35c;
+  background: rgba(#d8c35c, 0.08);
+
+  .b89Ai__subhead {
+    margin-top: 0;
+  }
+}
+
+.b89Ai__guards {
+  margin: 0;
+  padding-left: $ouiSize;
+  font-size: $ouiFontSizeXS;
+  line-height: 1.6;
+  list-style: disc;
+}
+
+.b89Ai__settingsFoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: $ouiSizeM;
+
+  @media (max-width: $b89AiMobile) {
+    .b89Ai__actions {
+      width: 100%;
+      justify-content: stretch;
+
+      .euiButton,
+      .euiButtonEmpty {
+        flex: 1 1 100%;
+      }
+    }
+  }
+}

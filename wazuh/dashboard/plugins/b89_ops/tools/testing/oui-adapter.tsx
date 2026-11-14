@@ -42,6 +42,68 @@ export const EuiText = container('div');
 export const EuiTitle = container('div');
 export const EuiToolTip = container('span');
 
+// Controles de formulario: solo lo que una prueba de marcado estático necesita ver
+// (rótulo, valor, marcado y deshabilitado).
+function choice(type: 'checkbox' | 'radio') {
+  return function TestOuiChoice(props: Props) {
+    return React.createElement(
+      'label',
+      null,
+      React.createElement('input', {
+        ...domProps(props),
+        type,
+        checked: props['checked'] === true,
+        disabled: props['disabled'] === true,
+        readOnly: true,
+      }),
+      props['label'] as React.ReactNode,
+    );
+  };
+}
+
+function field(tag: 'input' | 'textarea') {
+  return function TestOuiField(props: Props) {
+    return React.createElement(tag, {
+      ...domProps(props),
+      value: String(props['value'] ?? ''),
+      disabled: props['disabled'] === true,
+      readOnly: true,
+    });
+  };
+}
+
+export const EuiCheckbox = choice('checkbox');
+export const EuiRadio = choice('radio');
+export const EuiSwitch = choice('checkbox');
+export const EuiFieldText = field('input');
+export const EuiTextArea = field('textarea');
+
+export function EuiSelect(props: Props) {
+  const options = (props['options'] ?? []) as readonly { value: string; text: React.ReactNode }[];
+  return React.createElement(
+    'select',
+    {
+      ...domProps(props),
+      defaultValue: String(props['value'] ?? ''),
+      disabled: props['disabled'] === true,
+    },
+    ...options.map((option) =>
+      React.createElement('option', { key: option.value, value: option.value }, option.text),
+    ),
+  );
+}
+
+export function EuiFormRow(props: Props) {
+  return React.createElement(
+    'div',
+    domProps(props),
+    React.createElement('span', null, props['label'] as React.ReactNode),
+    props.children,
+    props['helpText'] as React.ReactNode,
+    props['isInvalid'] === true ? (props['error'] as React.ReactNode) : null,
+  );
+}
+
 export function EuiBasicTable<T extends Record<string, unknown>>(
   props: Props & {
     readonly items?: readonly T[];

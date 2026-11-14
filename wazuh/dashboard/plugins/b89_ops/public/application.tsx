@@ -10,6 +10,7 @@ import type { ChangeFeed } from './api/change_feed';
 import type { B89ApiClient } from './api/client';
 import { ViewErrorBoundary } from './render_failure';
 import { AccessView } from './components/access_view';
+import { AiAnalystView } from './components/ai_analyst_view';
 import { AlertsView } from './components/alerts_view';
 import { AuditView } from './components/audit_view';
 import { ConsoleProvider } from './components/console_context';
@@ -87,6 +88,16 @@ function Console({
       );
     case 'incidents':
       return <IncidentsView selectedId={selected} onSelect={select} />;
+    case 'ai_analyst':
+      // `?id=` abre un expediente; `?alertId=` precarga «Investigar alerta».
+      return (
+        <AiAnalystView
+          selectedId={selected}
+          onSelect={select}
+          basePath={basePath}
+          initialAlertId={params.get('alertId')}
+        />
+      );
     case 'notifications':
       return <NotificationsView />;
     case 'sources':

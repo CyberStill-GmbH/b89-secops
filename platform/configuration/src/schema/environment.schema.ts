@@ -127,6 +127,15 @@ export const KNOWN_B89_VARIABLES = new Set([
   // Informes de Bunny (servicio b89-reports); validación en assistant.schema.ts.
   'B89_REPORTS_URL',
   'B89_REPORTS_TOKEN',
+  // Analista IA (docs/27); validación en assistant.schema.ts. Apagado por defecto; reutiliza el
+  // proveedor y las credenciales de Bunny. Lista literal por la misma razón que la de Bunny.
+  'B89_ANALYST_ENABLED',
+  'B89_ANALYST_ECONOMY_MODEL',
+  'B89_ANALYST_ADVANCED_MODEL',
+  'B89_ANALYST_DAILY_CEILING_USD',
+  'B89_ANALYST_RATE_CARD',
+  'B89_ANALYST_CONCURRENCY',
+  'B89_ANALYST_BACKLOG_SWEEP',
   // Política de ruido de avisos (configuration-loader › loadNotificationPolicy). Sin estas
   // entradas, definir cualquiera tumbaba el arranque con CONFIG_VALUE_INVALID.
   'B89_NOTIFY_QUIET_P1_MINUTES',

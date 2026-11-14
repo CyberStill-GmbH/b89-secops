@@ -283,6 +283,12 @@ func (e *Engine) evaluatePatterns(st *EntityState, hist stageHistory, o model.Ob
 		c.FirstSeen = hits[0].At
 		names := make([]string, len(hits))
 		for i, h := range hits {
+			// Match returns definition order for unordered patterns. The investigation
+			// window must still include every selected stage, including earlier stages
+			// listed later in the pattern (for example malware before protection-off).
+			if h.At.Before(c.FirstSeen) {
+				c.FirstSeen = h.At
+			}
 			names[i] = fmt.Sprintf("%s (regla %s, %s)", h.Stage, h.RuleID, h.At.UTC().Format("2006-01-02 15:04Z"))
 		}
 		c.Title = "B89 Riesgo: " + p.Title
@@ -295,11 +301,17 @@ func (e *Engine) evaluatePatterns(st *EntityState, hist stageHistory, o model.Ob
 			}
 		}
 		c.Explanation.EvidenceObservationIDs = mergeIDs(stageEvidence, c.Explanation.EvidenceObservationIDs, 20)
-		c.Explanation.Narrative = fmt.Sprintf("%s. Se observaron %d de %d etapas en orden sobre la misma entidad (%s) dentro de %s: %s. Riesgo %.1f (base %.1f x diversidad %.2f + progresion %.1f).",
-			p.Title, len(hits), len(p.Stages), st.Entity.Type, p.Window, strings.Join(names, " -> "), c.RiskScore,
+		order, separator := "sin exigir orden temporal", "; "
+		if p.Ordered {
+			order, separator = "en orden temporal no decreciente", " → "
+		}
+		// Keep the limitation near the start so bounded notification/MCP projections
+		// retain it. Matching timestamps and entities do not establish causality.
+		c.Explanation.Narrative = fmt.Sprintf("Correlación temporal; no demuestra causalidad ni compromiso. %s. Se observaron %d de %d etapas %s sobre la misma entidad (%s) dentro de %s: %s. Riesgo %.1f (base %.1f x diversidad %.2f + progresión %.1f).",
+			p.Title, len(hits), len(p.Stages), order, st.Entity.Type, p.Window, strings.Join(names, separator), c.RiskScore,
 			c.Explanation.ScoreBase, c.Explanation.DiversityMultiplier, c.Explanation.ProgressionBonus)
 		c.Summary = fmt.Sprintf("Patrón %s (%s, %d/%d etapas) sobre %s: %s. Riesgo %.1f.",
-			p.ID, variant, len(hits), len(p.Stages), st.Entity.Type, strings.Join(names, " → "), c.RiskScore)
+			p.ID, variant, len(hits), len(p.Stages), st.Entity.Type, strings.Join(names, separator), c.RiskScore)
 		out = append(out, e.register(st, c))
 	}
 	return out

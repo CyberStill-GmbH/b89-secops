@@ -189,6 +189,44 @@ reinicia solo el manager. Estado: `systemctl list-timers 'b89-*'`.
   `python3 /opt/b89/collectors/alert-mail/b89_alert_mail.py --config /opt/b89/collectors/etc/alert-mail.json --check`
   y `--test`; relanzar `install-b89-collectors.sh`; cambiar `b89_ops.integrations.alertMail.state`.
 
+## Inicialización de canales de aviso
+
+Los avisos del SOC (API, `modules/soar`) salen por tres canales administrables en
+**Notificaciones → Canales**: Microsoft Teams (Workflows), correo de respaldo (Graph `Mail.Send`)
+y avisos al navegador (Web Push). La bandeja de B89 es el último respaldo y no se apaga.
+
+| Canal | Entrada del despliegue | Queda «configurado» cuando |
+| --- | --- | --- |
+| `teams` | `B89_TEAMS_WORKFLOW_URL` en `secrets/services.env`, o el webhook pegado en la consola | hay URL en la base o en el entorno |
+| `email` | `B89_ALERT_MAIL_SENDER` en `secrets/services.env` + `B89_ENTRA_CLIENT_SECRET` | están el buzón y el secreto de la app |
+| `push` | `B89_VAPID_PRIVATE_KEY` | existe la clave VAPID |
+
+**Qué hace el arranque** (`NotificationChannelRegistry.initialize()`, idempotente):
+
+- Por cada canal sin fila en `notification_channels` escribe una con autor `system:bootstrap` y
+  `revision = 1`. Configurado ⇒ nace activo; sin configurar ⇒ nace apagado y la consola lo muestra
+  como pendiente (`setup: configure`), nunca como canal sano.
+- Si hay URL de Teams en el entorno y existe `B89_ENTITY_REF_KEY`, la guarda cifrada
+  (AES-256-GCM). Sin clave, o si la URL no pasa la validación del webhook, no guarda el secreto:
+  la URL sigue sirviendo desde el entorno y el arranque lo informa (`secretSkipped`).
+- Una fila existente no se toca: **la base manda sobre el entorno**. Varias réplicas pueden
+  arrancar a la vez (inserción «solo si no existe»).
+- Cada siembra queda auditada (`notifications.channel.initialized`, actor de servicio) solo con
+  la máscara del destino. Con la base caída el arranque no falla: lo reporta y los canales
+  configurados por entorno siguen entregando.
+
+**Dónde se ve:** una línea de arranque `notifications.channel.status` por canal (estado, `setup`,
+origen, revisión; sin destino); `degradedReasons` de `GET /api/operations/health`
+(`NOTIFICATION_TEAMS_NOT_CONFIGURED`, `NOTIFICATION_NO_P1_CHANNEL`); y la pestaña Canales, con la
+guía de puesta en marcha de Teams mientras falte configurar, activar o probar.
+
+**Concurrencia:** `GET /api/notifications/channels` publica `revision`, `setup` y `needsSetup`
+por canal. `PUT …/teams` y `POST …/{id}/enable|disable` aceptan `expectedRevision`; si la fila
+cambió responden `STATE_CONFLICT` sin escribir. Los resultados de envío (salud) se guardan
+aparte y no cambian la revisión. Con el canal `push` apagado no se avisa a ningún dispositivo.
+
+Procedimiento paso a paso: [06 · Operación](06-operacion.md#inicialización-de-canales-de-aviso).
+
 ## Integraciones instaladas sin activar
 
 - `custom-b89`, `custom-b89-shuffle`, `custom-b89-teams` en `/var/ossec/integrations` (sin bloque

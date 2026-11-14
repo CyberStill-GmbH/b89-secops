@@ -49,6 +49,32 @@ describe('cifrado del webhook', () => {
 });
 
 describe('registro de canales', () => {
+  it('una respuesta tardía del destino anterior no verifica el webhook nuevo en otra réplica', async () => {
+    const store = new InMemoryChannelStore();
+    const sender = registry(store);
+    await sender.initialize();
+    const sentRevision = sender.view('teams').revision;
+    const admin = registry(store);
+    await admin.refresh();
+    await admin.setTeamsUrl(URL_B, 'admin', sentRevision);
+    const evidence = { channel: 'teams' as const, at: NOW.toISOString(), outcome: 'accepted' as const, httpStatus: 202, providerMessageId: null, providerLink: null, reason: null };
+    await sender.recordOutcome('teams', evidence, true, sentRevision);
+    await admin.refresh();
+    expect(admin.view('teams')).toMatchObject({ setup: 'verify', health: { lastSuccessAt: null }, lastTest: { at: null } });
+    expect(sender.view('teams').revision).toBe(admin.view('teams').revision);
+    await sender.recordOutcome('teams', evidence, true, sender.view('teams').revision);
+    await admin.refresh();
+    expect(admin.view('teams')).toMatchObject({ setup: 'ready', lastTest: { outcome: 'accepted' } });
+  });
+  it('un fallo posterior al éxito vuelve a requerir verificación del canal', async () => {
+    const channels = registry();
+    await channels.initialize();
+    const evidence = { channel: 'teams' as const, httpStatus: 202, providerMessageId: null, providerLink: null, reason: null };
+    await channels.recordOutcome('teams', { ...evidence, at: NOW.toISOString(), outcome: 'accepted' });
+    expect(channels.view('teams')).toMatchObject({ setup: 'ready', needsSetup: false });
+    await channels.recordOutcome('teams', { ...evidence, at: new Date(NOW.getTime() + 1000).toISOString(), outcome: 'failed', httpStatus: 503 });
+    expect(channels.view('teams')).toMatchObject({ status: 'degraded', setup: 'verify', needsSetup: true });
+  });
   it('la URL de la base reemplaza a la de entorno, se guarda cifrada y nunca se expone', async () => {
     const store = new InMemoryChannelStore();
     const channels = registry(store);
@@ -98,6 +124,208 @@ describe('registro de canales', () => {
     expect(calls).toHaveLength(1);
     expect(channels.view('teams').status).toBe('disabled');
     expect(channels.view('email').status).toBe('not_configured');
+  });
+});
+
+describe('inicialización de canales al arrancar', () => {
+  const json = (value: unknown) =>
+    JSON.stringify(value, (_key, item) => (typeof item === 'bigint' ? String(item) : item));
+
+  it('siembra una fila por canal, cifra la URL de entorno y la audita solo con máscaras', async () => {
+    const store = new InMemoryChannelStore();
+    const audit = new InMemoryAuditStore();
+    const channels = registry(store);
+    await channels.refresh();
+    const result = await channels.initialize({ audit });
+    expect(result.failed).toEqual([]);
+    expect(result.seeded).toEqual([
+      { channelId: 'teams', enabled: true, configured: true, secretStored: true, secretSkipped: null },
+      { channelId: 'email', enabled: false, configured: false, secretStored: false, secretSkipped: null },
+      { channelId: 'push', enabled: true, configured: true, secretStored: false, secretSkipped: null },
+    ]);
+    const teams = await store.get('t1', 'teams');
+    expect(teams).toMatchObject({ enabled: true, updatedBy: 'system:bootstrap', revision: 1 });
+    expect(teams?.secretCiphertext?.startsWith('v1:')).toBe(true);
+    expect(teams?.secretCiphertext).not.toContain('SECRETSIGNATURE');
+    // El canal sin configurar queda visible como pendiente, no como canal activo y sano.
+    expect(channels.view('email')).toMatchObject({
+      enabled: false,
+      status: 'not_configured',
+      setup: 'configure',
+      needsSetup: true,
+      revision: 1,
+    });
+    expect(channels.view('teams')).toMatchObject({
+      source: 'database',
+      status: 'unknown',
+      setup: 'verify',
+      needsSetup: true,
+      revision: 1,
+      updatedBy: 'system:bootstrap',
+    });
+    const events = await audit.range('t1', 1n, 10);
+    expect(events.map((event) => [event.action, event.resource.id, event.actor.id, event.actor.type])).toEqual([
+      ['notifications.channel.initialized', 'teams', 'system:bootstrap', 'service'],
+      ['notifications.channel.initialized', 'email', 'system:bootstrap', 'service'],
+      ['notifications.channel.initialized', 'push', 'system:bootstrap', 'service'],
+    ]);
+    expect(events[0]?.metadata).toMatchObject({ destination: 'https://abc123.…/…123456', secretStored: true });
+    expect(json(events)).not.toContain('SIGNATURE');
+    expect(json(events)).not.toContain('sig=');
+    expect(json(channels.views())).not.toContain('SIGNATURE');
+  });
+
+  it('es idempotente: un segundo arranque no escribe ni audita nada', async () => {
+    const store = new InMemoryChannelStore();
+    const audit = new InMemoryAuditStore();
+    await registry(store).initialize({ audit });
+    const before = new Map(store.rows);
+    const second = registry(store);
+    await second.refresh();
+    expect(await second.initialize({ audit })).toEqual({ seeded: [], failed: [] });
+    expect(new Map(store.rows)).toEqual(before);
+    expect(await audit.range('t1', 1n, 10)).toHaveLength(3);
+  });
+
+  it('la base manda: una fila existente no se reemplaza con la URL de entorno', async () => {
+    const store = new InMemoryChannelStore();
+    const first = registry(store);
+    await first.initialize();
+    expect((await first.setTeamsUrl(URL_B, 'admin-1')).ok).toBe(true);
+    expect((await first.setEnabled('teams', false, 'admin-1')).ok).toBe(true);
+    // Reinicio con la URL A todavía en el entorno.
+    const restarted = registry(store);
+    await restarted.refresh();
+    expect((await restarted.initialize()).seeded).toEqual([]);
+    expect(restarted.teamsUrl()).toEqual({ url: URL_B, source: 'database' });
+    expect(restarted.view('teams')).toMatchObject({
+      enabled: false,
+      setup: 'enable',
+      updatedBy: 'admin-1',
+      revision: 3,
+    });
+  });
+
+  it('sin clave de cifrado no guarda el secreto: la URL sigue viniendo del entorno y se informa', async () => {
+    const store = new InMemoryChannelStore();
+    const channels = new NotificationChannelRegistry({
+      tenantId: 't1',
+      store,
+      environmentTeamsUrl: URL_A,
+      emailConfigured: true,
+      pushConfigured: false,
+      clock: () => NOW,
+    });
+    const result = await channels.initialize();
+    expect(result.seeded[0]).toEqual({
+      channelId: 'teams',
+      enabled: true,
+      configured: true,
+      secretStored: false,
+      secretSkipped: 'ENCRYPTION_KEY_MISSING',
+    });
+    expect(await store.get('t1', 'teams')).toMatchObject({ secretCiphertext: null, secretHint: null, enabled: true });
+    expect(channels.view('teams')).toMatchObject({ source: 'environment', configured: true });
+    expect(channels.view('push')).toMatchObject({ enabled: false, setup: 'configure' });
+  });
+
+  it('sin base disponible no falla el arranque y el canal configurado sigue entregando', async () => {
+    const errors: string[] = [];
+    const down = {
+      list: () => Promise.reject(new Error('down')),
+      get: () => Promise.reject(new Error('down')),
+      create: () => Promise.reject(new Error('down')),
+      saveConfig: () => Promise.reject(new Error('down')),
+      saveHealth: () => Promise.reject(new Error('down')),
+    };
+    const channels = new NotificationChannelRegistry({
+      tenantId: 't1',
+      store: down,
+      key: KEY,
+      environmentTeamsUrl: URL_A,
+      emailConfigured: false,
+      pushConfigured: false,
+      clock: () => NOW,
+      onError: (code) => errors.push(code),
+    });
+    await channels.refresh();
+    expect(await channels.initialize()).toEqual({ seeded: [], failed: ['teams', 'email', 'push'] });
+    expect(errors).toContain('CHANNEL_STORE_UNAVAILABLE');
+    expect(channels.enabled('teams')).toBe(true);
+    expect(channels.enabled('email')).toBe(false);
+    expect(channels.view('teams').revision).toBe(0);
+  });
+});
+
+describe('revisión de la configuración (compare-and-set)', () => {
+  it('rechaza una revisión vieja y no pierde el cambio de otra réplica', async () => {
+    const store = new InMemoryChannelStore();
+    const a = registry(store);
+    const b = registry(store);
+    await a.initialize();
+    await b.refresh();
+    expect(await a.setEnabled('teams', false, 'admin-a', 1)).toMatchObject({ ok: true, view: { revision: 2 } });
+    // `b` todavía tiene la revisión 1 en memoria: el CAS relee y rechaza.
+    expect(await b.setEnabled('push', false, 'admin-b', 1)).toMatchObject({ ok: true });
+    expect(await b.setTeamsUrl(URL_B, 'admin-b', 1)).toEqual({ ok: false, code: 'REVISION_CONFLICT' });
+    expect(await b.setEnabled('teams', true, 'admin-b', 1)).toEqual({ ok: false, code: 'REVISION_CONFLICT' });
+    expect(await store.get('t1', 'teams')).toMatchObject({ enabled: false, updatedBy: 'admin-a', revision: 2 });
+    // Con la revisión vigente, pasa.
+    expect(await b.setEnabled('teams', true, 'admin-b', 2)).toMatchObject({ ok: true, view: { revision: 3 } });
+  });
+
+  it('sin expectedRevision aplica el cambio sobre la fila vigente, no sobre la copia vieja', async () => {
+    const store = new InMemoryChannelStore();
+    const a = registry(store);
+    const b = registry(store);
+    await a.initialize();
+    await b.refresh();
+    await a.setTeamsUrl(URL_B, 'admin-a');
+    expect(await b.setEnabled('teams', false, 'admin-b')).toMatchObject({ ok: true, view: { revision: 3 } });
+    const replica = registry(store);
+    await replica.refresh();
+    expect(replica.teamsUrl()).toEqual({ url: URL_B, source: 'database' });
+    expect(replica.enabled('teams')).toBe(false);
+  });
+
+  it('la salud de un envío no cambia la revisión ni pisa la configuración de otra réplica', async () => {
+    const store = new InMemoryChannelStore();
+    const fetchImplementation = (() =>
+      Promise.resolve(new Response(null, { status: 202 }))) as unknown as typeof fetch;
+    const sender = registry(store, fetchImplementation);
+    const admin = registry(store);
+    await sender.initialize();
+    await admin.refresh();
+    // El administrador cambia el webhook en otra réplica; `sender` aún no releyó.
+    await admin.setTeamsUrl(URL_B, 'admin-1', 1);
+    const message = { type: 'message', attachments: [{ contentType: 'application/vnd.microsoft.card.adaptive', contentUrl: null, content: {} }], b89: { version: '2', clientRequestId: 'c', aggregateId: 'a' } } as const;
+    expect((await sender.teamsTransport.send(message, 'c')).delivered).toBe(true);
+    const saved = await store.get('t1', 'teams');
+    // El 202 fue del destino anterior: no certifica la configuración nueva.
+    expect(saved).toMatchObject({ revision: 2, updatedBy: 'admin-1', lastHttpStatus: null });
+    expect(decryptSecret(KEY, saved?.secretCiphertext ?? '', 't1|teams')).toBe(URL_B);
+    // La consola sigue pudiendo guardar con la revisión que vio.
+    expect(await admin.setEnabled('teams', false, 'admin-1', 2)).toMatchObject({ ok: true });
+  });
+});
+
+describe('canal push', () => {
+  it('apagado desde la consola no avisa a ningún dispositivo; activo, sí', async () => {
+    const channels = registry();
+    await channels.initialize();
+    const calls: (readonly string[])[] = [];
+    const devices = channels.devices({
+      notify: (_tenantId, subjectKeys) => {
+        calls.push(subjectKeys);
+        return Promise.resolve(subjectKeys.length);
+      },
+    });
+    expect(await devices.notify('t1', ['a', 'b'])).toBe(2);
+    await channels.setEnabled('push', false, 'admin-1');
+    expect(await devices.notify('t1', ['a', 'b'])).toBe(0);
+    expect(calls).toHaveLength(1);
+    await channels.setEnabled('push', true, 'admin-1');
+    expect(await devices.notify('t1', ['a'])).toBe(1);
   });
 });
 
@@ -178,5 +406,40 @@ describe('autorización y auditoría de la administración', () => {
     const listed = (await admin.controller.list(admin.request)) as { items: unknown[]; canManage: boolean };
     expect(listed.canManage).toBe(true);
     expect(JSON.stringify(listed)).not.toContain('SIGNATURE');
+  });
+
+  it('expectedRevision: una revisión vieja responde STATE_CONFLICT sin cambiar nada y queda auditada', async () => {
+    const admin = harness({ capabilities: ['notifications.read', 'notifications.manage'] });
+    await admin.channels.initialize();
+    const listed = (await admin.controller.list(admin.request)) as {
+      items: { id: string; revision: number; setup: string; needsSetup: boolean }[];
+    };
+    expect(listed.items.map((item) => [item.id, item.revision, item.setup, item.needsSetup])).toEqual([
+      ['teams', 1, 'verify', true],
+      ['email', 1, 'configure', true],
+      ['push', 1, 'verify', true],
+    ]);
+    const disabled = (await admin.controller.disable(admin.request, 'teams', { expectedRevision: 1 })) as {
+      channel: { enabled: boolean; revision: number };
+    };
+    expect(disabled.channel).toMatchObject({ enabled: false, revision: 2 });
+    expect(await code(admin.controller.enable(admin.request, 'teams', { expectedRevision: 1 }))).toBe('STATE_CONFLICT');
+    expect(
+      await code(admin.controller.setTeams(admin.request, { webhookUrl: URL_B, expectedRevision: 1 })),
+    ).toBe('STATE_CONFLICT');
+    expect(await code(admin.controller.enable(admin.request, 'teams', { expectedRevision: '2' }))).toBe(
+      'VALIDATION_FAILED',
+    );
+    expect(admin.channels.view('teams')).toMatchObject({ enabled: false, revision: 2, source: 'database' });
+    expect(admin.channels.teamsUrl()?.url).toBe(URL_A);
+    // Sin expectedRevision (cliente anterior) sigue funcionando.
+    expect(await code(admin.controller.enable(admin.request, 'teams'))).toBe('OK');
+    const events = await admin.audit.range('t1', 1n, 10);
+    expect(events.map((event) => event.action)).toEqual([
+      'notifications.channel.disabled',
+      'notifications.channel.enable_rejected',
+      'notifications.channel.webhook_rejected',
+      'notifications.channel.enabled',
+    ]);
   });
 });

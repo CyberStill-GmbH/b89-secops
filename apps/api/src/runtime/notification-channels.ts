@@ -11,17 +11,27 @@
  * - Cada envío actualiza la salud del canal (último éxito/fallo, HTTP, motivo), en memoria y
  *   en la base (sin bloquear el aviso si la base falla).
  *
+ * - **Inicialización** (`initialize()`, una vez por arranque): cada canal sin fila recibe una,
+ *   escrita por `system:bootstrap` y auditada. Si el despliegue trae la URL de Teams y hay clave,
+ *   se guarda cifrada; el canal nace activo solo si quedó configurado. Una fila existente no se
+ *   toca: la base manda sobre el entorno.
+ * - **Concurrencia**: los cambios de configuración son compare-and-set sobre `revision`; la
+ *   salud se guarda aparte y no la mueve, así que un envío nunca pisa un cambio de la consola.
+ *
  * Nunca se registra ni devuelve la URL: solo su máscara.
  */
 
-import { createCipheriv, createDecipheriv, createHmac, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHmac, randomBytes, randomUUID } from 'node:crypto';
 
+import { recordAudit, type AuditStore } from '@b89/audit';
 import {
+  CHANNEL_IDS,
   emptyChannel,
   maskWebhookUrl,
   RETRY_POLICY,
   TeamsWorkflowTransport,
   validateTeamsWebhookUrl,
+  type ChannelHealth,
   type ChannelId,
   type ChannelRecord,
   type ChannelStore,
@@ -83,7 +93,42 @@ export interface ChannelView {
   readonly updatedAt: string | null;
   readonly updatedBy: string | null;
   readonly note: string | null;
+  /** Revisión de la configuración; la consola la devuelve como `expectedRevision`. */
+  readonly revision: number;
+  /**
+   * Paso de puesta en marcha pendiente: `configure` (falta el destino), `enable` (configurado
+   * pero apagado), `verify` (activo, sin ningún envío aceptado todavía) o `ready`.
+   */
+  readonly setup: ChannelSetupStep;
+  /** `setup !== 'ready'`: el canal todavía no demostró que puede entregar. */
+  readonly needsSetup: boolean;
 }
+
+export type ChannelSetupStep = 'configure' | 'enable' | 'verify' | 'ready';
+
+/** Autor de las filas que escribe la inicialización del arranque. */
+export const BOOTSTRAP_ACTOR = 'system:bootstrap';
+
+export interface ChannelSeed {
+  readonly channelId: ChannelId;
+  readonly enabled: boolean;
+  readonly configured: boolean;
+  /** `true` si la URL de entorno quedó guardada cifrada en la base. */
+  readonly secretStored: boolean;
+  /** Por qué no se guardó el secreto pese a haber URL de entorno, si aplica. */
+  readonly secretSkipped: 'ENCRYPTION_KEY_MISSING' | 'ENVIRONMENT_URL_REJECTED' | null;
+}
+
+export interface ChannelInitialization {
+  /** Canales cuya fila escribió esta llamada. Vacío = ya estaban inicializados. */
+  readonly seeded: readonly ChannelSeed[];
+  /** Canales sin fila que no se pudieron sembrar (base no disponible). */
+  readonly failed: readonly ChannelId[];
+}
+
+export type ChannelChange =
+  | { readonly ok: true; readonly view: ChannelView }
+  | { readonly ok: false; readonly code: 'REVISION_CONFLICT' };
 
 const LABELS: Readonly<Record<ChannelId, string>> = Object.freeze({
   teams: 'Microsoft Teams (Workflows)',
@@ -115,8 +160,138 @@ export class NotificationChannelRegistry {
     return `${this.options.tenantId}|${channelId}`;
   }
 
+  private seedAudit: AuditStore | undefined;
+
+  /** Sin fila (base caída en el arranque) el canal se comporta como la siembra: configurado ⇒ activo. */
   private record(channelId: ChannelId): ChannelRecord {
-    return this.records.get(channelId) ?? emptyChannel(this.options.tenantId, channelId, this.options.clock());
+    return (
+      this.records.get(channelId) ?? {
+        ...emptyChannel(this.options.tenantId, channelId, this.options.clock()),
+        enabled: this.configured(channelId),
+      }
+    );
+  }
+
+  /**
+   * Inicialización idempotente: escribe la fila de cada canal que aún no la tiene y no toca las
+   * existentes (la base manda sobre el entorno). Segura con el store en memoria, con varias
+   * réplicas arrancando a la vez (inserción «solo si no existe») y sin clave de cifrado: en ese
+   * caso la URL de entorno sigue sirviendo desde el entorno y se informa `secretSkipped`.
+   */
+  public async initialize(options: { readonly audit?: AuditStore } = {}): Promise<ChannelInitialization> {
+    if (options.audit) this.seedAudit = options.audit;
+    let existing: ReadonlySet<ChannelId>;
+    try {
+      const rows = await this.options.store.list(this.options.tenantId);
+      existing = new Set(rows.map((row) => row.channelId));
+    } catch {
+      this.options.onError?.('CHANNEL_STORE_UNAVAILABLE');
+      return { seeded: [], failed: [...CHANNEL_IDS] };
+    }
+    const seeded: ChannelSeed[] = [];
+    const failed: ChannelId[] = [];
+    for (const channelId of CHANNEL_IDS) {
+      if (existing.has(channelId)) continue;
+      const at = this.options.clock();
+      const environmentUrl = channelId === 'teams' ? this.options.environmentTeamsUrl : undefined;
+      let secret: { readonly ciphertext: string; readonly hint: string } | undefined;
+      let secretSkipped: ChannelSeed['secretSkipped'] = null;
+      if (environmentUrl) {
+        const validation = validateTeamsWebhookUrl(environmentUrl);
+        if (!this.options.key) secretSkipped = 'ENCRYPTION_KEY_MISSING';
+        else if (!validation.ok) secretSkipped = 'ENVIRONMENT_URL_REJECTED';
+        else {
+          secret = {
+            ciphertext: encryptSecret(this.options.key, validation.url, this.aad(channelId)),
+            hint: maskWebhookUrl(validation.url),
+          };
+        }
+      }
+      // Antes de sembrar no hay fila: `configured` solo depende del despliegue.
+      const configured = this.configured(channelId);
+      const seed: ChannelSeed = {
+        channelId,
+        enabled: configured,
+        configured,
+        secretStored: secret !== undefined,
+        secretSkipped,
+      };
+      try {
+        const created = await this.options.store.create({
+          ...emptyChannel(this.options.tenantId, channelId, at),
+          enabled: configured,
+          secretCiphertext: secret?.ciphertext ?? null,
+          secretHint: secret?.hint ?? null,
+          updatedBy: BOOTSTRAP_ACTOR,
+          revision: 1,
+        });
+        // `false`: otra réplica la sembró (o un administrador la creó) entre la lectura y aquí.
+        if (!created) continue;
+      } catch {
+        this.options.onError?.('CHANNEL_SEED_NOT_SAVED');
+        failed.push(channelId);
+        continue;
+      }
+      seeded.push(seed);
+      await this.auditSeed(seed, at, environmentUrl);
+    }
+    if (seeded.length > 0) await this.refresh();
+    return { seeded, failed };
+  }
+
+  /** Evidencia de la siembra: actor de sistema y solo la máscara del destino. */
+  private async auditSeed(seed: ChannelSeed, at: Date, environmentUrl: string | undefined): Promise<void> {
+    if (!this.seedAudit) return;
+    try {
+      await recordAudit(this.seedAudit, {
+        id: randomUUID(),
+        tenantId: this.options.tenantId,
+        occurredAt: at,
+        actor: { id: BOOTSTRAP_ACTOR, type: 'service' },
+        action: 'notifications.channel.initialized',
+        resource: { type: 'notification_channel', id: seed.channelId },
+        outcome: 'succeeded',
+        correlationId: randomUUID(),
+        metadata: {
+          enabled: seed.enabled,
+          configured: seed.configured,
+          source: environmentUrl ? 'environment' : seed.configured ? 'deployment' : 'none',
+          destination: environmentUrl ? maskWebhookUrl(environmentUrl) : null,
+          secretStored: seed.secretStored,
+          secretSkipped: seed.secretSkipped,
+        },
+      });
+    } catch {
+      this.options.onError?.('CHANNEL_SEED_NOT_AUDITED');
+    }
+  }
+
+  /**
+   * Compare-and-set de un cambio de configuración. Con `expectedRevision`, cualquier diferencia
+   * es conflicto. Sin él (clientes anteriores) se reintenta una vez sobre la fila recién leída:
+   * el cambio se aplica al estado vigente, nunca a una copia vieja.
+   */
+  private async writeConfig(
+    channelId: ChannelId,
+    expectedRevision: number | undefined,
+    change: (current: ChannelRecord) => ChannelRecord,
+  ): Promise<ChannelRecord | undefined> {
+    // Otra réplica pudo cambiar la fila después de la última relectura de esta.
+    if (expectedRevision !== undefined && expectedRevision !== this.record(channelId).revision) {
+      await this.refresh();
+    }
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const current = this.record(channelId);
+      if (expectedRevision !== undefined && expectedRevision !== current.revision) return undefined;
+      const next: ChannelRecord = { ...change(current), revision: current.revision + 1 };
+      if (await this.options.store.saveConfig(next, current.revision)) {
+        this.records.set(channelId, next);
+        return next;
+      }
+      await this.refresh();
+      if (expectedRevision !== undefined) return undefined;
+    }
+    return undefined;
   }
 
   /** Lee la base; un fallo deja la última configuración conocida (nunca vacía la URL). */
@@ -166,8 +341,9 @@ export class NotificationChannelRegistry {
   }
 
   /** Registra el resultado de un envío real o de prueba (memoria + base, sin bloquear). */
-  public async recordOutcome(channelId: ChannelId, evidence: DeliveryEvidence, test = false): Promise<void> {
+  public async recordOutcome(channelId: ChannelId, evidence: DeliveryEvidence, test = false, expectedRevision?: number): Promise<void> {
     const current = this.record(channelId);
+    if (expectedRevision !== undefined && current.revision !== expectedRevision) return;
     const at = new Date(evidence.at);
     const accepted = evidence.outcome === 'accepted';
     const next: ChannelRecord = {
@@ -183,9 +359,20 @@ export class NotificationChannelRegistry {
           }
         : {}),
     };
-    this.records.set(channelId, next);
     try {
-      await this.options.store.save(next);
+      // Solo columnas de salud: no pisa `enabled`, el webhook ni la revisión de la consola.
+      const { tenantId } = this.options;
+      if (!(await this.options.store.saveHealth(tenantId, channelId, next, expectedRevision))) {
+        if (expectedRevision !== undefined) {
+          await this.refresh();
+          return;
+        }
+        // Sin fila (la siembra del arranque no llegó a la base): se siembra y se reintenta.
+        await this.initialize();
+        this.records.set(channelId, { ...this.record(channelId), ...healthOf(next) });
+        await this.options.store.saveHealth(tenantId, channelId, next);
+      }
+      if (this.record(channelId).revision === current.revision) this.records.set(channelId, next);
     } catch {
       this.options.onError?.('CHANNEL_HEALTH_NOT_SAVED');
     }
@@ -201,6 +388,7 @@ export class NotificationChannelRegistry {
           failure: { class: 'permanent', code: 'CHANNEL_DISABLED', detail: 'El canal Teams está desactivado.' },
         };
       }
+      const expectedRevision = this.record('teams').revision;
       const target = this.teamsUrl();
       if (!target) {
         return {
@@ -222,7 +410,7 @@ export class NotificationChannelRegistry {
         providerMessageId: outcome.providerMessageId ?? null,
         providerLink: null,
         reason: outcome.delivered ? null : (outcome.failure?.code ?? 'UNKNOWN'),
-      });
+      }, false, expectedRevision);
       return outcome;
     },
   };
@@ -249,6 +437,16 @@ export class NotificationChannelRegistry {
     };
   }
 
+  /** Envuelve el aviso a dispositivos (Web Push): con el canal apagado no se envía nada. */
+  public devices(inner: {
+    notify(tenantId: string, subjectKeys: readonly string[]): Promise<number>;
+  }): { notify(tenantId: string, subjectKeys: readonly string[]): Promise<number> } {
+    return {
+      notify: (tenantId, subjectKeys) =>
+        this.enabled('push') ? inner.notify(tenantId, subjectKeys) : Promise.resolve(0),
+    };
+  }
+
   /** El respaldo por correo también respeta `enabled` (si está apagado, va a la consola). */
   public fallback(mailFallback: FallbackChannel, consoleFallback: FallbackChannel): FallbackChannel {
     return {
@@ -267,18 +465,18 @@ export class NotificationChannelRegistry {
     };
   }
 
-  public async setTeamsUrl(raw: unknown, actorId: string): Promise<
+  public async setTeamsUrl(raw: unknown, actorId: string, expectedRevision?: number): Promise<
     | { readonly ok: true; readonly view: ChannelView; readonly previous: string | null }
     | { readonly ok: false; readonly code: string }
   > {
     const validation = validateTeamsWebhookUrl(raw);
     if (!validation.ok) return { ok: false, code: validation.code };
-    if (!this.options.key) return { ok: false, code: 'ENCRYPTION_KEY_MISSING' };
+    const key = this.options.key;
+    if (!key) return { ok: false, code: 'ENCRYPTION_KEY_MISSING' };
     const previous = this.teamsUrl();
-    const current = this.record('teams');
-    const next: ChannelRecord = {
+    const saved = await this.writeConfig('teams', expectedRevision, (current) => ({
       ...current,
-      secretCiphertext: encryptSecret(this.options.key, validation.url, this.aad('teams')),
+      secretCiphertext: encryptSecret(key, validation.url, this.aad('teams')),
       secretHint: maskWebhookUrl(validation.url),
       updatedAt: this.options.clock(),
       updatedBy: actorId,
@@ -291,9 +489,8 @@ export class NotificationChannelRegistry {
       lastTestOutcome: null,
       lastTestHttpStatus: null,
       lastTestProviderId: null,
-    };
-    await this.options.store.save(next);
-    this.records.set('teams', next);
+    }));
+    if (!saved) return { ok: false, code: 'REVISION_CONFLICT' };
     this.databaseTeamsUrl = validation.url;
     return {
       ok: true,
@@ -302,16 +499,19 @@ export class NotificationChannelRegistry {
     };
   }
 
-  public async setEnabled(channelId: ChannelId, enabled: boolean, actorId: string): Promise<ChannelView> {
-    const next: ChannelRecord = {
-      ...this.record(channelId),
+  public async setEnabled(
+    channelId: ChannelId,
+    enabled: boolean,
+    actorId: string,
+    expectedRevision?: number,
+  ): Promise<ChannelChange> {
+    const saved = await this.writeConfig(channelId, expectedRevision, (current) => ({
+      ...current,
       enabled,
       updatedAt: this.options.clock(),
       updatedBy: actorId,
-    };
-    await this.options.store.save(next);
-    this.records.set(channelId, next);
-    return this.view(channelId);
+    }));
+    return saved ? { ok: true, view: this.view(channelId) } : { ok: false, code: 'REVISION_CONFLICT' };
   }
 
   public configured(channelId: ChannelId): boolean {
@@ -337,7 +537,17 @@ export class NotificationChannelRegistry {
               ? 'failing'
               : 'degraded'
             : 'ok';
+    const setup: ChannelSetupStep = !configured
+      ? 'configure'
+      : !record.enabled
+        ? 'enable'
+        : lastSuccess === 0 || lastFailure > lastSuccess
+          ? 'verify'
+          : 'ready';
     return {
+      revision: record.revision,
+      setup,
+      needsSetup: setup !== 'ready',
       id: channelId,
       label: LABELS[channelId],
       enabled: record.enabled,
@@ -371,4 +581,17 @@ export class NotificationChannelRegistry {
   public views(): readonly ChannelView[] {
     return (['teams', 'email', 'push'] as const).map((id) => this.view(id));
   }
+}
+
+function healthOf(record: ChannelRecord): ChannelHealth {
+  return {
+    lastSuccessAt: record.lastSuccessAt,
+    lastFailureAt: record.lastFailureAt,
+    lastHttpStatus: record.lastHttpStatus,
+    lastFailureReason: record.lastFailureReason,
+    lastTestAt: record.lastTestAt,
+    lastTestOutcome: record.lastTestOutcome,
+    lastTestHttpStatus: record.lastTestHttpStatus,
+    lastTestProviderId: record.lastTestProviderId,
+  };
 }

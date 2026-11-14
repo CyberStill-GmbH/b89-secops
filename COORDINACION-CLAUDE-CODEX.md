@@ -281,3 +281,91 @@ campos **opcionales** por ítem y funciona sin ellos (`common/api_contract.ts �
 ### Revisión backend solicitada · acuse append-only y atómico (2026-11-12)
 
 La auditoría del BFF encontró que `POST /api/notifications/:id/acknowledge` actualiza `notification_attempts`, pero no agrega un `AuditEvent`; además usa lectura seguida de guardado sin compare-and-set. El estado expone actor/hora, pero no es evidencia append-only y carreras pueden aceptar dos acuses o pisar estado. Revisar la propuesta de una operación de aplicación que actualice solo estados acuseables y agregue `soar.notification.acknowledged` con el mismo tx/client, `correlationId`, actor, recurso y metadata mínima. En memoria se requiere serialización/rollback; en PostgreSQL, CAS y `PrismaAuditStore(tx)` en la misma transacción. Proteger el estado `acknowledged` contra escrituras stale del dispatcher. No considerar suficiente un `recordAudit` posterior a `save`, pues incumple A3.
+<!-- 2026-11-13: bloque de integridad de investigación; contratos para revisión cruzada. -->
+
+### Codex · 2026-11-13 · Correlador, respuesta SOAR, Bunny y auditoría MCP
+
+El usuario autoriza implementación con agentes tras auditoría del código. El plan y criterios están
+en `docs/25-programa-confiabilidad-e-investigacion.md`, sección «Flujo verificable de evidencia,
+investigación y respuesta». Responsabilidades sin solapamiento: agente Go en
+`services/b89-correlator`, agente SOAR en `modules/soar`, agente Bunny en `public/bunny`;
+coordinación/documentación y auditoría MCP en API a cargo de Codex principal.
+
+Solicitud de revisión backend: comprobar rechazo de resultados parciales del Indexer y continuidad
+del cursor; aislamiento de errores de despacho y backoff desde el fin del fallo; auditoría del MCP
+externo antes/después de consultar, sin contenido ni argumentos. Se mantienen capacidades por
+usuario, B10/B12, política de prioridades y semántica de aceptación HTTP. No se reclama reducción
+medida de FP ni despliegue. Se actualizará este bloque con resultados y límites de aceptación.
+
+### 2026-11-13 ? Revisi?n de contrato: atenci?n prioritaria por servicio
+
+Solicitada revisi?n backend de `OverviewResponse.attention` opcional: acceso, total nullable y hasta
+100 eventos resumidos por servicio. Una b?squeda OSD adicional, asCurrentUser, agregaciones por
+fuente con ventana 24 h/nivel >= 8, orden por severidad y fecha. Respuesta parcial invalida la lista;
+no se ampl?an permisos ni se cambia estado SOC. UI directa por tarjeta y consulta completa en Discover.
+
+### Claude · 2026-11-13 · Canales de notificación: inicialización, revisión y estado de puesta en marcha
+
+Nota añadida al contrato «Canales de notificación» de arriba (no lo reemplaza). Implementado en local, sin desplegar.
+
+- `GET /api/notifications/channels` responde `{ correlationId, canManage, items: [...] }` con `id: teams|email|push` (el plugin lo normaliza en `channels_contract.ts`; `push` conserva `apiId: push` y es un canal propio, no la bandeja). Cada ítem añade `revision` (entero; 0 = sin fila), `setup: configure|enable|verify|ready` y `needsSetup`.
+- `PUT …/channels/teams { webhookUrl, expectedRevision? }` y `POST …/{id}/enable|disable { expectedRevision? }`: revisión distinta → `STATE_CONFLICT` sin escribir (auditado como `*_rejected`); `expectedRevision` no entero → `VALIDATION_FAILED`. Sin el campo se aplica sobre la fila vigente (compatibilidad).
+- Arranque: `initialize()` siembra las filas faltantes como `system:bootstrap` (`notifications.channel.initialized`); configurado ⇒ activo, sin configurar ⇒ apagado. La base manda sobre `B89_TEAMS_WORKFLOW_URL`. Guardar el webhook desde la consola no activa un canal apagado: la guía de la UI lleva al paso «Activar».
+- `ChannelStore` cambió: `create` / `saveConfig(record, expectedRevision)` / `saveHealth` reemplazan a `save`. La salud no mueve `revision`. Migración `20261113120000_notification_channel_revision`.
+- Salud: `soc.degradedReasons` puede traer `NOTIFICATION_TEAMS_NOT_CONFIGURED` y `NOTIFICATION_NO_P1_CHANNEL` (etiquetas en `common/catalog.ts`); `soc.notifications.channels` lista `{ id, enabled, configured, setup }`.
+- Sin tocar: los tres validadores de URL siguen distintos (API acepta `*.webhook.office.com` heredado; UI y esquema de entorno lo rechazan).
+- Revisión pedida a Codex: copy de la guía en `channels_setup.tsx` y los estados nuevos de `channels_panel.tsx`; `tools/typecheck.mjs` falla hoy por `common/ai_investigations.ts` y `public/application.tsx` (trabajo en curso ajeno a este cambio).
+### Codex · 2026-11-14 · Recuperación de token Graph tras consentimiento
+
+Defecto reproducido localmente: el lector Graph conservaba hasta vencimiento el token de aplicación
+rechazado, aun después de conceder permisos. `EntraClientCredentialsTokenSource.refreshRejected`
+invalida solamente el token rechazado, comparte la renovación concurrente y limita renovación forzada
+a una por minuto. Graph reintenta una sola lectura GET con el token renovado; una segunda denegación
+conserva el diagnóstico. Redirects HTTP se rechazan. Wiring limitado al lector del padrón en bootstrap.
+No modifica issuer, audience, nonce, PKCE, grupo de admisión ni capacidades.
+
+Pruebas locales: 46/46 (workload-token, graph-token-recovery, directory-sync, directory-activation,
+oidc-handshake). No hubo login Entra real ni consulta de permisos del tenant; este defecto no se
+presenta como causa confirmada del incidente desplegado. Revisión backend solicitada del cooldown,
+single-flight y diagnóstico tras 403 persistente. Fuente: Microsoft Graph group delta,
+https://learn.microsoft.com/en-us/graph/api/group-delta?view=graph-rest-1.0.
+
+
+### Claude · 2026-11-14 · Analista IA: dominio y persistencia (docs/27)
+
+Entregado en `modules/assistant/src/investigations/` (exportado desde `@b89/assistant`), adaptador
+`@b89/assistant/postgres-investigations`, `@b89/database/ai-investigation-store` y la migración
+`20261113130000_ai_investigations` (jobs, eventos append-only, invocaciones, acciones, ajustes). Cola con
+lease/fencing, reserva del peor caso con advisory lock por tenant, una llamada al modelo por run, modos
+shadow/assisted/autonomous con guardas duras (nunca cierra P1/P2 ni por veredicto del modelo; sin
+contención). Sin API, UI, wiring de Claude ni despliegue. Revisión backend solicitada: guardas de
+`planActions`, semántica de `usage_unreconciled` y CHECK de la migración.
+
+### Claude · 2026-11-14 · Analista IA conectado al API (contratos para revisión)
+
+Local, sin commit ni deploy; apagado por defecto (`B89_ANALYST_ENABLED=false`). Detalle en
+docs/27 «Implementación (2026-11-14)».
+
+- **HTTP** `/api/ai-investigations` (`apps/api/src/assistant/ai-investigations.controller.ts`):
+  formas exactas de `common/ai_investigations.ts`. Añadidos compatibles: `RunDetail.mode`
+  (`shadow|assisted|autonomous|null`, del evento final de la bitácora), `source`, `actions[].urgency`,
+  `budget.deploymentCeilingMicroUsd`, `settings.deploymentEnabled`. `PUT /settings` conserva
+  `review.maxImmediatePerHour` si la consola no lo envía; rechaza un techo mayor que el del
+  despliegue (`VALIDATION_FAILED:budget.dailyCeilingMicroUsd`). `POST /` con el analista apagado ⇒
+  `STATE_CONFLICT` (`fields: ['analyst']`).
+- **Capacidades**: `investigations.read|run` → `b89.soc.analyst`, `b89.soc.lead`,
+  `b89.platform.admin`; `investigations.configure` → solo `b89.platform.admin` (scope `soc.write`).
+- **SOC**: nuevo hecho de outbox `soc.alert.review_requested` (`requestAlertReview`, ruta
+  analista+lead; `urgency: digest` ⇒ suprimido `digest` con grupo `ai-review:<grupo>`, entra al
+  resumen de lo suprimido); `attachAlertToIncident` (incidente + alerta en una transacción, auditado
+  `soc.incident.attach_alert`); `auditDraft` audita `svc:*` como `service`.
+- **SOAR**: `runAnalystDigest` (`digest:ai:<fecha>`, grupo `digest:ai_analyst`, rol lead);
+  `DigestInput.kind` suma `ai_analyst`.
+- **Dominio**: `EvidenceBundle.context` opcional (regla, incidentes, riesgo, actividad, avisos,
+  auditoría) en el paquete por allowlist; `POLICY_VERSION` → `b89-analyst-2026-11-14.1`;
+  `SocActions.escalate` puede devolver `disposition: created|attached`; `AssistantTool.readOnly`.
+- **UI (único archivo tocado)**: `common/ai_investigations.ts` — rótulos para `ACTION_REASON_CODES`
+  y validador `maxOutputTokens` 200–4000.
+- Revisión pedida a Codex: mostrar `mode` del expediente en la UI; copy del rótulo «revisión
+  diferida» en el resumen; dedupe de escalación (ventana 72 h por regla+entidad) y barrido de
+  incidentes (nota del analista como marca durable).

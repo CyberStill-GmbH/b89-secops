@@ -5,7 +5,6 @@ package engine
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"math"
 	"sort"
@@ -65,6 +64,7 @@ type Counters struct {
 	EmittedLate    atomic.Int64
 	AuditRecorded  atomic.Int64
 	Polls          atomic.Int64
+	PollYields     atomic.Int64
 	Pages          atomic.Int64
 	Unparseable    atomic.Int64
 }
@@ -81,6 +81,8 @@ type Runner struct {
 	C       Counters
 
 	mu              sync.RWMutex
+	pollMu          sync.Mutex // one owner of the ordered ingest cursor at a time
+	pendingPoll     *pollWindow
 	fb              feedback.Result
 	alerts          []model.B89Alert
 	truncated       bool
@@ -95,6 +97,13 @@ type Runner struct {
 	lastFeedbackErr string
 	audited         map[string]bool
 	emitTimes       []time.Time
+}
+
+// pollWindow fixes the time bounds while a bounded poll drains its search_after
+// pages. The checkpoint is in memory; process restart rebuilds through Backfill.
+type pollWindow struct {
+	from, to time.Time
+	after    *sources.Cursor
 }
 
 // New builds a runner.
@@ -123,6 +132,11 @@ type Readiness struct {
 	FeedbackReason      string     `json:"feedbackReason,omitempty"`
 	LastFeedbackSuccess *time.Time `json:"lastFeedbackSuccess,omitempty"`
 	FeedbackAgeSecs     *float64   `json:"feedbackAgeSeconds,omitempty"`
+	PollWindowPending   bool       `json:"pollWindowPending"`
+	PollWindowFrom      *time.Time `json:"pollWindowFrom,omitempty"`
+	PollWindowTo        *time.Time `json:"pollWindowTo,omitempty"`
+	CoverageThrough     *time.Time `json:"coverageThrough,omitempty"`
+	CoverageLagSecs     *float64   `json:"coverageLagSeconds,omitempty"`
 }
 
 func (r *Runner) Readiness(at time.Time) Readiness {
@@ -133,6 +147,19 @@ func (r *Runner) Readiness(at time.Time) Readiness {
 
 func (r *Runner) readinessLocked(at time.Time) Readiness {
 	state := Readiness{Status: "backfilling", Reason: "initial_backfill_incomplete"}
+	if !r.lastTo.IsZero() {
+		through := r.lastTo
+		lag := at.Add(-r.Opt.Lag).Sub(through).Seconds()
+		if lag < 0 {
+			lag = 0
+		}
+		state.CoverageThrough, state.CoverageLagSecs = &through, &lag
+	}
+	if r.pendingPoll != nil {
+		from, to := r.pendingPoll.from, r.pendingPoll.to
+		state.PollWindowPending = true
+		state.PollWindowFrom, state.PollWindowTo = &from, &to
+	}
 	feedbackReady := r.feedbackReadinessLocked(at, &state)
 	if !r.backfilled || !r.ready {
 		if r.lastPollErr != "" {
@@ -152,6 +179,10 @@ func (r *Runner) readinessLocked(at time.Time) Readiness {
 	state.PollAgeSecs = age.Seconds()
 	if r.lastPollErr != "" {
 		state.Status, state.Reason = "degraded", "upstream_poll_failed"
+		return state
+	}
+	if r.pendingPoll != nil {
+		state.Status, state.Reason = "catching_up", "upstream_poll_catching_up"
 		return state
 	}
 	staleAfter := time.Duration(1<<63 - 1)
@@ -223,15 +254,19 @@ func freshnessThreshold(interval time.Duration) time.Duration {
 // Ready reports whether backfill, upstream polling, and feedback refresh are healthy.
 func (r *Runner) Ready() bool { return r.Readiness(r.Now().UTC()).Ready }
 
-// ingest reads [from,to) page by page and processes it; returns the new candidates.
-func (r *Runner) ingest(ctx context.Context, from, to time.Time, maxPages int) ([]*model.Candidate, error) {
-	var cursor *sources.Cursor
+// ingest reads [from,to) in order. A non-nil cursor with no error means the page
+// budget was consumed, not that the source failed. On error, cursor remains at the
+// last completely processed page so retry cannot skip the failed page's evidence.
+func (r *Runner) ingest(ctx context.Context, from, to time.Time, maxPages int, cursor *sources.Cursor) ([]*model.Candidate, *sources.Cursor, error) {
 	created := []*model.Candidate{}
 	for page := 0; maxPages <= 0 || page < maxPages; page++ {
+		if err := ctx.Err(); err != nil {
+			return created, cursor, err
+		}
 		docs, next, err := r.Gateway.Page(ctx, from, to, cursor)
 		if err != nil {
 			r.C.GatewayErrors.Add(1)
-			return created, err
+			return created, cursor, err
 		}
 		r.C.Pages.Add(1)
 		for _, d := range docs {
@@ -248,15 +283,17 @@ func (r *Runner) ingest(ctx context.Context, from, to time.Time, maxPages int) (
 			r.mu.Unlock()
 		}
 		if next == nil {
-			return created, nil
+			return created, nil, nil
 		}
 		cursor = next
 	}
-	return created, errors.New("page limit reached")
+	return created, cursor, nil
 }
 
 // Backfill rebuilds state over the look-back window (no emission of stale candidates).
 func (r *Runner) Backfill(ctx context.Context) ([]*model.Candidate, error) {
+	r.pollMu.Lock()
+	defer r.pollMu.Unlock()
 	now := r.Now().UTC()
 	to := now.Add(-r.Opt.Lag)
 	from := to.Add(-r.Opt.Backfill)
@@ -272,7 +309,7 @@ func (r *Runner) Backfill(ctx context.Context) ([]*model.Candidate, error) {
 		if sliceTo.After(to) {
 			sliceTo = to
 		}
-		c, err := r.ingest(ctx, sliceFrom, sliceTo, 0)
+		c, _, err := r.ingest(ctx, sliceFrom, sliceTo, 0, nil)
 		created = append(created, c...)
 		if err != nil {
 			r.mu.Lock()
@@ -283,6 +320,7 @@ func (r *Runner) Backfill(ctx context.Context) ([]*model.Candidate, error) {
 	}
 	r.mu.Lock()
 	r.lastTo, r.backfilled, r.ready = to, true, true
+	r.pendingPoll = nil
 	r.lastPoll, r.lastPollErr = r.Now().UTC(), ""
 	r.mu.Unlock()
 	r.attachAlerts()
@@ -293,24 +331,34 @@ func (r *Runner) Backfill(ctx context.Context) ([]*model.Candidate, error) {
 
 // Poll reads new alerts since the last window (with overlap; ids dedupe).
 func (r *Runner) Poll(ctx context.Context) ([]*model.Candidate, error) {
+	r.pollMu.Lock()
+	defer r.pollMu.Unlock()
 	r.mu.RLock()
-	from := r.lastTo.Add(-r.Opt.Overlap)
+	window := r.pendingPoll
+	if window == nil {
+		window = &pollWindow{from: r.lastTo.Add(-r.Opt.Overlap), to: r.Now().UTC().Add(-r.Opt.Lag)}
+	}
 	r.mu.RUnlock()
-	to := r.Now().UTC().Add(-r.Opt.Lag)
-	if !to.After(from) {
+	if !window.to.After(window.from) {
 		return nil, nil
 	}
 	r.C.Polls.Add(1)
-	created, err := r.ingest(ctx, from, to, r.Opt.MaxPagesPerPoll)
+	created, next, err := r.ingest(ctx, window.from, window.to, r.Opt.MaxPagesPerPoll, window.after)
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if err != nil {
-		r.mu.Lock()
+		r.pendingPoll = &pollWindow{from: window.from, to: window.to, after: next}
 		r.lastPollErr = "upstream_poll_failed"
-		r.mu.Unlock()
 		return created, err
 	}
-	r.mu.Lock()
-	r.lastTo, r.lastPoll, r.lastPollErr = to, r.Now().UTC(), ""
-	r.mu.Unlock()
+	r.lastPollErr = ""
+	if next != nil {
+		r.pendingPoll = &pollWindow{from: window.from, to: window.to, after: next}
+		r.C.PollYields.Add(1)
+		return created, nil
+	}
+	r.pendingPoll = nil
+	r.lastTo, r.lastPoll = window.to, r.Now().UTC()
 	return created, nil
 }
 

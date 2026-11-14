@@ -39,6 +39,7 @@ const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
 export interface GraphDirectoryOptions {
   readonly accessToken: () => Promise<string>;
+  readonly refreshRejectedToken?: (token: string) => Promise<string | null>;
   readonly fetch?: typeof globalThis.fetch;
 }
 
@@ -119,13 +120,14 @@ export class GraphDirectoryReader implements DirectoryReader {
 
   public constructor(private readonly options: GraphDirectoryOptions) {}
 
-  async #get(url: URL, operation: DirectoryOperation): Promise<Json> {
-    const token = await this.options.accessToken();
+  async #get(url: URL, operation: DirectoryOperation, refreshedToken?: string): Promise<Json> {
+    const token = refreshedToken ?? (await this.options.accessToken());
     let response: Response;
     try {
       response = await (this.options.fetch ?? globalThis.fetch)(url, {
         headers: { authorization: `Bearer ${token}`, accept: 'application/json' },
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        redirect: 'error',
       });
     } catch {
       throw new DirectoryError('DIRECTORY_UNAVAILABLE');
@@ -139,6 +141,15 @@ export class GraphDirectoryReader implements DirectoryReader {
     }
     if (response.status === 410) throw new DirectoryError('DIRECTORY_DELTA_EXPIRED');
     if (response.status === 401 || response.status === 403) {
+      // Consent changes do not change an already issued access token. Refresh once, never
+      // convert an authorization failure into successful membership or bypass group checks.
+      if (refreshedToken === undefined && this.options.refreshRejectedToken) {
+        const fresh = await this.options.refreshRejectedToken(token);
+        if (fresh !== null) {
+          await response.body?.cancel();
+          return this.#get(url, operation, fresh);
+        }
+      }
       const errorCode = await graphErrorCode(response);
       const rawRequestId = response.headers.get('request-id');
       const requestId =

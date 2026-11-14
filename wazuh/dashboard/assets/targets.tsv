@@ -43,6 +43,7 @@ svg/b89_wordmark_on_dark.svg	dashboard	src/core/server/core_app/assets/b89/b89_w
 svg/b89-observability.svg	dashboard	src/core/server/core_app/assets/b89/b89-observability.svg
 svg/b89-alerts.svg	dashboard	src/core/server/core_app/assets/b89/b89-alerts.svg
 svg/b89-incidents.svg	dashboard	src/core/server/core_app/assets/b89/b89-incidents.svg
+svg/b89-ai-analyst.svg	dashboard	src/core/server/core_app/assets/b89/b89-ai-analyst.svg
 svg/b89-notifications.svg	dashboard	src/core/server/core_app/assets/b89/b89-notifications.svg
 svg/b89-audit.svg	dashboard	src/core/server/core_app/assets/b89/b89-audit.svg
 svg/b89-access.svg	dashboard	src/core/server/core_app/assets/b89/b89-access.svg

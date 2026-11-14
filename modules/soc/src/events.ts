@@ -18,6 +18,8 @@ export const SOC_EVENT_TYPES = [
   'soc.alert.triaged',
   'soc.alert.escalated',
   'soc.alert.closed',
+  /** Pedido de revisión humana del Analista IA (no cambia la alerta). */
+  'soc.alert.review_requested',
   'soc.incident.opened',
   'soc.incident.status_changed',
   'soc.incident.closed',
