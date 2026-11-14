@@ -64,6 +64,8 @@ images/b89_login_hero.webp	dashboard	src/core/server/core_app/assets/b89/b89_log
 images/b89-remi.png	dashboard	src/core/server/core_app/assets/b89/b89-remi.png
 images/b89-mundi.png	dashboard	src/core/server/core_app/assets/b89/b89-mundi.png
 images/b89-bunny.webp	dashboard	src/core/server/core_app/assets/b89/b89-bunny.webp
+images/b89-ai-analyst-bunny.webp	dashboard	src/core/server/core_app/assets/b89/b89-ai-analyst-bunny.webp
+images/b89-ai-analyst-bunny-160.webp	dashboard	src/core/server/core_app/assets/b89/b89-ai-analyst-bunny-160.webp
 favicons/favicon.svg	dashboard	src/core/server/core_app/assets/favicons/favicon.svg
 images/b89-head-mark.webp	dashboard	src/core/server/core_app/assets/b89/b89-head-mark.webp
 # Logotipos de proveedores integrados (uso nominativo; fuente y titulares en svg/vendors/NOTICE.md), servidos en /ui/b89/vendors/.
