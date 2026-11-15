@@ -852,7 +852,7 @@ export const AI_MODE_NAME: Record<AiMode, string> = {
 export const AI_MODE_SUMMARY: Record<AiMode, string> = {
   shadow: 'solo recomienda; no cambia alertas ni notifica',
   assisted: 'recomienda y pide revisión humana por notificación; no cambia alertas',
-  autonomous: 'ejecuta las acciones permitidas y siempre avisa a una persona',
+  autonomous: 'ejecuta las acciones permitidas, cierra lo benigno con una nota y solo avisa a una persona ante peligro',
 };
 
 export function parseMode(value: unknown): AiMode | null {
