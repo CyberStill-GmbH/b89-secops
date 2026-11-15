@@ -92,16 +92,26 @@ export interface InvestigationAction {
 export const ACTION_HARD_GUARDS = Object.freeze({
   /** Solo se cierra por la vía determinista; un veredicto del modelo jamás cierra. */
   closeRequiresReason: 'KNOWN_BENIGN_PATTERN',
+  /**
+   * Segunda vía determinista de cierre: la valoración por reglas concluye actividad habitual
+   * (confianza media, CERO señales de riesgo). No exige historial de cierres manuales (nadie
+   * cierra a mano el ruido de alto volumen), pero sí todas las demás guardas.
+   */
+  closeRuleAssessmentReason: 'RULE_ASSESSMENT_BENIGN',
   /** Prioridades que pueden cerrarse; P1 y P2 nunca. */
   closeablePriorities: Object.freeze(['P3', 'P4']) as readonly InvestigationPriority[],
-  /** Mínimo absoluto de cierres previos como falso positivo. */
+  /** Mínimo absoluto de cierres previos como falso positivo (vía del patrón benigno conocido). */
   closeMinHistory: 3,
   /** Verdaderos positivos previos tolerados para cerrar. */
   closeMaxTruePositives: 0,
   /** Confianza mínima absoluta para escalar a partir de un veredicto del modelo. */
   escalateMinConfidence: 'medium' as InvestigationConfidence,
-  /** Todo cambio de estado va acompañado de un aviso a una persona. */
-  stateChangeRequiresReviewNotice: true,
+  /**
+   * Solo la escalación avisa a una persona. Acusar y cerrar lo benigno quedan en la nota de la
+   * alerta, la auditoría y el resumen diario (decisión del dueño, 2026-11-15: la revisión humana
+   * es para peligro o rarezas, no para cada acuse).
+   */
+  stateChangeRequiresReviewNotice: false,
   /** Tipos de acción existentes: no hay contención ni respuesta. */
   kinds: ACTION_KINDS,
 });
@@ -171,12 +181,22 @@ export function closeBenignAllowed(
   const guards = ACTION_HARD_GUARDS;
   if (!result || !evidence) return false;
   const maxPriority = settings.closeBenign.maxPriority;
+  const knownPattern = result.deterministic.reasons.includes(guards.closeRequiresReason);
+  const ruleAssessment =
+    result.deterministic.reasons.includes(guards.closeRuleAssessmentReason) &&
+    result.confidence === 'medium';
+  // El patrón benigno conocido exige cierres manuales previos; la valoración por reglas ya
+  // exige cero señales de riesgo y no tiene historial que exigir (ver closeRuleAssessmentReason).
+  const historyOk = knownPattern
+    ? evidence.history.falsePositive >= Math.max(guards.closeMinHistory, settings.closeBenign.minHistory)
+    : ruleAssessment;
   return (
     context.inference === 'none' &&
     context.status === 'completed' &&
     result.verified &&
     result.verdict === 'likely_false_positive' &&
-    result.deterministic.reasons.includes(guards.closeRequiresReason) &&
+    (knownPattern || ruleAssessment) &&
+    historyOk &&
     guards.closeablePriorities.includes(job.priority) &&
     job.priority >= maxPriority &&
     evidence.alerts.length > 0 &&
@@ -185,8 +205,6 @@ export function closeBenignAllowed(
     !evidence.completeness.truncated &&
     unhealthySources(evidence).length === 0 &&
     evidence.history.truePositive <= guards.closeMaxTruePositives &&
-    evidence.history.falsePositive >=
-      Math.max(guards.closeMinHistory, settings.closeBenign.minHistory) &&
     evidence.alerts.every((alert) => !alert.incidentId)
   );
 }
@@ -263,7 +281,9 @@ export function planActions(
     closeBenignAllowed(job, result, evidence, settings, context)
   ) {
     plan.push({ kind: 'close_benign', reason: 'CLOSE_KNOWN_BENIGN' });
-    reviewReason ??= 'REVIEW_STATE_CHANGE_NOTICE';
+    if (ACTION_HARD_GUARDS.stateChangeRequiresReviewNotice) {
+      reviewReason ??= 'REVIEW_STATE_CHANGE_NOTICE';
+    }
   }
 
   // ── Acuse: «el analista ya la investigó» ───────────────────────────────────────────────────
@@ -278,7 +298,9 @@ export function planActions(
     !attached
   ) {
     plan.push({ kind: 'acknowledge', reason: 'ACKNOWLEDGE_INVESTIGATED' });
-    reviewReason = 'REVIEW_STATE_CHANGE_NOTICE';
+    if (ACTION_HARD_GUARDS.stateChangeRequiresReviewNotice) {
+      reviewReason = 'REVIEW_STATE_CHANGE_NOTICE';
+    }
   }
 
   // ── Pedido de revisión humana ──────────────────────────────────────────────────────────────
@@ -343,7 +365,29 @@ export interface SocActions {
   ): Promise<{ readonly reportId?: string }>;
 }
 
-/** Nota fija del cierre benigno: sin texto del modelo ni de la alerta. */
+/**
+ * Nota del cierre benigno. Solo texto generado por B89 (nunca del modelo ni de la alerta): la
+ * conclusión por reglas y sus señales, que se arman con conteos y referencias.
+ */
 export function closeBenignNote(job: InvestigationJob): string {
-  return `Cierre automático del Analista IA (${job.policyVersion}): patrón benigno conocido; el historial de 30 días de la misma regla y entidad solo registra cierres como falso positivo. Expediente ${job.id}.`;
+  const head = `Cierre automático del Analista IA (${job.policyVersion}).`;
+  const tail = ` Expediente ${job.id}.`;
+  const result = job.result;
+  const ruleBased =
+    result !== null &&
+    result.deterministic.reasons.includes(ACTION_HARD_GUARDS.closeRuleAssessmentReason);
+  if (!ruleBased) {
+    return `${head} Patrón benigno conocido: el historial de 30 días de la misma regla y entidad solo registra cierres como falso positivo.${tail}`;
+  }
+  const signals = result.inferences
+    .map((entry) => entry.text)
+    .filter((text) => text.startsWith('Señal de actividad habitual: '))
+    .map((text) => `- ${text.slice('Señal de actividad habitual: '.length)}`);
+  const body = [` ${result.summary}`, signals.length > 0 ? `\nMotivos:\n${signals.join('\n')}` : '']
+    .join('')
+    .slice(0, TRIAGE_NOTE_MAX - head.length - tail.length);
+  return `${head}${body}${tail}`;
 }
+
+/** Tope de la nota de triage del SOC (TRIAGE_NOTE_LIMITS.maximumLength). */
+const TRIAGE_NOTE_MAX = 2000;

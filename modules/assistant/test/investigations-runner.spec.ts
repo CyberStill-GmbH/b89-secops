@@ -578,22 +578,15 @@ describe('acciones sobre el SOC', () => {
     return { h, job, runner };
   }
 
-  it('autónomo: cierra el benigno determinista, adjunta el informe y avisa (en resumen)', async () => {
+  it('autónomo: cierra el benigno determinista y adjunta el informe, sin pedir revisión', async () => {
     const soc = new FakeSocActions();
     const { h, job, runner } = await benignRun(soc);
     await runner.runOnce();
     expect(calls(h)).toBe(0);
-    expect(soc.calls).toEqual(['close_benign', 'report', 'request_review']);
-    expect(soc.reviews[0]).toMatchObject({
-      reason: 'REVIEW_STATE_CHANGE_NOTICE',
-      urgency: 'digest',
-    });
+    expect(soc.calls).toEqual(['close_benign', 'report']);
+    expect(soc.reviews).toEqual([]);
     const actions = await h.store.actions(TENANT, job.id);
     expect(actions.every((action) => action.state === 'executed')).toBe(true);
-    expect(actions.find((action) => action.kind === 'request_review')?.ref).toEqual({
-      kind: 'notification',
-      id: 'notification-3',
-    });
     const done = await h.store.byId(TENANT, job.id);
     expect(done).toMatchObject({ status: 'completed', plannedStatus: null });
     expect((await h.store.events(TENANT, job.id)).some((event) => event.stage === 'acting')).toBe(
@@ -611,7 +604,7 @@ describe('acciones sobre el SOC', () => {
       state: 'failed',
       errorCode: 'ACTION_FAILED',
     });
-    expect(actions.find((action) => action.kind === 'request_review')?.state).toBe('executed');
+    expect(actions.find((action) => action.kind === 'report')?.state).toBe('executed');
     expect((await h.store.byId(TENANT, job.id))?.status).toBe('completed');
     expect(JSON.stringify(await h.store.events(TENANT, job.id))).not.toContain('secret data');
   });
@@ -633,7 +626,7 @@ describe('acciones sobre el SOC', () => {
     expect((await h.store.byId(TENANT, job.id))?.status).toBe('running');
     await runner.runOnce();
     expect(soc.calls.filter((name) => name === 'close_benign')).toHaveLength(1);
-    expect(soc.calls.filter((name) => name === 'request_review')).toHaveLength(1);
+    expect(soc.calls.filter((name) => name === 'request_review')).toHaveLength(0);
     expect(h.evidence.calls).toBe(1);
     expect(await h.store.byId(TENANT, job.id)).toMatchObject({ status: 'completed', attempt: 2 });
   });

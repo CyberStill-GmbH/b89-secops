@@ -230,7 +230,7 @@ describe('acciones del analista sobre el SOC', () => {
     });
   });
 
-  it('autónomo cierra un benigno conocido solo con todas las guardas y siempre avisa', async () => {
+  it('autónomo cierra un benigno conocido con todas las guardas y lo deja en la nota (sin pedir revisión)', async () => {
     benignHistory(5);
     const alert = putAlert({ priority: 'P4' });
     const { host, store } = await harness({
@@ -244,11 +244,8 @@ describe('acciones del analista sobre el SOC', () => {
     expect(closed?.triageNote).toContain(job.id);
     const actions = await store.actions(T, job.id);
     expect(actions.find((action) => action.kind === 'close_benign')?.state).toBe('executed');
-    expect(actions.find((action) => action.kind === 'request_review')).toMatchObject({
-      state: 'executed',
-      reason: 'REVIEW_STATE_CHANGE_NOTICE',
-      urgency: 'digest',
-    });
+    expect(closed?.triageNote).toContain('Cierre automático del Analista IA');
+    expect(actions.find((action) => action.kind === 'request_review')).toBeUndefined();
   });
 
   it('autónomo NO cierra un P3 con un verdadero positivo previo ni sin historial suficiente', async () => {

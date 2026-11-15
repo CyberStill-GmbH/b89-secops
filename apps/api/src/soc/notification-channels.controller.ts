@@ -28,8 +28,25 @@ import type { SecOpsRuntime } from '../runtime/secops-runtime.js';
 import { mutatingActor, readingActor } from './session-actor.js';
 import { SECOPS_RUNTIME } from './tokens.js';
 
-/** Edad máxima de la sesión para cambiar un canal. */
+/** Edad máxima de la sesión para cambiar un canal o los ajustes del analista (salvo administración). */
 export const RECENT_AUTH_MS = 30 * 60_000;
+
+/** Rol que configura con su sesión vigente (decisión del dueño, 2026-11-15). */
+export const PLATFORM_ADMIN_ROLE = 'b89.platform.admin';
+
+/**
+ * ¿Necesita esta sesión verificarse de nuevo? La administración de plataforma configura con su
+ * sesión vigente; el resto de los roles con permiso, solo con un inicio de sesión de < 30 min.
+ * La asignación de roles privilegiados conserva su propio step-up (separación de funciones).
+ */
+export function needsRecentAuth(
+  actor: { readonly roles: readonly string[] },
+  session: { readonly createdAt: Date },
+  now: Date,
+): boolean {
+  if (actor.roles.includes(PLATFORM_ADMIN_ROLE)) return false;
+  return now.getTime() - session.createdAt.getTime() > RECENT_AUTH_MS;
+}
 const TEST_TITLE = '[B89 SOC] Prueba de notificación';
 
 /**
@@ -67,7 +84,7 @@ export class NotificationChannelsController {
     if (!resolved.actor.capabilities.has('notifications.manage')) {
       throw new ApiError('RESOURCE_UNAVAILABLE', resolved.correlationId);
     }
-    if (this.runtime.now().getTime() - resolved.session.createdAt.getTime() > RECENT_AUTH_MS) {
+    if (needsRecentAuth(resolved.actor, resolved.session, this.runtime.now())) {
       throw new ApiError('STEP_UP_REQUIRED', resolved.correlationId);
     }
     return resolved;

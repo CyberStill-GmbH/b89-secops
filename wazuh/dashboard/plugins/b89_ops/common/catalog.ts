@@ -107,7 +107,7 @@ export const API_ERROR_MESSAGE: Record<ApiErrorCode, string> = {
   SESSION_EXPIRED: 'Su sesión terminó. Vuelva a iniciar sesión.',
   PASSKEY_REQUIRED: 'Fuera de la red B89 se requiere una passkey registrada.',
   STEP_UP_REQUIRED:
-    'Esta acción requiere una verificación reciente de identidad que no está disponible.',
+    'Por seguridad, esta acción pide un inicio de sesión reciente: cierre sesión, vuelva a entrar y repítala.',
   NETWORK_NOT_ALLOWED: 'No fue posible verificar el origen de la conexión.',
   REQUEST_NOT_VERIFIED:
     'No fue posible verificar la solicitud. Recargue la página e intente de nuevo.',

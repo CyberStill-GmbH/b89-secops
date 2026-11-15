@@ -39,7 +39,7 @@ import type { IncomingRequest } from '../http/http-contracts.js';
 import type { AnalystHost } from '../runtime/analyst-host.js';
 import { limaClock, limaDayStart } from '../runtime/analyst-host.js';
 import type { SecOpsRuntime } from '../runtime/secops-runtime.js';
-import { RECENT_AUTH_MS } from '../soc/notification-channels.controller.js';
+import { needsRecentAuth } from '../soc/notification-channels.controller.js';
 import { mutatingActor, readingActor } from '../soc/session-actor.js';
 import { SECOPS_RUNTIME } from '../soc/tokens.js';
 import {
@@ -288,7 +288,7 @@ export class AiInvestigationsController {
       request,
       'investigations.configure',
     );
-    if (this.runtime.now().getTime() - session.createdAt.getTime() > RECENT_AUTH_MS) {
+    if (needsRecentAuth(actor, session, this.runtime.now())) {
       throw new ApiError('STEP_UP_REQUIRED', correlationId);
     }
     const expectedRevision = expectedRevisionOf(body, correlationId);

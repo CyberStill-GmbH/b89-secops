@@ -617,11 +617,36 @@ describe('planActions · modos y guardas duras', () => {
     ).toEqual(['report']);
   });
 
-  it('autónomo cierra un benigno determinista P4 y avisa a una persona', () => {
+  it('autónomo cierra un benigno determinista P4 sin molestar a una persona (queda en la nota)', () => {
     const { job, evidenceBundle, result } = benignCase('P4');
     const plan = planActions(job, result, evidenceBundle, AUTONOMOUS, DONE);
-    expect(kinds(plan)).toEqual(['close_benign', 'report', 'request_review']);
-    expect(plan.at(-1)).toMatchObject({ reason: 'REVIEW_STATE_CHANGE_NOTICE', urgency: 'digest' });
+    expect(kinds(plan)).toEqual(['close_benign', 'report']);
+  });
+
+  it('autónomo cierra por valoración por reglas (sin historial manual) solo sin señales de riesgo', () => {
+    const base = benignCase('P3');
+    const evidence = {
+      ...base.evidenceBundle,
+      history: { total: 300, falsePositive: 0, truePositive: 0, open: 300 },
+    };
+    const ruleBased = {
+      ...base.result,
+      confidence: 'medium' as const,
+      deterministic: { reasons: ['ISOLATED_LOW_SIGNAL', 'RULE_ASSESSMENT_BENIGN'] },
+    };
+    expect(kinds(planActions(base.job, ruleBased, evidence, AUTONOMOUS, DONE))).toContain(
+      'close_benign',
+    );
+    // Sin la marca de la valoración (p. ej. hubo una señal de riesgo), no se cierra.
+    const withoutMark = { ...ruleBased, deterministic: { reasons: ['ISOLATED_LOW_SIGNAL'] } };
+    expect(kinds(planActions(base.job, withoutMark, evidence, AUTONOMOUS, DONE))).not.toContain(
+      'close_benign',
+    );
+    // Un verdadero positivo previo bloquea igual.
+    const prior = { ...evidence, history: { ...evidence.history, truePositive: 1 } };
+    expect(kinds(planActions(base.job, ruleBased, prior, AUTONOMOUS, DONE))).not.toContain(
+      'close_benign',
+    );
   });
 
   it('asistido nunca cambia estado', () => {
@@ -795,7 +820,7 @@ describe('planActions · modos y guardas duras', () => {
     ).toEqual([]);
   });
 
-  it('todo cambio de estado autónomo va acompañado de request_review', () => {
+  it('solo la escalación avisa a una persona; acusar y cerrar lo benigno no piden revisión', () => {
     const cases: [InvestigationJob, InvestigationResult, EvidenceBundle, ActionPlanContext][] = [
       [jobOf(), modelResult(), bundle(), { status: 'completed', inference: 'advanced' }],
       [benignCase('P4').job, benignCase('P4').result, benignCase('P4').evidenceBundle, DONE],
@@ -808,10 +833,12 @@ describe('planActions · modos y guardas duras', () => {
     ];
     for (const [job, result, evidence, context] of cases) {
       const plan = planActions(job, result, evidence, AUTONOMOUS, context);
-      if (
-        plan.some((action) => ['escalate', 'close_benign', 'acknowledge'].includes(action.kind))
-      ) {
+      if (plan.some((action) => action.kind === 'escalate')) {
         expect(kinds(plan)).toContain('request_review');
+      } else if (
+        plan.some((action) => ['close_benign', 'acknowledge'].includes(action.kind))
+      ) {
+        expect(kinds(plan)).not.toContain('request_review');
       }
     }
   });

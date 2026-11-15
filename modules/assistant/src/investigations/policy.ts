@@ -373,6 +373,16 @@ export function buildDeterministicResult(input: {
 
   // ── Valoración por reglas: el porqué de la conclusión ────────────────────────────────────
   const assessment = assessEvidence(bundle, priority);
+  // Marca para la segunda vía de cierre benigno (actions.ts): solo actividad habitual con
+  // confianza media y CERO señales de riesgo; las guardas duras del cierre siguen aplicando.
+  if (
+    decision.verdict === 'inconclusive' &&
+    assessment.verdict === 'likely_false_positive' &&
+    assessment.confidence === 'medium' &&
+    assessment.risk.length === 0
+  ) {
+    reasons.push('RULE_ASSESSMENT_BENIGN');
+  }
   const inferences = [
     ...assessment.risk.map((signal) => ({ text: `Señal de riesgo: ${signal.text}`, citations: alertIds.slice(0, 1) })),
     ...assessment.benign.map((signal) => ({ text: `Señal de actividad habitual: ${signal.text}`, citations: alertIds.slice(0, 1) })),
