@@ -71,8 +71,11 @@ export const ANALYST_HOST_DEFAULTS = Object.freeze({
   workIntervalMs: 15_000,
   sweepIntervalMs: 5 * 60_000,
   digestIntervalMs: 5 * 60_000,
-  /** Trabajos nuevos por pasada del barrido del atraso. */
-  sweepBatch: 10,
+  /**
+   * Trabajos nuevos por pasada del barrido del atraso (cada 5 min). Tras una versión nueva de la
+   * política, las alertas abiertas se reinvestigan con ella (P1 primero) a este ritmo.
+   */
+  sweepBatch: 25,
   /** Incidentes abiertos sin expediente del analista documentados por pasada. */
   incidentSweepBatch: 5,
   /** Trabajos leídos como máximo para un resumen (20 páginas de 100). */
@@ -336,11 +339,12 @@ export class AnalystHost {
       trigger: manual ? 'user' : 'system',
       source: input.source,
       initiatedBy: manual ? (input.initiatedBy ?? null) : null,
-      // Sistema: un trabajo por alerta. Persona: uno por revisión de la alerta (repetir el pedido
-      // sobre la misma alerta sin cambios reutiliza el trabajo).
+      // Sistema: un trabajo por alerta y versión de la política (una política mejor reinvestiga
+      // lo que sigue abierto). Persona: uno por revisión de la alerta (repetir el pedido sobre la
+      // misma alerta sin cambios reutiliza el trabajo).
       idempotencyKey:
         input.idempotencyKey ??
-        (manual ? `manual:${alert.id}:${alert.revision}` : `alert:${alert.id}`),
+        (manual ? `manual:${alert.id}:${alert.revision}` : `alert:${alert.id}:${POLICY_VERSION}`),
       fingerprint: fingerprintOf(
         alert.tenantId,
         [alert.id],
@@ -618,11 +622,11 @@ export class AnalystHost {
     const items = page.items.filter((alert) => alert.tenantId === this.options.tenantId);
     if (items.length < page.total || items.length > ANALYST_BACKLOG_LIMITS.maxAlerts) return null;
     if (items.length === 0) return 0;
-    const found = await this.store.existingKeys(
-      this.options.tenantId,
-      items.map((alert) => `alert:${alert.id}`),
-    );
-    return items.filter((alert) => !found.has(`alert:${alert.id}`)).length;
+    // Clave del sistema con la versión vigente: una alerta investigada con una política anterior
+    // cuenta como pendiente (el barrido la reinvestiga).
+    const keyOf = (alert: Alert) => `alert:${alert.id}:${POLICY_VERSION}`;
+    const found = await this.store.existingKeys(this.options.tenantId, items.map(keyOf));
+    return items.filter((alert) => !found.has(keyOf(alert))).length;
   }
 
   private async incidentsWithoutCaseFile(): Promise<number | null> {

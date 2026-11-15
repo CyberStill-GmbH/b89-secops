@@ -11,6 +11,7 @@ import {
   DEFAULT_ANALYST_SETTINGS,
   InMemoryAnalystSettingsStore,
   InMemoryInvestigationStore,
+  POLICY_VERSION,
 } from '@b89/assistant';
 import { InMemoryAuditStore } from '@b89/audit';
 import { createAlert, InMemorySoc } from '@b89/soc';
@@ -347,7 +348,7 @@ describe('GET /activity', () => {
       trigger: 'system',
       source: 'backlog',
       initiatedBy: null,
-      idempotencyKey: `alert:${worked.id}`,
+      idempotencyKey: `alert:${worked.id}:${POLICY_VERSION}`,
       fingerprint: 'fp-1',
       policyVersion: 'p',
       createdAt: new Date(NOW.getTime() - 60_000),

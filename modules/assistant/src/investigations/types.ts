@@ -438,9 +438,32 @@ export interface EvidenceEventSummary {
   readonly entityScoped: boolean;
 }
 
+/** Dominio de la alerta: define cómo se explica y qué señales aplican (assessment.ts). */
+export const EVIDENCE_DOMAINS = [
+  'vulnerability',
+  'platform',
+  'file_integrity',
+  'rootcheck',
+  'identity',
+  'generic',
+] as const;
+export type EvidenceDomain = (typeof EVIDENCE_DOMAINS)[number];
+
+/**
+ * Datos estructurados del evento de la propia alerta, por lista blanca de campos y por dominio
+ * (CVE/KEV/EPSS de una vulnerabilidad, chequeo y componente de la salud de plataforma, ruta de
+ * FIM…). Nunca el registro crudo completo; las cadenas llegan enmascaradas y recortadas.
+ */
+export interface EvidenceSubject {
+  readonly domain: EvidenceDomain;
+  readonly details: Readonly<Record<string, string | number | boolean>>;
+}
+
 export interface EvidenceBundle {
   readonly alerts: readonly EvidenceAlert[];
   readonly relatedAlerts: readonly EvidenceAlert[];
+  /** Detalles del evento de la alerta principal; opcional para adaptadores antiguos. */
+  readonly subject?: EvidenceSubject | null;
   readonly candidate?: EvidenceCandidate | null;
   readonly history: EvidenceHistory;
   /** Eventos de la entidad conservados (hasta el tope de almacenamiento, no de modelo). */

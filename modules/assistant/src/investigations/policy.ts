@@ -24,7 +24,8 @@ import type {
 /** Cambiar umbrales, razones o el prompt exige una versión nueva. */
 // 2026-11-14.1: el paquete incluye el contexto ampliado del SOC (`EvidenceBundle.context`).
 // 2026-11-15.2: el expediente determinista concluye con la valoración por reglas (assessment.ts).
-export const POLICY_VERSION = 'b89-analyst-2026-11-15.2';
+// 2026-11-15.3: explicación por dominio (vulnerabilidad, plataforma, FIM, rootcheck) y datos del evento.
+export const POLICY_VERSION = 'b89-analyst-2026-11-15.3';
 
 export interface TriageConfig {
   /** Cierres `false_positive` de la misma regla+entidad (30 d) para considerar el patrón benigno. */
@@ -383,6 +384,18 @@ export function buildDeterministicResult(input: {
   ) {
     reasons.push('RULE_ASSESSMENT_BENIGN');
   }
+  // Hay al menos una señal de riesgo o urgencia: lo que justifica pedir una revisión humana.
+  if (assessment.risk.length > 0) reasons.push('RULE_ASSESSMENT_RISK');
+  const explanation = assessment.explanation;
+  if (explanation && bundle.subject) {
+    const shown = Object.entries(bundle.subject.details)
+      .slice(0, 8)
+      .map(([key, value]) => `${key}=${String(value)}`)
+      .join(', ');
+    if (shown) {
+      facts.unshift({ text: `Datos del evento de la alerta: ${shown}.`, citations: alertIds.slice(0, 1) });
+    }
+  }
   const inferences = [
     ...assessment.risk.map((signal) => ({ text: `Señal de riesgo: ${signal.text}`, citations: alertIds.slice(0, 1) })),
     ...assessment.benign.map((signal) => ({ text: `Señal de actividad habitual: ${signal.text}`, citations: alertIds.slice(0, 1) })),
@@ -395,7 +408,14 @@ export function buildDeterministicResult(input: {
     });
   }
 
-  const gaps = bundle.completeness.gaps.slice(0, 6);
+  // Sin usuario ni IP, «sin entidad» no es un vacío en una vulnerabilidad, una falla de
+  // plataforma, FIM o rootcheck: su análisis no depende de una persona.
+  const notApplicable = explanation
+    ? /^(Sin referencia de entidad|Sin regla o referencia de entidad)/u
+    : null;
+  const gaps = bundle.completeness.gaps
+    .filter((gap) => !notApplicable || !notApplicable.test(gap))
+    .slice(0, 6);
   if (bundle.completeness.truncated) gaps.push('La lectura de evidencia quedó truncada.');
   if (!reasons.includes('NOT_ELIGIBLE') && decision.decision === 'infer') {
     gaps.push('No se ejecutó análisis con modelo para este expediente.');
@@ -412,7 +432,9 @@ export function buildDeterministicResult(input: {
           : reasons.includes('NOT_ELIGIBLE')
             ? 'La prioridad no es elegible para análisis con modelo.'
             : 'Expediente sin análisis de IA.';
-  const summary = `${assessment.conclusion} ${situation}`;
+  const summary = explanation
+    ? `${explanation.label}. Qué pasó: ${explanation.whatHappened} Por qué importa: ${explanation.whyItMatters} ${assessment.conclusion}`
+    : `${assessment.conclusion} ${situation}`;
 
   // La política manda cuando ya concluyó (patrón benigno conocido); si no, la valoración por reglas.
   const verdict = decision.verdict !== 'inconclusive' ? decision.verdict : assessment.verdict;
@@ -435,7 +457,7 @@ export function buildDeterministicResult(input: {
           ? ['Atender la alerta en la cola humana según su prioridad.']
           : ['Revisar la alerta en la cola humana; el expediente no reemplaza el triaje.'];
   const nextSteps = [
-    ...baseSteps,
+    ...(explanation && !reasons.includes('DUPLICATE_OF_OPEN_INCIDENT') ? explanation.actions : baseSteps),
     ...escalateWhen.slice(0, 4).map((criterion) => `Escalar si: ${criterion}`),
   ];
 

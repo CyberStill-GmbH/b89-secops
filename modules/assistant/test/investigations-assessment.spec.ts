@@ -147,9 +147,14 @@ describe('expediente determinista con conclusión', () => {
     );
   });
 
-  it('un probable verdadero positivo sin modelo pasa a revisión humana en vez de completarse', () => {
-    expect(deterministicStatus('completed', { verdict: 'likely_true_positive' } as never)).toBe('requires_review');
-    expect(deterministicStatus('completed', { verdict: 'likely_false_positive' } as never)).toBe('completed');
-    expect(deterministicStatus('partial', { verdict: 'likely_true_positive' } as never)).toBe('partial');
+  it('un verdadero positivo con señales de riesgo pasa a revisión; uno sin urgencia no molesta', () => {
+    const risky = { verdict: 'likely_true_positive', deterministic: { reasons: ['RULE_ASSESSMENT_RISK'] } };
+    const calm = { verdict: 'likely_true_positive', deterministic: { reasons: [] } };
+    expect(deterministicStatus('completed', risky as never)).toBe('requires_review');
+    expect(deterministicStatus('completed', calm as never)).toBe('completed');
+    expect(
+      deterministicStatus('completed', { verdict: 'likely_false_positive', deterministic: { reasons: [] } } as never),
+    ).toBe('completed');
+    expect(deterministicStatus('partial', risky as never)).toBe('partial');
   });
 });

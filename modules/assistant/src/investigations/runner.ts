@@ -87,7 +87,10 @@ export function deterministicStatus(
   status: 'completed' | 'requires_review' | 'partial',
   result: InvestigationResult,
 ): 'completed' | 'requires_review' | 'partial' {
-  return status === 'completed' && result.verdict === 'likely_true_positive'
+  // Solo con una señal de riesgo o urgencia (un hallazgo real de baja urgencia no molesta a nadie).
+  return status === 'completed' &&
+    result.verdict === 'likely_true_positive' &&
+    result.deterministic.reasons.includes('RULE_ASSESSMENT_RISK')
     ? 'requires_review'
     : status;
 }

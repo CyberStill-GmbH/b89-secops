@@ -38,15 +38,18 @@ import type {
   EvidenceEvent,
   EvidenceEventSummary,
   EvidenceIncident,
+  EvidenceSubject,
   EvidenceNotification,
   EvidenceRule,
 } from '@b89/assistant';
 import type { Alert, SocReadModel } from '@b89/soc';
 import { maskText, type AttemptStore } from '@b89/soar';
 import type { SecurityEvent } from '@b89/contracts';
+import type { JsonObject } from '@b89/connectors';
 
 import type { EventsReader } from '../runtime/events-reader.js';
 import { providerOf } from './investigation-tools.js';
+import { subjectFromRaw } from './analyst-subject.js';
 import { ruleForAlert, ruleView, type SocKnowledge } from './soc-knowledge.js';
 
 /**
@@ -339,6 +342,7 @@ export class RuntimeEvidenceReader implements EvidenceReader {
           context: null,
           events: [] as EvidenceEvent[],
           eventSummary: null,
+          subject: null,
           eventsScanned: 0,
           incomplete: false,
           unmeasured: [] as string[],
@@ -384,6 +388,7 @@ export class RuntimeEvidenceReader implements EvidenceReader {
       history,
       events: extra.events,
       eventSummary: extra.eventSummary,
+      subject: extra.subject,
       sourceHealth,
       context: extra.context,
       completeness: {
@@ -408,6 +413,7 @@ export class RuntimeEvidenceReader implements EvidenceReader {
     readonly context: EvidenceContext;
     readonly events: EvidenceEvent[];
     readonly eventSummary: EvidenceEventSummary | null;
+    readonly subject: EvidenceSubject;
     readonly eventsScanned: number;
     readonly incomplete: boolean;
     readonly unmeasured: string[];
@@ -418,9 +424,11 @@ export class RuntimeEvidenceReader implements EvidenceReader {
 
     // Regla y conocimiento SOC.
     let rule: EvidenceRule | null = null;
+    let ruleGroups: readonly string[] = [];
     if (this.sources.knowledge) {
       const known = ruleForAlert(this.sources.knowledge, primary);
       if (known) {
+        ruleGroups = known.groups;
         const view = ruleView(this.sources.knowledge, known);
         rule = {
           id: view.ruleId,
@@ -605,6 +613,7 @@ export class RuntimeEvidenceReader implements EvidenceReader {
       })
       .slice(0, 10);
     const scoped = entityFilters.length > 0;
+    let primaryRaw: JsonObject | null = null;
     const scan = async (from: Date, to: Date, maxPages: number) => {
       const read: SecurityEvent[] = [];
       let cursor: string | undefined;
@@ -620,7 +629,10 @@ export class RuntimeEvidenceReader implements EvidenceReader {
           ...(cursor ? { cursor } : {}),
         });
         unparsed += result.unparsedCount;
-        read.push(...result.items.map((item) => item.event));
+        for (const item of result.items) {
+          read.push(item.event);
+          if (item.event.recordId === primary.eventRecordId) primaryRaw = item.raw as JsonObject;
+        }
         if (!result.nextCursor) return { read, unparsed, exhausted: true };
         if (seenCursors.has(result.nextCursor)) return { read, unparsed, exhausted: false };
         seenCursors.add(result.nextCursor);
@@ -818,6 +830,7 @@ export class RuntimeEvidenceReader implements EvidenceReader {
       },
       events,
       eventSummary,
+      subject: subjectFromRaw(primaryRaw, ruleGroups, primary.entityKeys.length > 0),
       eventsScanned,
       incomplete,
       unmeasured,

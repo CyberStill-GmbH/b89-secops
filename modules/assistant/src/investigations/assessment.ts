@@ -11,6 +11,7 @@
  * valoración por reglas nunca pasa de `medium`.
  */
 
+import { explainDomain, type DomainExplanation } from './domain.js';
 import { evidenceSources, isCorrelatedEvidence, unhealthySources } from './policy.js';
 import type {
   EvidenceBundle,
@@ -33,6 +34,8 @@ export interface EvidenceAssessment {
   readonly recommendedPriority: InvestigationPriority | null;
   /** Frase de conclusión, en castellano, sin datos personales (solo conteos y referencias). */
   readonly conclusion: string;
+  /** Explicación del dominio (vulnerabilidad, plataforma, FIM, rootcheck); null si no aplica. */
+  readonly explanation: DomainExplanation | null;
 }
 
 export const ASSESSMENT_THRESHOLDS = Object.freeze({
@@ -166,11 +169,27 @@ export function assessEvidence(
     });
   }
 
+  // ── Señales del dominio (lo que dice el propio evento de la alerta) ──────────────────────
+  const explanation = explainDomain(bundle);
+  if (explanation) {
+    risk.push(...explanation.risk);
+    benign.push(...explanation.benign);
+    // «Aislada» no aplica a un hallazgo o a una falla: no son sospechas de ataque.
+    if (explanation.confirmedIssue) {
+      const index = benign.findIndex((signal) => signal.code === 'ISOLATED');
+      if (index >= 0) benign.splice(index, 1);
+    }
+  }
+
   // ── Veredicto orientativo ────────────────────────────────────────────────────────────────
   const incomplete = !bundle.completeness.complete || unhealthySources(bundle).length > 0;
   let verdict: InvestigationVerdict = 'inconclusive';
   let confidence: InvestigationConfidence = 'low';
-  if (risk.length >= 2) {
+  if (explanation?.confirmedIssue) {
+    // Hallazgo o falla confirmados por el propio evento: es real; la urgencia la dan las señales.
+    verdict = 'likely_true_positive';
+    confidence = incomplete ? 'low' : 'medium';
+  } else if (risk.length >= 2) {
     verdict = 'likely_true_positive';
     confidence = risk.length >= 3 && !incomplete ? 'medium' : 'low';
   } else if (risk.length === 0 && benign.length >= 2) {
@@ -179,15 +198,26 @@ export function assessEvidence(
   }
 
   let recommendedPriority: InvestigationPriority | null = null;
-  if (verdict === 'likely_true_positive' && (priority === 'P3' || priority === 'P4')) {
+  if (
+    verdict === 'likely_true_positive' &&
+    risk.length > 0 &&
+    (priority === 'P3' || priority === 'P4')
+  ) {
     recommendedPriority = 'P2';
   } else if (verdict === 'likely_false_positive' && confidence === 'medium' && priority === 'P3') {
     recommendedPriority = 'P4';
   }
 
-  const head = `Conclusión por reglas (sin IA): ${PRIORITY_LABEL[verdict]}, ${CONFIDENCE_LABEL[confidence]}.`;
-  const why =
-    verdict === 'likely_true_positive'
+  const head = explanation?.confirmedIssue
+    ? `Conclusión por reglas (sin IA): problema real que hay que resolver${
+        risk.length > 0 ? ', con urgencia' : ', sin urgencia inmediata'
+      } (${CONFIDENCE_LABEL[confidence]}).`
+    : `Conclusión por reglas (sin IA): ${PRIORITY_LABEL[verdict]}, ${CONFIDENCE_LABEL[confidence]}.`;
+  const why = explanation?.confirmedIssue
+    ? risk.length > 0
+      ? ` Pesan ${risk.length} señal(es) de urgencia.`
+      : ' No hay señales de explotación ni de impacto inmediato.'
+    : verdict === 'likely_true_positive'
       ? ` Pesan ${risk.length} señal(es) de riesgo independientes.`
       : verdict === 'likely_false_positive'
         ? ` Coincide con actividad habitual (${benign.length} señal(es)) y no hay señales de riesgo.`
@@ -202,5 +232,6 @@ export function assessEvidence(
     benign,
     recommendedPriority,
     conclusion: `${head}${why}${caveat}`,
+    explanation,
   };
 }

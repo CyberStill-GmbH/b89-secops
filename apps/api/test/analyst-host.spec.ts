@@ -421,16 +421,17 @@ describe('host: encolado, barrido, resumen y apagado', () => {
   });
 
   it('el barrido toma las abiertas sin trabajo, P1 primero y en lote chico, sin duplicar', async () => {
-    for (let index = 0; index < 12; index += 1) putAlert({ priority: 'P4' });
+    const batch = ANALYST_HOST_DEFAULTS.sweepBatch;
+    for (let index = 0; index < batch + 2; index += 1) putAlert({ priority: 'P4' });
     const p1 = putAlert({ priority: 'P1' });
     putAlert({ priority: 'P1', status: 'closed' });
     const { host, store } = await harness({});
-    expect(await host.sweepBacklog()).toBe(10);
+    expect(await host.sweepBacklog()).toBe(batch);
     const first = (await store.list(T, { pageSize: 100 })).items;
     expect(first.some((job) => job.subject.id === p1.id && job.source === 'backlog')).toBe(true);
     expect(await host.sweepBacklog()).toBe(3);
     expect(await host.sweepBacklog()).toBe(0);
-    expect((await store.list(T, { pageSize: 100 })).items).toHaveLength(13);
+    expect((await store.list(T, { pageSize: 100 })).items).toHaveLength(batch + 3);
   });
 
   it('manual es idempotente por revisión de la alerta', async () => {

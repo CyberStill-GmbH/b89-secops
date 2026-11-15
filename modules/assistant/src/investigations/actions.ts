@@ -196,6 +196,8 @@ export function closeBenignAllowed(
     result.verified &&
     result.verdict === 'likely_false_positive' &&
     (knownPattern || ruleAssessment) &&
+    // Cualquier señal de riesgo o urgencia (incluidas las del dominio) impide cerrar.
+    !result.deterministic.reasons.includes('RULE_ASSESSMENT_RISK') &&
     historyOk &&
     guards.closeablePriorities.includes(job.priority) &&
     job.priority >= maxPriority &&
