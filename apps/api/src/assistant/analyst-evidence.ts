@@ -77,6 +77,8 @@ export const EVIDENCE_LIMITS = Object.freeze({
   maxStoredEvents: 300,
   notificationScan: 1_000,
   auditActions: 50,
+  /** Eventos sin normalizar tolerados antes de considerar la evidencia incompleta. */
+  unparsedTolerance: 5,
 });
 
 /** Proveedores que pueden originar una alerta; los no medidos se nombran como vacío. */
@@ -659,8 +661,15 @@ export class RuntimeEvidenceReader implements EvidenceReader {
           );
         }
         if (window.unparsed > 0 && scoped) {
-          incomplete = true;
-          gaps.push(`${window.unparsed} eventos de la entidad no se pudieron normalizar`);
+          // Unos pocos eventos ilegibles no cambian la conclusión: se informan. Solo si son
+          // significativos (más de 5 y más del 10 % de lo leído) la evidencia es incompleta.
+          const total = window.read.length + window.unparsed;
+          if (window.unparsed > EVIDENCE_LIMITS.unparsedTolerance && window.unparsed / total > 0.1) {
+            incomplete = true;
+            gaps.push(`${window.unparsed} de ${total} eventos de la entidad no se pudieron normalizar`);
+          } else {
+            gaps.push(`${window.unparsed} evento(s) de la entidad sin normalizar (no afecta la conclusión)`);
+          }
         }
         // Con filtro por entidad el proveedor ya acotó; sin él, se compara en el proceso.
         const matching = window.read.filter(

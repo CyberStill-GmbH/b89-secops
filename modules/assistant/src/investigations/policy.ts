@@ -25,7 +25,8 @@ import type {
 // 2026-11-14.1: el paquete incluye el contexto ampliado del SOC (`EvidenceBundle.context`).
 // 2026-11-15.2: el expediente determinista concluye con la valoración por reglas (assessment.ts).
 // 2026-11-15.3: explicación por dominio (vulnerabilidad, plataforma, FIM, rootcheck) y datos del evento.
-export const POLICY_VERSION = 'b89-analyst-2026-11-15.3';
+// 2026-11-15.4: unos pocos eventos sin normalizar ya no vuelven parcial la evidencia.
+export const POLICY_VERSION = 'b89-analyst-2026-11-15.4';
 
 export interface TriageConfig {
   /** Cierres `false_positive` de la misma regla+entidad (30 d) para considerar el patrón benigno. */
