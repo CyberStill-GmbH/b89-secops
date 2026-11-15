@@ -1,5 +1,6 @@
 export * from './actions.js';
 export * from './analyst-output.js';
+export * from './assessment.js';
 export * from './evidence-pack.js';
 export * from './memory-store.js';
 export * from './policy.js';

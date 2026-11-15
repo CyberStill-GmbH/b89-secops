@@ -79,6 +79,19 @@ import type {
 /** Tope duro: una sola llamada al modelo por run. */
 export const MAX_MODEL_CALLS_PER_RUN = 1;
 
+/**
+ * Estado final de un expediente sin modelo: si la valoración por reglas concluye «probable
+ * verdadero positivo», no se da por terminado en silencio: pasa a revisión humana.
+ */
+export function deterministicStatus(
+  status: 'completed' | 'requires_review' | 'partial',
+  result: InvestigationResult,
+): 'completed' | 'requires_review' | 'partial' {
+  return status === 'completed' && result.verdict === 'likely_true_positive'
+    ? 'requires_review'
+    : status;
+}
+
 export interface InvestigationRunnerLimits {
   readonly leaseMs: number;
   readonly heartbeatMs: number;
@@ -601,20 +614,23 @@ export class InvestigationRunner {
         readonly errorCode?: string;
         readonly reasons?: readonly string[];
       } = {},
-    ): Promise<void> =>
-      this.finish(context, {
-        status: extra.status ?? decision.status,
-        result: caseFile([...(extra.reasons ?? []), reason]),
+    ): Promise<void> => {
+      const result = caseFile([...(extra.reasons ?? []), reason]);
+      return this.finish(context, {
+        status: extra.status ?? deterministicStatus(decision.status, result),
+        result,
         inference: extra.inference ?? 'none',
         evidence,
         ...(extra.errorCode === undefined ? {} : { errorCode: extra.errorCode }),
       });
+    };
 
     if (decision.decision === 'deterministic' || decision.tier === undefined) {
       await this.note(context, 'model', 'skipped', { reason: decision.reasons[0] ?? 'POLICY' });
+      const result = caseFile();
       return this.finish(context, {
-        status: decision.status,
-        result: caseFile(),
+        status: deterministicStatus(decision.status, result),
+        result,
         inference: 'none',
         evidence,
       });

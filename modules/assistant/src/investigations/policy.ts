@@ -10,6 +10,7 @@
  */
 
 import type { Citation } from '../ports.js';
+import { assessEvidence } from './assessment.js';
 import type {
   EvidenceBundle,
   InferenceTier,
@@ -22,7 +23,8 @@ import type {
 
 /** Cambiar umbrales, razones o el prompt exige una versión nueva. */
 // 2026-11-14.1: el paquete incluye el contexto ampliado del SOC (`EvidenceBundle.context`).
-export const POLICY_VERSION = 'b89-analyst-2026-11-15.1';
+// 2026-11-15.2: el expediente determinista concluye con la valoración por reglas (assessment.ts).
+export const POLICY_VERSION = 'b89-analyst-2026-11-15.2';
 
 export interface TriageConfig {
   /** Cierres `false_positive` de la misma regla+entidad (30 d) para considerar el patrón benigno. */
@@ -325,42 +327,115 @@ export function buildDeterministicResult(input: {
     });
   }
 
+  // ── Hechos de la evidencia ampliada (conteos; nunca valores de entidad) ──────────────────
+  const context = bundle.context ?? null;
+  const summaryOfEvents = bundle.eventSummary ?? null;
+  if (summaryOfEvents) {
+    const top = (entries: readonly { value: string; count: number }[]) =>
+      entries
+        .slice(0, 3)
+        .map((entry) => `${entry.value} (${entry.count})`)
+        .join(', ');
+    const parts = [
+      `${summaryOfEvents.window.matching} evento(s) de la entidad en la ventana de la alerta`,
+      summaryOfEvents.day ? `${summaryOfEvents.day.matching} en las últimas 24 h` : null,
+    ].filter(Boolean);
+    facts.push({
+      text: `Eventos de origen: ${parts.join(' y ')}${
+        summaryOfEvents.byAction.length > 0 ? `; acciones más frecuentes: ${top(summaryOfEvents.byAction)}` : ''
+      }${summaryOfEvents.byOutcome.length > 0 ? `; resultados: ${top(summaryOfEvents.byOutcome)}` : ''}${
+        summaryOfEvents.bySource.length > 0 ? `; fuentes: ${top(summaryOfEvents.bySource)}` : ''
+      }.`,
+      citations: alertIds.slice(0, 1),
+    });
+  }
+  if (context?.activity) {
+    facts.push({
+      text: `Actividad de la entidad: ${context.activity.alerts7d} alerta(s) en 7 días.`,
+      citations: alertIds.slice(0, 1),
+    });
+  }
+  if (context?.entityRisk) {
+    facts.push({
+      text: `Riesgo de la entidad en el correlador: ${Math.round(context.entityRisk.score)}/100 (pico ${Math.round(context.entityRisk.peak)}, ${context.entityRisk.observations} observación(es)).`,
+      citations: alertIds.slice(0, 1),
+    });
+  }
+  if (context?.rule) {
+    const mitre = context.rule.mitre.map((technique) => `${technique.id} ${technique.name}`);
+    facts.push({
+      text: `Regla ${context.rule.id}${context.rule.level !== null ? ` (nivel ${context.rule.level})` : ''}: ${context.rule.description}${
+        mitre.length > 0 ? `. MITRE ATT&CK: ${mitre.slice(0, 3).join('; ')}` : ''
+      }.`,
+      citations: alertIds.slice(0, 1),
+    });
+  }
+
+  // ── Valoración por reglas: el porqué de la conclusión ────────────────────────────────────
+  const assessment = assessEvidence(bundle, priority);
+  const inferences = [
+    ...assessment.risk.map((signal) => ({ text: `Señal de riesgo: ${signal.text}`, citations: alertIds.slice(0, 1) })),
+    ...assessment.benign.map((signal) => ({ text: `Señal de actividad habitual: ${signal.text}`, citations: alertIds.slice(0, 1) })),
+  ];
+  const knownFalsePositives = context?.rule?.knownFalsePositives ?? [];
+  if (knownFalsePositives.length > 0) {
+    inferences.push({
+      text: `Falsos positivos documentados para esta regla: ${knownFalsePositives.slice(0, 3).join(' · ')}`,
+      citations: alertIds.slice(0, 1),
+    });
+  }
+
   const gaps = bundle.completeness.gaps.slice(0, 6);
   if (bundle.completeness.truncated) gaps.push('La lectura de evidencia quedó truncada.');
   if (!reasons.includes('NOT_ELIGIBLE') && decision.decision === 'infer') {
     gaps.push('No se ejecutó análisis con modelo para este expediente.');
   }
 
-  const summary = reasons.includes('DUPLICATE_OF_OPEN_INCIDENT')
-    ? `Expediente determinista: las alertas ya pertenecen al incidente ${incidentIds.join(', ')}; el trabajo continúa allí.`
+  const situation = reasons.includes('DUPLICATE_OF_OPEN_INCIDENT')
+    ? `Las alertas ya pertenecen al incidente ${incidentIds.join(', ')}; el trabajo continúa allí.`
     : reasons.includes('KNOWN_BENIGN_PATTERN')
-      ? 'Expediente determinista: el historial de esta regla y entidad solo registra cierres como falso positivo. Probable falso positivo; requiere confirmación humana.'
+      ? 'El historial de esta regla y entidad solo registra cierres como falso positivo; requiere confirmación humana.'
       : reasons.includes('EVIDENCE_INCOMPLETE') && decision.decision === 'deterministic'
-        ? 'Expediente determinista parcial: la evidencia está incompleta o hay fuentes sin datos frescos; no se emite conclusión.'
+        ? 'La evidencia está incompleta o hay fuentes sin datos frescos.'
         : reasons.includes('ISOLATED_LOW_SIGNAL')
-          ? 'Expediente determinista: alerta aislada de baja señal, sin correlación con otras alertas ni fuentes.'
+          ? 'Alerta aislada de baja señal, sin correlación con otras alertas ni fuentes.'
           : reasons.includes('NOT_ELIGIBLE')
-            ? 'Expediente determinista: la prioridad no es elegible para análisis con modelo.'
-            : 'Expediente determinista (sin análisis de IA): se listan los datos estructurados disponibles; requiere revisión humana.';
+            ? 'La prioridad no es elegible para análisis con modelo.'
+            : 'Expediente sin análisis de IA.';
+  const summary = `${assessment.conclusion} ${situation}`;
 
-  const nextSteps = reasons.includes('DUPLICATE_OF_OPEN_INCIDENT')
+  // La política manda cuando ya concluyó (patrón benigno conocido); si no, la valoración por reglas.
+  const verdict = decision.verdict !== 'inconclusive' ? decision.verdict : assessment.verdict;
+  const confidence = decision.verdict !== 'inconclusive' ? decision.confidence : assessment.confidence;
+
+  const escalateWhen = context?.rule?.escalateWhen ?? [];
+  const baseSteps = reasons.includes('DUPLICATE_OF_OPEN_INCIDENT')
     ? ['Revisar el incidente abierto y agregar allí cualquier hallazgo nuevo.']
-    : reasons.includes('KNOWN_BENIGN_PATTERN')
+    : verdict === 'likely_true_positive'
       ? [
-          'Confirmar con una persona si corresponde a la actividad benigna ya conocida.',
-          'Si el patrón se repite, proponer el ajuste de la regla por el proceso de ingeniería de detección.',
+          'Revisar la alerta con prioridad: las señales de riesgo de arriba indican qué confirmar primero.',
+          ...(context?.rule?.runbooks.length ? [`Seguir el runbook: ${context.rule.runbooks.slice(0, 2).join(', ')}.`] : []),
         ]
-      : decision.status === 'completed'
-        ? ['Atender la alerta en la cola humana según su prioridad.']
-        : ['Revisar la alerta en la cola humana; el expediente no reemplaza el triaje.'];
+      : verdict === 'likely_false_positive'
+        ? [
+            'Confirmar que coincide con la actividad habitual descrita y cerrar con la razón concreta.',
+            'Si el patrón se repite, proponer el ajuste de la regla por el proceso de ingeniería de detección.',
+          ]
+        : decision.status === 'completed'
+          ? ['Atender la alerta en la cola humana según su prioridad.']
+          : ['Revisar la alerta en la cola humana; el expediente no reemplaza el triaje.'];
+  const nextSteps = [
+    ...baseSteps,
+    ...escalateWhen.slice(0, 4).map((criterion) => `Escalar si: ${criterion}`),
+  ];
 
   return {
     summary,
-    verdict: decision.verdict,
-    confidence: decision.confidence,
-    recommendedPriority: null,
+    verdict,
+    confidence,
+    recommendedPriority: assessment.recommendedPriority,
     facts,
-    inferences: [],
+    inferences,
     gaps,
     nextSteps,
     citations,
