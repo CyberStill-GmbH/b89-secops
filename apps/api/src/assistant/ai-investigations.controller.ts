@@ -12,6 +12,11 @@
  * - `POST /`                `{ alertId }` → investigación manual (idempotente)  investigations.run
  * - `POST /:id/cancel|retry` `{ expectedRevision }`                            investigations.run
  *
+ * La lista y el expediente traen `alert`: el estado ACTUAL de la alerta revisada (estado,
+ * asignación enmascarada, veredicto e incidente), leído del modelo de lectura del SOC solo para
+ * quien tiene `alerts.read`; con él la consola sabe si una revisión sigue pendiente. Las acciones
+ * sobre la alerta van por los endpoints de alertas existentes, no por aquí.
+ *
  * Las rutas literales se declaran antes de `:id`. Mutaciones con sesión + CSRF, capacidad
  * (sin ella `RESOURCE_UNAVAILABLE`), compare-and-set (`STATE_CONFLICT`) y auditoría append-only
  * de cada intento; la auditoría de ajustes registra QUÉ claves cambiaron, nunca el texto de las
@@ -50,8 +55,11 @@ import {
   decodeCursor,
   digestView,
   encodeCursor,
+  primaryAlertIdOf,
   reportView,
+  runAlertView,
   runDetailView,
+  type RunAlertView,
   runSummaryView,
   settingsView,
 } from './ai-investigations.dto.js';
@@ -149,10 +157,32 @@ export class AiInvestigationsController {
     return { invocations, actions };
   }
 
-  private async detail(host: AnalystHost, job: InvestigationJob) {
+  /**
+   * Estado actual de la alerta revisada, por el modelo de lectura del SOC. Sin `alerts.read` no
+   * se lee (la consola lo trata como «sin dato», nunca como atendida).
+   */
+  private async alertOf(
+    actor: Actor,
+    job: InvestigationJob,
+    actions: Parameters<typeof runAlertView>[1],
+  ): Promise<RunAlertView | null> {
+    if (!actor.capabilities.has('alerts.read')) return null;
+    const alertId = primaryAlertIdOf(job);
+    if (!alertId) return null;
+    const alert = await this.runtime.soc.alertById(this.runtime.tenantId, alertId);
+    if (!alert || alert.tenantId !== actor.tenantId) return null;
+    return runAlertView(alert, actions, actor.subjectId);
+  }
+
+  private async extrasWithAlert(actor: Actor, host: AnalystHost, job: InvestigationJob) {
+    const extras = await this.extras(host, job);
+    return { ...extras, alert: await this.alertOf(actor, job, extras.actions) };
+  }
+
+  private async detail(actor: Actor, host: AnalystHost, job: InvestigationJob) {
     const [events, extras] = await Promise.all([
       host.store.events(job.tenantId, job.id),
-      this.extras(host, job),
+      this.extrasWithAlert(actor, host, job),
     ]);
     return runDetailView(job, events, extras);
   }
@@ -171,7 +201,7 @@ export class AiInvestigationsController {
     @Req() request: IncomingRequest,
     @Query() query: { status?: string; cursor?: string; pageSize?: string },
   ) {
-    const { correlationId, host } = await this.reader(request);
+    const { actor, correlationId, host } = await this.reader(request);
     const status = query.status || undefined;
     if (status !== undefined && !(INVESTIGATION_STATUSES as readonly string[]).includes(status)) {
       throw new ApiError('VALIDATION_FAILED', correlationId, ['status']);
@@ -188,7 +218,7 @@ export class AiInvestigationsController {
       pageSize,
     });
     const items = await Promise.all(
-      page.items.map(async (job) => runSummaryView(job, await this.extras(host, job))),
+      page.items.map(async (job) => runSummaryView(job, await this.extrasWithAlert(actor, host, job))),
     );
     return { correlationId, items, nextCursor: encodeCursor(page.next) };
   }
@@ -393,16 +423,16 @@ export class AiInvestigationsController {
       type: 'ai_investigation',
       id: job.id,
     }, 'succeeded', { alertId: alert.id, created, priority: job.priority });
-    return { correlationId, run: await this.detail(host, job), created };
+    return { correlationId, run: await this.detail(actor, host, job), created };
   }
 
   // ── Rutas con `:id` ─────────────────────────────────────────────────────────────────────
 
   @Get(':id')
   public async get(@Req() request: IncomingRequest, @Param('id') id: string) {
-    const { correlationId, host } = await this.reader(request);
+    const { actor, correlationId, host } = await this.reader(request);
     const job = await this.job(host, id, correlationId);
-    return { correlationId, run: await this.detail(host, job) };
+    return { correlationId, run: await this.detail(actor, host, job) };
   }
 
   @Get(':id/report')
@@ -457,6 +487,6 @@ export class AiInvestigationsController {
     });
     if (kind === 'retry') host.kick();
     const updated = await this.job(host, job.id, correlationId);
-    return { correlationId, run: await this.detail(host, updated) };
+    return { correlationId, run: await this.detail(actor, host, updated) };
   }
 }

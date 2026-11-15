@@ -2,8 +2,8 @@
  * Copyright B89. SPDX-License-Identifier: Apache-2.0
  */
 
-import type { Priority, SourceState } from './api_contract';
-import { PRIORITIES, SOURCE_STATES } from './api_contract';
+import type { AlertStatus, AlertVerdict, Priority, SourceState } from './api_contract';
+import { ALERT_STATUSES, ALERT_VERDICTS, PRIORITIES, SOURCE_STATES } from './api_contract';
 import type { HealthTone } from './catalog';
 import { SOURCE_STATE_LABEL } from './catalog';
 
@@ -75,6 +75,23 @@ export interface AiRunSubject {
   readonly title: string;
 }
 
+/**
+ * Estado ACTUAL de la alerta revisada, tal como lo lee el API del modelo de lectura del SOC (no lo
+ * que vio el analista). `null` en la investigación: sin `alerts.read`, sin una alerta única o la
+ * alerta ya no existe; la consola lo trata como «sin dato», nunca como atendida.
+ */
+export interface AiRunAlert {
+  readonly status: AlertStatus | 'unknown';
+  /** Enmascarado por la API. */
+  readonly assigneeId: string | null;
+  /** Solo `true` explícito: la alerta está asignada a quien mira la consola. */
+  readonly assignedToYou: boolean;
+  readonly verdict: AlertVerdict | 'unknown' | null;
+  readonly incidentId: string | null;
+  /** Solo `true` explícito: el incidente lo abrió o adjuntó el propio analista. */
+  readonly incidentByAnalyst: boolean;
+}
+
 export interface AiRunSummary {
   readonly id: string;
   readonly status: AiRunStatusView;
@@ -98,6 +115,8 @@ export interface AiRunSummary {
   readonly estimatedCostMicroUsd: number | null;
   /** Tipos de acción que el analista EJECUTÓ (no las planificadas ni omitidas). */
   readonly actionKinds: readonly string[];
+  /** Estado actual de la alerta revisada; `null` = sin dato (ver `AiRunAlert`). */
+  readonly alert: AiRunAlert | null;
 }
 
 export type AiEventDetail = Readonly<Record<string, string | number | boolean>>;
@@ -272,6 +291,19 @@ function strings(value: unknown, max: number, maxLength = 2000): string[] {
   return out;
 }
 
+export function normalizeRunAlert(raw: unknown): AiRunAlert | null {
+  const value = bag(raw);
+  if (!value || value.status === undefined || value.status === null) return null;
+  return {
+    status: oneOf(ALERT_STATUSES, value.status) ?? 'unknown',
+    assigneeId: text(value.assigneeId, 200),
+    assignedToYou: value.assignedToYou === true,
+    verdict: enumOrUnknown(ALERT_VERDICTS, value.verdict),
+    incidentId: text(value.incidentId, 128),
+    incidentByAnalyst: value.incidentByAnalyst === true,
+  };
+}
+
 export function normalizeRunSummary(raw: unknown): AiRunSummary | null {
   const value = bag(raw);
   const id = value ? text(value.id, 128) : null;
@@ -300,6 +332,7 @@ export function normalizeRunSummary(raw: unknown): AiRunSummary | null {
     revision: count(value.revision),
     estimatedCostMicroUsd: count(value.estimatedCostMicroUsd),
     actionKinds: Array.from(new Set(strings(value.actionKinds, 10, 64))),
+    alert: normalizeRunAlert(value.alert),
   };
 }
 

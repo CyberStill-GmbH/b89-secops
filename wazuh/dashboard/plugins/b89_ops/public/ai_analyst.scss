@@ -2085,3 +2085,169 @@ a.b89Ai__cite {
   font-size: $ouiFontSizeS;
   font-weight: 600;
 }
+
+// ------------------------------------------------------------ Tu revisión y bandeja de revisión
+// Panel del expediente en «Requiere revisión» y la bandeja que lo reutiliza en línea. Mismo
+// lenguaje que el resto: .b89Panel, radios de 14 px, el tono va con glifo y rótulo.
+.b89AiReview {
+  border-left: 3px solid $b89AiWarn;
+
+  &[data-pending='false'] {
+    border-left-color: $b89AiOk;
+  }
+
+  &[data-compact='true'] {
+    margin: $ouiSizeS 0 0;
+    box-shadow: none;
+  }
+
+  h2:focus {
+    outline: none;
+  }
+}
+
+.b89AiReview__state {
+  font-size: 12px;
+  font-weight: 600;
+  color: darken($b89AiWarn, 18%);
+
+  &[data-pending='false'] {
+    color: $b89AiOk;
+  }
+}
+
+.b89AiReview__lead {
+  max-width: 72ch;
+  margin: 0 0 $ouiSizeM;
+  color: $ouiTextSubduedColor;
+  line-height: 1.5;
+}
+
+.b89AiReview__feedback {
+  margin: 0 0 $ouiSizeM;
+}
+
+.b89AiReview__alert {
+  margin: 0 0 $ouiSizeM;
+}
+
+.b89AiReview__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $ouiSizeS $ouiSizeM;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.b89AiReview__action {
+  display: flex;
+  max-width: 260px;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.b89AiReview__reason {
+  color: $ouiTextSubduedColor;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.b89AiReview__form {
+  max-width: 720px;
+}
+
+.b89AiReview__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: $ouiSizeS;
+  margin-top: $ouiSizeS;
+}
+
+.b89AiInbox__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  > li + li {
+    border-top: 1px solid $ouiBorderColor;
+  }
+}
+
+.b89AiInbox__item {
+  padding: $ouiSizeS 0;
+
+  &[data-expanded='true'] {
+    padding-bottom: $ouiSize;
+  }
+}
+
+.b89AiInbox__row {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) minmax(140px, auto) auto;
+  align-items: center;
+  gap: $ouiSizeM;
+  padding: 0 $ouiSizeXS;
+
+  @media (max-width: $b89AiTablet) {
+    grid-template-columns: 56px minmax(0, 1fr);
+
+    .b89AiInbox__verdict,
+    .b89AiInbox__buttons {
+      grid-column: 2;
+    }
+  }
+}
+
+.b89AiInbox__main {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.b89AiInbox__title {
+  overflow: hidden;
+  color: $ouiTitleColor;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.b89AiInbox__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px $ouiSizeM;
+  color: $ouiTextSubduedColor;
+  font-size: 12px;
+}
+
+.b89AiInbox__verdict {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.b89AiInbox__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: $ouiSizeS;
+}
+
+.b89AiInbox__open {
+  font-size: $ouiFontSizeS;
+  font-weight: 600;
+
+  @include b89AiFocus;
+}
+
+.b89AiInbox__review {
+  padding: 0 $ouiSizeXS 0 calc(64px + #{$ouiSizeM});
+
+  @media (max-width: $b89AiTablet) {
+    padding-left: 0;
+  }
+}

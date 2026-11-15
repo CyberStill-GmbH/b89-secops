@@ -19,7 +19,9 @@ import {
   activityView,
   budgetView,
   digestView,
+  primaryAlertIdOf,
   reportView,
+  runAlertView,
   runDetailView,
   runSummaryView,
   settingsView,
@@ -167,6 +169,51 @@ describe('contrato del Analista IA (API ↔ consola)', () => {
     );
     expect(page.items[0]).toMatchObject({ id: ID, status: 'completed' });
     expect(page.nextCursor).toBe('abc');
+  });
+
+  it('el estado actual de la alerta revisada viaja enmascarado y se lee sin pérdidas', () => {
+    const escalated: InvestigationAction = {
+      ...actions[0]!,
+      id: 'act-esc',
+      kind: 'escalate',
+      reason: 'ESCALATE_CORRELATED_P1',
+      urgency: null,
+      groupKey: null,
+      ref: { kind: 'incident', id: 'inc-analyst' },
+    };
+    const review = { ...job, status: 'requires_review' as const };
+    const alert = runAlertView(
+      { status: 'acknowledged', assigneeId: 'jperez@b89.example', verdict: null, incidentId: 'inc-analyst' },
+      [...actions, escalated],
+      'jperez@b89.example',
+    );
+    expect(alert).toEqual({
+      status: 'acknowledged',
+      assigneeId: 'jp***@b89.example',
+      assignedToYou: true,
+      verdict: null,
+      incidentId: 'inc-analyst',
+      incidentByAnalyst: true,
+    });
+    const page = normalizeRunPage(
+      JSON.parse(JSON.stringify({ items: [runSummaryView(review, { invocations, actions, alert })], nextCursor: null })),
+    );
+    expect(page.items[0]!.alert).toEqual(alert);
+    expect(JSON.stringify(page)).not.toContain('jperez@');
+    const detail = normalizeRunDetail(
+      JSON.parse(JSON.stringify(runDetailView(review, events, { invocations, actions, alert: null }))),
+    );
+    expect(detail!.alert).toBeNull();
+    // Sin consultar la alerta (`alert` ausente) el campo no viaja y la consola lo lee como «sin dato».
+    expect('alert' in runSummaryView(review, { invocations, actions })).toBe(false);
+    // Una persona vinculó un incidente propio: el analista no lo abrió.
+    expect(
+      runAlertView({ status: 'triaged', assigneeId: null, verdict: 'true_positive', incidentId: 'inc-human' }, [escalated], 'x'),
+    ).toMatchObject({ incidentByAnalyst: false, assignedToYou: false, assigneeId: null });
+    expect(primaryAlertIdOf(job)).toBe('alert-1');
+    expect(
+      primaryAlertIdOf({ subject: { kind: 'candidate', id: 'c', title: '' }, alertIds: ['a', 'b'] } as never),
+    ).toBeNull();
   });
 
   it('ajustes, presupuesto, informe y resumen se leen en estricto', () => {

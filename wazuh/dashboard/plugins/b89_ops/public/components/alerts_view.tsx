@@ -45,6 +45,7 @@ import {
   VERDICT_LABEL,
   vendorOfTitle,
 } from '../../common';
+import { openIncidentForAlert } from '../api/alert_review';
 import { B89ApiError } from '../api/client';
 import { alertInvestigationHref } from './investigation_links';
 import { VendorLogo } from './vendor_logo';
@@ -655,10 +656,15 @@ export function OpenIncidentForm({
   alert,
   onCancel,
   onOpened,
+  initialSummary = '',
+  heading = 'Abrir incidente desde esta alerta',
 }: {
   alert: Alert;
   onCancel: () => void;
   onOpened: (incidentId: string) => void;
+  /** Resumen precargado y editable (p. ej. la conclusión del Analista IA). */
+  initialSummary?: string;
+  heading?: string;
 }) {
   const { api } = useConsole();
   const defaultSeverity = useMemo<IncidentSeverity>(
@@ -667,7 +673,7 @@ export function OpenIncidentForm({
   );
   const [title, setTitle] = useState(alert.title);
   const [severity, setSeverity] = useState<IncidentSeverity>(defaultSeverity);
-  const [summary, setSummary] = useState('');
+  const [summary, setSummary] = useState(initialSummary);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
@@ -675,14 +681,7 @@ export function OpenIncidentForm({
     setBusy(true);
     setError(null);
     try {
-      const result = await api.post<{ incident: { id: string } }>('/incidents', {
-        alertId: alert.id,
-        title: title.trim(),
-        severity,
-        summary: summary.trim(),
-        expectedAlertRevision: alert.revision,
-      });
-      onOpened(result.incident.id);
+      onOpened(await openIncidentForAlert(api, alert, { title, severity, summary }));
     } catch (failure) {
       setError(failure);
     } finally {
@@ -694,7 +693,7 @@ export function OpenIncidentForm({
     <>
       <EuiSpacer size="l" />
       <EuiTitle size="xxs">
-        <h3>Abrir incidente desde esta alerta</h3>
+        <h3>{heading}</h3>
       </EuiTitle>
       <EuiSpacer size="s" />
       {error != null && <ErrorCallout error={error} />}

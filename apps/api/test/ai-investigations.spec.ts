@@ -299,6 +299,53 @@ describe('investigaciones', () => {
   });
 });
 
+describe('estado actual de la alerta revisada', () => {
+  it('lista y expediente traen `alert` del modelo de lectura del SOC, enmascarado y al día', async () => {
+    const h = harness({ capabilities: ['investigations.read', 'investigations.run', 'alerts.read'] });
+    const alert = putAlert(h.soc);
+    const started = (await h.controller.start(h.request, { alertId: alert.id })) as {
+      run: { id: string; alert: unknown };
+    };
+    expect(started.run.alert).toEqual({
+      status: 'new',
+      assigneeId: null,
+      assignedToYou: false,
+      verdict: null,
+      incidentId: null,
+      incidentByAnalyst: false,
+    });
+    // Una persona atiende la alerta: la siguiente lectura lo refleja (sin migración ni caché).
+    h.soc.alertRows.set(`${T}|${alert.id}`, {
+      ...alert,
+      status: 'closed',
+      assigneeId: SUBJECT,
+      verdict: 'false_positive',
+      revision: alert.revision + 3,
+    });
+    const page = (await h.controller.list(h.request, {})) as { items: Array<{ alert: unknown }> };
+    expect(page.items[0]!.alert).toEqual({
+      status: 'closed',
+      assigneeId: '0f8e2c1a…',
+      assignedToYou: true,
+      verdict: 'false_positive',
+      incidentId: null,
+      incidentByAnalyst: false,
+    });
+    const detail = (await h.controller.get(h.request, started.run.id)) as { run: { alert: { status: string } } };
+    expect(detail.run.alert.status).toBe('closed');
+    expect(JSON.stringify(page)).not.toContain(SUBJECT);
+  });
+
+  it('sin alerts.read no se lee la alerta: `alert` es null (sin dato)', async () => {
+    const h = harness({ capabilities: ['investigations.read', 'investigations.run'] });
+    const alert = putAlert(h.soc);
+    const started = (await h.controller.start(h.request, { alertId: alert.id })) as { run: { id: string; alert: unknown } };
+    expect(started.run.alert).toBeNull();
+    const page = (await h.controller.list(h.request, {})) as { items: Array<{ alert: unknown }> };
+    expect(page.items[0]!.alert).toBeNull();
+  });
+});
+
 describe('GET /activity', () => {
   it('exige investigations.read y el analista publicado', async () => {
     const none = harness({ capabilities: ['alerts.read'] });

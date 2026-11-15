@@ -25,6 +25,7 @@ import {
 import {
   EMPTY_FILTERS,
   hasFilters,
+  isPendingReview,
   needsAttention,
   parseRunStatus,
   parseVerdictFilter,
@@ -185,6 +186,11 @@ export function AiRunRow({
         <span className="b89AiRun__status">
           <RunStatusMark status={run.status} />
           {isActive(run.status) && <RunStage stage={run.stage} />}
+          {run.status === 'requires_review' && (
+            <span className="b89CellMeta" data-review={isPendingReview(run) ? 'pending' : 'done'}>
+              {isPendingReview(run) ? 'Revisión pendiente' : 'Alerta ya atendida'}
+            </span>
+          )}
         </span>
         <span className="b89AiRun__time">
           <RunTime iso={run.updatedAt ?? run.createdAt} now={now} />
@@ -247,7 +253,7 @@ export function AiRunList({
 
 // ------------------------------------------------------------------ Filtros
 
-const VIEWS: readonly RunView[] = ['all', 'attention', 'escalated', 'active'];
+const VIEWS: readonly RunView[] = ['all', 'attention', 'failed', 'escalated', 'active'];
 
 export function AiRunFiltersBar({
   filters,
@@ -269,7 +275,8 @@ export function AiRunFiltersBar({
             type="button"
             className="b89AiSegment__item"
             aria-pressed={filters.view === view}
-            onClick={() => set({ view })}
+            // La bandeja lee sus propias investigaciones en revisión: el estado no aplica.
+            onClick={() => set(view === 'attention' ? { view, status: '' } : { view })}
           >
             {RUN_VIEW_LABEL[view]}
             {view !== 'all' && (
@@ -298,7 +305,12 @@ export function AiRunFiltersBar({
             compressed
             aria-label="Filtrar por estado"
             value={filters.status}
-            onChange={(event) => set({ status: parseRunStatus(event.target.value) })}
+            onChange={(event) =>
+              set({
+                status: parseRunStatus(event.target.value),
+                ...(filters.view === 'attention' ? { view: 'all' as RunView } : {}),
+              })
+            }
             options={[
               { value: '', text: 'Todos los estados' },
               ...AI_RUN_STATUSES.map((status) => ({

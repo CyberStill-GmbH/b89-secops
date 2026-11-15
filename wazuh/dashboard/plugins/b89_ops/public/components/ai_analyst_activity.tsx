@@ -41,6 +41,8 @@ export const ACTIVITY_POLL_MS = 5000;
 /** Las listas de pendientes cambian despacio: se releen cada 30 s. */
 const ATTENTION_POLL_MS = 30000;
 const ATTENTION_PAGE = 20;
+/** Las revisiones no caducan: se lee una página amplia para no perder pendientes antiguas. */
+const REVIEW_PAGE = 100;
 
 /** Tamaño intrínseco de `b89-ai-analyst-bunny-160.webp` (el de 2x es 453×512). */
 const MASCOT_WIDTH = 142;
@@ -147,7 +149,7 @@ export function AiActivityHeader({
 // ------------------------------------------------------------------ Atención
 
 const ATTENTION_KIND_LABEL: Record<AttentionItem['kind'], string> = {
-  review: 'Requiere revisión',
+  review: 'Revisión pendiente',
   failed: 'Falló o quedó incompleta',
   escalated: 'Escalada a incidente',
 };
@@ -181,7 +183,7 @@ export function AiAttentionPanel({
     <section className="b89Panel b89AiAttention" aria-labelledby="b89AiAttentionTitle">
       <div className="b89Panel__header">
         <h2 id="b89AiAttentionTitle">Necesita tu atención</h2>
-        <span className="b89Panel__meta">Últimas 24 horas</span>
+        <span className="b89Panel__meta">Revisiones pendientes · fallos de las últimas 24 h</span>
       </div>
       {!summary ? (
         error != null ? (
@@ -203,15 +205,15 @@ export function AiAttentionPanel({
               label="Revisión pendiente"
               value={`${formatCount(summary.review)}${summary.review > 0 ? plus : ''}`}
               tone={summary.review > 0 ? 'warn' : 'ok'}
-              hint="El resultado no superó la verificación: decide una persona"
-              onClick={onFilter ? () => onFilter({ status: 'requires_review', view: 'all' }) : undefined}
+              hint="La alerta sigue sin atender: decide una persona en la bandeja de revisión"
+              onClick={onFilter ? () => onFilter({ status: '', view: 'attention' }) : undefined}
             />
             <AiTile
               label="Fallidas o incompletas"
               value={`${formatCount(summary.failed)}${summary.failed > 0 ? plus : ''}`}
               tone={summary.failed > 0 ? 'fail' : 'ok'}
               hint="Sin recomendación fiable: reintentar o revisar a mano"
-              onClick={onFilter ? () => onFilter({ status: '', view: 'attention' }) : undefined}
+              onClick={onFilter ? () => onFilter({ status: '', view: 'failed' }) : undefined}
             />
             <AiTile
               label="Escaladas a incidente"
@@ -223,8 +225,8 @@ export function AiAttentionPanel({
           </div>
           {total === 0 ? (
             <p className="b89AiAttention__clear" role="status">
-              <span aria-hidden="true">✓</span> Nada pendiente: ninguna investigación espera revisión
-              ni falló en las últimas 24 horas.
+              <span aria-hidden="true">✓</span> Nada pendiente: ninguna revisión espera a una persona
+              y nada falló en las últimas 24 horas.
             </p>
           ) : (
             <ol className="b89AiAttention__list" aria-label="Pendientes más urgentes">
@@ -514,7 +516,7 @@ function useAttentionRuns(visible: boolean) {
   const load = useCallback(async () => {
     try {
       const pages = await Promise.all([
-        listAiRuns(api, { status: 'requires_review', pageSize: ATTENTION_PAGE }),
+        listAiRuns(api, { status: 'requires_review', pageSize: REVIEW_PAGE }),
         listAiRuns(api, { status: 'failed', pageSize: ATTENTION_PAGE }),
       ]);
       if (!mounted.current) return;

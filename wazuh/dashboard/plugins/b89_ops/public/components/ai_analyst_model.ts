@@ -12,12 +12,20 @@ import {
   AI_VERDICTS,
   AiActivityFeedItem,
   AiBudget,
+  AiRunAlert,
+  AiRunDetail,
   AiRunStatus,
   AiRunSummary,
   AiVerdict,
+  Alert,
+  ALERT_STATUS_LABEL,
+  AlertCommandName,
+  CAPABILITIES,
   HealthTone,
   PRIORITIES,
   Priority,
+  VERDICT_LABEL,
+  verdictLabel,
 } from '../../common';
 
 // ------------------------------------------------------------------ Códigos → texto
@@ -160,8 +168,39 @@ export const ATTENTION_STATUSES: readonly AiRunStatus[] = [
   'usage_unreconciled',
 ];
 
-export function needsAttention(run: Pick<AiRunSummary, 'status'>): boolean {
-  return (ATTENTION_STATUSES as readonly string[]).includes(run.status);
+/** Terminó sin una recomendación fiable: reintentar o revisar a mano. */
+export const FAILURE_STATUSES: readonly AiRunStatus[] = [
+  'failed',
+  'partial',
+  'budget_exhausted',
+  'usage_unreconciled',
+];
+
+/**
+ * Una persona ya atendió la alerta: la cerró o la vinculó a un incidente que no abrió el propio
+ * analista. Sin dato de la alerta (`null`) no se da por atendida.
+ */
+export function isAlertHandled(alert: AiRunAlert | null): boolean {
+  if (!alert) return false;
+  if (alert.status === 'closed') return true;
+  return alert.incidentId !== null && !alert.incidentByAnalyst;
+}
+
+/**
+ * Revisión pendiente: el expediente pide revisión humana Y la alerta todavía necesita a una
+ * persona. Una revisión cuya alerta ya se cerró o pasó a un incidente deja de contar.
+ */
+export function isPendingReview(run: Pick<AiRunSummary, 'status' | 'alert'>): boolean {
+  return run.status === 'requires_review' && !isAlertHandled(run.alert);
+}
+
+export function isFailedRun(run: Pick<AiRunSummary, 'status'>): boolean {
+  return (FAILURE_STATUSES as readonly string[]).includes(run.status);
+}
+
+/** Necesita a una persona: revisión pendiente o corrida fallida/incompleta. */
+export function needsAttention(run: Pick<AiRunSummary, 'status' | 'alert'>): boolean {
+  return isPendingReview(run) || isFailedRun(run);
 }
 
 const PRIORITY_RANK: Readonly<Record<Priority, number>> = { P1: 0, P2: 1, P3: 2, P4: 3 };
@@ -186,7 +225,7 @@ export interface AttentionItem {
 }
 
 export interface AttentionSummary {
-  /** Investigaciones que terminaron en «Requiere revisión» en la ventana. */
+  /** Revisiones pendientes (sin ventana: siguen hasta que una persona atiende la alerta). */
   readonly review: number;
   /** Fallidas, parciales, sin presupuesto o con uso por conciliar en la ventana. */
   readonly failed: number;
@@ -201,8 +240,10 @@ export interface AttentionSummary {
 export const ATTENTION_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Qué necesita a una persona en las últimas 24 h. Las corridas vienen de la lista (estado) y las
- * escalaciones del feed de actividad (acción ejecutada); una corrida cuenta una sola vez por tipo.
+ * Qué necesita a una persona. Revisiones: todas las pendientes (`isPendingReview`), sin importar
+ * su antigüedad, porque una revisión sin atender no caduca. Fallos y escalaciones: últimas 24 h.
+ * Las corridas vienen de la lista y las escalaciones del feed; una corrida cuenta una sola vez
+ * y manda su primera lectura (la más reciente va primero).
  */
 export function attentionSummary(input: {
   readonly runs: readonly AiRunSummary[];
@@ -217,11 +258,12 @@ export function attentionSummary(input: {
   let review = 0;
   let failed = 0;
   for (const run of input.runs) {
-    if (!needsAttention(run) || seen.has(run.id)) continue;
-    const at = run.finishedAt ?? run.updatedAt ?? run.createdAt;
-    if (timeOf(at) < since) continue;
+    if (seen.has(run.id)) continue;
     seen.add(run.id);
-    const kind = run.status === 'requires_review' ? 'review' : 'failed';
+    if (!needsAttention(run)) continue;
+    const at = run.finishedAt ?? run.updatedAt ?? run.createdAt;
+    const kind = isPendingReview(run) ? 'review' : 'failed';
+    if (kind === 'failed' && timeOf(at) < since) continue;
     if (kind === 'review') review += 1;
     else failed += 1;
     items.push({
@@ -261,7 +303,8 @@ export function attentionSummary(input: {
 
 // ------------------------------------------------------------------ Filtros de la lista
 
-export type RunView = 'all' | 'attention' | 'escalated' | 'active';
+/** `attention` es la bandeja de revisión: solo revisiones pendientes. */
+export type RunView = 'all' | 'attention' | 'failed' | 'escalated' | 'active';
 
 export interface RunFilters {
   /** Filtro del servidor (`?status=`); vacío = todos. */
@@ -282,7 +325,8 @@ export const EMPTY_FILTERS: RunFilters = {
 
 export const RUN_VIEW_LABEL: Readonly<Record<RunView, string>> = {
   all: 'Todas',
-  attention: 'Requieren atención',
+  attention: 'Bandeja de revisión',
+  failed: 'Fallidas',
   escalated: 'Escaladas',
   active: 'En curso',
 };
@@ -300,7 +344,8 @@ export function parseVerdictFilter(value: string): RunFilters['verdict'] {
 export function filterRuns(items: readonly AiRunSummary[], filters: RunFilters): AiRunSummary[] {
   const term = filters.query.trim().toLocaleLowerCase('es');
   return items.filter((run) => {
-    if (filters.view === 'attention' && !needsAttention(run)) return false;
+    if (filters.view === 'attention' && !isPendingReview(run)) return false;
+    if (filters.view === 'failed' && !isFailedRun(run)) return false;
     if (filters.view === 'escalated' && !run.actionKinds.includes('escalate')) return false;
     if (filters.view === 'active' && run.status !== 'queued' && run.status !== 'running') return false;
     if (filters.verdict === 'none' && run.verdict !== null) return false;
@@ -332,6 +377,196 @@ export function togglePriority(list: readonly Priority[], priority: Priority): P
     ? list.filter((value) => value !== priority)
     : PRIORITIES.filter((value) => value === priority || list.includes(value));
 }
+
+// ------------------------------------------------------------------ Bandeja de revisión
+
+/**
+ * Bandeja de revisión: solo las pendientes, sin duplicados (manda la primera lectura), de mayor
+ * a menor prioridad y, dentro de cada prioridad, la que más lleva esperando primero.
+ */
+export function reviewInbox(runs: readonly AiRunSummary[]): AiRunSummary[] {
+  const seen = new Set<string>();
+  const out: AiRunSummary[] = [];
+  for (const run of runs) {
+    if (seen.has(run.id)) continue;
+    seen.add(run.id);
+    if (isPendingReview(run)) out.push(run);
+  }
+  const waitingSince = (run: AiRunSummary) =>
+    timeOf(run.finishedAt ?? run.updatedAt ?? run.createdAt);
+  return out.sort(
+    (a, b) => rank(a.priority) - rank(b.priority) || waitingSince(a) - waitingSince(b),
+  );
+}
+
+/** Estado de la alerta en una frase corta para la bandeja. */
+export function alertStateText(alert: AiRunAlert | null): string {
+  if (!alert) return 'Estado de la alerta sin dato';
+  const parts: string[] = [
+    alert.status === 'unknown' ? 'Estado no reconocido' : ALERT_STATUS_LABEL[alert.status],
+  ];
+  if (alert.assignedToYou) parts.push('asignada a ti');
+  else if (alert.assigneeId) parts.push(`asignada a ${alert.assigneeId}`);
+  else parts.push('sin asignar');
+  if (alert.verdict && alert.verdict !== 'unknown') {
+    parts.push(VERDICT_LABEL[alert.verdict].toLowerCase());
+  }
+  if (alert.incidentId) {
+    parts.push(alert.incidentByAnalyst ? 'incidente abierto por el analista' : 'en un incidente');
+  }
+  return parts.join(' · ');
+}
+
+// ------------------------------------------------------------------ Acciones de revisión
+
+/** Mismos límites que el backend para notas de triaje y cierre (`TRIAGE_NOTE_LIMITS`). */
+export const REVIEW_NOTE_MIN = 10;
+export const REVIEW_NOTE_MAX = 2000;
+
+export function reviewNoteValid(note: string): boolean {
+  const length = note.trim().length;
+  return length >= REVIEW_NOTE_MIN && length <= REVIEW_NOTE_MAX;
+}
+
+export type ReviewActionId = 'assign' | 'close_false_positive' | 'open_incident' | 'acknowledge';
+
+export interface ReviewViewer {
+  readonly subjectId: string;
+  readonly can: (capability: string) => boolean;
+}
+
+export interface ReviewActionState {
+  /** Sin la capacidad que exige el API, la acción no se muestra. */
+  readonly visible: boolean;
+  readonly enabled: boolean;
+  /** Por qué no está disponible, en llano; `null` si lo está. */
+  readonly reason: string | null;
+}
+
+export interface ReviewCommandStep {
+  readonly name: AlertCommandName;
+}
+
+export interface FalsePositivePlan {
+  readonly steps: readonly ReviewCommandStep[];
+  /** Motivo por el que no se puede; `null` si se puede. */
+  readonly blocked: string | null;
+}
+
+const CLOSABLE_VERDICTS: ReadonlyArray<Alert['verdict']> = ['false_positive', 'benign', 'duplicate'];
+
+/**
+ * Pasos por los endpoints de alertas existentes para «Confirmar: falso positivo y cerrar», con las
+ * reglas del dominio (`modules/soc/src/alert.ts`): solo tria quien tiene la alerta asignada y solo
+ * desde «Reconocida»; tras el triaje el cierre ya no exige nota, pero se envía igual.
+ */
+export function falsePositivePlan(alert: Alert, viewer: ReviewViewer): FalsePositivePlan {
+  const none = (blocked: string): FalsePositivePlan => ({ steps: [], blocked });
+  if (alert.incidentId) {
+    return none('La alerta está vinculada a un incidente: se cierra desde el incidente.');
+  }
+  if (alert.status === 'closed') return none('La alerta ya está cerrada.');
+  if (alert.status === 'escalated') return none('La alerta ya se escaló como amenaza.');
+  if (alert.status === 'triaged') {
+    return CLOSABLE_VERDICTS.includes(alert.verdict)
+      ? { steps: [{ name: 'close' }], blocked: null }
+      : none('La alerta ya se trió como verdadero positivo.');
+  }
+  const steps: ReviewCommandStep[] = [];
+  // `acknowledge` conserva la asignación existente o asigna a quien reconoce.
+  if (alert.status === 'new') steps.push({ name: 'acknowledge' });
+  const owner = alert.status === 'new' ? alert.assigneeId ?? viewer.subjectId : alert.assigneeId;
+  if (owner !== viewer.subjectId) {
+    if (!viewer.can(CAPABILITIES.alertsAssign)) {
+      return none('La alerta está asignada a otra persona y tu cuenta no puede reasignarla.');
+    }
+    steps.push({ name: 'assign' });
+  }
+  steps.push({ name: 'triage' }, { name: 'close' });
+  return { steps, blocked: null };
+}
+
+/**
+ * Qué acciones de revisión ofrecer sobre la alerta, con las mismas condiciones con que el API las
+ * rechazaría: sin la capacidad no se muestran; con ella pero en un estado que no lo permite, se
+ * muestran deshabilitadas con el motivo.
+ */
+export function reviewActions(
+  alert: Alert,
+  viewer: ReviewViewer,
+): Record<ReviewActionId, ReviewActionState> {
+  const state = (visible: boolean, reason: string | null): ReviewActionState => ({
+    visible,
+    enabled: visible && reason === null,
+    reason: visible ? reason : null,
+  });
+  const status = (ALERT_STATUS_LABEL[alert.status] ?? alert.status).toLowerCase();
+  const mine = alert.assigneeId === viewer.subjectId;
+  const assignable =
+    alert.status === 'new' || alert.status === 'acknowledged' || alert.status === 'triaged';
+  return {
+    assign: state(
+      viewer.can(CAPABILITIES.alertsAssign),
+      mine ? 'Ya la tienes asignada.' : assignable ? null : `La alerta está ${status}: ya no se reasigna.`,
+    ),
+    close_false_positive: state(
+      viewer.can(CAPABILITIES.alertsTriage),
+      falsePositivePlan(alert, viewer).blocked,
+    ),
+    open_incident: state(
+      viewer.can(CAPABILITIES.incidentsWrite),
+      alert.incidentId
+        ? 'La alerta ya está vinculada a un incidente.'
+        : alert.status === 'closed'
+          ? 'La alerta está cerrada.'
+          : null,
+    ),
+    acknowledge: state(
+      viewer.can(CAPABILITIES.alertsTriage),
+      alert.status === 'new' ? null : `La alerta ya está ${status}.`,
+    ),
+  };
+}
+
+/** Lo mínimo del expediente para precargar textos: la conclusión puede no haber llegado. */
+export interface ReviewSource {
+  readonly id: string;
+  readonly result?: AiRunDetail['result'];
+}
+
+function conclusionOf(run: ReviewSource): string {
+  if (!run.result) return '';
+  const summary = run.result.summary.trim();
+  return ` Conclusión del analista: ${verdictLabel(run.result.verdict).toLowerCase()}${
+    summary ? `. ${summary}` : '.'
+  }`;
+}
+
+function clip(text: string): string {
+  return text.length <= REVIEW_NOTE_MAX ? text : `${text.slice(0, REVIEW_NOTE_MAX - 1)}…`;
+}
+
+/** Nota precargada (editable) para cerrar como falso positivo. */
+export function falsePositiveNote(run: ReviewSource): string {
+  return clip(
+    `Falso positivo confirmado tras revisar el expediente ${run.id} del Analista IA.${conclusionOf(run)}`,
+  );
+}
+
+/** Resumen precargado (editable) del incidente al confirmar la amenaza. */
+export function threatSummary(run: ReviewSource): string {
+  return clip(
+    `Amenaza confirmada tras revisar el expediente ${run.id} del Analista IA.${conclusionOf(run)}`,
+  );
+}
+
+/** Confirmación tras cada acción, en llano. */
+export const REVIEW_DONE_TEXT: Readonly<Record<ReviewActionId, string>> = {
+  assign: 'Alerta asignada a ti',
+  close_false_positive: 'Alerta cerrada como falso positivo · nota guardada',
+  open_incident: 'Incidente abierto · alerta vinculada',
+  acknowledge: 'Alerta marcada como revisada sin cambios',
+};
 
 // ------------------------------------------------------------------ Veredicto
 

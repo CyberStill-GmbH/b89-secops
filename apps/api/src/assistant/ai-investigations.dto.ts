@@ -26,6 +26,7 @@ import {
   type StoredAnalystSettings,
 } from '@b89/assistant';
 import { maskText } from '@b89/soar';
+import type { Alert } from '@b89/soc';
 
 import type { AnalystBacklog, AnalystHostStatus } from '../runtime/analyst-host.js';
 
@@ -63,6 +64,51 @@ export function decodeCursor(raw: string): InvestigationCursor | undefined {
 export interface RunExtras {
   readonly invocations: readonly InvestigationInvocation[];
   readonly actions: readonly InvestigationAction[];
+  /**
+   * Estado ACTUAL de la alerta principal, leído del modelo de lectura del SOC por el controlador.
+   * `null`: sin `alerts.read`, sin una alerta única o la alerta no existe. Ausente: no se consultó.
+   */
+  readonly alert?: RunAlertView | null;
+}
+
+/** Estado actual de la alerta vinculada (para saber si la revisión sigue pendiente). */
+export interface RunAlertView {
+  readonly status: Alert['status'];
+  /** Enmascarado como el resto de identificadores de persona. */
+  readonly assigneeId: string | null;
+  /** La alerta está asignada a quien consulta (la consola no recibe el id sin máscara). */
+  readonly assignedToYou: boolean;
+  readonly verdict: Alert['verdict'];
+  readonly incidentId: string | null;
+  /** El incidente vinculado lo abrió o adjuntó el propio analista en ESTA investigación. */
+  readonly incidentByAnalyst: boolean;
+}
+
+/** Alerta única de la investigación (la que se revisa); `null` si no hay una sola. */
+export function primaryAlertIdOf(job: Pick<InvestigationJob, 'subject' | 'alertIds'>): string | null {
+  if (job.subject.kind === 'alert' && job.subject.id) return job.subject.id;
+  return job.alertIds.length === 1 ? job.alertIds[0]! : null;
+}
+
+export function runAlertView(
+  alert: Pick<Alert, 'status' | 'assigneeId' | 'verdict' | 'incidentId'>,
+  actions: readonly InvestigationAction[],
+  viewerId: string,
+): RunAlertView {
+  const byAnalyst = new Set(
+    actions
+      .filter((action) => action.kind === 'escalate' && action.state === 'executed')
+      .map((action) => (action.ref && action.ref.kind === 'incident' ? action.ref.id : null))
+      .filter((id): id is string => id !== null),
+  );
+  return {
+    status: alert.status,
+    assigneeId: maskActorRef(alert.assigneeId),
+    assignedToYou: alert.assigneeId !== null && alert.assigneeId === viewerId,
+    verdict: alert.verdict,
+    incidentId: alert.incidentId,
+    incidentByAnalyst: alert.incidentId !== null && byAnalyst.has(alert.incidentId),
+  };
 }
 
 function estimatedCost(invocations: readonly InvestigationInvocation[]): number {
@@ -96,6 +142,7 @@ export function runSummaryView(job: InvestigationJob, extras: RunExtras) {
         extras.actions.filter((action) => action.state === 'executed').map((action) => action.kind),
       ),
     ],
+    ...(extras.alert === undefined ? {} : { alert: extras.alert }),
   };
 }
 

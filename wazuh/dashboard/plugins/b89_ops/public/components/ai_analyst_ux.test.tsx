@@ -276,13 +276,14 @@ describe('filtros de la lista', () => {
   });
 
   it('la barra marca lo activo y solo ofrece «Quitar filtros» con filtros', () => {
-    const counts = { all: 4, attention: 1, escalated: 1, active: 1 };
+    const counts = { all: 4, attention: 1, failed: 0, escalated: 1, active: 1 };
     const clean = renderToStaticMarkup(
       <AiRunFiltersBar filters={EMPTY_FILTERS} counts={counts} onChange={() => undefined} />,
     );
     expect(clean).not.toContain('Quitar filtros');
     expect(clean).toContain('aria-pressed="true"');
-    expect(clean).toContain('Requieren atención');
+    expect(clean).toContain('Bandeja de revisión');
+    expect(clean).toContain('Fallidas');
     const filtered = renderToStaticMarkup(
       <AiRunFiltersBar
         filters={{ ...EMPTY_FILTERS, priorities: ['P1'] }}

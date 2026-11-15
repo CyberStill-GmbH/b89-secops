@@ -48,10 +48,12 @@ import {
   EMPTY_FILTERS,
   filterRuns,
   hasFilters,
-  needsAttention,
+  isFailedRun,
+  isPendingReview,
   RunFilters,
   RunView,
 } from './ai_analyst_model';
+import { AiReviewInbox, AiReviewPanel, useReviewInbox } from './ai_analyst_review';
 import { AiReportsTab } from './ai_analyst_reports';
 import { AiRunFiltersBar, AiRunList, RunStatusMark, RunTime } from './ai_analyst_runs';
 import { AiSettingsTab } from './ai_analyst_settings';
@@ -179,6 +181,9 @@ function AiAnalystConsole({
 
   const page = useAsync(() => listAiRuns(api, { status: status || null }), [api, status]);
   const budget = useAsync(() => getAiBudget(api), [api]);
+  // La bandeja de revisión lee sus propias investigaciones: no depende de la primera página.
+  const inbox = useReviewInbox(visible);
+  const inboxUpsert = inbox.upsert;
 
   // Lo que el refresco silencioso necesita leer sin volver a crear el intervalo.
   const statusRef = useRef(status);
@@ -261,9 +266,13 @@ function AiAnalystConsole({
     }
   };
 
-  const upsert = useCallback((run: AiRunSummary) => {
-    setItems((current) => mergeRuns(current, [run]));
-  }, []);
+  const upsert = useCallback(
+    (run: AiRunSummary) => {
+      setItems((current) => mergeRuns(current, [run]));
+      inboxUpsert(run);
+    },
+    [inboxUpsert],
+  );
 
   /** Desde «Resumen»: abre la lista con el filtro de la cifra que se pulsó. */
   const openList = useCallback((patch: Partial<RunFilters>) => {
@@ -293,10 +302,14 @@ function AiAnalystConsole({
       </B89Page>
     );
 
+  const reviewMode = filters.view === 'attention';
   const shown = filterRuns(items, filters);
+  const inboxShown = filterRuns(inbox.pending, { ...filters, status: '' });
+  const pendingReviews = inbox.runs ? inbox.pending.length : items.filter(isPendingReview).length;
   const counts: Record<RunView, number> = {
     all: items.length,
-    attention: items.filter(needsAttention).length,
+    attention: pendingReviews,
+    failed: items.filter(isFailedRun).length,
     escalated: items.filter((run) => run.actionKinds.includes('escalate')).length,
     active: items.filter((run) => isActive(run.status)).length,
   };
@@ -317,9 +330,12 @@ function AiAnalystConsole({
                 onClick={() => setTab(item.id)}
               >
                 {item.label}
-                {item.id === 'runs' && counts.attention > 0 && (
-                  <span className="b89AiTabBadge b89Tabular" title="Requieren atención">
-                    {counts.attention}
+                {item.id === 'runs' && counts.attention + counts.failed > 0 && (
+                  <span
+                    className="b89AiTabBadge b89Tabular"
+                    title={`Requieren atención: ${counts.attention} en revisión y ${counts.failed} fallidas`}
+                  >
+                    {counts.attention + counts.failed}
                   </span>
                 )}
               </EuiTab>
@@ -354,12 +370,19 @@ function AiAnalystConsole({
                 )}
                 <section className="b89Panel" aria-labelledby="b89AiRunsTitle">
                   <div className="b89Panel__header">
-                    <h2 id="b89AiRunsTitle">Investigaciones</h2>
+                    <h2 id="b89AiRunsTitle">
+                      {reviewMode ? 'Bandeja de revisión' : 'Investigaciones'}
+                    </h2>
                     <span className="b89Panel__meta" role="status">
-                      {page.loading && items.length === 0
-                        ? 'Cargando…'
-                        : `${shown.length} de ${items.length} cargadas${cursor ? ' · hay más' : ''}`}
-                      {hasActive &&
+                      {reviewMode
+                        ? inbox.runs === null
+                          ? 'Cargando…'
+                          : `${inboxShown.length} pendientes · primero la mayor prioridad y la que más espera`
+                        : page.loading && items.length === 0
+                          ? 'Cargando…'
+                          : `${shown.length} de ${items.length} cargadas${cursor ? ' · hay más' : ''}`}
+                      {!reviewMode &&
+                        hasActive &&
                         (visible
                           ? ' · se actualiza cada 5 s'
                           : ' · actualización en pausa (pestaña oculta)')}
@@ -367,7 +390,27 @@ function AiAnalystConsole({
                   </div>
                   <AiRunFiltersBar filters={filters} counts={counts} onChange={setFilters} />
                   <EuiSpacer size="m" />
-                  {page.error != null ? (
+                  {reviewMode ? (
+                    <AiReviewInbox
+                      items={inboxShown}
+                      loading={inbox.loading}
+                      error={inbox.error}
+                      capped={inbox.capped}
+                      basePath={basePath}
+                      onSelect={onSelect}
+                      onRetry={inbox.reload}
+                      onChanged={() => {
+                        inbox.reload();
+                        void refresh();
+                      }}
+                      empty={
+                        <ReviewInboxEmpty
+                          filtered={hasFilters({ ...filters, view: 'all', status: '' })}
+                          onClear={() => setFilters({ ...EMPTY_FILTERS, view: 'attention' })}
+                        />
+                      }
+                    />
+                  ) : page.error != null ? (
                     <ErrorCallout error={page.error} onRetry={page.reload} />
                   ) : (
                     <>
@@ -409,6 +452,34 @@ function AiAnalystConsole({
         </>
       )}
     </B89Page>
+  );
+}
+
+/** Bandeja vacía: en positivo, o por qué con filtros. */
+function ReviewInboxEmpty({ filtered, onClear }: { filtered: boolean; onClear: () => void }) {
+  if (filtered) {
+    return (
+      <>
+        <p>
+          <strong>Ninguna revisión pendiente coincide con los filtros.</strong>
+        </p>
+        <EuiButtonEmpty size="s" flush="left" iconType="cross" onClick={onClear}>
+          Quitar filtros
+        </EuiButtonEmpty>
+      </>
+    );
+  }
+  return (
+    <>
+      <p>
+        <strong>
+          <span aria-hidden="true">✓</span> No hay revisiones pendientes.
+        </strong>
+      </p>
+      <p className="b89CellMeta">
+        Una revisión sale de la bandeja cuando su alerta se cierra o pasa a un incidente.
+      </p>
+    </>
   );
 }
 
@@ -594,10 +665,13 @@ function StartControl({
 
 // ------------------------------------------------------------------ Expediente
 
+const REVIEW_HEADING = 'b89AiReviewTitle';
+
 /** Índice del expediente: salta a la sección y le pasa el foco (sin tocar la URL). */
 function CaseNav({ run }: { run: AiRunDetail }) {
   const result = run.result;
   const links: Array<{ id: string; label: string; count?: number }> = [
+    ...(run.status === 'requires_review' ? [{ id: REVIEW_HEADING, label: 'Tu revisión' }] : []),
     { id: 'b89AiConclusion', label: 'Conclusión' },
     { id: 'b89AiSummary', label: 'Resumen' },
   ];
@@ -830,6 +904,18 @@ function RunDocument({
         {error != null && (
           <>
             <ErrorCallout error={error} />
+            <EuiSpacer size="m" />
+          </>
+        )}
+        {run && run.status === 'requires_review' && (
+          <>
+            <AiReviewPanel
+              run={run}
+              basePath={basePath}
+              headingId={REVIEW_HEADING}
+              // Tras actuar se relee el expediente: trae el estado nuevo de la alerta.
+              onChanged={() => loaded.reload()}
+            />
             <EuiSpacer size="m" />
           </>
         )}
