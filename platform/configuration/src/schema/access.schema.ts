@@ -13,6 +13,8 @@ import type { ConfigurationProfile } from '../profiles/index.js';
 import type { EnvironmentInput } from '../configuration.types.js';
 import { optionalString, readValue, requireString } from './environment.schema.js';
 
+const ENTRA_TENANT_GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+
 export const IDENTITY_MODES = ['entra', 'local-development'] as const;
 export type IdentityMode = (typeof IDENTITY_MODES)[number];
 
@@ -90,6 +92,12 @@ export function parseAccess(
     throw configurationError('CONFIG_VALUE_INVALID', 'B89_ACCESS_IDENTITY_MODE', profile.name);
   }
   const tenantId = requireString(environment, profile, 'B89_ENTRA_TENANT_ID');
+  // Con Entra real el tenant es un GUID: `common`, `organizations` o un dominio abrirían el
+  // flujo a otros tenants (aunque `iss`/`tid` lo rechacen después, la configuración debe fallar
+  // al arrancar, no en cada inicio de sesión).
+  if (mode === 'entra' && !ENTRA_TENANT_GUID.test(tenantId)) {
+    throw configurationError('CONFIG_VALUE_INVALID', 'B89_ENTRA_TENANT_ID', profile.name);
+  }
   const clientId = requireString(environment, profile, 'B89_ENTRA_CLIENT_ID');
   const authority = requireHttpsUrl(environment, profile, 'B89_ENTRA_AUTHORITY');
   const base = `${authority.replace(/\/+$/u, '')}/${tenantId}`;

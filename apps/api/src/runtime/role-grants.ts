@@ -27,6 +27,17 @@ export type RoleGrantResolver = (
   groups?: readonly string[],
 ) => Promise<readonly string[]>;
 
+/**
+ * Roles que se aceptan del claim `roles` del ID token (app roles de Entra). Los aprobadores
+ * nunca: solo los concede la declaración explícita del deploy (`B89_ACCESS_APPROVER_OIDS`,
+ * `B89_SECURITY_APPROVER_OIDS`), así que un app role con ese nombre no aporta nada.
+ */
+export function rolesFromIdToken(roles: readonly string[] | undefined): string[] {
+  return (roles ?? []).filter(
+    (role) => role !== ACCESS_APPROVER_ROLE && role !== SECURITY_APPROVER_ROLE,
+  );
+}
+
 /** El padrón se considera viejo después de tres ciclos de sincronización. */
 export const ROSTER_STALE_AFTER_INTERVALS = 3;
 

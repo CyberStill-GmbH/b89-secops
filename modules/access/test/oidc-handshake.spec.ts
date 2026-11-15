@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   beginAuthorization,
+  HANDSHAKE_LIMITS,
   pkceChallenge,
   resolveCallback,
   type EntraEndpointConfig,
@@ -211,5 +212,37 @@ describe('C-18 · retorno del flujo OIDC', () => {
       ok: false,
       code: 'STATE_REPLAYED',
     });
+  });
+});
+
+describe('C-18 · store de handshakes acotado (DoS de /api/auth/start)', () => {
+  it('purga los handshakes vencidos al guardar uno nuevo', async () => {
+    const store = new InMemoryHandshakeStore();
+    await store.save(pending({ state: 'viejo' }));
+    const later = new Date(NOW.getTime() + 600_001);
+    await store.save(
+      pending({
+        state: 'nuevo',
+        createdAt: later,
+        expiresAt: new Date(later.getTime() + 600_000),
+      }),
+    );
+    expect(store.size).toBe(1);
+    expect(await store.consume('viejo', 'binding-1', later)).toBeUndefined();
+    expect((await store.consume('nuevo', 'binding-1', later))?.state).toBe('nuevo');
+  });
+
+  it('no supera el tope y descarta el handshake más antiguo', async () => {
+    const store = new InMemoryHandshakeStore(3);
+    for (const state of ['a', 'b', 'c', 'd', 'e']) await store.save(pending({ state }));
+    expect(store.size).toBe(3);
+    expect(await store.consume('a', 'binding-1', NOW)).toBeUndefined();
+    expect(await store.consume('b', 'binding-1', NOW)).toBeUndefined();
+    expect((await store.consume('e', 'binding-1', NOW))?.state).toBe('e');
+  });
+
+  it('declara un tope por defecto finito', () => {
+    expect(HANDSHAKE_LIMITS.maxPending).toBeGreaterThan(0);
+    expect(Number.isFinite(HANDSHAKE_LIMITS.maxPending)).toBe(true);
   });
 });

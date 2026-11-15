@@ -38,6 +38,15 @@ describe('C-18 · configuración de acceso', () => {
     expect(config.identityMode).toBe('entra');
   });
 
+  it.each(['common', 'organizations', 'consumers', 'b89.io', 'local-development'])(
+    'rechaza el tenant no GUID %s con identidad Entra (sin multi-tenant)',
+    (tenant) => {
+      expect(
+        rejectedPath(() => loadAccessConfig({ ...PRODUCTION, B89_ENTRA_TENANT_ID: tenant })),
+      ).toBe('B89_ENTRA_TENANT_ID');
+    },
+  );
+
   it('rechaza el emisor local en producción', () => {
     expect(() =>
       loadAccessConfig({ ...PRODUCTION, B89_ACCESS_IDENTITY_MODE: 'local-development' }),

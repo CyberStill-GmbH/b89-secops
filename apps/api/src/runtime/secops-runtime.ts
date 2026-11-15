@@ -28,6 +28,7 @@ import {
   evaluateNetwork,
   evaluateSession,
   consumeRateLimit,
+  HANDSHAKE_LIMITS,
   InMemoryAttemptStore,
   InMemoryHandshakeStore,
   InMemoryRateLimitStore,
@@ -103,6 +104,7 @@ import {
   type DemoAdminLogin,
 } from '../access/demo-admin-credentials.js';
 import type { AssistantService } from '../assistant/assistant-service.js';
+import { rolesFromIdToken } from './role-grants.js';
 import type { AnalystHost } from './analyst-host.js';
 import type { InjectingServer } from '../assistant/internal-client.js';
 import { csrfTokenFor } from '../http/csrf.js';
@@ -1004,10 +1006,12 @@ export class SecOpsRuntime {
       },
       this.now(),
     );
-    this.rememberNonce(request.state, request.nonce);
+    this.prunePendingFlows(this.now());
+    this.rememberNonce(request.state, request.nonce, request.expiresAt);
     this.pendingReturnTo.set(request.state, {
       returnTo,
       browserBinding: request.browserBinding,
+      expiresAt: request.expiresAt,
     });
     await this.handshakes.save({
       state: request.state,
@@ -1133,12 +1137,38 @@ export class SecOpsRuntime {
     return { ...result, flow };
   }
 
-  private readonly pendingNonces = new Map<string, { nonce: string }>();
+  private readonly pendingNonces = new Map<string, { nonce: string; expiresAt: Date }>();
   /** Destino ya validado por `safeReturnTo`, atado al `state` del handshake (B-03). */
   private readonly pendingReturnTo = new Map<
     string,
-    { readonly returnTo: string; readonly browserBinding: string }
+    { readonly returnTo: string; readonly browserBinding: string; readonly expiresAt: Date }
   >();
+
+  /**
+   * `/api/auth/start` es anónimo: el estado auxiliar del flujo (nonce y destino) caduca con su
+   * handshake y tiene el mismo tope que el store, o un script agotaría la memoria del proceso.
+   */
+  private prunePendingFlows(at: Date): void {
+    for (const pending of [this.pendingNonces, this.pendingReturnTo] as Map<
+      string,
+      { readonly expiresAt: Date }
+    >[]) {
+      for (const [state, entry] of pending) {
+        if (entry.expiresAt.getTime() > at.getTime()) break;
+        pending.delete(state);
+      }
+      while (pending.size >= HANDSHAKE_LIMITS.maxPending) {
+        const oldest = pending.keys().next();
+        if (oldest.done) break;
+        pending.delete(oldest.value);
+      }
+    }
+  }
+
+  /** Flujos pendientes retenidos en memoria (diagnóstico y pruebas). */
+  public get pendingFlowCount(): { readonly nonces: number; readonly returnTo: number } {
+    return { nonces: this.pendingNonces.size, returnTo: this.pendingReturnTo.size };
+  }
 
   /** Se consume una sola vez, igual que el `state` al que pertenece. */
   public takeReturnTo(state: string | undefined, browserBinding: string | undefined): string {
@@ -1147,7 +1177,8 @@ export class SecOpsRuntime {
     if (
       !pending ||
       !browserBinding ||
-      !constantTimeEquals(browserBinding, pending.browserBinding)
+      !constantTimeEquals(browserBinding, pending.browserBinding) ||
+      pending.expiresAt.getTime() <= this.now().getTime()
     ) {
       return DEFAULT_RETURN_TO;
     }
@@ -1155,8 +1186,12 @@ export class SecOpsRuntime {
     return pending.returnTo;
   }
 
-  public rememberNonce(state: string, nonce: string): void {
-    this.pendingNonces.set(state, { nonce });
+  public rememberNonce(
+    state: string,
+    nonce: string,
+    expiresAt: Date = new Date(this.now().getTime() + HANDSHAKE_LIMITS.stateTtlMs),
+  ): void {
+    this.pendingNonces.set(state, { nonce, expiresAt });
   }
 
   public handshakePeek(state: string): { readonly nonce: string } | undefined {
@@ -1267,17 +1302,25 @@ export class SecOpsRuntime {
         code: diagnosticCode(error instanceof Error ? error.message : undefined) ?? 'UNKNOWN',
       });
     }
-    const verified = validateIdToken(
-      idToken,
-      signingKeys,
-      {
-        issuer: demo ? demo.issuer : this.options.access.issuer,
-        audience: this.options.access.clientId,
-        tenantId: this.options.access.tenantId,
-      },
-      callback.handshake.nonce,
-      at,
-    );
+    const tokenPolicy = {
+      issuer: demo ? demo.issuer : this.options.access.issuer,
+      audience: this.options.access.clientId,
+      tenantId: this.options.access.tenantId,
+    };
+    let verified = validateIdToken(idToken, signingKeys, tokenPolicy, callback.handshake.nonce, at);
+    // `kid` desconocido = Microsoft rotó sus claves después de la última lectura del JWKS. El
+    // código ya se canjeó (es de un solo uso): se refresca el JWKS una vez y se revalida el mismo
+    // token, en vez de rechazar todos los accesos hasta que venza la caché.
+    if (!verified.ok && verified.code === 'KEY_UNKNOWN') {
+      try {
+        const refreshed = await jwks.keys({ forceRefresh: true });
+        if (refreshed !== signingKeys) {
+          verified = validateIdToken(idToken, refreshed, tokenPolicy, callback.handshake.nonce, at);
+        }
+      } catch {
+        // Sin JWKS fresco se mantiene el rechazo original (`KEY_UNKNOWN`).
+      }
+    }
     // El prefijo `demo-admin:` es exclusivo del emisor demo, y ese emisor solo firma al sujeto de
     // la cuenta verificada: ningún otro token abre una sesión con identidad de la excepción ni al
     // revés, y una cuenta demo no puede obtener la sesión de otra.
@@ -1312,7 +1355,7 @@ export class SecOpsRuntime {
         ? (validation.claims.roles ?? []).filter((role) => role === demoAccount.role).slice(0, 1)
         : [
             ...new Set([
-              ...(validation.claims.roles ?? []),
+              ...rolesFromIdToken(validation.claims.roles),
               ...(backendRole ? [backendRole] : []),
               ...granted,
             ]),

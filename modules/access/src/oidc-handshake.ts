@@ -20,6 +20,11 @@ export const HANDSHAKE_LIMITS = Object.freeze({
   stateBytes: 32,
   nonceBytes: 32,
   verifierBytes: 64,
+  /**
+   * Tope de handshakes pendientes por proceso. `/api/auth/start` es anónimo: sin tope, cada
+   * petición dejaría estado en memoria hasta agotarla. Al llenarse se descarta el más antiguo.
+   */
+  maxPending: 10_000,
 });
 
 export const HANDSHAKE_ERROR_CODES = [
