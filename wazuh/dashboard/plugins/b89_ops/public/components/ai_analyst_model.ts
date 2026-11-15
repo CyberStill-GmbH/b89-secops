@@ -36,6 +36,8 @@ const EXTRA_REASON_TEXT: Readonly<Record<string, string>> = {
   P2_CONTRADICTORY_HISTORY: 'El patrón tiene historial contradictorio (positivos y falsos positivos)',
   P3_CORRELATED: 'P3 correlacionada con otras alertas',
   BELOW_INFERENCE_PRIORITY: 'La prioridad está por debajo del umbral para usar IA',
+  RULE_ASSESSMENT_BENIGN:
+    'La valoración por reglas concluyó actividad habitual sin señales de riesgo',
   // Decisiones del runner
   INFERENCE_DISABLED: 'La IA está desactivada (sin techo diario)',
   MODEL_UNAVAILABLE: 'El modelo no estaba disponible',
