@@ -36,6 +36,7 @@ import type {
   EvidenceContext,
   EvidenceEntityRisk,
   EvidenceEvent,
+  EvidenceEventSummary,
   EvidenceIncident,
   EvidenceNotification,
   EvidenceRule,
@@ -48,19 +49,31 @@ import type { EventsReader } from '../runtime/events-reader.js';
 import { providerOf } from './investigation-tools.js';
 import { ruleForTitle, ruleView, type SocKnowledge } from './soc-knowledge.js';
 
+/**
+ * Alcance de la recolección. Ya no son muestras: cada lectura pagina hasta agotar su alcance
+ * declarado. Los topes de abajo son solo de seguridad (un trabajo patológico no puede leer sin
+ * fin); si se alcanzan, el vacío se nombra y la investigación es honestamente parcial.
+ * Lo que va al MODELO es otra cosa: `evidence-pack` elige una muestra y siempre adjunta los
+ * agregados completos (`eventSummary`).
+ */
 export const EVIDENCE_LIMITS = Object.freeze({
-  maxRelatedAlerts: 20,
+  maxJobAlerts: 500,
+  maxRelatedAlerts: 200,
   historyDays: 30,
-  correlatorCandidates: 200,
-  maxIncidents: 5,
-  sourceWindowMs: 15 * 60_000,
-  sourceEventPages: 2,
+  correlatorCandidates: 500,
+  maxIncidents: 25,
+  sourceWindowMs: 30 * 60_000,
   activityAlertDays: 7,
-  activityEventPages: 3,
+  /** Página del proveedor (su máximo). */
   eventPageSize: 200,
-  maxEvents: 8,
-  notificationScan: 200,
-  auditActions: 10,
+  /** Tope de seguridad por lectura de eventos (dirigida por entidad): 50 000 eventos. */
+  maxEventPages: 250,
+  /** Sin entidad la ventana es un barrido del tenant: tope menor. */
+  maxUnscopedEventPages: 50,
+  /** Eventos de la entidad conservados en el expediente (el resto queda en los agregados). */
+  maxStoredEvents: 300,
+  notificationScan: 1_000,
+  auditActions: 50,
 });
 
 /** Proveedores que pueden originar una alerta; los no medidos se nombran como vacío. */
@@ -76,7 +89,12 @@ const PROVIDER_LABEL: Readonly<Record<string, string>> = {
 export interface AnalystEvidenceSources {
   readonly tenantId: string;
   readonly soc: Pick<SocReadModel, 'alertById' | 'listAlerts'> &
-    Partial<Pick<SocReadModel, 'incidentById' | 'listIncidentTasks' | 'listIncidentNotes'>>;
+    Partial<
+      Pick<
+        SocReadModel,
+        'incidentById' | 'listIncidentTasks' | 'listIncidentNotes' | 'alertStats'
+      >
+    >;
   /** Conocimiento SOC versionado (reglas, MITRE, runbooks). */
   readonly knowledge?: SocKnowledge;
   /** Lector de eventos del servidor (el del explorador y de Bunny); ausente si no hay ingesta. */
@@ -151,7 +169,7 @@ export class RuntimeEvidenceReader implements EvidenceReader {
 
     // ── Alertas del trabajo ────────────────────────────────────────────────────────────────
     const alerts: Alert[] = [];
-    for (const alertId of job.alertIds.slice(0, 50)) {
+    for (const alertId of job.alertIds.slice(0, EVIDENCE_LIMITS.maxJobAlerts)) {
       abortIf(signal);
       const alert = await soc.alertById(tenantId, alertId);
       alertsScanned += 1;
@@ -161,9 +179,11 @@ export class RuntimeEvidenceReader implements EvidenceReader {
         gaps.push(`Alerta ${alertId.slice(0, 64)} no disponible`);
       }
     }
-    if (job.alertIds.length > 50) {
+    if (job.alertIds.length > EVIDENCE_LIMITS.maxJobAlerts) {
       truncated = true;
-      gaps.push(`Se leyeron 50 de ${job.alertIds.length} alertas del trabajo`);
+      gaps.push(
+        `Se leyeron ${EVIDENCE_LIMITS.maxJobAlerts} de ${job.alertIds.length} alertas del trabajo`,
+      );
     }
     const primary = alerts[0];
 
@@ -184,7 +204,10 @@ export class RuntimeEvidenceReader implements EvidenceReader {
       const related = await soc.alertById(tenantId, relatedId);
       alertsScanned += 1;
       if (related && related.tenantId === tenantId) relatedAlerts.push(related);
-      else gaps.push(`Alerta relacionada ${relatedId.slice(0, 64)} no disponible`);
+      else {
+        complete = false;
+        gaps.push(`Alerta relacionada ${relatedId.slice(0, 64)} no disponible`);
+      }
     }
 
     // ── Historial: misma regla y entidad, 30 días ──────────────────────────────────────────
@@ -194,27 +217,47 @@ export class RuntimeEvidenceReader implements EvidenceReader {
       abortIf(signal);
       const since = this.sources.now().getTime() - EVIDENCE_LIMITS.historyDays * 86_400_000;
       try {
-        const result = await soc.listAlerts({ tenantId, entityRef });
-        alertsScanned += result.items.length;
-        if (result.total > result.items.length) {
-          // No se vio todo el historial: podría haber verdaderos positivos sin contar.
-          truncated = true;
-          gaps.push(`Historial truncado: ${result.items.length} de ${result.total} alertas de la entidad`);
+        if (soc.alertStats) {
+          // Conteo exacto en la base: sin tope de filas, el historial nunca queda truncado.
+          const stats = await soc.alertStats({
+            tenantId,
+            entityRef,
+            ruleId: primary.ruleId,
+            since: new Date(since),
+            excludeIds: [...ownIds],
+          });
+          alertsScanned += stats.total;
+          history = {
+            total: stats.total,
+            // Estricto: solo cierres con veredicto «falso positivo» cuentan como benignos.
+            falsePositive: stats.falsePositive,
+            truePositive: stats.truePositive,
+            open: stats.open,
+          };
+        } else {
+          const result = await soc.listAlerts({ tenantId, entityRef });
+          alertsScanned += result.items.length;
+          if (result.total > result.items.length) {
+            // No se vio todo el historial: podría haber verdaderos positivos sin contar.
+            truncated = true;
+            gaps.push(
+              `Historial truncado: ${result.items.length} de ${result.total} alertas de la entidad`,
+            );
+          }
+          const same = result.items.filter(
+            (alert) =>
+              alert.tenantId === tenantId &&
+              !ownIds.has(alert.id) &&
+              alert.ruleId === primary.ruleId &&
+              alert.createdAt.getTime() >= since,
+          );
+          history = {
+            total: same.length,
+            falsePositive: same.filter((alert) => alert.verdict === 'false_positive').length,
+            truePositive: same.filter((alert) => alert.verdict === 'true_positive').length,
+            open: same.filter((alert) => alert.status !== 'closed').length,
+          };
         }
-        const same = result.items.filter(
-          (alert) =>
-            alert.tenantId === tenantId &&
-            !ownIds.has(alert.id) &&
-            alert.ruleId === primary.ruleId &&
-            alert.createdAt.getTime() >= since,
-        );
-        history = {
-          total: same.length,
-          // Estricto: solo cierres con veredicto «falso positivo» cuentan como benignos.
-          falsePositive: same.filter((alert) => alert.verdict === 'false_positive').length,
-          truePositive: same.filter((alert) => alert.verdict === 'true_positive').length,
-          open: same.filter((alert) => alert.status !== 'closed').length,
-        };
       } catch {
         complete = false;
         gaps.push('Historial de la regla y entidad no disponible');
@@ -238,10 +281,13 @@ export class RuntimeEvidenceReader implements EvidenceReader {
           const items = Array.isArray(record(response.body)['items'])
             ? (record(response.body)['items'] as unknown[])
             : [];
-          const match = items.map(record).find(
-            (item) =>
-              item['alertId'] === primary.id || strings(item['b89AlertIds'], 200).includes(primary.id),
-          );
+          const match = items
+            .map(record)
+            .find(
+              (item) =>
+                item['alertId'] === primary.id ||
+                strings(item['b89AlertIds'], 200).includes(primary.id),
+            );
           if (match) {
             const explanation = record(match['explanation']);
             const label =
@@ -289,7 +335,14 @@ export class RuntimeEvidenceReader implements EvidenceReader {
     // ── Contexto ampliado (mismo alcance que Bunny, sin modelo) ───────────────────────────
     const extra = primary
       ? await this.context(primary, entityRef, alerts, signal, gaps)
-      : { context: null, events: [] as EvidenceEvent[], eventsScanned: 0, incomplete: false, unmeasured: [] as string[] };
+      : {
+          context: null,
+          events: [] as EvidenceEvent[],
+          eventSummary: null,
+          eventsScanned: 0,
+          incomplete: false,
+          unmeasured: [] as string[],
+        };
     if (extra.incomplete) complete = false;
     for (const provider of extra.unmeasured) {
       gaps.push(`Salud de la fuente ${provider} no medida por B89`);
@@ -305,12 +358,19 @@ export class RuntimeEvidenceReader implements EvidenceReader {
           sourceHealth.map((source) => [source.id, source.state, source.fresh]),
           extra.context
             ? [
-                extra.context.incidents.map((incident) => [incident.id, incident.status, incident.noteCount]),
+                extra.context.incidents.map((incident) => [
+                  incident.id,
+                  incident.status,
+                  incident.noteCount,
+                ]),
                 extra.context.entityRisk?.score ?? null,
                 extra.context.activity?.alerts7d ?? null,
               ]
             : null,
           extra.events.map((event) => event.id),
+          extra.eventSummary
+            ? [extra.eventSummary.window.matching, extra.eventSummary.day?.matching ?? null]
+            : null,
           complete,
           truncated,
         ]),
@@ -323,9 +383,16 @@ export class RuntimeEvidenceReader implements EvidenceReader {
       candidate,
       history,
       events: extra.events,
+      eventSummary: extra.eventSummary,
       sourceHealth,
       context: extra.context,
-      completeness: { complete, truncated, alertsScanned, eventsScanned: extra.eventsScanned, gaps },
+      completeness: {
+        complete,
+        truncated,
+        alertsScanned,
+        eventsScanned: extra.eventsScanned,
+        gaps,
+      },
       watermark: `w1:${watermark.slice(0, 48)}`,
     };
   }
@@ -340,6 +407,7 @@ export class RuntimeEvidenceReader implements EvidenceReader {
   ): Promise<{
     readonly context: EvidenceContext;
     readonly events: EvidenceEvent[];
+    readonly eventSummary: EvidenceEventSummary | null;
     readonly eventsScanned: number;
     readonly incomplete: boolean;
     readonly unmeasured: string[];
@@ -364,7 +432,9 @@ export class RuntimeEvidenceReader implements EvidenceReader {
             tactics: technique.tactics.map((tactic) => tactic.name ?? tactic.id),
           })),
           runbooks: view.runbooks.map((runbook) => runbook.title),
-          knownFalsePositives: view.useCases.flatMap((useCase) => [...useCase.falsePositives]).slice(0, 10),
+          knownFalsePositives: view.useCases
+            .flatMap((useCase) => [...useCase.falsePositives])
+            .slice(0, 10),
         };
       } else {
         gaps.push('La regla de la alerta no figura en el conocimiento SOC versionado');
@@ -375,39 +445,61 @@ export class RuntimeEvidenceReader implements EvidenceReader {
 
     // Alertas de la entidad: actividad de 7 días e incidentes abiertos vinculados.
     let entityAlerts: readonly Alert[] = [];
+    let entityIncidentIds: readonly string[] = [];
     let activity: EvidenceActivity | null = null;
     if (entityRef) {
       abortIf(signal);
       try {
-        const result = await soc.listAlerts({ tenantId, entityRef });
-        entityAlerts = result.items.filter((alert) => alert.tenantId === tenantId);
         const since = now.getTime() - EVIDENCE_LIMITS.activityAlertDays * 86_400_000;
-        activity = {
-          entityRef,
-          alerts7d: entityAlerts.filter((alert) => alert.createdAt.getTime() >= since).length,
-          events24h: null,
-          eventsScanned: 0,
-          complete: result.total <= result.items.length,
-        };
+        if (soc.alertStats) {
+          // Exacto: alertas de 7 días e incidentes de la entidad sin el tope del listado.
+          const [week, all] = await Promise.all([
+            soc.alertStats({ tenantId, entityRef, since: new Date(since) }),
+            soc.alertStats({ tenantId, entityRef }),
+          ]);
+          entityIncidentIds = all.incidentIds;
+          activity = {
+            entityRef,
+            alerts7d: week.total,
+            events24h: null,
+            eventsScanned: 0,
+            complete: true,
+          };
+        } else {
+          const result = await soc.listAlerts({ tenantId, entityRef });
+          entityAlerts = result.items.filter((alert) => alert.tenantId === tenantId);
+          activity = {
+            entityRef,
+            alerts7d: entityAlerts.filter((alert) => alert.createdAt.getTime() >= since).length,
+            events24h: null,
+            eventsScanned: 0,
+            complete: result.total <= result.items.length,
+          };
+        }
       } catch {
         incomplete = true;
         gaps.push('Alertas de la entidad no disponibles');
       }
     } else {
-      gaps.push('Sin referencia de entidad: actividad, incidentes y riesgo de la entidad no evaluados');
+      gaps.push(
+        'Sin referencia de entidad: actividad, incidentes y riesgo de la entidad no evaluados',
+      );
     }
 
     const incidents: EvidenceIncident[] = [];
     const incidentIds = [
-      ...new Set(
-        [...alerts, ...entityAlerts]
+      ...new Set([
+        ...[...alerts, ...entityAlerts]
           .map((alert) => alert.incidentId)
           .filter((id): id is string => typeof id === 'string'),
-      ),
+        ...entityIncidentIds,
+      ]),
     ];
     if (incidentIds.length > 0 && soc.incidentById) {
       if (incidentIds.length > EVIDENCE_LIMITS.maxIncidents) {
-        gaps.push(`Se leyeron ${EVIDENCE_LIMITS.maxIncidents} de ${incidentIds.length} incidentes de la entidad`);
+        gaps.push(
+          `Se leyeron ${EVIDENCE_LIMITS.maxIncidents} de ${incidentIds.length} incidentes de la entidad`,
+        );
       }
       for (const incidentId of incidentIds.slice(0, EVIDENCE_LIMITS.maxIncidents)) {
         abortIf(signal);
@@ -415,8 +507,12 @@ export class RuntimeEvidenceReader implements EvidenceReader {
           const incident = await soc.incidentById(tenantId, incidentId);
           if (!incident || incident.tenantId !== tenantId || incident.status === 'closed') continue;
           const [tasks, notes] = await Promise.all([
-            soc.listIncidentTasks ? soc.listIncidentTasks(tenantId, incidentId) : Promise.resolve([]),
-            soc.listIncidentNotes ? soc.listIncidentNotes(tenantId, incidentId) : Promise.resolve([]),
+            soc.listIncidentTasks
+              ? soc.listIncidentTasks(tenantId, incidentId)
+              : Promise.resolve([]),
+            soc.listIncidentNotes
+              ? soc.listIncidentNotes(tenantId, incidentId)
+              : Promise.resolve([]),
           ]);
           incidents.push({
             id: incident.id,
@@ -444,7 +540,9 @@ export class RuntimeEvidenceReader implements EvidenceReader {
     if (this.sources.correlator && entityKey && entityRef) {
       abortIf(signal);
       try {
-        const response = await this.sources.correlator(`/v1/entity?key=${encodeURIComponent(entityKey)}`);
+        const response = await this.sources.correlator(
+          `/v1/entity?key=${encodeURIComponent(entityKey)}`,
+        );
         if (response.status === 200) {
           const detail = record(record(response.body)['entity']);
           entityRisk = {
@@ -468,9 +566,12 @@ export class RuntimeEvidenceReader implements EvidenceReader {
       gaps.push('Correlador no configurado: sin riesgo de la entidad');
     }
 
-    // Eventos de origen ±15 min y actividad de 24 h con el lector del servidor (sin crudo).
+    // Eventos de origen (±30 min) y actividad de 24 h: lectura DIRIGIDA por entidad y paginada
+    // hasta agotar el alcance. Todo lo leído entra en los agregados (`eventSummary`); se
+    // conservan hasta `maxStoredEvents` ejemplares, el evento de la propia alerta primero.
     const events: EvidenceEvent[] = [];
     let eventsScanned = 0;
+    let eventSummary: EvidenceEventSummary | null = null;
     const reader = this.sources.events;
     // Valores de entidad solo para comparar dentro del proceso; hacia afuera van referencias `ent_…`.
     const pairs = primary.entityKeys
@@ -480,46 +581,137 @@ export class RuntimeEvidenceReader implements EvidenceReader {
       }))
       .filter((pair) => pair.needle.length >= 3);
     const needles = pairs.map((pair) => pair.needle);
+    const mentions = (event: SecurityEvent): boolean => {
+      const text = JSON.stringify(event.entities).toLocaleLowerCase('es');
+      return needles.some((needle) => text.includes(needle));
+    };
     const refFor = (event: SecurityEvent): string[] => {
       const text = JSON.stringify(event.entities).toLocaleLowerCase('es');
       return pairs
         .filter((pair) => text.includes(pair.needle) && pair.ref && ENTITY_REF.test(pair.ref))
         .map((pair) => pair.ref!);
     };
-    const scan = async (from: Date, to: Date, pages: number) => {
+    // Filtro por entidad que el proveedor compila a su consulta (usuario/IP, valor literal).
+    const entityFilters = primary.entityKeys
+      .flatMap((key) => {
+        const separator = key.indexOf(':');
+        const kind = key.slice(0, separator);
+        const value = key.slice(separator + 1);
+        return (kind === 'user' || kind === 'ip') && value.length >= 3 && value.length <= 256
+          ? [{ kind: kind as 'user' | 'ip', value }]
+          : [];
+      })
+      .slice(0, 10);
+    const scoped = entityFilters.length > 0;
+    const scan = async (from: Date, to: Date, maxPages: number) => {
       const read: SecurityEvent[] = [];
       let cursor: string | undefined;
-      for (let page = 0; page < pages; page += 1) {
+      const seenCursors = new Set<string>();
+      let unparsed = 0;
+      for (let page = 0; page < maxPages; page += 1) {
         abortIf(signal);
         const result = await reader!.read({
           from,
           to,
-          filters: {},
+          filters: scoped ? { entities: entityFilters } : {},
           pageSize: EVIDENCE_LIMITS.eventPageSize,
           ...(cursor ? { cursor } : {}),
         });
+        unparsed += result.unparsedCount;
         read.push(...result.items.map((item) => item.event));
-        if (!result.nextCursor) return { read, complete: true };
+        if (!result.nextCursor) return { read, unparsed, exhausted: true };
+        if (seenCursors.has(result.nextCursor)) return { read, unparsed, exhausted: false };
+        seenCursors.add(result.nextCursor);
         cursor = result.nextCursor;
       }
-      return { read, complete: false };
+      return { read, unparsed, exhausted: false };
     };
     if (reader) {
       try {
         const at = primary.occurredAt.getTime();
+        const windowFrom = new Date(at - EVIDENCE_LIMITS.sourceWindowMs);
+        const windowTo = new Date(Math.min(at + EVIDENCE_LIMITS.sourceWindowMs, now.getTime()));
         const window = await scan(
-          new Date(at - EVIDENCE_LIMITS.sourceWindowMs),
-          new Date(at + EVIDENCE_LIMITS.sourceWindowMs),
-          EVIDENCE_LIMITS.sourceEventPages,
+          windowFrom,
+          windowTo,
+          scoped ? EVIDENCE_LIMITS.maxEventPages : EVIDENCE_LIMITS.maxUnscopedEventPages,
         );
         eventsScanned += window.read.length;
-        if (!window.complete) gaps.push('Ventana de eventos ±15 min truncada');
+        const minutes = Math.round(EVIDENCE_LIMITS.sourceWindowMs / 60_000);
+        if (!window.exhausted) {
+          incomplete = true;
+          gaps.push(
+            `Ventana de eventos ±${minutes} min sin agotar: ${window.read.length} eventos leídos (tope de seguridad)`,
+          );
+        }
+        if (window.unparsed > 0 && scoped) {
+          incomplete = true;
+          gaps.push(`${window.unparsed} eventos de la entidad no se pudieron normalizar`);
+        }
+        // Con filtro por entidad el proveedor ya acotó; sin él, se compara en el proceso.
         const matching = window.read.filter(
-          (event) =>
-            event.recordId === primary.eventRecordId ||
-            needles.some((needle) => JSON.stringify(event.entities).toLocaleLowerCase('es').includes(needle)),
+          (event) => event.recordId === primary.eventRecordId || scoped || mentions(event),
         );
-        for (const event of matching.slice(0, EVIDENCE_LIMITS.maxEvents)) {
+        let day: { read: SecurityEvent[]; unparsed: number; exhausted: boolean } | null = null;
+        if (activity && scoped) {
+          day = await scan(new Date(now.getTime() - 86_400_000), now, EVIDENCE_LIMITS.maxEventPages);
+          eventsScanned += day.read.length;
+          activity = {
+            ...activity,
+            events24h: day.read.length,
+            eventsScanned: day.read.length,
+            complete: activity.complete && day.exhausted,
+          };
+          if (!day.exhausted) {
+            incomplete = true;
+            gaps.push(
+              `Actividad de 24 h de la entidad sin agotar: ${day.read.length} eventos leídos (tope de seguridad)`,
+            );
+          }
+        } else if (activity) {
+          gaps.push('La entidad no tiene usuario ni IP para leer su actividad de 24 h');
+        }
+
+        // Agregados sobre TODO lo leído de la entidad (ventana y 24 h, sin duplicar).
+        const all = new Map<string, SecurityEvent>();
+        for (const event of [...matching, ...(day?.read ?? [])]) all.set(event.recordId, event);
+        const tally = (pick: (event: SecurityEvent) => string | null | undefined) => {
+          const counts = new Map<string, number>();
+          for (const event of all.values()) {
+            const value = pick(event);
+            if (value) counts.set(value, (counts.get(value) ?? 0) + 1);
+          }
+          return [...counts.entries()]
+            .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+            .slice(0, 20)
+            .map(([value, count]) => ({ value: maskText(value).slice(0, 80), count }));
+        };
+        const times = [...all.values()].map((event) => event.occurredAt).sort();
+        eventSummary = {
+          window: {
+            from: windowFrom.toISOString(),
+            to: windowTo.toISOString(),
+            scanned: window.read.length,
+            matching: matching.length,
+          },
+          day: day ? { scanned: day.read.length, matching: day.read.length } : null,
+          bySource: tally((event) => event.source.product ?? event.source.vendor ?? null),
+          byAction: tally((event) => event.action ?? null),
+          byOutcome: tally((event) => event.outcome ?? null),
+          byCategory: tally((event) => event.category[0] ?? null),
+          firstAt: times[0] ?? null,
+          lastAt: times[times.length - 1] ?? null,
+          entityScoped: scoped,
+        };
+
+        // Ejemplares conservados: el evento de la alerta y luego los más cercanos a ella.
+        const isPrimary = (event: SecurityEvent): number =>
+          event.recordId === primary.eventRecordId ? 1 : 0;
+        const distance = (event: SecurityEvent): number => Math.abs(Date.parse(event.occurredAt) - at);
+        const kept = [...matching].sort(
+          (left, right) => isPrimary(right) - isPrimary(left) || distance(left) - distance(right),
+        );
+        for (const event of kept.slice(0, EVIDENCE_LIMITS.maxStoredEvents)) {
           events.push({
             id: event.recordId,
             occurredAt: event.occurredAt,
@@ -529,24 +721,6 @@ export class RuntimeEvidenceReader implements EvidenceReader {
             outcome: event.outcome ?? null,
             entityRefs: refFor(event),
           });
-        }
-        if (activity) {
-          const day = await scan(
-            new Date(now.getTime() - 86_400_000),
-            now,
-            EVIDENCE_LIMITS.activityEventPages,
-          );
-          eventsScanned += day.read.length;
-          const hits = day.read.filter((event) =>
-            needles.some((needle) => JSON.stringify(event.entities).toLocaleLowerCase('es').includes(needle)),
-          );
-          activity = {
-            ...activity,
-            events24h: hits.length,
-            eventsScanned: day.read.length,
-            complete: activity.complete && day.complete,
-          };
-          if (!day.complete) gaps.push('Actividad de 24 h de la entidad truncada');
         }
       } catch {
         incomplete = true;
@@ -632,8 +806,16 @@ export class RuntimeEvidenceReader implements EvidenceReader {
     ].map((id) => PROVIDER_LABEL[id] ?? id);
 
     return {
-      context: { rule, incidents, entityRisk, activity, notifications: notifications.slice(0, 10), audit: audit.slice(0, 20) },
+      context: {
+        rule,
+        incidents,
+        entityRisk,
+        activity,
+        notifications: notifications.slice(0, 25),
+        audit: audit.slice(0, 50),
+      },
       events,
+      eventSummary,
       eventsScanned,
       incomplete,
       unmeasured,

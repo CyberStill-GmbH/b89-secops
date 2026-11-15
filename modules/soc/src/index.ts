@@ -122,6 +122,8 @@ export {
 } from './wazuh-push-inbox.js';
 export type {
   AlertQuery,
+  AlertStats,
+  AlertStatsQuery,
   AlertStore,
   ClaimedOutboxMessage,
   IncidentNoteStore,

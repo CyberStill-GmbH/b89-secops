@@ -161,8 +161,15 @@ func (e *Engine) Process(o model.Observation) []*model.Candidate {
 		}
 		// Open candidates of this entity absorb the observation (grouping / dedup).
 		for _, c := range e.open[key] {
-			if o.Time.Sub(c.LastSeen) <= e.P.GroupGap && o.Time.Sub(c.FirstSeen) <= e.P.GroupMaxSpan {
+			// Delayed observations must belong to this episode, not merely be older
+			// than its upper bounds. Otherwise an unrelated historical event can
+			// inflate a current case and contaminate downstream investigation.
+			if !o.Time.Before(c.FirstSeen) && o.Time.Sub(c.LastSeen) <= e.P.GroupGap && o.Time.Sub(c.FirstSeen) <= e.P.GroupMaxSpan {
 				c.MemberCount++
+				if !suppressed {
+					c.Sources = unionStrings(c.Sources, []string{o.Source})
+					c.Tactics = unionStrings(c.Tactics, o.Tactics)
+				}
 				if o.ID != "" && len(c.Explanation.EvidenceObservationIDs) < 50 && !contains(c.Explanation.EvidenceObservationIDs, o.ID) {
 					c.Explanation.EvidenceObservationIDs = append(c.Explanation.EvidenceObservationIDs, o.ID)
 				}
@@ -496,6 +503,18 @@ func contains(list []string, v string) bool {
 		}
 	}
 	return false
+}
+
+// Copy on update keeps previously returned candidate summaries immutable.
+func unionStrings(existing, incoming []string) []string {
+	out := append([]string{}, existing...)
+	for _, value := range incoming {
+		if value != "" && !contains(out, value) {
+			out = append(out, value)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // UpdateCandidate mutates a candidate under the lock (emission results).

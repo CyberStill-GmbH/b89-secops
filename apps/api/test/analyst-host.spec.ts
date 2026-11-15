@@ -27,8 +27,13 @@ import { createAlert, InMemorySoc, requestAlertReview, type Alert } from '@b89/s
 
 import { RuntimeSocActions, ANALYST_SERVICE_ACTOR_ID, analystServiceActor } from '../src/assistant/analyst-actions.js';
 import { BUILT_IN_ANALYST_RATE_CARD, type AnalystConfig } from '../src/assistant/analyst-config.js';
-import { RuntimeEvidenceReader } from '../src/assistant/analyst-evidence.js';
-import { AnalystHost, clampSettings, limaClock } from '../src/runtime/analyst-host.js';
+import { EVIDENCE_LIMITS, RuntimeEvidenceReader } from '../src/assistant/analyst-evidence.js';
+import {
+  ANALYST_HOST_DEFAULTS,
+  AnalystHost,
+  clampSettings,
+  limaClock,
+} from '../src/runtime/analyst-host.js';
 
 const T = 't1';
 const NOW = new Date();
@@ -440,6 +445,71 @@ describe('host: encolado, barrido, resumen y apagado', () => {
     expect(second).toMatchObject({ created: false, job: { id: first.job.id } });
   });
 
+  it('encola un expediente del candidato Go en vez de uno por miembro del atraso', async () => {
+    const members = [putAlert({ priority: 'P2' }), putAlert({ priority: 'P3' })];
+    const parent = putAlert({ priority: 'P2', ruleId: 'b89-correlator:mail-burst', relatedAlertIds: members.map((a) => a.id) });
+    const { host, store } = await harness({});
+    expect(await host.sweepBacklog()).toBe(1);
+    expect(await host.sweepBacklog()).toBe(0);
+    const jobs = (await store.list(T)).items;
+    expect(jobs.map((job) => job.subject.id)).toEqual([parent.id]);
+    const evidence = await new RuntimeEvidenceReader({ tenantId: T, soc, now: () => NOW }).collect(jobs[0]!, new AbortController().signal);
+    expect(evidence.relatedAlerts.map((alert) => alert.id).sort()).toEqual(members.map((alert) => alert.id).sort());
+    expect(members.every((member) => soc.alertRows.get(`${T}|${member.id}`)?.status === 'new')).toBe(true);
+  });
+
+  it('no oculta P1 ni miembros mas graves que el candidato Go', async () => {
+    const critical = putAlert({ priority: 'P1' });
+    const high = putAlert({ priority: 'P2' });
+    putAlert({ priority: 'P3', ruleId: 'b89-correlator:mail-burst', relatedAlertIds: [critical.id, high.id] });
+    const { host } = await harness({});
+    expect(await host.sweepBacklog()).toBe(3);
+  });
+
+  it('una relacion ordinaria no sustituye un candidato Go ni omite investigaciones', async () => {
+    const member = putAlert({ priority: 'P3' });
+    putAlert({ priority: 'P2', relatedAlertIds: [member.id] });
+    const { host } = await harness({});
+    expect(await host.sweepBacklog()).toBe(2);
+  });
+
+  it('un grupo fuera del alcance configurado no impide investigar al miembro', async () => {
+    const member = putAlert({ priority: 'P3' });
+    putAlert({ priority: 'P2', ruleId: 'b89-correlator:mail-burst', relatedAlertIds: [member.id] });
+    const { host, store } = await harness({ scope: { ...DEFAULT_ANALYST_SETTINGS.scope, priorities: ['P3'] } });
+    expect(await host.sweepBacklog()).toBe(1);
+    expect((await store.list(T)).items[0]?.subject.id).toBe(member.id);
+  });
+
+  it('un cambio posterior del miembro vuelve a requerir expediente propio', async () => {
+    const member = putAlert({ priority: 'P3' });
+    putAlert({ priority: 'P2', ruleId: 'b89-correlator:mail-burst', relatedAlertIds: [member.id] });
+    const { host, store } = await harness({});
+    expect(await host.sweepBacklog()).toBe(1);
+    putAlert({ ...member, updatedAt: new Date(Date.now() + 60_000), revision: 1 });
+    expect(await host.sweepBacklog()).toBe(1);
+    expect((await store.list(T)).items).toHaveLength(2);
+  });
+
+  it('no agrupa cuando el lector no puede incluir todos los miembros', async () => {
+    const count = EVIDENCE_LIMITS.maxRelatedAlerts + 1;
+    const members = Array.from({ length: count }, () => putAlert({ priority: 'P3' }));
+    putAlert({ priority: 'P2', ruleId: 'b89-correlator:mail-burst', relatedAlertIds: members.map((a) => a.id) });
+    const { host, store } = await harness({});
+    // El barrido encola por lotes: se repite hasta cubrir a todos los miembros.
+    for (let i = 0; i < Math.ceil((count + 1) / ANALYST_HOST_DEFAULTS.sweepBatch) + 2; i += 1) {
+      await host.sweepBacklog();
+    }
+    let total = 0;
+    let cursor: Awaited<ReturnType<typeof store.list>>['next'] | undefined;
+    do {
+      const page = await store.list(T, { pageSize: 100, ...(cursor ? { cursor } : {}) });
+      total += page.items.length;
+      cursor = page.next ?? undefined;
+    } while (cursor);
+    expect(total).toBe(count + 1);
+  });
+
   it('el resumen diario sale una vez a la hora de Lima configurada', async () => {
     const { hour } = limaClock(new Date());
     const { host, digests } = await harness({
@@ -626,6 +696,7 @@ describe('evidencia ampliada (mismo alcance que Bunny, sin modelo)', () => {
       { verdict: 'likely_true_positive', confidence: 'high', verified: true } as never,
     );
     const alert = putAlert({ priority: 'P2', title: 'B89 Office 365: inicio de sesión sospechoso' });
+    const requests: unknown[] = [];
     const event = (id: string, principal: string) => ({
       event: {
         recordId: id,
@@ -643,11 +714,21 @@ describe('evidencia ampliada (mismo alcance que Bunny, sin modelo)', () => {
       soc,
       knowledge: { rules: {}, techniques: {}, useCases: [], runbooks: [] } as never,
       events: {
-        read: async () => ({
-          items: [event('e-1', 'jperez@b89.example'), event('e-2', 'otro@b89.example')] as never,
-          unparsedCount: 0,
-          nextCursor: null,
-        }),
+        // Como el proveedor real: con filtro por entidad solo devuelve los eventos de la entidad.
+        read: async (request) => {
+          requests.push(request.filters);
+          const all = [event('e-1', 'jperez@b89.example'), event('e-2', 'otro@b89.example')];
+          const wanted = request.filters.entities?.map((entity) => entity.value.toLowerCase());
+          return {
+            items: (wanted
+              ? all.filter((item) =>
+                  wanted.includes(item.event.entities.identities[0]!.principal.toLowerCase()),
+                )
+              : all) as never,
+            unparsedCount: 0,
+            nextCursor: null,
+          };
+        },
       },
       correlator: async (path) =>
         path.startsWith('/v1/entity?')
@@ -692,6 +773,18 @@ describe('evidencia ampliada (mismo alcance que Bunny, sin modelo)', () => {
     expect(context.audit[0]).toMatchObject({ action: 'soc.alert.acknowledge', actorType: 'user' });
     expect(bundle.events.map((item) => item.id)).toEqual(['e-1']);
     expect(bundle.events[0]!.entityRefs).toEqual([ENTITY]);
+    // Lectura dirigida por la entidad (no un barrido del tenant) y agregados de todo lo leído.
+    expect(requests.length).toBeGreaterThan(0);
+    for (const filters of requests) {
+      expect(filters).toEqual({ entities: [{ kind: 'user', value: 'jperez@b89.example' }] });
+    }
+    expect(bundle.eventSummary).toMatchObject({
+      entityScoped: true,
+      window: { matching: 1 },
+      day: { matching: 1 },
+      byOutcome: [{ value: 'failure', count: 1 }],
+    });
+    expect(bundle.completeness.gaps.join(' | ')).not.toMatch(/truncad|sin agotar|limitada/u);
     const gaps = bundle.completeness.gaps.join(' | ');
     expect(gaps).toContain('conocimiento SOC versionado');
     expect(gaps).toContain('Microsoft 365');

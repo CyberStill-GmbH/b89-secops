@@ -29,11 +29,11 @@ export interface EvidencePackConfig {
 
 export const EVIDENCE_PACK_DEFAULTS: EvidencePackConfig = Object.freeze({
   maxInputTokens: 3_000,
-  maxAlerts: 6,
-  maxRelatedAlerts: 5,
-  maxEvents: 8,
-  maxSources: 8,
-  maxListItems: 6,
+  maxAlerts: 20,
+  maxRelatedAlerts: 20,
+  maxEvents: 40,
+  maxSources: 12,
+  maxListItems: 10,
   maxTitleChars: 120,
   maxExplanationChars: 300,
   charsPerToken: 3.5,
@@ -76,6 +76,9 @@ const short = (value: string | null | undefined, max = 80): string | null =>
   value === null || value === undefined ? null : clean(String(value), max);
 const list = (values: readonly string[] | undefined, max: number): string[] =>
   (values ?? []).slice(0, max).map((value) => clean(String(value), 80));
+/** Top 12 de un conteo, valores saneados (los agregados son baratos y no se recortan por tokens). */
+const counts = (values: readonly { value: string; count: number }[]) =>
+  values.slice(0, 12).map((entry) => ({ value: clean(entry.value, 60), count: entry.count }));
 
 function alertView(alert: EvidenceAlert, config: EvidencePackConfig, withTitle: boolean) {
   return {
@@ -180,6 +183,26 @@ export function buildEvidencePack(
         outcome: short(event.outcome, 40),
         entities: list(event.entityRefs, config.maxListItems),
       })),
+      // Agregados de TODOS los eventos leídos: la muestra de arriba nunca oculta volumen.
+      eventSummary: bundle.eventSummary
+        ? {
+            window: {
+              from: short(bundle.eventSummary.window.from, 40),
+              to: short(bundle.eventSummary.window.to, 40),
+              scanned: bundle.eventSummary.window.scanned,
+              matching: bundle.eventSummary.window.matching,
+            },
+            day: bundle.eventSummary.day,
+            entityScoped: bundle.eventSummary.entityScoped,
+            firstAt: short(bundle.eventSummary.firstAt, 40),
+            lastAt: short(bundle.eventSummary.lastAt, 40),
+            bySource: counts(bundle.eventSummary.bySource),
+            byAction: counts(bundle.eventSummary.byAction),
+            byOutcome: counts(bundle.eventSummary.byOutcome),
+            byCategory: counts(bundle.eventSummary.byCategory),
+            sampled: { shown: events.length, kept: bundle.events.length },
+          }
+        : null,
       sources: sources.map((source) => ({
         id: clean(source.id, ID_MAX),
         label: clean(source.label, 60),

@@ -404,13 +404,45 @@ export interface EvidenceContext {
   readonly audit: readonly EvidenceAuditAction[];
 }
 
+/** Un conteo por valor (fuente, acción, resultado, categoría), de mayor a menor. */
+export interface EvidenceCount {
+  readonly value: string;
+  readonly count: number;
+}
+
+/**
+ * Resumen de TODOS los eventos de la entidad leídos (no de la muestra): el modelo siempre lo
+ * recibe completo aunque el paquete recorte ejemplares, así la muestra nunca oculta volumen.
+ */
+export interface EvidenceEventSummary {
+  /** Ventana ±N min alrededor de la alerta. */
+  readonly window: {
+    readonly from: string;
+    readonly to: string;
+    readonly scanned: number;
+    readonly matching: number;
+  };
+  /** Actividad de 24 h de la entidad (todas las coincidencias). */
+  readonly day: { readonly scanned: number; readonly matching: number } | null;
+  readonly bySource: readonly EvidenceCount[];
+  readonly byAction: readonly EvidenceCount[];
+  readonly byOutcome: readonly EvidenceCount[];
+  readonly byCategory: readonly EvidenceCount[];
+  readonly firstAt: string | null;
+  readonly lastAt: string | null;
+  /** Lectura dirigida por entidad (`true`) o barrido del tenant (`false`, sin entidad). */
+  readonly entityScoped: boolean;
+}
+
 export interface EvidenceBundle {
   readonly alerts: readonly EvidenceAlert[];
   readonly relatedAlerts: readonly EvidenceAlert[];
   readonly candidate?: EvidenceCandidate | null;
   readonly history: EvidenceHistory;
-  /** Muestra acotada por el lector. */
+  /** Eventos de la entidad conservados (hasta el tope de almacenamiento, no de modelo). */
   readonly events: readonly EvidenceEvent[];
+  /** Agregados de todos los eventos leídos; opcional para adaptadores antiguos. */
+  readonly eventSummary?: EvidenceEventSummary | null;
   readonly sourceHealth: readonly EvidenceSourceHealth[];
   /** Contexto ampliado (regla, incidentes, riesgo, actividad, avisos, auditoría). Opcional. */
   readonly context?: EvidenceContext | null;

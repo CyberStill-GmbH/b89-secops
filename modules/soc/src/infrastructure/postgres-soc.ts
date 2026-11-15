@@ -71,6 +71,8 @@ import { TASK_STATUSES, type IncidentNote, type IncidentTask } from '../incident
 import type { OutboxMessageDraft, SocEventType } from '../events.js';
 import type {
   AlertQuery,
+  AlertStats,
+  AlertStatsQuery,
   AlertStore,
   ClaimedOutboxMessage,
   OutboxHealth,
@@ -385,6 +387,10 @@ export class PostgresSocPersistence implements SocPersistence {
       ...(query.entityRef ? { entityRef: query.entityRef } : {}),
     });
     return { items: result.rows.map(toAlert), total: result.total };
+  }
+
+  public alertStats(query: AlertStatsQuery): Promise<AlertStats> {
+    return this.queries.alertStats(query);
   }
 
   public async incidentById(tenantId: string, incidentId: string): Promise<Incident | undefined> {

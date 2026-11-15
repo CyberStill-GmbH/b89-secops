@@ -229,10 +229,25 @@ function canonicalFilters(filters: EventFilters | undefined): EventFilters | und
   if (!filters) return undefined;
   const severity = [...new Set(filters.severity ?? [])].sort();
   const category = [...new Set(filters.category ?? [])].sort();
-  const result: { severity?: string[]; category?: string[]; outcome?: string } = {};
+  const entities = [
+    ...new Map(
+      (filters.entities ?? []).map((entity) => [`${entity.kind}:${entity.value}`, entity]),
+    ).values(),
+  ]
+    .map((entity) => ({ kind: entity.kind, value: entity.value }))
+    .sort((left, right) =>
+      `${left.kind}:${left.value}`.localeCompare(`${right.kind}:${right.value}`),
+    );
+  const result: {
+    severity?: string[];
+    category?: string[];
+    outcome?: string;
+    entities?: { kind: 'user' | 'ip'; value: string }[];
+  } = {};
   if (severity.length > 0) result.severity = severity;
   if (category.length > 0) result.category = category;
   if (filters.outcome) result.outcome = filters.outcome;
+  if (entities.length > 0) result.entities = entities;
   return Object.keys(result).length > 0 ? result : undefined;
 }
 

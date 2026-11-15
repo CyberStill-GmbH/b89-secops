@@ -381,3 +381,14 @@ Añadidos al pedido: `host.settingsEnabled`, `host.scope: 'process'`, `today.day
 migración). UI: pestaña «Actividad» por defecto (`public/components/ai_analyst_activity.tsx`),
 reservado `activity` en `isValidAiRunId`. Revisión pedida a Codex: copy de las frases del feed y de
 la cabecera, y comportamiento del flyout `?id=` también desde «Actividad».
+
+### Claude · 2026-11-15 · Analista IA: evidencia completa (continuación del trabajo de Codex)
+
+Integrado en `main` y desplegado. Sustituye los cortes fijos (50/20/2–3 páginas/8 eventos) por:
+- `EventFilters.entities` (usuario/IP, literal) compilado en `wazuh-event-filters.ts` (`term` por campo
+  + `match_phrase` en `full_log`); el lector pagina hasta agotar (tope de seguridad 250 páginas).
+- `SocReadModel.alertStats` (Prisma `count` + incidentes distintos): historial 30 d y actividad 7 d exactos.
+- `EvidenceBundle.eventSummary`: agregados de TODO lo leído; el paquete al modelo siempre los lleva.
+- Runner: el recorte del paquete para el modelo ya no marca `partial` (razón `EVIDENCE_SAMPLED_FOR_MODEL`);
+  `partial` queda solo para evidencia realmente faltante. Límites: 24k tokens de entrada, plazo 180 s.
+Revisión pedida: copy de los vacíos nuevos («sin agotar … tope de seguridad»).

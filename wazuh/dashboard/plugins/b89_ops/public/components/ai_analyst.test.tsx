@@ -337,7 +337,7 @@ describe('acciones del expediente', () => {
       />,
     );
     expect(failed).toContain('Reintentar');
-    expect(failed).toContain('Descargar informe');
+    expect(failed).toContain('Guardar informe como PDF');
   });
 
   it('el borrador para Bunny pide contrastar, no ejecutar', () => {
@@ -539,7 +539,7 @@ describe('resumen del periodo', () => {
     expect(markup).toContain('Sin dato');
     expect(markup).toContain('101503');
     expect(markup).toContain('US$ 0,0450 (estimado)');
-    expect(markup).toContain('Descargar resumen (.md)');
+    expect(markup).toContain('Guardar resumen como PDF');
   });
 
   it('sin texto no ofrece una descarga vacía', () => {

@@ -2,6 +2,7 @@ export type {
   ActivityQuery,
   StreamActivity,
   EventPage,
+  EventEntityFilter,
   EventFilters,
   EventQuery,
   JsonObject,
@@ -13,7 +14,10 @@ export type {
   SecurityEventProvider,
   SourceCapabilities,
 } from '../application/security-event-provider.js';
-export { SecurityEventProviderError } from '../application/security-event-provider.js';
+export {
+  EVENT_ENTITY_FILTER_LIMITS,
+  SecurityEventProviderError,
+} from '../application/security-event-provider.js';
 export {
   createWazuhSecurityEventProvider,
   type WazuhProviderConfiguration,

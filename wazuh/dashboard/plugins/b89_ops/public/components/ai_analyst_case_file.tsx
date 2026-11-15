@@ -846,7 +846,7 @@ export function AiCaseFileActions({
           onClick={onDownloadReport}
           data-test-subj="b89AiDownloadReport"
         >
-          Descargar informe
+          Guardar informe como PDF
         </EuiButtonEmpty>
       )}
       {canRun && canCancel(run) && (

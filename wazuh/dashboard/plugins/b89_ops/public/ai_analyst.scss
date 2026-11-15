@@ -618,3 +618,48 @@ a.b89Ai__cite {
   gap: $ouiSizeS;
   white-space: nowrap;
 }
+
+.b89AiDocument {
+  max-width: 1440px;
+  margin: 0 auto;
+  &__toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  &__header {
+    padding: 24px;
+    border: 1px solid rgba(128, 128, 128, 0.3);
+    border-radius: 12px;
+    margin-bottom: 24px;
+  }
+  &__body {
+    padding: 0 24px;
+  }
+  &__actions {
+    padding: 20px 24px;
+    border-top: 1px solid rgba(128, 128, 128, 0.3);
+    margin-top: 24px;
+  }
+  .b89Ai__section {
+    padding: 20px 0;
+    scroll-margin-top: 90px;
+  }
+  @media (max-width: 767px) {
+    &__body,
+    &__header,
+    &__actions {
+      padding: 12px;
+    }
+  }
+}
+
+.b89AiDocument__navigation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 16px 24px;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.3);
+}

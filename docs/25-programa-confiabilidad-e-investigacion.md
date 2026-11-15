@@ -853,3 +853,54 @@ Discover para paginar todos los resultados; el filtro de texto de la tarjeta sol
 No se despliega por instrucci?n del usuario. Pendiente aceptaci?n visual autenticada en el entorno.
 
 Validaci?n local: 23 archivos, 193 pruebas aprobadas; typecheck OSD 2.19.6 con TypeScript 4.0.2, OUI 1.19.0 y React 16.14 aprobado; diff sin errores de espacios.
+
+## 2026-11-15 ? Expediente del Analista IA como p?gina
+
+La selecci?n `?id=` ahora abre un documento dentro del SOC en lugar del flyout lateral. Conserva
+el enlace compartible, el estado de la lista al volver, actualizaci?n del expediente, acciones,
+descarga Markdown y confirmaciones de cancelaci?n/reintento. La navegaci?n interna enlaza resumen,
+cobertura, cronolog?a, hechos, hip?tesis, vac?os, siguientes pasos y uso/costo. El encabezado recibe
+foco al abrir para navegaci?n con teclado; el dise?o adapta el ancho en m?vil.
+
+Validaci?n local: 30 archivos/288 pruebas de frontend aprobados antes de a?adir los enlaces de
+navegaci?n; diff sin errores. El intento de typecheck Docker no inici? porque el daemon estaba
+apagado; se solicit? su arranque. Sin aceptaci?n visual autenticada ni despliegue. Esta mejora de
+presentaci?n no cambia el estado parcial de expedientes existentes ni resuelve todav?a los l?mites
+fijos del lector de evidencia; no debe presentarse como investigaci?n exhaustiva.
+
+Verificaci?n posterior: Docker disponible; typecheck OSD aprobado con TypeScript 4.0.2, OUI 1.19.0 y React 16.14.
+
+## 2026-11-15 ? Correcciones de integridad del triaje
+
+Pol?tica `b89-analyst-2026-11-15.1`: la cobertura incompleta precede a las salidas baratas de P3/P4;
+un P1 ligado a un incidente sigue siendo elegible para an?lisis. Las fuentes de alertas relacionadas
+y las t?cticas del riesgo de entidad participan en la decisi?n de nivel. El historial benigno no
+prevalece sobre fuentes/t?cticas m?ltiples ni casos hist?ricos abiertos. Una fuente degradada no
+se trata como cobertura sana aunque tenga actividad reciente.
+
+El lector detecta cursores repetidos, eventos no normalizados, relacionadas ausentes y muestras
+recortadas; estos casos invalidan cobertura completa. El runner fuerza inconcluso/confianza baja
+cuando el modelo vio un paquete truncado o evidencia parcial y no publica ese resultado como
+completo. La gu?a de an?lisis diferencia intentos/?xitos, datos independientes/duplicados, actor/buz?n,
+rol/sesi?n AWS y evidencia/hip?tesis, con verificaciones concretas y citas.
+
+Verificaci?n: 166 pruebas aprobadas en assistant, host, API y flujo E2E local. No mide precisi?n
+operativa ni valida el proveedor Claude real. La recopilaci?n durable y reanudable de todas las
+p?ginas a?n requiere implementaci?n; este bloque corrige decisiones y evita falsos completos,
+pero no elimina los l?mites del lector ni acredita un despliegue.
+
+### Informes del analista con marca B89 (2026-11-15)
+
+El expediente y el resumen del periodo ofrecen **Guardar como PDF** en lugar de descargar Markdown.
+Preparan una vista imprimible A4 con el símbolo oficial B89, cabecera, color coral, tablas y referencias.
+El contenido conserva las advertencias de cobertura; exportar no convierte una investigación parcial
+en completa. El texto de evidencia se escapa para impedir HTML ejecutable o imágenes externas.
+
+La salida utiliza el diálogo de impresión del navegador: la persona elige **Guardar como PDF**.
+No es un archivo PDF binario generado por el API ni una descarga automática. La ventana se abre
+al pulsar el botón, antes de esperar la respuesta del informe; las ventanas bloqueadas y los errores
+de lectura se comunican. El contrato interno del API sigue transportando Markdown.
+
+Las pruebas cubren branding, cobertura, tablas, escape de contenido, ventana bloqueada e impresión
+explícita. La aceptación visual de paginación y el guardado real en los navegadores de los analistas
+siguen pendientes; no se acredita despliegue con estas pruebas locales.

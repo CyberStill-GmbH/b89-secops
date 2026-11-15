@@ -13,7 +13,7 @@ import {
   PRIORITIES,
 } from '../../common';
 import { getAiDigest, isAnalystUnavailable } from '../api/ai_investigations';
-import { digestFilename, downloadMarkdown } from './ai_analyst_download';
+import { digestFilename, printAnalystReport } from './ai_analyst_download';
 import { useConsole } from './console_context';
 import { ErrorCallout, Mono, PriorityMark } from './primitives';
 
@@ -95,7 +95,7 @@ export function AiDigestView({
       {hasText ? (
         onDownload && (
           <EuiButton size="s" iconType="download" onClick={onDownload}>
-            Descargar resumen (.md)
+            Guardar resumen como PDF
           </EuiButton>
         )
       ) : (
@@ -106,7 +106,7 @@ export function AiDigestView({
 }
 
 export function AiReportsTab() {
-  const { api } = useConsole();
+  const { api, basePath } = useConsole();
   const [from, setFrom] = useState(() => localDay(new Date(), -6));
   const [to, setTo] = useState(() => localDay(new Date()));
   const [digest, setDigest] = useState<AiDigest | null>(null);
@@ -169,7 +169,8 @@ export function AiReportsTab() {
         </EuiButton>
       </form>
       <p className="b89Ai__note">
-        El informe de una investigación se descarga desde su expediente («Descargar informe»).
+        Guarda el informe desde su expediente («Guardar informe como PDF»). El navegador permite
+        revisar el documento y guardarlo como PDF.
       </p>
       <EuiSpacer size="m" />
       {error != null &&
@@ -186,9 +187,14 @@ export function AiReportsTab() {
       {digest && loaded && (
         <AiDigestView
           digest={digest}
-          onDownload={() =>
-            downloadMarkdown(digestFilename(loaded.from, loaded.to), digest.markdown)
-          }
+          onDownload={() => {
+            setError(null);
+            try {
+              printAnalystReport(digestFilename(loaded.from, loaded.to), digest.markdown, basePath);
+            } catch (failure) {
+              setError(failure);
+            }
+          }}
         />
       )}
       {!digest && error == null && !busy && (

@@ -17,6 +17,7 @@ import {
   buildEvidencePack,
   buildRunReport,
   DEFAULT_ANALYST_SETTINGS,
+  EVIDENCE_PACK_DEFAULTS,
   escapeReportText,
   estimateMicroUsd,
   fingerprintOf,
@@ -347,9 +348,22 @@ describe('buildEvidencePack', () => {
         tactics: ['credential-access'],
         sources: ['m365'],
       },
-      activity: { entityRef: 'ent_aaa', alerts7d: 4, events24h: 37, eventsScanned: 400, complete: true },
+      activity: {
+        entityRef: 'ent_aaa',
+        alerts7d: 4,
+        events24h: 37,
+        eventsScanned: 400,
+        complete: true,
+      },
       notifications: [{ status: 'sent', channel: 'teams', at: '2026-11-13T10:01:00.000Z' }],
-      audit: [{ action: 'soc.alert.acknowledge', outcome: 'succeeded', actorType: 'user', at: '2026-11-13T10:02:00.000Z' }],
+      audit: [
+        {
+          action: 'soc.alert.acknowledge',
+          outcome: 'succeeded',
+          actorType: 'user',
+          at: '2026-11-13T10:02:00.000Z',
+        },
+      ],
     } as unknown as NonNullable<EvidenceBundle['context']>;
     const pack = buildEvidencePack(bundle({ context }), { config: { maxInputTokens: 100_000 } });
     const parsed = JSON.parse(pack.text);
@@ -367,8 +381,43 @@ describe('buildEvidencePack', () => {
   it('acota por defecto los ejemplares por categoría', () => {
     const many = Array.from({ length: 30 }, (_, index) => alert({ id: `a-${index}` }));
     const pack = buildEvidencePack(bundle({ alerts: many }));
-    expect(JSON.parse(pack.text).alerts.length).toBeLessThanOrEqual(6);
-    expect(pack.omitted.alerts).toBeGreaterThanOrEqual(24);
+    expect(JSON.parse(pack.text).alerts.length).toBeLessThanOrEqual(
+      EVIDENCE_PACK_DEFAULTS.maxAlerts,
+    );
+    expect(pack.omitted.alerts).toBeGreaterThanOrEqual(30 - EVIDENCE_PACK_DEFAULTS.maxAlerts);
+  });
+
+  it('los agregados de eventos viajan completos aunque se recorten ejemplares', () => {
+    const events = Array.from({ length: 60 }, (_, index) => ({
+      id: `e-${index}`,
+      occurredAt: '2026-11-15T10:00:00Z',
+      source: 'Office 365',
+      category: 'authentication',
+      action: 'MailItemsAccessed',
+      outcome: 'success',
+      entityRefs: [],
+    }));
+    const pack = buildEvidencePack(
+      bundle({
+        events,
+        eventSummary: {
+          window: { from: 'a', to: 'b', scanned: 60, matching: 60 },
+          day: { scanned: 900, matching: 900 },
+          bySource: [{ value: 'Office 365', count: 900 }],
+          byAction: [{ value: 'MailItemsAccessed', count: 900 }],
+          byOutcome: [{ value: 'success', count: 900 }],
+          byCategory: [{ value: 'authentication', count: 900 }],
+          firstAt: 'a',
+          lastAt: 'b',
+          entityScoped: true,
+        },
+      }),
+    );
+    const parsed = JSON.parse(pack.text);
+    expect(parsed.events.length).toBeLessThan(60);
+    expect(parsed.eventSummary.day.matching).toBe(900);
+    expect(parsed.eventSummary.byAction[0]).toEqual({ value: 'MailItemsAccessed', count: 900 });
+    expect(parsed.eventSummary.sampled).toEqual({ shown: parsed.events.length, kept: 60 });
   });
 });
 
@@ -941,5 +990,76 @@ describe('informes deterministas', () => {
     expect(digest.markdown).toContain('## Cobertura de la cola');
     expect(digest.markdown).toContain('(estimado)');
     expect(digest.markdown).not.toContain('<script>');
+  });
+});
+
+describe('triage coverage and corroboration regression', () => {
+  it.each([
+    { ruleId: 'new-rule' },
+    { entityRefs: ['different-entity'] },
+    { entityRefs: [] },
+  ])('does not extend benign history to a different member scope %j', (member) => {
+    expect(triagePolicy({
+      priority: 'P2',
+      bundle: bundle({ history: BENIGN_HISTORY, relatedAlerts: [alert({ id: 'related', ...member })] }),
+    })).toMatchObject({ decision: 'infer', verdict: 'inconclusive' });
+  });
+  it('skips inference for complete repeated benign evidence in the same scope', () => {
+    expect(triagePolicy({
+      priority: 'P2',
+      bundle: bundle({ history: BENIGN_HISTORY, relatedAlerts: [alert({ id: 'related' })] }),
+    })).toMatchObject({ decision: 'deterministic', maxOutputTokens: 0, verdict: 'likely_false_positive' });
+  });
+  it.each(['P3', 'P4'] as const)(
+    'does not complete %s with missing evidence despite benign history',
+    (priority) => {
+      const decision = triagePolicy({
+        priority,
+        bundle: bundle({
+          history: BENIGN_HISTORY,
+          completeness: {
+            complete: false,
+            truncated: true,
+            alertsScanned: 1,
+            eventsScanned: 0,
+            gaps: ['unread pages'],
+          },
+        }),
+      });
+      expect(decision).toMatchObject({ status: 'partial', verdict: 'inconclusive', partial: true });
+    },
+  );
+  it('investigates P1 even when an incident is already linked', () => {
+    expect(
+      triagePolicy({
+        priority: 'P1',
+        bundle: bundle({ alerts: [alert({ incidentId: 'inc-1' })] }),
+      }),
+    ).toMatchObject({ decision: 'infer', tier: 'advanced' });
+  });
+  it('does not use historical FP labels to dismiss corroboration from another source', () => {
+    const decision = triagePolicy({
+      priority: 'P2',
+      bundle: bundle({
+        history: BENIGN_HISTORY,
+        relatedAlerts: [alert({ id: 'related', source: 'aws' })],
+      }),
+    });
+    expect(decision).toMatchObject({
+      decision: 'infer',
+      tier: 'advanced',
+      verdict: 'inconclusive',
+    });
+    expect(decision.reasons).toContain('P2_MULTI_SOURCE');
+  });
+  it('treats degraded but fresh sources as incomplete coverage', () => {
+    expect(
+      triagePolicy({
+        priority: 'P2',
+        bundle: bundle({
+          sourceHealth: [{ id: 'siem', label: 'SIEM', state: 'degraded', fresh: true }],
+        }),
+      }),
+    ).toMatchObject({ status: 'partial' });
   });
 });

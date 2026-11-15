@@ -11,10 +11,6 @@ import {
   EuiFieldText,
   EuiFlexGroup,
   EuiFlexItem,
-  EuiFlyout,
-  EuiFlyoutBody,
-  EuiFlyoutFooter,
-  EuiFlyoutHeader,
   EuiFormRow,
   EuiLoadingContent,
   EuiSelect,
@@ -55,12 +51,12 @@ import { askBunny } from '../bunny_bridge';
 import { AiActivityTab } from './ai_analyst_activity';
 import { AiBudgetPanel, AiModeLine } from './ai_analyst_budget';
 import { AiCaseFile, AiCaseFileActions, primaryAlertId, runQuestion } from './ai_analyst_case_file';
-import { downloadMarkdown } from './ai_analyst_download';
+import { openReportWindow, printAnalystReport } from './ai_analyst_download';
 import { AiReportsTab } from './ai_analyst_reports';
 import { AiRunsTable, RunStatusMark } from './ai_analyst_runs';
 import { AiSettingsTab } from './ai_analyst_settings';
 import { B89Page, useConsole } from './console_context';
-import { ErrorCallout, Mono, useAsync, useIsMobile } from './primitives';
+import { ErrorCallout, Mono, useAsync } from './primitives';
 
 /** Refresco en vivo: solo con investigaciones activas a la vista y la pestaña visible. */
 const POLL_MS = 5000;
@@ -108,8 +104,8 @@ function UnavailableCallout({ onRetry }: { onRetry: () => void }) {
       title="El analista no está habilitado o publicado en este entorno"
     >
       <p>
-        El servicio respondió que el recurso no existe. No hay investigaciones que mostrar hasta
-        que el Analista IA se publique y se habilite aquí.
+        El servicio respondió que el recurso no existe. No hay investigaciones que mostrar hasta que
+        el Analista IA se publique y se habilite aquí.
       </p>
       <EuiButtonEmpty size="xs" flush="left" onClick={onRetry}>
         Volver a comprobar
@@ -134,7 +130,11 @@ export function AiAnalystView({
   if (!can(CAPABILITIES.investigationsRead)) {
     return (
       <B89Page title="Analista IA" description={PAGE_DESCRIPTION}>
-        <EuiCallOut color="warning" iconType="lock" title="Tu cuenta no tiene acceso al Analista IA">
+        <EuiCallOut
+          color="warning"
+          iconType="lock"
+          title="Tu cuenta no tiene acceso al Analista IA"
+        >
           <p>
             Falta la capacidad <Mono>{CAPABILITIES.investigationsRead}</Mono>. Pídela a quien
             administra los roles del SOC.
@@ -267,6 +267,25 @@ function AiAnalystConsole({
   const shownBudget = liveBudget;
   const mode = shownBudget ? shownBudget.mode : null;
 
+  if (selectedId)
+    return (
+      <B89Page
+        title="Expediente de investigaci?n"
+        description="Evidencia, an?lisis y decisiones del SOC en una vista completa."
+      >
+        <RunDocument
+          key={selectedId}
+          runId={selectedId}
+          basePath={basePath}
+          mode={mode}
+          canRun={canRun}
+          visible={visible}
+          onClose={() => onSelect(null)}
+          onChanged={upsert}
+        />
+      </B89Page>
+    );
+
   return (
     <B89Page title="Analista IA" description={PAGE_DESCRIPTION}>
       {!unavailable && (
@@ -299,7 +318,9 @@ function AiAnalystConsole({
             <section className="b89Ai__budget" aria-label="Presupuesto y uso del día">
               <AiModeLine mode={null} />
               {isAnalystUnavailable(budget.error) ? (
-                <p className="b89Ai__note">El presupuesto del día no está publicado en este entorno.</p>
+                <p className="b89Ai__note">
+                  El presupuesto del día no está publicado en este entorno.
+                </p>
               ) : (
                 <ErrorCallout error={budget.error} onRetry={budget.reload} />
               )}
@@ -388,18 +409,6 @@ function AiAnalystConsole({
             </>
           )}
         </>
-      )}
-      {selectedId && !unavailable && (tab === 'operation' || tab === 'activity') && (
-        <RunFlyout
-          key={selectedId}
-          runId={selectedId}
-          basePath={basePath}
-          mode={mode}
-          canRun={canRun}
-          visible={visible}
-          onClose={() => onSelect(null)}
-          onChanged={upsert}
-        />
       )}
     </B89Page>
   );
@@ -534,7 +543,7 @@ function StartControl({
 
 // ------------------------------------------------------------------ Expediente
 
-function RunFlyout({
+function RunDocument({
   runId,
   basePath,
   mode,
@@ -552,8 +561,10 @@ function RunFlyout({
   onChanged: (run: AiRunDetail) => void;
 }) {
   const { api, notifications } = useConsole();
-  const mobile = useIsMobile();
   const validId = isValidAiRunId(runId);
+  useEffect(() => {
+    document.getElementById('b89AiRunTitle')?.focus();
+  }, [runId]);
   const loaded = useAsync(
     () => (validId ? getAiRun(api, runId) : Promise.resolve(null)),
     [api, runId, validId],
@@ -629,10 +640,13 @@ function RunFlyout({
     if (!run || downloading) return;
     setDownloading(true);
     setError(null);
+    let reportWindow: Window | undefined;
     try {
+      reportWindow = openReportWindow();
       const report = await getAiRunReport(api, run.id);
-      downloadMarkdown(report.filename, report.markdown);
+      printAnalystReport(report.filename, report.markdown, basePath, reportWindow);
     } catch (failure) {
+      reportWindow?.close();
       setError(failure);
     } finally {
       setDownloading(false);
@@ -654,17 +668,17 @@ function RunFlyout({
   };
 
   return (
-    <EuiFlyout
-      onClose={onClose}
-      size={mobile ? 'l' : 'm'}
-      ownFocus={mobile}
-      className="b89Flyout b89Ai__flyout"
-      aria-labelledby="b89AiRunTitle"
-    >
-      <EuiFlyoutHeader hasBorder>
+    <article className="b89AiDocument" aria-labelledby="b89AiRunTitle">
+      <div className="b89AiDocument__toolbar">
+        <EuiButtonEmpty onClick={onClose}>Volver al Analista IA</EuiButtonEmpty>
+        <EuiButtonEmpty onClick={loaded.reload} isLoading={loaded.loading}>
+          Actualizar expediente
+        </EuiButtonEmpty>
+      </div>
+      <header className="b89AiDocument__header">
         <p className="b89Eyebrow">Expediente · Analista IA</p>
         <EuiTitle size="s">
-          <h2 id="b89AiRunTitle" data-b89-no-translate="">
+          <h2 id="b89AiRunTitle" tabIndex={-1} data-b89-no-translate="">
             {run ? run.subject.title || run.id : 'Investigación'}
           </h2>
         </EuiTitle>
@@ -674,8 +688,24 @@ function RunFlyout({
             <RunStatusMark status={run.status} />
           </>
         )}
-      </EuiFlyoutHeader>
-      <EuiFlyoutBody>
+      </header>
+      {run && (
+        <nav className="b89AiDocument__navigation" aria-label="Secciones del expediente">
+          <a href="#b89AiSummary">Resumen</a>
+          <a href="#b89AiEvidence">Cobertura</a>
+          <a href="#b89AiProgress">Cronolog?a</a>
+          {run.result && (
+            <>
+              <a href="#b89AiFacts">Hechos</a>
+              <a href="#b89AiInferences">Hip?tesis</a>
+              <a href="#b89AiGaps">Vac?os</a>
+              <a href="#b89AiNextSteps">Plan de investigaci?n</a>
+            </>
+          )}
+          <a href="#b89AiUsage">Uso y costo</a>
+        </nav>
+      )}
+      <div className="b89AiDocument__body">
         {!validId && (
           <EuiCallOut
             size="s"
@@ -697,9 +727,9 @@ function RunFlyout({
           </>
         )}
         {run && <AiCaseFile run={run} basePath={basePath} now={now} mode={mode} />}
-      </EuiFlyoutBody>
+      </div>
       {run && (
-        <EuiFlyoutFooter>
+        <footer className="b89AiDocument__actions">
           <AiCaseFileActions
             run={run}
             basePath={basePath}
@@ -711,7 +741,7 @@ function RunFlyout({
             onDownloadReport={() => void downloadReport()}
             downloading={downloading}
           />
-        </EuiFlyoutFooter>
+        </footer>
       )}
       {confirm === 'cancel' && (
         <EuiConfirmModal
@@ -726,8 +756,8 @@ function RunFlyout({
           defaultFocusedButton="cancel"
         >
           <p>
-            La investigación se detiene al terminar el paso en curso y no produce recomendación.
-            Las acciones que el analista ya ejecutó no se deshacen.
+            La investigación se detiene al terminar el paso en curso y no produce recomendación. Las
+            acciones que el analista ya ejecutó no se deshacen.
           </p>
           <p>
             Una llamada que ya se envió al modelo no se puede anular y puede cobrarse igualmente.
@@ -755,6 +785,6 @@ function RunFlyout({
           </p>
         </EuiConfirmModal>
       )}
-    </EuiFlyout>
+    </article>
   );
 }

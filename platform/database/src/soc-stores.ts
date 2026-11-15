@@ -589,6 +589,54 @@ export class PrismaSocQueries {
     return { rows: rows as unknown as readonly AlertRow[], total };
   }
 
+  /**
+   * Conteos exactos de las alertas de una entidad (índice GIN de `entity_refs`), sin el tope
+   * de filas del listado: historial y actividad del Analista IA.
+   */
+  public async alertStats(filter: {
+    readonly tenantId: string;
+    readonly entityRef: string;
+    readonly ruleId?: string;
+    readonly since?: Date;
+    readonly excludeIds?: readonly string[];
+  }): Promise<{
+    readonly total: number;
+    readonly falsePositive: number;
+    readonly truePositive: number;
+    readonly open: number;
+    readonly incidentIds: readonly string[];
+  }> {
+    const excluded = (filter.excludeIds ?? []).filter((id) => UUID_PATTERN.test(id));
+    const where: Prisma.SocAlertWhereInput = {
+      tenantId: filter.tenantId,
+      entityRefs: { has: filter.entityRef },
+      ...(filter.ruleId ? { ruleId: filter.ruleId } : {}),
+      ...(filter.since ? { createdAt: { gte: filter.since } } : {}),
+      ...(excluded.length > 0 ? { id: { notIn: excluded } } : {}),
+    };
+    const [total, falsePositive, truePositive, open, incidents] = await Promise.all([
+      this.client.socAlert.count({ where }),
+      this.client.socAlert.count({ where: { ...where, verdict: 'false_positive' } }),
+      this.client.socAlert.count({ where: { ...where, verdict: 'true_positive' } }),
+      this.client.socAlert.count({ where: { ...where, status: { not: 'closed' } } }),
+      this.client.socAlert.findMany({
+        where: { ...where, incidentId: { not: null } },
+        distinct: ['incidentId'],
+        select: { incidentId: true },
+        take: SOC_QUERY_LIMITS.maximumListRows,
+      }),
+    ]);
+    return {
+      total,
+      falsePositive,
+      truePositive,
+      open,
+      incidentIds: incidents
+        .map((row) => row.incidentId)
+        .filter((id): id is string => typeof id === 'string'),
+    };
+  }
+
   public async incidentById(
     tenantId: string,
     incidentId: string,

@@ -27,6 +27,8 @@ import type { OutboxMessageDraft } from './events.js';
 import type { OutboxLane } from './ports.js';
 import type {
   AlertQuery,
+  AlertStats,
+  AlertStatsQuery,
   AlertStore,
   ClaimedOutboxMessage,
   OutboxHealth,
@@ -284,6 +286,31 @@ export class InMemorySoc implements SocPersistence {
         newestFirst({ at: left.occurredAt, id: left.id }, { at: right.occurredAt, id: right.id }),
       );
     return Promise.resolve({ items, total: items.length });
+  }
+
+  public alertStats(query: AlertStatsQuery): Promise<AlertStats> {
+    const excluded = new Set(query.excludeIds ?? []);
+    const rows = [...this.alertRows.values()].filter(
+      (alert) =>
+        alert.tenantId === query.tenantId &&
+        alert.entityRefs.includes(query.entityRef) &&
+        (!query.ruleId || alert.ruleId === query.ruleId) &&
+        (!query.since || alert.createdAt.getTime() >= query.since.getTime()) &&
+        !excluded.has(alert.id),
+    );
+    return Promise.resolve({
+      total: rows.length,
+      falsePositive: rows.filter((alert) => alert.verdict === 'false_positive').length,
+      truePositive: rows.filter((alert) => alert.verdict === 'true_positive').length,
+      open: rows.filter((alert) => alert.status !== 'closed').length,
+      incidentIds: [
+        ...new Set(
+          rows
+            .map((alert) => alert.incidentId)
+            .filter((id): id is string => typeof id === 'string'),
+        ),
+      ],
+    });
   }
 
   public incidentById(tenantId: string, incidentId: string): Promise<Incident | undefined> {

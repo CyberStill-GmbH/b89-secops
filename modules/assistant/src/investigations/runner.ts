@@ -375,7 +375,9 @@ export class InvestigationRunner {
         mark = { state: 'failed', errorCode: 'ACTION_FAILED' };
       }
       const { detail: markDetail, ...ledger } = mark;
-      this.owned(await store.markAction(context.lease, action.kind, { ...ledger, at: clock.now() }));
+      this.owned(
+        await store.markAction(context.lease, action.kind, { ...ledger, at: clock.now() }),
+      );
       await this.note(context, 'acting', mark.state === 'executed' ? 'completed' : mark.state, {
         action: action.kind,
         reason: action.reason,
@@ -850,8 +852,10 @@ export class InvestigationRunner {
     });
     const result: InvestigationResult = {
       summary: restore(output.summary),
-      verdict: output.verdict,
-      confidence: output.confidence,
+      // Solo la evidencia faltante degrada el veredicto. Que el modelo vea una muestra (con los
+      // agregados completos de `eventSummary`) no es evidencia faltante: queda como razón.
+      verdict: decision.partial ? 'inconclusive' : output.verdict,
+      confidence: decision.partial ? 'low' : output.confidence,
       recommendedPriority: output.recommendedPriority,
       facts: output.facts.map(statement),
       inferences: output.inferences.map(statement),
@@ -866,6 +870,7 @@ export class InvestigationRunner {
         reasons: [
           ...decision.reasons,
           ...routing,
+          ...(pack.truncated ? ['EVIDENCE_SAMPLED_FOR_MODEL'] : []),
           ...(output.verified ? [] : ['UNVERIFIED_OUTPUT']),
         ],
       },

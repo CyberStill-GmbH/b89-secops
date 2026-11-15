@@ -22,7 +22,7 @@ import type {
 
 /** Cambiar umbrales, razones o el prompt exige una versión nueva. */
 // 2026-11-14.1: el paquete incluye el contexto ampliado del SOC (`EvidenceBundle.context`).
-export const POLICY_VERSION = 'b89-analyst-2026-11-14.1';
+export const POLICY_VERSION = 'b89-analyst-2026-11-15.1';
 
 export interface TriageConfig {
   /** Cierres `false_positive` de la misma regla+entidad (30 d) para considerar el patrón benigno. */
@@ -40,7 +40,7 @@ export const TRIAGE_CONFIG: TriageConfig = Object.freeze({
   knownBenignMinFalsePositives: 5,
   ambiguousMinSources: 2,
   ambiguousMinTactics: 2,
-  unhealthySourceStates: Object.freeze(['failed', 'unknown']),
+  unhealthySourceStates: Object.freeze(['degraded', 'failed', 'unknown']),
   maxOutputTokens: Object.freeze({ economy: 700, advanced: 1200 }),
 });
 
@@ -115,6 +115,7 @@ export function isCorrelatedEvidence(bundle: EvidenceBundle): boolean {
 export function evidenceSources(bundle: EvidenceBundle): string[] {
   return distinct([
     ...bundle.alerts.map((alert) => alert.source),
+    ...bundle.relatedAlerts.map((alert) => alert.source),
     ...(bundle.candidate?.sources ?? []),
   ]);
 }
@@ -167,8 +168,33 @@ export function triagePolicy(
     bundle.completeness.truncated ||
     bundle.alerts.length === 0 ||
     unhealthySources(bundle, config).length > 0;
+  const sources = evidenceSources(bundle);
+  const correlated = isCorrelated(bundle);
+  const tactics = distinct([
+    ...(bundle.candidate?.tactics ?? []),
+    ...(bundle.context?.entityRisk?.tactics ?? []),
+  ]);
+  // History is scoped to the primary rule/entity, not every member of a case.
+  const primary = bundle.alerts[0];
+  const sameHistoricalScope =
+    !!primary?.ruleId &&
+    primary.entityRefs.length > 0 &&
+    [...bundle.alerts, ...bundle.relatedAlerts].every(
+      (alert) =>
+        alert.ruleId === primary.ruleId &&
+        alert.entityRefs.length === primary.entityRefs.length &&
+        alert.entityRefs.every((entity) => primary.entityRefs.includes(entity)),
+    );
+  // Historical FP labels do not explain a new, corroborated or unresolved episode.
   const benignHistory =
-    history.truePositive === 0 && history.falsePositive >= config.knownBenignMinFalsePositives;
+    sameHistoricalScope &&
+    history.truePositive === 0 &&
+    history.open === 0 &&
+    history.falsePositive >= config.knownBenignMinFalsePositives &&
+    sources.length < config.ambiguousMinSources &&
+    tactics.length < config.ambiguousMinTactics;
+  // Coverage takes precedence over cheap low-priority/duplicate paths.
+  if (incomplete && priority !== 'P1') return deterministic(['EVIDENCE_INCOMPLETE'], 'partial');
   /** Baja prioridad sin modelo; si además el historial es benigno y completo, lo deja dicho. */
   const lowSignal = (reason: TriageReasonCode): TriageDecision =>
     benignHistory && !incomplete
@@ -182,18 +208,19 @@ export function triagePolicy(
 
   if (priority === 'P4') return lowSignal('NOT_ELIGIBLE');
 
-  const sources = evidenceSources(bundle);
-  const correlated = isCorrelated(bundle);
   if (priority === 'P3' && !correlated) {
     return lowSignal(sources.length <= 1 ? 'ISOLATED_LOW_SIGNAL' : 'NOT_ELIGIBLE');
   }
 
   // Ya hay personas trabajando el incidente: el expediente solo apunta a él.
-  if (bundle.alerts.length > 0 && bundle.alerts.every((alert) => !!alert.incidentId)) {
+  if (
+    priority !== 'P1' &&
+    !correlated &&
+    bundle.alerts.length > 0 &&
+    bundle.alerts.every((alert) => !!alert.incidentId)
+  ) {
     return deterministic(['DUPLICATE_OF_OPEN_INCIDENT'], 'completed');
   }
-
-  if (incomplete && priority !== 'P1') return deterministic(['EVIDENCE_INCOMPLETE'], 'partial');
 
   if (priority !== 'P1' && benignHistory) {
     // Nunca autocierre: la recomendación queda para revisión humana.
@@ -218,7 +245,7 @@ export function triagePolicy(
     if (incomplete) reasons.push('EVIDENCE_INCOMPLETE');
   } else if (priority === 'P2') {
     if (sources.length >= config.ambiguousMinSources) reasons.push('P2_MULTI_SOURCE');
-    if (distinct(bundle.candidate?.tactics ?? []).length >= config.ambiguousMinTactics) {
+    if (tactics.length >= config.ambiguousMinTactics) {
       reasons.push('P2_MULTI_TACTIC');
     }
     if (history.truePositive > 0 && history.falsePositive > 0) {

@@ -100,8 +100,35 @@ export interface QueryResult<T> {
   readonly total: number;
 }
 
+/** Conteo exacto (sin tope de filas) de las alertas de una entidad para el Analista IA. */
+export interface AlertStatsQuery {
+  readonly tenantId: string;
+  readonly entityRef: string;
+  /** Solo alertas de esta regla; sin el campo, todas las reglas. */
+  readonly ruleId?: string;
+  /** Creadas desde este instante (incluido). */
+  readonly since?: Date;
+  /** Alertas que no cuentan (las del propio trabajo). */
+  readonly excludeIds?: readonly string[];
+}
+
+export interface AlertStats {
+  readonly total: number;
+  readonly falsePositive: number;
+  readonly truePositive: number;
+  /** No cerradas. */
+  readonly open: number;
+  /** IDs de incidentes vinculados (distintos), sin tope del listado. */
+  readonly incidentIds: readonly string[];
+}
+
 export interface SocReadModel {
   alertById(tenantId: string, alertId: string): Promise<Alert | undefined>;
+  /**
+   * Conteos exactos por veredicto y estado; opcional (los adapters que no lo implementan
+   * obligan a quien llama a usar `listAlerts` y declarar el tope).
+   */
+  alertStats?(query: AlertStatsQuery): Promise<AlertStats>;
   /** Una alerta por evento: base de la idempotencia de la promoción en el runtime. */
   alertByEventRecordId(tenantId: string, eventRecordId: string): Promise<Alert | undefined>;
   listAlerts(query: AlertQuery): Promise<QueryResult<Alert>>;

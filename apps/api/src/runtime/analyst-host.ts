@@ -45,6 +45,7 @@ import type { Alert, SocReadModel } from '@b89/soc';
 import type { AnalystDigestInput, DigestLine } from '@b89/soar';
 
 import type { AnalystConfig } from '../assistant/analyst-config.js';
+import { EVIDENCE_LIMITS } from '../assistant/analyst-evidence.js';
 import { NotificationDispatcher } from './notification-dispatcher.js';
 
 /** Autor de las notas del analista (marca durable del barrido de incidentes). */
@@ -55,13 +56,15 @@ export const LIMA_OFFSET_MS = 5 * 3_600_000;
 const PRIORITY_ORDER: readonly InvestigationPriority[] = ['P1', 'P2', 'P3', 'P4'];
 
 export const ANALYST_RUNNER_LIMITS = Object.freeze({
-  leaseMs: 120_000,
+  // La recolección pagina hasta agotar la evidencia de la entidad: más plazo que una muestra.
+  leaseMs: 240_000,
   heartbeatMs: 20_000,
   maxAttempts: 3,
-  maxInputTokens: 6_000,
+  /** Paquete al modelo: muestra amplia + agregados completos. El techo diario sigue mandando. */
+  maxInputTokens: 24_000,
   /** Techo del despliegue; los ajustes acotan 200–4000 y la política por nivel. */
   maxOutputTokens: 4_000,
-  deadlineMs: 90_000,
+  deadlineMs: 180_000,
 });
 
 export const ANALYST_HOST_DEFAULTS = Object.freeze({
@@ -386,6 +389,7 @@ export class AnalystHost {
     const { settings } = await this.currentSettings();
     if (!settings.enabled) return 0;
     let created = 0;
+    const eligible: Alert[] = [];
     for (const priority of PRIORITY_ORDER) {
       if (!settings.scope.priorities.includes(priority)) continue;
       const page = await this.options.soc.listAlerts({
@@ -393,16 +397,31 @@ export class AnalystHost {
         status: 'open',
         priority,
       });
-      // Lo más antiguo primero dentro de cada prioridad.
-      const pending = [...page.items]
-        .filter((alert) => !this.known.has(alert.id))
-        .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
-      for (const alert of pending) {
+      eligible.push(...page.items.filter((alert) => alert.tenantId === this.options.tenantId));
+    }
+    const group = (alert: Alert) =>
+      alert.ruleId?.startsWith('b89-correlator:') === true &&
+      alert.relatedAlertIds.length > 0 &&
+      alert.relatedAlertIds.length <= EVIDENCE_LIMITS.maxRelatedAlerts;
+    // Within a priority, enqueue the Go case first. Its evidence reader includes the members.
+    const pending = eligible.sort((left, right) =>
+      PRIORITY_ORDER.indexOf(left.priority) - PRIORITY_ORDER.indexOf(right.priority) ||
+      Number(group(right)) - Number(group(left)) ||
+      left.createdAt.getTime() - right.createdAt.getTime(),
+    );
+    const covered = new Map<string, InvestigationJob>();
+    for (const alert of pending) {
         if (this.abort.signal.aborted) return created;
+        const parent = covered.get(alert.id);
+        // New evidence or a P1 always gets its own immediate path. Never suppress source alerts.
+        if (parent && alert.priority !== 'P1' && alert.updatedAt <= parent.createdAt) continue;
+        if (this.known.has(alert.id) && !group(alert)) continue;
         const result = await this.enqueueAlert(alert, { source: 'backlog' });
+        if (group(alert) && ['queued', 'running', 'completed', 'requires_review'].includes(result.job.status)) {
+          for (const memberId of alert.relatedAlertIds) covered.set(memberId, result.job);
+        }
         if (result.created) created += 1;
         if (created >= ANALYST_HOST_DEFAULTS.sweepBatch) return created;
-      }
     }
     if (created > 0) this.log('analyst.sweep.completed', { created });
     return created;
