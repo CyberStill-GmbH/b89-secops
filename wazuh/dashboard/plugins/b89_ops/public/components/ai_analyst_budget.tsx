@@ -12,10 +12,13 @@ import {
   formatMicroUsd,
   formatShare,
   inferenceOff,
+  microUsdAmount,
   NO_DATA,
   parseMode,
   shareWithoutInference,
 } from '../../common';
+import { budgetUsage, percentText } from './ai_analyst_model';
+import { AiTile } from './ai_analyst_parts';
 import { Mono } from './primitives';
 
 function Stat({
@@ -62,6 +65,72 @@ export function AiModeLine({ mode }: { mode: string | null }) {
   );
 }
 
+/** Barra de uso del techo diario: escalones de 5 %, color + texto (nunca solo color). */
+export function BudgetMeter({ budget }: { budget: AiBudget }) {
+  const usage = budgetUsage(budget);
+  const used = microUsdAmount(usage.usedMicroUsd);
+  const limit = microUsdAmount(usage.limitMicroUsd);
+  const percent = percentText(usage.share);
+  return (
+    <div className="b89AiMeter" data-tone={usage.tone}>
+      <p className="b89AiMeter__text">
+        {usage.limitMicroUsd === null ? (
+          <>
+            <strong>Sin techo configurado</strong>
+            <span className="b89CellMeta"> · la IA no se usa sin un techo diario</span>
+          </>
+        ) : (
+          <>
+            <strong className="b89Tabular">{used ?? NO_DATA}</strong>
+            <span className="b89CellMeta"> de {limit} usados hoy (estimado)</span>
+            {percent && <strong className="b89AiMeter__percent b89Tabular">{percent}</strong>}
+          </>
+        )}
+      </p>
+      {usage.limitMicroUsd !== null && (
+        <span
+          className="b89AiMeter__track"
+          role="img"
+          aria-label={percent ? `${percent} del techo diario usado` : 'Uso del techo sin dato'}
+        >
+          <span className="b89AiMeter__fill" data-step={usage.step} />
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** Cifra compacta para la fila de indicadores de «Resumen». */
+export function AiBudgetTile({ budget }: { budget: AiBudget | null }) {
+  if (!budget) {
+    return <AiTile label="Presupuesto de IA hoy" value={NO_DATA} hint="Sin lectura del presupuesto" />;
+  }
+  const usage = budgetUsage(budget);
+  const off = inferenceOff(budget);
+  const used = microUsdAmount(usage.usedMicroUsd);
+  const limit = microUsdAmount(usage.limitMicroUsd);
+  return (
+    <AiTile
+      label="Presupuesto de IA hoy"
+      tone={off ? 'neutral' : usage.tone}
+      value={off ? 'IA apagada' : percentText(usage.share) ?? NO_DATA}
+      hint={
+        off
+          ? 'Solo reglas deterministas, sin costo de modelo'
+          : `${used ?? NO_DATA} de ${limit ?? NO_DATA} (estimado)`
+      }
+    >
+      {!off && usage.limitMicroUsd !== null && (
+        <span className="b89AiMeter" data-tone={usage.tone}>
+          <span className="b89AiMeter__track" aria-hidden="true">
+            <span className="b89AiMeter__fill" data-step={usage.step} />
+          </span>
+        </span>
+      )}
+    </AiTile>
+  );
+}
+
 /**
  * Presupuesto y uso del día. El relato de costo es la porción resuelta sin llamar al modelo.
  * Todo monto es una estimación del tarifario; la facturación real no está conectada.
@@ -71,7 +140,13 @@ export function AiBudgetPanel({ budget }: { budget: AiBudget }) {
   const share = shareWithoutInference(budget);
   const unknown = budget.day.unknownInvocations;
   return (
-    <section className="b89Ai__budget" aria-label="Presupuesto y uso del día">
+    <section className="b89Panel b89AiBudget" aria-labelledby="b89AiBudgetTitle">
+      <div className="b89Panel__header">
+        <h2 id="b89AiBudgetTitle">Presupuesto de IA</h2>
+        <span className="b89Panel__meta">
+          Hoy{budget.day.date ? <> · <Mono>{budget.day.date}</Mono></> : null}
+        </span>
+      </div>
       <AiModeLine mode={budget.mode} />
       {budget.enabled === false && (
         <p className="b89Ai__note" role="status">
@@ -86,6 +161,7 @@ export function AiBudgetPanel({ budget }: { budget: AiBudget }) {
           : las investigaciones se resuelven solo con reglas deterministas, sin llamada al modelo.
         </p>
       )}
+      <BudgetMeter budget={budget} />
       <dl className="b89Ai__stats">
         <Stat
           label="Techo diario"
@@ -94,10 +170,13 @@ export function AiBudgetPanel({ budget }: { budget: AiBudget }) {
               ? 'Sin techo configurado'
               : formatMicroUsd(budget.day.limitMicroUsd)
           }
-          hint={budget.day.date ? <Mono>{budget.day.date}</Mono> : undefined}
         />
-        <Stat label="Reservado" value={formatMicroUsd(budget.day.reservedMicroUsd)} />
         <Stat label="Uso confirmado" value={formatMicroUsd(budget.day.settledMicroUsd)} />
+        <Stat
+          label="Reservado"
+          value={formatMicroUsd(budget.day.reservedMicroUsd)}
+          hint="llamadas en curso"
+        />
         <Stat label="Investigaciones hoy" value={formatCount(budget.runs.today)} />
         <Stat
           label="Resueltas sin IA"
@@ -109,17 +188,22 @@ export function AiBudgetPanel({ budget }: { budget: AiBudget }) {
           value={`${formatCount(budget.runs.economy)} / ${formatCount(budget.runs.advanced)}`}
           hint="económico / avanzado"
         />
-        <Stat
-          label="Tokens"
-          value={`${formatCount(budget.tokens.input)} / ${formatCount(budget.tokens.output)}`}
-          hint="entrada / salida"
-        />
-        <Stat
-          label="Tokens de caché"
-          value={`${formatCount(budget.tokens.cacheRead)} / ${formatCount(budget.tokens.cacheWrite)}`}
-          hint="lectura / escritura"
-        />
       </dl>
+      <details className="b89AiDetails">
+        <summary>Tokens del día</summary>
+        <dl className="b89Ai__stats">
+          <Stat
+            label="Tokens"
+            value={`${formatCount(budget.tokens.input)} / ${formatCount(budget.tokens.output)}`}
+            hint="entrada / salida"
+          />
+          <Stat
+            label="Tokens de caché"
+            value={`${formatCount(budget.tokens.cacheRead)} / ${formatCount(budget.tokens.cacheWrite)}`}
+            hint="lectura / escritura"
+          />
+        </dl>
+      </details>
       {unknown !== null && unknown > 0 && (
         <EuiCallOut
           size="s"

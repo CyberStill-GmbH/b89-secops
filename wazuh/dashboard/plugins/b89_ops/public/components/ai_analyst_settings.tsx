@@ -37,6 +37,7 @@ import {
   AiDigestMode,
   AiInferenceMinPriority,
   AiMinConfidence,
+  AiSettingsAction,
   AiSettingsDraft,
   AiSettingsErrors,
   AiSettingsRisk,
@@ -44,6 +45,7 @@ import {
   CAPABILITIES,
   draftFromSettings,
   draftsEqual,
+  microUsdAmount,
   PRIORITIES,
   Priority,
   settingsFromDraft,
@@ -51,6 +53,7 @@ import {
 } from '../../common';
 import { getAiSettings, isAnalystUnavailable, saveAiSettings } from '../api/ai_investigations';
 import { B89ApiError } from '../api/client';
+import { RiskFlag } from './ai_analyst_parts';
 import { useConsole } from './console_context';
 import { ErrorCallout, Mono, Timestamp, useAsync } from './primitives';
 
@@ -64,21 +67,30 @@ function toggle<T>(items: readonly T[], item: T, on: boolean): T[] {
 function Group({
   id,
   title,
+  description,
   hint,
   children,
 }: {
   id: string;
   title: string;
+  /** Para qué sirve la sección, en una o dos frases. */
+  description: React.ReactNode;
+  /** Aviso según el estado del borrador (p. ej. «en modo sombra no tiene efecto»). */
   hint?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
-    <section className="b89Ai__group" aria-labelledby={id}>
-      <h3 id={id} className="b89Ai__groupTitle">
-        {title}
-      </h3>
-      {hint && <p className="b89Ai__note">{hint}</p>}
-      {children}
+    <section className="b89AiSetGroup" aria-labelledby={id}>
+      <header className="b89AiSetGroup__intro">
+        <h3 id={id} className="b89AiSetGroup__title">
+          {title}
+        </h3>
+        <p className="b89AiSetGroup__description">{description}</p>
+      </header>
+      <div className="b89AiSetGroup__controls">
+        {hint && <p className="b89AiSetGroup__hint">{hint}</p>}
+        {children}
+      </div>
     </section>
   );
 }
@@ -124,6 +136,16 @@ function PriorityChecks({
   );
 }
 
+/** Consecuencia de las opciones que actúan sobre alertas reales sin una persona. */
+export const AI_SETTINGS_RISK: Readonly<Partial<Record<AiSettingsAction | 'autonomous', string>>> = {
+  autonomous:
+    'Ejecuta por su cuenta las acciones permitidas sobre alertas reales, sin esperar a una persona.',
+  acknowledge:
+    'Cambia el estado de alertas reales: dejan de verse como nuevas aunque nadie las haya mirado.',
+  closeBenign:
+    'Cierra alertas reales sin revisión previa: una alerta mal clasificada sale de la cola abierta.',
+};
+
 /** Consecuencias de un cambio de riesgo, dichas sin rodeos antes de guardar. */
 export function AiSettingsConfirmBody({ risk }: { risk: AiSettingsRisk }) {
   return (
@@ -154,6 +176,43 @@ export function AiSettingsConfirmBody({ risk }: { risk: AiSettingsRisk }) {
       )}
       <p>El cambio se aplica a las investigaciones que empiecen después de guardar.</p>
     </>
+  );
+}
+
+/** Lo vigente (guardado), en una línea de etiquetas: se lee antes de tocar nada. */
+export function AiSettingsSummary({ saved }: { saved: AnalystSettings }) {
+  const ceiling = saved.budget.dailyCeilingMicroUsd;
+  const autonomousActions =
+    saved.mode === 'autonomous'
+      ? AI_SETTINGS_ACTIONS.filter((action) => saved.actions[action]).map(
+          (action) => AI_SETTINGS_ACTION_LABEL[action],
+        )
+      : [];
+  return (
+    <section className="b89AiSetSummary" aria-label="Configuración vigente">
+      <span className="b89AiSetSummary__label">Vigente</span>
+      <span className="b89AiSetSummary__chip" data-tone={saved.enabled ? 'ok' : 'neutral'}>
+        {saved.enabled ? 'Analista activado' : 'Analista desactivado'}
+      </span>
+      <span
+        className="b89AiSetSummary__chip"
+        data-tone={saved.mode === 'autonomous' ? 'risk' : 'neutral'}
+      >
+        Modo {AI_MODE_NAME[saved.mode].toLowerCase()}
+      </span>
+      <span className="b89AiSetSummary__chip">
+        {ceiling === null
+          ? 'IA apagada (solo reglas)'
+          : `IA con techo de ${microUsdAmount(ceiling) ?? 'sin dato'} al día`}
+      </span>
+      {saved.mode === 'autonomous' && (
+        <span className="b89AiSetSummary__chip" data-tone={autonomousActions.length > 0 ? 'risk' : 'neutral'}>
+          {autonomousActions.length > 0
+            ? `Actúa solo: ${autonomousActions.join(', ').toLowerCase()}`
+            : 'Sin acciones autónomas activas'}
+        </span>
+      )}
+    </section>
   );
 }
 
@@ -189,7 +248,7 @@ export function AiSettingsForm({
 
   return (
     <form
-      className="b89Ai__settings"
+      className="b89AiSettings"
       aria-label="Configuración del Analista IA"
       onSubmit={(event) => {
         event.preventDefault();
@@ -205,37 +264,56 @@ export function AiSettingsForm({
         </EuiCallOut>
       )}
 
-      <Group id="b89AiSetMode" title="Estado y modo">
+      <AiSettingsSummary saved={saved} />
+
+      <Group
+        id="b89AiSetMode"
+        title="Funcionamiento"
+        description="Si el analista toma alertas nuevas y cuánto puede hacer sin una persona. Empieza en sombra y sube de modo cuando confíes en sus conclusiones."
+      >
         <EuiSwitch
           label={draft.enabled ? 'Analista activado' : 'Analista desactivado'}
           checked={draft.enabled}
           disabled={locked}
           onChange={(event) => onChange({ enabled: event.target.checked })}
         />
-        <p className="b89Ai__note">
+        <p className="b89CellMeta">
           Desactivado no inicia investigaciones nuevas; las que ya existen se pueden consultar.
         </p>
         <fieldset className="b89Ai__checks">
           <legend>Modo de operación</legend>
-          {AI_MODES.map((mode) => (
-            <EuiRadio
-              key={mode}
-              id={`b89AiMode-${mode}`}
-              name="b89AiMode"
-              label={
-                <span>
-                  <strong>{AI_MODE_NAME[mode]}:</strong> {AI_MODE_SUMMARY[mode]}.
-                </span>
-              }
-              checked={draft.mode === mode}
-              disabled={locked}
-              onChange={() => onChange({ mode })}
-            />
-          ))}
+          <div className="b89AiModes">
+            {AI_MODES.map((mode) => (
+              <div
+                key={mode}
+                className="b89AiModes__card"
+                data-mode={mode}
+                data-selected={draft.mode === mode ? 'true' : 'false'}
+              >
+                <EuiRadio
+                  id={`b89AiMode-${mode}`}
+                  name="b89AiMode"
+                  label={
+                    <span>
+                      <strong>{AI_MODE_NAME[mode]}:</strong> {AI_MODE_SUMMARY[mode]}.
+                    </span>
+                  }
+                  checked={draft.mode === mode}
+                  disabled={locked}
+                  onChange={() => onChange({ mode })}
+                />
+                {mode === 'autonomous' && <RiskFlag>{AI_SETTINGS_RISK.autonomous}</RiskFlag>}
+              </div>
+            ))}
+          </div>
         </fieldset>
       </Group>
 
-      <Group id="b89AiSetScope" title="Alcance">
+      <Group
+        id="b89AiSetScope"
+        title="Qué investiga"
+        description="Qué alertas toma el analista y desde qué prioridad usa el modelo de IA. Por debajo del umbral solo aplica reglas deterministas, sin costo."
+      >
         <PriorityChecks
           idPrefix="b89AiScope"
           legend="Prioridades que se investigan"
@@ -252,7 +330,10 @@ export function AiSettingsForm({
             compressed
             value={draft.inferenceMinPriority}
             disabled={locked}
-            options={AI_INFERENCE_MIN_PRIORITIES.map((value) => ({ value, text: value }))}
+            options={AI_INFERENCE_MIN_PRIORITIES.map((value) => ({
+              value,
+              text: value === 'P1' ? 'Solo P1' : `${value} o más urgente`,
+            }))}
             onChange={(event) =>
               onChange({ inferenceMinPriority: event.target.value as AiInferenceMinPriority })
             }
@@ -262,7 +343,8 @@ export function AiSettingsForm({
 
       <Group
         id="b89AiSetActions"
-        title="Acciones permitidas"
+        title="Qué puede hacer por su cuenta"
+        description="Acciones que el analista ejecuta sin esperar a una persona. Solo tienen efecto en modo autónomo (en asistido, únicamente pedir revisión)."
         hint={
           draft.mode === 'shadow'
             ? 'En modo sombra el analista no ejecuta acciones: estos permisos se conservan, pero no tienen efecto.'
@@ -271,98 +353,104 @@ export function AiSettingsForm({
               : 'En modo autónomo el analista ejecuta por su cuenta las acciones activadas.'
         }
       >
-        <ul className="b89Ai__toggles">
-          {AI_SETTINGS_ACTIONS.map((action) => (
-            <li key={action}>
-              <EuiSwitch
-                label={AI_SETTINGS_ACTION_LABEL[action]}
-                checked={draft.actions[action]}
-                disabled={locked || !actionApplies(draft.mode, action)}
-                onChange={(event) =>
-                  onChange({ actions: { ...draft.actions, [action]: event.target.checked } })
-                }
-              />
-              <p className="b89CellMeta">{AI_SETTINGS_ACTION_HELP[action]}</p>
-              {action === 'closeBenign' && (
-                <div className="b89Ai__guardBox">
-                  <p className="b89Ai__subhead">Condiciones que no se pueden desactivar</p>
-                  <ul className="b89Ai__guards">
-                    {AI_CLOSE_BENIGN_GUARDS.map((guard) => (
-                      <li key={guard}>{guard}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </li>
-          ))}
+        <ul className="b89AiToggles">
+          {AI_SETTINGS_ACTIONS.map((action) => {
+            const risk = AI_SETTINGS_RISK[action];
+            return (
+              <li key={action} data-risk={risk ? 'true' : 'false'}>
+                <EuiSwitch
+                  label={AI_SETTINGS_ACTION_LABEL[action]}
+                  checked={draft.actions[action]}
+                  disabled={locked || !actionApplies(draft.mode, action)}
+                  onChange={(event) =>
+                    onChange({ actions: { ...draft.actions, [action]: event.target.checked } })
+                  }
+                />
+                <p className="b89CellMeta">{AI_SETTINGS_ACTION_HELP[action]}</p>
+                {risk && <RiskFlag>{risk}</RiskFlag>}
+                {action === 'escalate' && (
+                  <div className="b89AiToggles__nested">
+                    <EuiFormRow label="Confianza mínima para escalar">
+                      <EuiSelect
+                        compressed
+                        value={draft.escalationMinConfidence}
+                        disabled={escalationOff}
+                        options={AI_MIN_CONFIDENCES.map((value) => ({
+                          value,
+                          text: value === 'high' ? 'Alta' : 'Media o alta',
+                        }))}
+                        onChange={(event) =>
+                          onChange({
+                            escalationMinConfidence: event.target.value as AiMinConfidence,
+                          })
+                        }
+                      />
+                    </EuiFormRow>
+                    <PriorityChecks
+                      idPrefix="b89AiEscalation"
+                      legend="Prioridades que se pueden escalar"
+                      value={draft.escalationPriorities}
+                      disabled={escalationOff}
+                      error={errors['escalation.priorities']}
+                      onChange={(escalationPriorities) => onChange({ escalationPriorities })}
+                    />
+                  </div>
+                )}
+                {action === 'closeBenign' && (
+                  <div className="b89AiToggles__nested">
+                    <div className="b89Ai__guardBox">
+                      <p className="b89Ai__subhead">Condiciones que no se pueden desactivar</p>
+                      <ul className="b89Ai__guards">
+                        {AI_CLOSE_BENIGN_GUARDS.map((guard) => (
+                          <li key={guard}>{guard}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    <EuiFormRow label="Prioridad máxima que puede cerrar">
+                      <EuiSelect
+                        compressed
+                        value={draft.closeMaxPriority}
+                        disabled={closeOff}
+                        options={AI_CLOSE_MAX_PRIORITIES.map((value) => ({
+                          value,
+                          text: value === 'P4' ? 'Solo P4' : 'P3 y P4',
+                        }))}
+                        onChange={(event) =>
+                          onChange({ closeMaxPriority: event.target.value as AiCloseMaxPriority })
+                        }
+                      />
+                    </EuiFormRow>
+                    <EuiFormRow
+                      label="Historial mínimo del patrón"
+                      helpText={`Veces que el patrón ya se cerró como benigno (${AI_SETTINGS_LIMITS.minHistoryMin} a ${AI_SETTINGS_LIMITS.minHistoryMax}).`}
+                      isInvalid={Boolean(errors['closeBenign.minHistory'])}
+                      error={errors['closeBenign.minHistory']}
+                    >
+                      <EuiFieldText
+                        compressed
+                        inputMode="numeric"
+                        value={draft.closeMinHistory}
+                        disabled={closeOff}
+                        isInvalid={Boolean(errors['closeBenign.minHistory'])}
+                        onChange={(event) => onChange({ closeMinHistory: event.target.value })}
+                      />
+                    </EuiFormRow>
+                  </div>
+                )}
+              </li>
+            );
+          })}
         </ul>
-        <EuiFormRow label="Cierre benigno: prioridad máxima">
-          <EuiSelect
-            compressed
-            value={draft.closeMaxPriority}
-            disabled={closeOff}
-            options={AI_CLOSE_MAX_PRIORITIES.map((value) => ({
-              value,
-              text: value === 'P4' ? 'Solo P4' : 'P3 y P4',
-            }))}
-            onChange={(event) =>
-              onChange({ closeMaxPriority: event.target.value as AiCloseMaxPriority })
-            }
-          />
-        </EuiFormRow>
-        <EuiFormRow
-          label="Cierre benigno: historial mínimo"
-          helpText={`Veces que el patrón ya se cerró como benigno (${AI_SETTINGS_LIMITS.minHistoryMin} a ${AI_SETTINGS_LIMITS.minHistoryMax}).`}
-          isInvalid={Boolean(errors['closeBenign.minHistory'])}
-          error={errors['closeBenign.minHistory']}
-        >
-          <EuiFieldText
-            compressed
-            inputMode="numeric"
-            value={draft.closeMinHistory}
-            disabled={closeOff}
-            isInvalid={Boolean(errors['closeBenign.minHistory'])}
-            onChange={(event) => onChange({ closeMinHistory: event.target.value })}
-          />
-        </EuiFormRow>
-      </Group>
-
-      <Group
-        id="b89AiSetEscalation"
-        title="Escalamiento"
-        hint="Aplica en modo autónomo con «Escalar a incidente» activado."
-      >
-        <EuiFormRow label="Confianza mínima para escalar">
-          <EuiSelect
-            compressed
-            value={draft.escalationMinConfidence}
-            disabled={escalationOff}
-            options={AI_MIN_CONFIDENCES.map((value) => ({
-              value,
-              text: value === 'high' ? 'Alta' : 'Media o alta',
-            }))}
-            onChange={(event) =>
-              onChange({ escalationMinConfidence: event.target.value as AiMinConfidence })
-            }
-          />
-        </EuiFormRow>
-        <PriorityChecks
-          idPrefix="b89AiEscalation"
-          legend="Prioridades que se pueden escalar"
-          value={draft.escalationPriorities}
-          disabled={escalationOff}
-          error={errors['escalation.priorities']}
-          onChange={(escalationPriorities) => onChange({ escalationPriorities })}
-        />
       </Group>
 
       <Group
         id="b89AiSetReview"
-        title="Revisión humana"
+        title="Cuándo avisa a una persona"
+        description="Qué investigaciones generan una notificación para que alguien del SOC las revise."
         hint={
           draft.mode === 'shadow'
             ? 'En modo sombra el analista no notifica: estas preferencias se conservan, pero no tienen efecto.'
-            : 'Cuándo se avisa a una persona para que revise una investigación.'
+            : undefined
         }
       >
         <PriorityChecks
@@ -393,47 +481,50 @@ export function AiSettingsForm({
         </fieldset>
       </Group>
 
-      <Group id="b89AiSetBudget" title="Presupuesto">
+      <Group
+        id="b89AiSetBudget"
+        title="Presupuesto de IA"
+        description="Cuánto puede gastar al día en llamadas al modelo. Sin techo diario no se llama al modelo: las investigaciones se resuelven solo con reglas deterministas."
+      >
         <EuiSwitch
           label={draft.inferenceOn ? 'IA activada con techo diario' : 'IA desactivada'}
           checked={draft.inferenceOn}
           disabled={locked}
           onChange={(event) => onChange({ inferenceOn: event.target.checked })}
         />
-        <p className="b89Ai__note">
-          Sin techo diario no se llama al modelo: las investigaciones se resuelven solo con reglas
-          deterministas.
-        </p>
-        <EuiFormRow
-          label="Techo diario (US$)"
-          helpText="Gasto estimado máximo por día. Es una estimación del tarifario, no facturación."
-          isInvalid={Boolean(errors['budget.dailyCeilingMicroUsd'])}
-          error={errors['budget.dailyCeilingMicroUsd']}
-        >
-          <EuiFieldText
-            compressed
-            inputMode="decimal"
-            placeholder="2,50"
-            value={draft.dailyCeilingUsd}
-            disabled={inferenceFieldsOff}
+        <div className="b89AiSetGroup__fields">
+          <EuiFormRow
+            label="Techo diario (US$)"
+            helpText="Gasto estimado máximo por día. Es una estimación del tarifario, no facturación."
             isInvalid={Boolean(errors['budget.dailyCeilingMicroUsd'])}
-            onChange={(event) => onChange({ dailyCeilingUsd: event.target.value })}
-          />
-        </EuiFormRow>
-        <EuiFormRow
-          label="Máximo de tokens de salida por llamada"
-          isInvalid={Boolean(errors['budget.maxOutputTokens'])}
-          error={errors['budget.maxOutputTokens']}
-        >
-          <EuiFieldText
-            compressed
-            inputMode="numeric"
-            value={draft.maxOutputTokens}
-            disabled={inferenceFieldsOff}
+            error={errors['budget.dailyCeilingMicroUsd']}
+          >
+            <EuiFieldText
+              compressed
+              inputMode="decimal"
+              placeholder="2,50"
+              value={draft.dailyCeilingUsd}
+              disabled={inferenceFieldsOff}
+              isInvalid={Boolean(errors['budget.dailyCeilingMicroUsd'])}
+              onChange={(event) => onChange({ dailyCeilingUsd: event.target.value })}
+            />
+          </EuiFormRow>
+          <EuiFormRow
+            label="Máximo de tokens de salida por llamada"
+            helpText="Limita el largo (y el costo) de cada respuesta del modelo."
             isInvalid={Boolean(errors['budget.maxOutputTokens'])}
-            onChange={(event) => onChange({ maxOutputTokens: event.target.value })}
-          />
-        </EuiFormRow>
+            error={errors['budget.maxOutputTokens']}
+          >
+            <EuiFieldText
+              compressed
+              inputMode="numeric"
+              value={draft.maxOutputTokens}
+              disabled={inferenceFieldsOff}
+              isInvalid={Boolean(errors['budget.maxOutputTokens'])}
+              onChange={(event) => onChange({ maxOutputTokens: event.target.value })}
+            />
+          </EuiFormRow>
+        </div>
         <EuiSwitch
           label="Permitir el nivel avanzado"
           checked={draft.advancedTierEnabled}
@@ -445,45 +536,51 @@ export function AiSettingsForm({
         </p>
       </Group>
 
-      <Group id="b89AiSetReports" title="Informes">
+      <Group
+        id="b89AiSetReports"
+        title="Informes"
+        description="Documentos que el analista deja para el equipo: uno por investigación y un resumen diario opcional."
+      >
         <EuiSwitch
           label="Generar un informe por investigación"
           checked={draft.reportsPerRun}
           disabled={locked}
           onChange={(event) => onChange({ reportsPerRun: event.target.checked })}
         />
-        <EuiFormRow label="Resumen periódico">
-          <EuiSelect
-            compressed
-            value={draft.digest}
-            disabled={locked}
-            options={[
-              { value: 'off', text: 'Desactivado' },
-              { value: 'daily', text: 'Diario' },
-            ]}
-            onChange={(event) => onChange({ digest: event.target.value as AiDigestMode })}
-          />
-        </EuiFormRow>
-        <EuiFormRow
-          label="Hora del resumen (hora de Lima, 0 a 23)"
-          isInvalid={Boolean(errors['reports.digestHourLima'])}
-          error={errors['reports.digestHourLima']}
-        >
-          <EuiFieldText
-            compressed
-            inputMode="numeric"
-            value={draft.digestHourLima}
-            disabled={locked || draft.digest === 'off'}
+        <div className="b89AiSetGroup__fields">
+          <EuiFormRow label="Resumen periódico">
+            <EuiSelect
+              compressed
+              value={draft.digest}
+              disabled={locked}
+              options={[
+                { value: 'off', text: 'Desactivado' },
+                { value: 'daily', text: 'Diario' },
+              ]}
+              onChange={(event) => onChange({ digest: event.target.value as AiDigestMode })}
+            />
+          </EuiFormRow>
+          <EuiFormRow
+            label="Hora del resumen (hora de Lima, 0 a 23)"
             isInvalid={Boolean(errors['reports.digestHourLima'])}
-            onChange={(event) => onChange({ digestHourLima: event.target.value })}
-          />
-        </EuiFormRow>
+            error={errors['reports.digestHourLima']}
+          >
+            <EuiFieldText
+              compressed
+              inputMode="numeric"
+              value={draft.digestHourLima}
+              disabled={locked || draft.digest === 'off'}
+              isInvalid={Boolean(errors['reports.digestHourLima'])}
+              onChange={(event) => onChange({ digestHourLima: event.target.value })}
+            />
+          </EuiFormRow>
+        </div>
       </Group>
 
       <Group
         id="b89AiSetInstructions"
-        title="Preferencias del administrador"
-        hint="Orienta la redacción y las prioridades del analista. No puede conceder permisos ni saltarse los límites de esta configuración."
+        title="Indicaciones del administrador"
+        description="Orienta la redacción y las prioridades del analista. No puede conceder permisos ni saltarse los límites de esta configuración."
       >
         <EuiFormRow
           label="Indicaciones"
@@ -493,9 +590,7 @@ export function AiSettingsForm({
               : undefined
           }
           isInvalid={Boolean(errors.instructions)}
-          error={
-            errors.instructions ? `${errors.instructions} Sobran ${-remaining}.` : undefined
-          }
+          error={errors.instructions ? `${errors.instructions} Sobran ${-remaining}.` : undefined}
           fullWidth
         >
           <EuiTextArea
@@ -510,7 +605,7 @@ export function AiSettingsForm({
         </EuiFormRow>
       </Group>
 
-      <div className="b89Ai__settingsFoot">
+      <div className="b89AiSettings__foot" data-dirty={dirty ? 'true' : 'false'}>
         <p className="b89CellMeta">
           Revisión <Mono>{String(saved.revision)}</Mono> · última modificación{' '}
           <Timestamp iso={saved.updatedAt} />
@@ -524,7 +619,7 @@ export function AiSettingsForm({
         {canEdit && (
           <div className="b89Ai__actions">
             {dirty && (
-              <span className="b89CellMeta" role="status">
+              <span className="b89AiSettings__dirty" role="status">
                 {hasErrors ? 'Hay campos por corregir.' : 'Hay cambios sin guardar.'}
               </span>
             )}

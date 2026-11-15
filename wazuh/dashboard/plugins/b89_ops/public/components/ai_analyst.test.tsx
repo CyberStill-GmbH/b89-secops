@@ -22,7 +22,7 @@ import {
   runQuestion,
 } from './ai_analyst_case_file';
 import { AiDigestView } from './ai_analyst_reports';
-import { AiRunsTable, runCostText } from './ai_analyst_runs';
+import { AiRunList, runCostText } from './ai_analyst_runs';
 import { AiSettingsConfirmBody, AiSettingsForm, serverFieldErrors } from './ai_analyst_settings';
 
 const NOW = Date.parse('2026-11-13T10:01:00.000Z');
@@ -443,24 +443,50 @@ describe('franja de modo y presupuesto', () => {
 });
 
 describe('lista de investigaciones', () => {
-  it('muestra «Sin IA», acciones ejecutadas y escapa el título', () => {
+  it('fila escaneable: prioridad, título escapado, conclusión, estado y acciones ejecutadas', () => {
     const base = run();
     const markup = renderToStaticMarkup(
-      <AiRunsTable
+      <AiRunList
         items={[
           { ...base, subject: { ...base.subject, title: '<i>t</i>' }, actionKinds: ['escalate', 'odd'] },
         ]}
         loading={false}
-        selectedId={null}
+        basePath="/b"
         onSelect={() => undefined}
-        emptyMessage="vacío"
+        empty="vacío"
       />,
     );
     expect(markup).toContain('Sin IA');
-    expect(markup).toContain('Sin llamada al modelo');
     expect(markup).toContain('Escaló');
     expect(markup).toContain('odd');
     expect(markup).not.toContain('<i>t</i>');
+    expect(markup).toContain('&lt;i&gt;t&lt;/i&gt;');
+    expect(markup).toContain('href="/b/app/b89-ai-analyst?id=run-1"');
+    expect(markup).toContain('Probable falso positivo');
+    expect(markup).toContain('Confianza alta');
+    expect(markup).toContain('Completada');
+    expect(markup).toContain('data-priority="p3"');
+  });
+
+  it('con modelo muestra el nivel y el costo; sin cifra, «Sin dato»', () => {
+    const markup = renderToStaticMarkup(
+      <AiRunList
+        items={[run({ inference: 'economy' })]}
+        loading={false}
+        basePath=""
+        onSelect={() => undefined}
+        empty="vacío"
+      />,
+    );
+    expect(markup).toContain('IA: económico · Sin dato');
+  });
+
+  it('vacía muestra el mensaje que explica qué hacer', () => {
+    const markup = renderToStaticMarkup(
+      <AiRunList items={[]} loading={false} basePath="" onSelect={() => undefined} empty="Quita los filtros" />,
+    );
+    expect(markup).toContain('Quita los filtros');
+    expect(markup).toContain('role="status"');
   });
 });
 

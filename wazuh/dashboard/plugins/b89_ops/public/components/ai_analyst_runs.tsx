@@ -3,25 +3,38 @@
  */
 
 import React from 'react';
-import { EuiBasicTable } from '@elastic/eui';
-import type { EuiBasicTableColumn } from '@elastic/eui';
+import { EuiButtonEmpty, EuiFieldText, EuiFormRow, EuiLoadingContent, EuiSelect } from '@elastic/eui';
 import {
   actionKindShort,
   AI_RUN_STATUS_LABEL,
   AI_RUN_STATUS_TONE,
+  AI_RUN_STATUSES,
   AI_TRIGGER_LABEL,
+  AI_VERDICT_LABEL,
+  AI_VERDICTS,
   AiRunStatusView,
   AiRunSummary,
-  confidenceLabel,
   formatCount,
   formatMicroUsd,
   inferenceLabel,
   isActive,
   NO_DATA,
+  PRIORITIES,
   stageLabel,
-  verdictLabel,
 } from '../../common';
-import { HealthMark, Mono, PriorityMark, Timestamp } from './primitives';
+import {
+  EMPTY_FILTERS,
+  hasFilters,
+  needsAttention,
+  parseRunStatus,
+  parseVerdictFilter,
+  RUN_VIEW_LABEL,
+  RunFilters,
+  RunView,
+  togglePriority,
+} from './ai_analyst_model';
+import { ConfidenceMeter, VerdictBadge } from './ai_analyst_parts';
+import { HealthMark, Mono, PriorityMark, relativeTime } from './primitives';
 
 export function RunStatusMark({ status }: { status: AiRunStatusView }) {
   return <HealthMark tone={AI_RUN_STATUS_TONE[status]} label={AI_RUN_STATUS_LABEL[status]} />;
@@ -45,144 +58,300 @@ export function RunStage({ stage }: { stage: string | null }) {
   return <span className="b89CellMeta">{label ?? <Mono>{stage}</Mono>}</span>;
 }
 
-export function AiRunsTable({
+export function runHref(basePath: string, jobId: string): string {
+  return `${basePath}/app/b89-ai-analyst?id=${encodeURIComponent(jobId)}`;
+}
+
+/** Clic normal abre el expediente en la misma vista; con modificadores, el navegador decide. */
+export function openInPlace(event: React.MouseEvent<HTMLAnchorElement>, open: () => void): void {
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+  event.preventDefault();
+  open();
+}
+
+const ABSOLUTE = new Intl.DateTimeFormat('es-PE', {
+  day: '2-digit',
+  month: 'short',
+  hour: '2-digit',
+  minute: '2-digit',
+  timeZoneName: 'short',
+});
+
+/** Instante relativo sin elementos enfocables (va dentro de un enlace); el absoluto en `title`. */
+export function RunTime({ iso, now }: { iso: string | null; now?: number }) {
+  if (!iso) return <span className="b89Muted">{NO_DATA}</span>;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return <span className="b89Muted">{NO_DATA}</span>;
+  return (
+    <time
+      dateTime={iso}
+      title={ABSOLUTE.format(date)}
+      className="b89Tabular"
+      data-b89-no-translate=""
+    >
+      {relativeTime(iso, now)}
+    </time>
+  );
+}
+
+function RunMeta({ run }: { run: AiRunSummary }) {
+  const parts: React.ReactNode[] = [AI_TRIGGER_LABEL[run.trigger]];
+  if (run.alertCount !== null) {
+    parts.push(`${formatCount(run.alertCount)} ${run.alertCount === 1 ? 'alerta' : 'alertas'}`);
+  }
+  if (run.inference === 'none') {
+    parts.push(inferenceLabel('none'));
+  } else if (run.inference !== null) {
+    parts.push(`IA: ${inferenceLabel(run.inference).toLowerCase()} · ${runCostText(run)}`);
+  }
+  if (run.initiatedBy) {
+    parts.push(
+      <span key="by" data-b89-no-translate="">
+        {run.initiatedBy}
+      </span>,
+    );
+  }
+  return (
+    <span className="b89AiRun__meta">
+      {parts.map((part, index) => (
+        <React.Fragment key={index}>
+          {index > 0 && ' · '}
+          {part}
+        </React.Fragment>
+      ))}
+    </span>
+  );
+}
+
+/** Una investigación por fila: prioridad, alerta, conclusión, estado y hora; sin scroll lateral. */
+export function AiRunRow({
+  run,
+  basePath,
+  now,
+  selected = false,
+  onSelect,
+}: {
+  run: AiRunSummary;
+  basePath: string;
+  now?: number;
+  selected?: boolean;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <li>
+      <a
+        className="b89AiRun"
+        href={runHref(basePath, run.id)}
+        data-priority={run.priority ? run.priority.toLowerCase() : 'none'}
+        data-attention={needsAttention(run) ? 'true' : 'false'}
+        aria-current={selected ? 'true' : undefined}
+        onClick={(event) => openInPlace(event, () => onSelect(run.id))}
+      >
+        <span className="b89AiRun__priority">
+          {run.priority ? (
+            <PriorityMark priority={run.priority} />
+          ) : (
+            <span className="b89Muted">{NO_DATA}</span>
+          )}
+        </span>
+        <span className="b89AiRun__main">
+          <span className="b89AiRun__title" data-b89-no-translate="">
+            {run.subject.title || 'Sin título'}
+          </span>
+          <RunMeta run={run} />
+          {run.actionKinds.length > 0 && (
+            <span className="b89AiRun__actions">
+              <span className="b89AiSrOnly">Acciones ejecutadas: </span>
+              {run.actionKinds.map((kind) => (
+                <span key={kind} className="b89AiRun__action">
+                  {actionKindShort(kind) ?? <Mono>{kind}</Mono>}
+                </span>
+              ))}
+            </span>
+          )}
+        </span>
+        <span className="b89AiRun__verdict">
+          {run.verdict === null ? (
+            <span className="b89Muted">
+              {isActive(run.status) ? 'Analizando…' : 'Sin veredicto'}
+            </span>
+          ) : (
+            <>
+              <VerdictBadge verdict={run.verdict} />
+              <ConfidenceMeter confidence={run.confidence} />
+            </>
+          )}
+        </span>
+        <span className="b89AiRun__status">
+          <RunStatusMark status={run.status} />
+          {isActive(run.status) && <RunStage stage={run.stage} />}
+        </span>
+        <span className="b89AiRun__time">
+          <RunTime iso={run.updatedAt ?? run.createdAt} now={now} />
+        </span>
+      </a>
+    </li>
+  );
+}
+
+export function AiRunList({
   items,
   loading,
-  selectedId,
+  basePath,
+  selectedId = null,
+  now,
   onSelect,
-  emptyMessage,
+  empty,
 }: {
   items: readonly AiRunSummary[];
   loading: boolean;
-  selectedId: string | null;
+  basePath: string;
+  selectedId?: string | null;
+  now?: number;
   onSelect: (id: string) => void;
-  emptyMessage: string;
+  /** Estado vacío: qué pasó y qué hacer. */
+  empty: React.ReactNode;
 }) {
-  const columns: Array<EuiBasicTableColumn<AiRunSummary>> = [
-    {
-      field: 'status',
-      name: 'Estado',
-      width: '170px',
-      render: (value: AiRunStatusView, run: AiRunSummary) => (
-        <span className="b89CellTitle">
-          <RunStatusMark status={value} />
-          {isActive(value) && <RunStage stage={run.stage} />}
-        </span>
-      ),
-    },
-    {
-      field: 'priority',
-      name: 'Prioridad',
-      width: '96px',
-      render: (value: AiRunSummary['priority']) =>
-        value ? <PriorityMark priority={value} /> : <span className="b89Muted">{NO_DATA}</span>,
-    },
-    {
-      field: 'subject',
-      name: 'Investigación',
-      truncateText: false,
-      render: (subject: AiRunSummary['subject'], run: AiRunSummary) => (
-        <span className="b89CellTitle">
+  if (items.length === 0) {
+    if (loading) return <EuiLoadingContent lines={6} />;
+    return (
+      <div className="b89AiEmpty" role="status">
+        {empty}
+      </div>
+    );
+  }
+  return (
+    <div className="b89AiRuns">
+      <div className="b89AiRuns__head" aria-hidden="true">
+        <span>Prioridad</span>
+        <span>Alerta investigada</span>
+        <span>Conclusión</span>
+        <span>Estado</span>
+        <span>Actualizada</span>
+      </div>
+      <ul className="b89AiRuns__list" aria-label="Investigaciones" aria-busy={loading || undefined}>
+        {items.map((run) => (
+          <AiRunRow
+            key={run.id}
+            run={run}
+            basePath={basePath}
+            now={now}
+            selected={run.id === selectedId}
+            onSelect={onSelect}
+          />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------ Filtros
+
+const VIEWS: readonly RunView[] = ['all', 'attention', 'escalated', 'active'];
+
+export function AiRunFiltersBar({
+  filters,
+  counts,
+  onChange,
+}: {
+  filters: RunFilters;
+  /** Cuántas de las cargadas caen en cada vista rápida. */
+  counts: Readonly<Record<RunView, number>>;
+  onChange: (next: RunFilters) => void;
+}) {
+  const set = (patch: Partial<RunFilters>) => onChange({ ...filters, ...patch });
+  return (
+    <div className="b89AiFilters" role="search" aria-label="Filtrar investigaciones">
+      <div className="b89AiSegment" role="group" aria-label="Vista rápida">
+        {VIEWS.map((view) => (
           <button
+            key={view}
             type="button"
-            className="b89Ai__open"
-            data-b89-no-translate=""
-            onClick={(event) => {
-              event.stopPropagation();
-              onSelect(run.id);
-            }}
+            className="b89AiSegment__item"
+            aria-pressed={filters.view === view}
+            onClick={() => set({ view })}
           >
-            {subject.title || 'Sin título'}
-          </button>
-          <span className="b89CellMeta">
-            {AI_TRIGGER_LABEL[run.trigger]}
-            {run.alertCount !== null &&
-              ` · ${formatCount(run.alertCount)} ${run.alertCount === 1 ? 'alerta' : 'alertas'}`}
-            {run.initiatedBy && (
-              <>
-                {' · '}
-                <span data-b89-no-translate="">{run.initiatedBy}</span>
-              </>
+            {RUN_VIEW_LABEL[view]}
+            {view !== 'all' && (
+              <span className="b89AiSegment__count b89Tabular">{counts[view]}</span>
             )}
-          </span>
-        </span>
-      ),
-      mobileOptions: { header: false },
-    },
-    {
-      field: 'inference',
-      name: 'Inferencia',
-      width: '110px',
-      render: (value: AiRunSummary['inference']) =>
-        value === null ? (
-          <span className="b89Muted">{NO_DATA}</span>
-        ) : (
-          <span className="b89Ai__tier" data-tier={value}>
-            {inferenceLabel(value)}
-          </span>
-        ),
-    },
-    {
-      field: 'verdict',
-      name: 'Recomendación',
-      width: '200px',
-      render: (value: AiRunSummary['verdict'], run: AiRunSummary) =>
-        value === null ? (
-          <span className="b89Muted">Sin veredicto</span>
-        ) : (
-          <span className="b89CellTitle">
-            <span>{verdictLabel(value)}</span>
-            <span className="b89CellMeta">{confidenceLabel(run.confidence)}</span>
-          </span>
-        ),
-    },
-    {
-      field: 'actionKinds',
-      name: 'Acciones',
-      width: '150px',
-      render: (kinds: readonly string[]) =>
-        kinds.length === 0 ? (
-          <span className="b89Muted">Ninguna</span>
-        ) : (
-          <span className="b89Ai__actionKinds">
-            {kinds.map((kind) => (
-              <span key={kind} className="b89Ai__actionKind">
-                {actionKindShort(kind) ?? <Mono>{kind}</Mono>}
-              </span>
+          </button>
+        ))}
+      </div>
+      <div className="b89AiFilters__row">
+        <div className="b89AiFilters__search">
+          <EuiFormRow label="Buscar" display="rowCompressed" fullWidth>
+            <EuiFieldText
+              compressed
+              fullWidth
+              type="search"
+              icon="search"
+              value={filters.query}
+              placeholder="Título de la alerta o identificador"
+              aria-label="Buscar por título o identificador"
+              onChange={(event) => set({ query: event.target.value })}
+            />
+          </EuiFormRow>
+        </div>
+        <EuiFormRow label="Estado" display="rowCompressed">
+          <EuiSelect
+            compressed
+            aria-label="Filtrar por estado"
+            value={filters.status}
+            onChange={(event) => set({ status: parseRunStatus(event.target.value) })}
+            options={[
+              { value: '', text: 'Todos los estados' },
+              ...AI_RUN_STATUSES.map((status) => ({
+                value: status,
+                text: AI_RUN_STATUS_LABEL[status],
+              })),
+            ]}
+          />
+        </EuiFormRow>
+        <EuiFormRow label="Conclusión" display="rowCompressed">
+          <EuiSelect
+            compressed
+            aria-label="Filtrar por conclusión"
+            value={filters.verdict}
+            onChange={(event) => set({ verdict: parseVerdictFilter(event.target.value) })}
+            options={[
+              { value: '', text: 'Todas las conclusiones' },
+              ...AI_VERDICTS.map((verdict) => ({
+                value: verdict,
+                text: AI_VERDICT_LABEL[verdict],
+              })),
+              { value: 'none', text: 'Sin veredicto' },
+            ]}
+          />
+        </EuiFormRow>
+        <fieldset className="b89AiFilters__priorities">
+          <legend>Prioridad</legend>
+          <span className="b89AiChips">
+            {PRIORITIES.map((priority) => (
+              <button
+                key={priority}
+                type="button"
+                className="b89AiChip"
+                aria-pressed={filters.priorities.includes(priority)}
+                aria-label={`Prioridad ${priority}`}
+                onClick={() => set({ priorities: togglePriority(filters.priorities, priority) })}
+              >
+                <PriorityMark priority={priority} />
+              </button>
             ))}
           </span>
-        ),
-    },
-    {
-      field: 'estimatedCostMicroUsd',
-      name: 'Costo estimado',
-      width: '170px',
-      render: (_value: number | null, run: AiRunSummary) => (
-        <span className="b89Tabular">{runCostText(run)}</span>
-      ),
-    },
-    {
-      field: 'updatedAt',
-      name: 'Actualizada',
-      width: '120px',
-      render: (value: string | null) => <Timestamp iso={value} />,
-    },
-  ];
-
-  return (
-    <EuiBasicTable<AiRunSummary>
-      items={items as AiRunSummary[]}
-      columns={columns}
-      loading={loading}
-      responsive
-      tableLayout="auto"
-      rowProps={(run) => ({
-        onClick: () => onSelect(run.id),
-        className: `b89Row${run.priority ? ` b89Row--${run.priority.toLowerCase()}` : ''}${
-          run.id === selectedId ? ' euiTableRow-isSelected' : ''
-        }`,
-      })}
-      noItemsMessage={emptyMessage}
-    />
+        </fieldset>
+        {hasFilters(filters) && (
+          <EuiButtonEmpty
+            size="s"
+            iconType="cross"
+            className="b89AiFilters__clear"
+            onClick={() => onChange(EMPTY_FILTERS)}
+          >
+            Quitar filtros
+          </EuiButtonEmpty>
+        )}
+      </div>
+    </div>
   );
 }

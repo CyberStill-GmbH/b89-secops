@@ -9,25 +9,18 @@ import {
   EuiCallOut,
   EuiConfirmModal,
   EuiFieldText,
-  EuiFlexGroup,
-  EuiFlexItem,
   EuiFormRow,
   EuiLoadingContent,
-  EuiSelect,
   EuiSpacer,
   EuiTab,
   EuiTabs,
-  EuiText,
-  EuiTitle,
 } from '@elastic/eui';
 import {
   AI_MODE_LABEL,
   AI_MODE_SUMMARY,
-  AI_RUN_STATUS_LABEL,
-  AI_RUN_STATUSES,
+  AI_TRIGGER_LABEL,
   AiBudget,
   AiRunDetail,
-  AiRunStatus,
   AiRunSummary,
   CAPABILITIES,
   isActive,
@@ -49,14 +42,21 @@ import {
 import { B89ApiError } from '../api/client';
 import { askBunny } from '../bunny_bridge';
 import { AiActivityTab } from './ai_analyst_activity';
-import { AiBudgetPanel, AiModeLine } from './ai_analyst_budget';
 import { AiCaseFile, AiCaseFileActions, primaryAlertId, runQuestion } from './ai_analyst_case_file';
 import { openReportWindow, printAnalystReport } from './ai_analyst_download';
+import {
+  EMPTY_FILTERS,
+  filterRuns,
+  hasFilters,
+  needsAttention,
+  RunFilters,
+  RunView,
+} from './ai_analyst_model';
 import { AiReportsTab } from './ai_analyst_reports';
-import { AiRunsTable, RunStatusMark } from './ai_analyst_runs';
+import { AiRunFiltersBar, AiRunList, RunStatusMark, RunTime } from './ai_analyst_runs';
 import { AiSettingsTab } from './ai_analyst_settings';
 import { B89Page, useConsole } from './console_context';
-import { ErrorCallout, Mono, useAsync } from './primitives';
+import { ErrorCallout, Mono, PriorityMark, useAsync } from './primitives';
 
 /** Refresco en vivo: solo con investigaciones activas a la vista y la pestaña visible. */
 const POLL_MS = 5000;
@@ -64,13 +64,13 @@ const POLL_MS = 5000;
 const STALE_REFRESH_MAX = 10;
 
 const PAGE_DESCRIPTION =
-  'Investigaciones automáticas de alertas con su evidencia, citas, acciones, uso y costo estimado.';
+  'Investiga alertas automáticamente: qué concluyó, qué hizo, qué necesita a una persona y cuánto costó.';
 
-type AnalystTab = 'activity' | 'operation' | 'reports' | 'settings';
+type AnalystTab = 'activity' | 'runs' | 'reports' | 'settings';
 
 const TABS: ReadonlyArray<{ id: AnalystTab; label: string }> = [
-  { id: 'activity', label: 'Actividad' },
-  { id: 'operation', label: 'Operación' },
+  { id: 'activity', label: 'Resumen' },
+  { id: 'runs', label: 'Investigaciones' },
   { id: 'reports', label: 'Informes' },
   { id: 'settings', label: 'Configuración' },
 ];
@@ -167,20 +167,22 @@ function AiAnalystConsole({
   const { api, can } = useConsole();
   const canRun = can(CAPABILITIES.investigationsRun);
   const visible = useTabVisible();
-  const [filter, setFilter] = useState<AiRunStatus | ''>('');
+  const [filters, setFilters] = useState<RunFilters>(EMPTY_FILTERS);
+  const status = filters.status;
   const [items, setItems] = useState<readonly AiRunSummary[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreError, setMoreError] = useState<unknown>(null);
   const [liveBudget, setLiveBudget] = useState<AiBudget | null>(null);
-  const [tab, setTab] = useState<AnalystTab>('activity');
+  // `?alertId=` precarga «Investigar alerta», que vive en «Investigaciones»: se abre ahí.
+  const [tab, setTab] = useState<AnalystTab>(initialAlertId ? 'runs' : 'activity');
 
-  const page = useAsync(() => listAiRuns(api, { status: filter || null }), [api, filter]);
+  const page = useAsync(() => listAiRuns(api, { status: status || null }), [api, status]);
   const budget = useAsync(() => getAiBudget(api), [api]);
 
   // Lo que el refresco silencioso necesita leer sin volver a crear el intervalo.
-  const filterRef = useRef(filter);
-  filterRef.current = filter;
+  const statusRef = useRef(status);
+  statusRef.current = status;
   const itemsRef = useRef(items);
   itemsRef.current = items;
   const refreshing = useRef(false);
@@ -200,10 +202,10 @@ function AiAnalystConsole({
   const refresh = useCallback(async () => {
     if (refreshing.current) return;
     refreshing.current = true;
-    const requested = filterRef.current;
+    const requested = statusRef.current;
     try {
       const first = await listAiRuns(api, { status: requested || null });
-      if (filterRef.current !== requested) return;
+      if (statusRef.current !== requested) return;
       // Una investigación activa que ya no está en la primera página (terminó y salió del filtro,
       // o quedó más abajo) se consulta por id: si no, seguiría «en curso» para siempre.
       const listed = new Set(first.items.map((run) => run.id));
@@ -213,7 +215,7 @@ function AiAnalystConsole({
       const details = await Promise.all(
         stale.map((run) => getAiRun(api, run.id).catch(() => null)),
       );
-      if (filterRef.current !== requested) return;
+      if (statusRef.current !== requested) return;
       const updates: AiRunSummary[] = [...first.items];
       for (const detail of details) if (detail) updates.push(detail);
       setItems((current) => mergeRuns(current, updates));
@@ -241,12 +243,12 @@ function AiAnalystConsole({
 
   const loadMore = async () => {
     if (!cursor || loadingMore) return;
-    const requested = filter;
+    const requested = status;
     setLoadingMore(true);
     setMoreError(null);
     try {
       const next = await listAiRuns(api, { status: requested || null, cursor });
-      if (filterRef.current !== requested) return;
+      if (statusRef.current !== requested) return;
       setItems((current) => {
         const known = new Set(current.map((run) => run.id));
         return [...current, ...next.items.filter((run) => !known.has(run.id))];
@@ -263,15 +265,20 @@ function AiAnalystConsole({
     setItems((current) => mergeRuns(current, [run]));
   }, []);
 
+  /** Desde «Resumen»: abre la lista con el filtro de la cifra que se pulsó. */
+  const openList = useCallback((patch: Partial<RunFilters>) => {
+    setFilters({ ...EMPTY_FILTERS, ...patch });
+    setTab('runs');
+  }, []);
+
   const unavailable = page.error != null && isAnalystUnavailable(page.error);
-  const shownBudget = liveBudget;
-  const mode = shownBudget ? shownBudget.mode : null;
+  const mode = liveBudget ? liveBudget.mode : null;
 
   if (selectedId)
     return (
       <B89Page
-        title="Expediente de investigaci?n"
-        description="Evidencia, an?lisis y decisiones del SOC en una vista completa."
+        title="Expediente de investigación"
+        description="Conclusión del analista, la evidencia que la respalda y lo que hizo, en un solo documento."
       >
         <RunDocument
           key={selectedId}
@@ -286,131 +293,169 @@ function AiAnalystConsole({
       </B89Page>
     );
 
+  const shown = filterRuns(items, filters);
+  const counts: Record<RunView, number> = {
+    all: items.length,
+    attention: items.filter(needsAttention).length,
+    escalated: items.filter((run) => run.actionKinds.includes('escalate')).length,
+    active: items.filter((run) => isActive(run.status)).length,
+  };
+
   return (
     <B89Page title="Analista IA" description={PAGE_DESCRIPTION}>
-      {!unavailable && (
+      {unavailable ? (
+        <UnavailableCallout onRetry={page.reload} />
+      ) : (
         <>
-          <EuiTabs size="s" className="b89Tabs">
+          <EuiTabs size="s" className="b89Tabs" aria-label="Secciones del Analista IA">
             {TABS.map((item) => (
-              <EuiTab key={item.id} isSelected={tab === item.id} onClick={() => setTab(item.id)}>
+              <EuiTab
+                key={item.id}
+                id={`b89AiTab-${item.id}`}
+                aria-controls="b89AiTabPanel"
+                isSelected={tab === item.id}
+                onClick={() => setTab(item.id)}
+              >
                 {item.label}
+                {item.id === 'runs' && counts.attention > 0 && (
+                  <span className="b89AiTabBadge b89Tabular" title="Requieren atención">
+                    {counts.attention}
+                  </span>
+                )}
               </EuiTab>
             ))}
           </EuiTabs>
           <EuiSpacer size="m" />
-        </>
-      )}
-      {unavailable ? (
-        <UnavailableCallout onRetry={page.reload} />
-      ) : tab === 'activity' ? (
-        <AiActivityTab basePath={basePath} visible={visible} onSelect={onSelect} />
-      ) : tab === 'reports' ? (
-        <AiReportsTab />
-      ) : tab === 'settings' ? (
-        <AiSettingsTab onSaved={() => void refreshBudget()} />
-      ) : (
-        <>
-          {shownBudget ? (
-            <AiBudgetPanel budget={shownBudget} />
-          ) : budget.loading ? (
-            <EuiLoadingContent lines={2} />
-          ) : (
-            <section className="b89Ai__budget" aria-label="Presupuesto y uso del día">
-              <AiModeLine mode={null} />
-              {isAnalystUnavailable(budget.error) ? (
-                <p className="b89Ai__note">
-                  El presupuesto del día no está publicado en este entorno.
-                </p>
-              ) : (
-                <ErrorCallout error={budget.error} onRetry={budget.reload} />
-              )}
-            </section>
-          )}
-          <EuiSpacer size="m" />
-          <EuiFlexGroup
-            className="b89Filters"
-            gutterSize="m"
-            alignItems="flexEnd"
-            justifyContent="spaceBetween"
-            responsive
-            wrap
-          >
-            <EuiFlexItem grow={false}>
-              <EuiFormRow label="Estado" display="rowCompressed">
-                <EuiSelect
-                  compressed
-                  aria-label="Filtrar investigaciones por estado"
-                  value={filter}
-                  onChange={(event) => setFilter(event.target.value as AiRunStatus | '')}
-                  options={[
-                    { value: '', text: 'Todos los estados' },
-                    ...AI_RUN_STATUSES.map((status) => ({
-                      value: status,
-                      text: AI_RUN_STATUS_LABEL[status],
-                    })),
-                  ]}
-                />
-              </EuiFormRow>
-            </EuiFlexItem>
-            {canRun && (
-              <EuiFlexItem grow={false}>
-                <StartControl
-                  initialAlertId={initialAlertId}
-                  mode={mode}
-                  onStarted={(run) => {
-                    upsert(run);
-                    onSelect(run.id);
-                  }}
-                />
-              </EuiFlexItem>
-            )}
-          </EuiFlexGroup>
-          <EuiSpacer size="m" />
-          {page.error != null ? (
-            <ErrorCallout error={page.error} onRetry={page.reload} />
-          ) : (
-            <>
-              <AiRunsTable
-                items={items}
-                loading={page.loading}
-                selectedId={selectedId}
+          <div id="b89AiTabPanel" role="tabpanel" aria-labelledby={`b89AiTab-${tab}`}>
+            {tab === 'activity' ? (
+              <AiActivityTab
+                basePath={basePath}
+                visible={visible}
                 onSelect={onSelect}
-                emptyMessage={
-                  page.loading
-                    ? 'Cargando investigaciones…'
-                    : filter
-                      ? 'No hay investigaciones en este estado.'
-                      : 'Aún no hay investigaciones. El analista las crea después de las reglas y la correlación.'
-                }
+                budget={liveBudget}
+                recentRuns={items}
+                onFilter={openList}
               />
-              {hasActive && (
-                <EuiText size="xs" color="subdued">
-                  <p role="status">
-                    {visible
-                      ? 'Hay investigaciones en curso: la lista se actualiza cada 5 s.'
-                      : 'Actualización en pausa mientras la pestaña está oculta.'}
-                  </p>
-                </EuiText>
-              )}
-              {moreError != null && (
-                <>
-                  <EuiSpacer size="s" />
-                  <ErrorCallout error={moreError} onRetry={loadMore} />
-                </>
-              )}
-              {cursor && (
-                <>
-                  <EuiSpacer size="s" />
-                  <EuiButtonEmpty size="s" onClick={loadMore} isLoading={loadingMore}>
-                    Cargar más
-                  </EuiButtonEmpty>
-                </>
-              )}
-            </>
-          )}
+            ) : tab === 'reports' ? (
+              <AiReportsTab />
+            ) : tab === 'settings' ? (
+              <AiSettingsTab onSaved={() => void refreshBudget()} />
+            ) : (
+              <div className="b89AiRunsTab">
+                {canRun && (
+                  <StartControl
+                    initialAlertId={initialAlertId}
+                    mode={mode}
+                    onStarted={(run) => {
+                      upsert(run);
+                      onSelect(run.id);
+                    }}
+                  />
+                )}
+                <section className="b89Panel" aria-labelledby="b89AiRunsTitle">
+                  <div className="b89Panel__header">
+                    <h2 id="b89AiRunsTitle">Investigaciones</h2>
+                    <span className="b89Panel__meta" role="status">
+                      {page.loading && items.length === 0
+                        ? 'Cargando…'
+                        : `${shown.length} de ${items.length} cargadas${cursor ? ' · hay más' : ''}`}
+                      {hasActive &&
+                        (visible
+                          ? ' · se actualiza cada 5 s'
+                          : ' · actualización en pausa (pestaña oculta)')}
+                    </span>
+                  </div>
+                  <AiRunFiltersBar filters={filters} counts={counts} onChange={setFilters} />
+                  <EuiSpacer size="m" />
+                  {page.error != null ? (
+                    <ErrorCallout error={page.error} onRetry={page.reload} />
+                  ) : (
+                    <>
+                      <AiRunList
+                        items={shown}
+                        loading={page.loading}
+                        basePath={basePath}
+                        selectedId={selectedId}
+                        onSelect={onSelect}
+                        empty={
+                          <RunsEmpty
+                            filtered={hasFilters(filters)}
+                            loaded={items.length}
+                            hasMore={cursor !== null}
+                            canRun={canRun}
+                            onClear={() => setFilters(EMPTY_FILTERS)}
+                          />
+                        }
+                      />
+                      {moreError != null && (
+                        <>
+                          <EuiSpacer size="s" />
+                          <ErrorCallout error={moreError} onRetry={loadMore} />
+                        </>
+                      )}
+                      {cursor && (
+                        <div className="b89AiRuns__more">
+                          <EuiButtonEmpty size="s" onClick={loadMore} isLoading={loadingMore}>
+                            Cargar más investigaciones
+                          </EuiButtonEmpty>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </section>
+              </div>
+            )}
+          </div>
         </>
       )}
     </B89Page>
+  );
+}
+
+/** Lista vacía: por qué y qué hacer, según haya filtros o no. */
+function RunsEmpty({
+  filtered,
+  loaded,
+  hasMore,
+  canRun,
+  onClear,
+}: {
+  filtered: boolean;
+  loaded: number;
+  hasMore: boolean;
+  canRun: boolean;
+  onClear: () => void;
+}) {
+  if (filtered) {
+    return (
+      <>
+        <p>
+          <strong>Ninguna investigación coincide con los filtros.</strong>
+        </p>
+        <p className="b89CellMeta">
+          {loaded > 0
+            ? `Se revisaron las ${loaded} investigaciones cargadas${
+                hasMore ? '; carga más para buscar entre las anteriores' : ''
+              }.`
+            : 'No hay investigaciones en este estado.'}
+        </p>
+        <EuiButtonEmpty size="s" flush="left" iconType="cross" onClick={onClear}>
+          Quitar filtros
+        </EuiButtonEmpty>
+      </>
+    );
+  }
+  return (
+    <>
+      <p>
+        <strong>Aún no hay investigaciones.</strong>
+      </p>
+      <p className="b89CellMeta">
+        El analista las crea solo, después de las reglas y la correlación, para las alertas dentro
+        del alcance configurado.
+        {canRun ? ' También puedes investigar una alerta concreta con su identificador.' : ''}
+      </p>
+    </>
   );
 }
 
@@ -453,49 +498,55 @@ function StartControl({
   };
 
   return (
-    <div className="b89Ai__start">
+    <section
+      className="b89Panel b89AiStart"
+      data-preloaded={initialAlertId ? 'true' : 'false'}
+      aria-labelledby="b89AiStartTitle"
+    >
+      <div className="b89AiStart__intro">
+        <h2 id="b89AiStartTitle">Investigar una alerta</h2>
+        <p className="b89CellMeta">
+          Pide al analista que investigue ahora una alerta concreta. Si ya existe una investigación
+          idéntica, se reutiliza sin costo.
+        </p>
+      </div>
       <form
+        className="b89AiStart__form"
         onSubmit={(event) => {
           event.preventDefault();
           if (valid && !busy) setConfirming(true);
         }}
       >
-        <EuiFlexGroup gutterSize="s" alignItems="flexEnd" responsive={false} wrap>
-          <EuiFlexItem grow>
-            <EuiFormRow
-              label="Investigar alerta"
-              display="rowCompressed"
-              isInvalid={invalid}
-              error={invalid ? 'Usa el identificador de la alerta, sin espacios.' : undefined}
-            >
-              <EuiFieldText
-                compressed
-                value={alertId}
-                maxLength={128}
-                isInvalid={invalid}
-                placeholder="ID de la alerta"
-                aria-label="Identificador de la alerta a investigar"
-                data-b89-no-translate=""
-                onChange={(event) => setAlertId(event.target.value)}
-              />
-            </EuiFormRow>
-          </EuiFlexItem>
-          <EuiFlexItem grow={false}>
-            <EuiButton size="s" type="submit" isDisabled={!valid} isLoading={busy}>
-              Investigar
-            </EuiButton>
-          </EuiFlexItem>
-        </EuiFlexGroup>
+        <EuiFormRow
+          label="Identificador de la alerta"
+          display="rowCompressed"
+          isInvalid={invalid}
+          error={invalid ? 'Usa el identificador de la alerta, sin espacios.' : undefined}
+          fullWidth
+        >
+          <EuiFieldText
+            compressed
+            fullWidth
+            value={alertId}
+            maxLength={128}
+            isInvalid={invalid}
+            placeholder="ID de la alerta"
+            aria-label="Identificador de la alerta a investigar"
+            data-b89-no-translate=""
+            onChange={(event) => setAlertId(event.target.value)}
+          />
+        </EuiFormRow>
+        <EuiButton size="s" fill type="submit" isDisabled={!valid} isLoading={busy}>
+          Investigar
+        </EuiButton>
       </form>
       {error != null && (
-        <>
-          <EuiSpacer size="s" />
+        <div className="b89AiStart__feedback">
           <ErrorCallout error={error} />
-        </>
+        </div>
       )}
       {outcome && (
-        <>
-          <EuiSpacer size="s" />
+        <div className="b89AiStart__feedback">
           <EuiCallOut
             size="s"
             color={outcome.created === false ? 'primary' : 'success'}
@@ -515,7 +566,7 @@ function StartControl({
               Expediente <Mono>{outcome.id}</Mono>.
             </p>
           </EuiCallOut>
-        </>
+        </div>
       )}
       {confirming && (
         <EuiConfirmModal
@@ -537,11 +588,54 @@ function StartControl({
           </p>
         </EuiConfirmModal>
       )}
-    </div>
+    </section>
   );
 }
 
 // ------------------------------------------------------------------ Expediente
+
+/** Índice del expediente: salta a la sección y le pasa el foco (sin tocar la URL). */
+function CaseNav({ run }: { run: AiRunDetail }) {
+  const result = run.result;
+  const links: Array<{ id: string; label: string; count?: number }> = [
+    { id: 'b89AiConclusion', label: 'Conclusión' },
+    { id: 'b89AiSummary', label: 'Resumen' },
+  ];
+  if (result) {
+    links.push(
+      { id: 'b89AiFacts', label: 'Hechos', count: result.facts.length },
+      { id: 'b89AiInferences', label: 'Inferencias', count: result.inferences.length },
+      { id: 'b89AiGaps', label: 'Vacíos', count: result.gaps.length },
+      { id: 'b89AiNextSteps', label: 'Siguientes pasos', count: result.nextSteps.length },
+    );
+  }
+  links.push(
+    { id: 'b89AiActions', label: 'Acciones', count: run.actions.length },
+    { id: 'b89AiEvidence', label: 'Evidencia' },
+    { id: 'b89AiProgress', label: 'Cronología' },
+    { id: 'b89AiUsage', label: 'Uso y costo' },
+  );
+  return (
+    <nav className="b89AiDocument__navigation" aria-label="Secciones del expediente">
+      {links.map((link) => (
+        <a
+          key={link.id}
+          href={`#${link.id}`}
+          onClick={(event) => {
+            const target = document.getElementById(link.id);
+            if (!target) return;
+            event.preventDefault();
+            target.scrollIntoView({ block: 'start' });
+            if (target.hasAttribute('tabindex')) target.focus({ preventScroll: true });
+          }}
+        >
+          {link.label}
+          {link.count !== undefined && <span className="b89Tabular"> {link.count}</span>}
+        </a>
+      ))}
+    </nav>
+  );
+}
 
 function RunDocument({
   runId,
@@ -563,7 +657,8 @@ function RunDocument({
   const { api, notifications } = useConsole();
   const validId = isValidAiRunId(runId);
   useEffect(() => {
-    document.getElementById('b89AiRunTitle')?.focus();
+    const title = document.getElementById('b89AiRunTitle');
+    if (title) title.focus();
   }, [runId]);
   const loaded = useAsync(
     () => (validId ? getAiRun(api, runId) : Promise.resolve(null)),
@@ -646,7 +741,7 @@ function RunDocument({
       const report = await getAiRunReport(api, run.id);
       printAnalystReport(report.filename, report.markdown, basePath, reportWindow);
     } catch (failure) {
-      reportWindow?.close();
+      if (reportWindow) reportWindow.close();
       setError(failure);
     } finally {
       setDownloading(false);
@@ -670,41 +765,50 @@ function RunDocument({
   return (
     <article className="b89AiDocument" aria-labelledby="b89AiRunTitle">
       <div className="b89AiDocument__toolbar">
-        <EuiButtonEmpty onClick={onClose}>Volver al Analista IA</EuiButtonEmpty>
-        <EuiButtonEmpty onClick={loaded.reload} isLoading={loaded.loading}>
-          Actualizar expediente
+        <EuiButtonEmpty iconType="arrowLeft" flush="left" onClick={onClose}>
+          Volver al Analista IA
         </EuiButtonEmpty>
+        <div className="b89AiDocument__tools">
+          <EuiButtonEmpty
+            size="s"
+            iconType="refresh"
+            onClick={loaded.reload}
+            isLoading={loaded.loading}
+          >
+            Actualizar
+          </EuiButtonEmpty>
+          {run && (
+            <AiCaseFileActions
+              run={run}
+              basePath={basePath}
+              canRun={canRun}
+              busy={busy}
+              onCancel={() => setConfirm('cancel')}
+              onRetry={() => setConfirm('retry')}
+              onAskBunny={ask}
+              onDownloadReport={() => void downloadReport()}
+              downloading={downloading}
+            />
+          )}
+        </div>
       </div>
       <header className="b89AiDocument__header">
         <p className="b89Eyebrow">Expediente · Analista IA</p>
-        <EuiTitle size="s">
-          <h2 id="b89AiRunTitle" tabIndex={-1} data-b89-no-translate="">
-            {run ? run.subject.title || run.id : 'Investigación'}
-          </h2>
-        </EuiTitle>
+        <h2 id="b89AiRunTitle" className="b89AiDocument__title" tabIndex={-1} data-b89-no-translate="">
+          {run ? run.subject.title || run.id : 'Investigación'}
+        </h2>
         {run && (
-          <>
-            <EuiSpacer size="xs" />
+          <p className="b89AiDocument__meta">
             <RunStatusMark status={run.status} />
-          </>
+            {run.priority && <PriorityMark priority={run.priority} />}
+            <span>{AI_TRIGGER_LABEL[run.trigger]}</span>
+            <span>
+              Creada <RunTime iso={run.createdAt} />
+            </span>
+          </p>
         )}
       </header>
-      {run && (
-        <nav className="b89AiDocument__navigation" aria-label="Secciones del expediente">
-          <a href="#b89AiSummary">Resumen</a>
-          <a href="#b89AiEvidence">Cobertura</a>
-          <a href="#b89AiProgress">Cronolog?a</a>
-          {run.result && (
-            <>
-              <a href="#b89AiFacts">Hechos</a>
-              <a href="#b89AiInferences">Hip?tesis</a>
-              <a href="#b89AiGaps">Vac?os</a>
-              <a href="#b89AiNextSteps">Plan de investigaci?n</a>
-            </>
-          )}
-          <a href="#b89AiUsage">Uso y costo</a>
-        </nav>
-      )}
+      {run && <CaseNav run={run} />}
       <div className="b89AiDocument__body">
         {!validId && (
           <EuiCallOut
@@ -714,9 +818,12 @@ function RunDocument({
             title="El identificador de la investigación no es válido"
           >
             <p>Abre el expediente desde la lista de investigaciones.</p>
+            <EuiButtonEmpty size="xs" flush="left" onClick={onClose}>
+              Ir a la lista
+            </EuiButtonEmpty>
           </EuiCallOut>
         )}
-        {validId && loaded.loading && !run && <EuiLoadingContent lines={6} />}
+        {validId && loaded.loading && !run && <EuiLoadingContent lines={8} />}
         {validId && loaded.error != null && !run && (
           <ErrorCallout error={loaded.error} onRetry={loaded.reload} />
         )}
@@ -728,21 +835,6 @@ function RunDocument({
         )}
         {run && <AiCaseFile run={run} basePath={basePath} now={now} mode={mode} />}
       </div>
-      {run && (
-        <footer className="b89AiDocument__actions">
-          <AiCaseFileActions
-            run={run}
-            basePath={basePath}
-            canRun={canRun}
-            busy={busy}
-            onCancel={() => setConfirm('cancel')}
-            onRetry={() => setConfirm('retry')}
-            onAskBunny={ask}
-            onDownloadReport={() => void downloadReport()}
-            downloading={downloading}
-          />
-        </footer>
-      )}
       {confirm === 'cancel' && (
         <EuiConfirmModal
           title="Detener la investigación"
