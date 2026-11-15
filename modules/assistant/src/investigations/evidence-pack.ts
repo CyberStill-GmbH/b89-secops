@@ -226,7 +226,11 @@ export function buildEvidencePack(
                     runbooks: list(context.rule.runbooks, contextLists),
                     knownFalsePositives: context.rule.knownFalsePositives
                       .slice(0, caps.text ? contextLists : 0)
-                      .map((entry) => clean(entry, 120)),
+                      .map((entry) => clean(entry, 240)),
+                    escalateWhen: (context.rule.escalateWhen ?? [])
+                      .slice(0, caps.text ? contextLists : 0)
+                      .map((entry) => clean(entry, 240)),
+                    priorityHint: short(context.rule.priorityHint ?? null, 8),
                   }
                 : null,
               incidents: context.incidents.slice(0, contextLists).map((incident) => ({

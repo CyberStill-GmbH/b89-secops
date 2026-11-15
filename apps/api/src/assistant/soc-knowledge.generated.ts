@@ -5,7 +5,7 @@ import type { SocKnowledge } from './soc-knowledge.js';
 
 export const SOC_KNOWLEDGE: SocKnowledge = {
  "attackVersion": "Enterprise v16",
- "runbookIndex": "# Runbooks de triage e investigación B89\n\nParte de [17 · Ingeniería de detección](../../17-ingenieria-de-deteccion.md). Cada runbook sigue el mismo\nesquema: **alcance** (reglas), **triage en 10 minutos**, **investigación**, **contención** (siempre por B89\nRespond con aprobación del Líder SOC), **recuperación**, **cierre y evidencia** y **consultas** (KQL para\nDiscover sobre `wazuh-alerts-*`).\n\n| Runbook | Casos de uso | Prioridad típica |\n| --- | --- | --- |\n| [Ataques de credenciales](credenciales.md) | M365 fuerza bruta/spray y cadena, BEC, Kerberos, consola AWS, SSH | P1–P2 |\n| [Escalada de privilegios](escalada-de-privilegios.md) | Roles de Entra y tier 0, IAM/Identity Center, grupos de AD, sudo/grupos y persistencia Linux | P1–P2 |\n| [Malware y EDR](malware-edr.md) | Bitdefender (malware, cuarentena, protección deshabilitada), Sophos, Outlook → proceso | P1–P2 |\n| [Vulnerabilidad expuesta](vulnerabilidad-expuesta.md) | Snyk crítica/alta con exploit maduro y expuesta, Wazuh VD | P1–P3 |\n| [Oleada en el WAF](oleada-waf.md) | Cloudflare 101513 y 101740, cambios de control | P2 |\n| [CloudTrail y auditoría](cloudtrail-y-auditoria.md) | CloudTrail/GuardDuty/Config apagados, auditoría de M365 desactivada | P1 |\n| [Exfiltración desde SharePoint](exfiltracion-sharepoint.md) | SharePoint/OneDrive: descarga masiva, borrado, uso compartido externo, política, etiquetas, postura | P1–P3 |\n\nReglas comunes a todos:\n\n- **Evidencia primero:** antes de contener, exportar la alerta B89 (id, prioridad, razones) y los documentos\n  Wazuh (`_id`, índice). La auditoría B89 con cadena hash registra cada transición.\n- **Sin datos personales en canales abiertos:** en Teams/correo solo referencias; el detalle vive en B89 (N2).\n- **Nada se suprime sin registro:** un falso positivo se documenta en el incidente y se convierte en afinamiento\n  (lista CDB, ventana de mantenimiento en B89 o PR de la regla).\n- **Cierre:** clasificación VP/FP/benigno, causa raíz, acciones y lección para el backlog de detección.",
+ "runbookIndex": "# Runbooks de triage e investigación B89\n\nParte de [17 · Ingeniería de detección](../../17-ingenieria-de-deteccion.md). Cada runbook sigue el mismo\nesquema: **alcance** (reglas), **triage en 10 minutos**, **investigación**, **contención** (siempre por B89\nRespond con aprobación del Líder SOC), **recuperación**, **cierre y evidencia** y **consultas** (KQL para\nDiscover sobre `wazuh-alerts-*`).\n\n| Runbook | Casos de uso | Prioridad típica |\n| --- | --- | --- |\n| [Ataques de credenciales](credenciales.md) | M365 fuerza bruta/spray y cadena, BEC, Kerberos, consola AWS, SSH | P1–P2 |\n| [Escalada de privilegios](escalada-de-privilegios.md) | Roles de Entra y tier 0, IAM/Identity Center, grupos de AD, sudo/grupos y persistencia Linux | P1–P2 |\n| [Malware y EDR](malware-edr.md) | Bitdefender (malware, cuarentena, protección deshabilitada), Sophos, Outlook → proceso | P1–P2 |\n| [Vulnerabilidad expuesta](vulnerabilidad-expuesta.md) | Snyk crítica/alta con exploit maduro y expuesta, Wazuh VD | P1–P3 |\n| [Oleada en el WAF](oleada-waf.md) | Cloudflare 101513 y 101740, cambios de control | P2 |\n| [CloudTrail y auditoría](cloudtrail-y-auditoria.md) | CloudTrail/GuardDuty/Config apagados, auditoría de M365 desactivada | P1 |\n| [Exfiltración desde SharePoint](exfiltracion-sharepoint.md) | SharePoint/OneDrive: descarga masiva, borrado, uso compartido externo, política, etiquetas, postura | P1–P3 |\n| [Reglas estándar de Wazuh](reglas-estandar-wazuh.md) | Office 365 (MailItemsAccessed, envíos, descargas, admin), FIM, rootcheck, paquetes, SSH, SCA | P3–P4 |\n\nReglas comunes a todos:\n\n- **Evidencia primero:** antes de contener, exportar la alerta B89 (id, prioridad, razones) y los documentos\n  Wazuh (`_id`, índice). La auditoría B89 con cadena hash registra cada transición.\n- **Sin datos personales en canales abiertos:** en Teams/correo solo referencias; el detalle vive en B89 (N2).\n- **Nada se suprime sin registro:** un falso positivo se documenta en el incidente y se convierte en afinamiento\n  (lista CDB, ventana de mantenimiento en B89 o PR de la regla).\n- **Cierre:** clasificación VP/FP/benigno, causa raíz, acciones y lección para el backlog de detección.",
  "playbooks": "# 04 · Playbooks de B89 Respond\n\nParte de [17 · Ingeniería de detección](../17-ingenieria-de-deteccion.md). Archivos:\n[`b89-respond/playbooks/`](../../b89-respond/playbooks/) (exportables de Shuffle 2.3.0, el motor heredado que\ncorre hoy en AWS con la marca B89 Respond). Contrato verificado por `node --test b89-respond/playbooks/playbooks.test.mjs`.\n\n> **Requieren aprobación de B89.** Ninguno está importado en la instancia. Los de contención llevan la compuerta\n> `b89_contencion_habilitada = false`: encenderla es una decisión que se registra en\n> [10](../10-decisiones.md) (A13, N5) junto con los permisos de proveedor que exige. El destino de diseño sigue\n> siendo Step Functions ([13](../13-b89-respond.md)); estos flujos documentan la lógica para portarla.\n\n| Archivo | Catálogo | Riesgo | Aprobación | Efectos |\n| --- | --- | --- | --- | --- |\n| `b89-triage-enriquecimiento.json` | `b89.triage-enrichment` | Bajo | No (solo lectura) | Nota en el incidente B89 y aviso por correo |\n| `b89-contencion-identidad-aprobada.json` | `b89.identity-containment` | Alto | Líder SOC + step-up, SoD | Revocar sesiones y deshabilitar la cuenta de Entra |\n| `b89-contencion-endpoint-aprobada.json` | `b89.endpoint-containment` | Medio | Líder SOC, SoD | `firewall-drop` 600 s en el agente (Wazuh Active Response) |\n\n## Triage y enriquecimiento\n\nDisparo: webhook del adaptador `infra/wazuh/shuffle` (alertas nivel ≥ 12, payload v1 **sin** usuario, IP ni\n`full_log`). Pasos: `validar_y_deduplicar` (contrato v1, `executionKey = alert.id`, clasifica la fuente y elige\nel runbook) → `buscar_alerta_b89` (prioridad P1–P4 y razones, API B89 de solo lectura) y\n`contexto_agente_wazuh` (estado, SO y grupo) → `resumen_triage` (texto en español) → `nota_en_incidente_b89`\n(solo si la alerta ya está en un incidente) y `aviso_correo_b89`.\n\n**Correo:** usa el mismo contrato que el servicio de correo B89 (`wazuh/alert-mail`): Graph `sendMail` desde el\nbuzón del SOC, asunto `B89 SOC · <SEVERIDAD> · <título>`, contenido mínimo y enlace a la consola. Hoy la app no\ntiene `Mail.Send`; hasta concederlo (acotado al buzón con Application Access Policy), el paso falla cerrado y la\nnota en B89 se conserva. Que B89 Respond tenga esa credencial es una excepción a «Respond no guarda credenciales\nde proveedor» y debe aprobarse; la alternativa es encolar la intención de aviso en el outbox de B89 (contrato\npendiente en [14](../14-b89-respond-conexion-b89.md)).\n\n## Contención con aprobación\n\nDisparo: solicitud de B89 Core (`incidentRef`, `executionKey`, `requestedBy`, `targetRef`, `actionId`; nunca\ncontraseñas ni tokens). Flujo: `validar_solicitud` → `contexto_para_aprobar` → **User Input**\n`aprobacion_lider_soc` → `verificar_compuerta` (aprobador ≠ solicitante **y** `b89_contencion_habilitada = true`)\n→ acción → `resultado_en_incidente_b89` (ejecutada, rechazada o bloqueada; sin reintento ciego, ADR-028).\n\n| Playbook | Prerrequisitos antes de habilitar |\n| --- | --- |\n| Identidad (Entra) | Permisos Graph `User.RevokeSessions.All` y `User.EnableDisableAccount.All` en una app dedicada; step-up para aprobar (docs/07, gate 2); prueba sobre una cuenta sintética |\n| Endpoint (Wazuh AR) | Usuario de la API de Wazuh con solo `active-response:command` (docs/07, gate 3); `firewall-drop` solo existe en agentes Linux; allowlist de IPs administrativas (`B89_AR_WHITELIST`) |\n\nLas autenticaciones se referencian por nombre (`b89-api-lectura`, `b89-graph-contencion`,\n`wazuh-api-active-response`, …) y se crean en el almacén cifrado de B89 Respond; el JSON no contiene secretos\n(lo comprueba el test).",
  "runbooks": [
   {
@@ -277,6 +277,56 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
    "markdown": "# Runbook · Oleada de ataques en el WAF (Cloudflare)\n\nAlcance: `cloudflare/audit-and-waf` (101501–101513) y `cloudflare/waf-attack-surge` (101740).\n\n## Triage en 10 minutos\n\n1. **¿Una IP o muchas?** 101513 = una IP insistente (20 en 5 min); 101740 = oleada distribuida (50 IPs distintas en\n   10 min sobre un host) → P2.\n2. **¿Qué buscan?** Rutas (`data.cloudflare.firewall.path`) y regla del WAF (`rule_description`): SQLi, RCE,\n   `/login` (credenciales), rutas de un CVE reciente.\n3. **¿Pasa algo?** Eventos `log` (101511) con la misma firma = la regla está solo en modo registro: el ataque llega\n   a la aplicación → P1 si coincide con una vulnerabilidad expuesta (caza **H07**).\n4. **¿Alguien tocó los controles?** 101504/101505 (WAF/ruleset deshabilitado) en la misma ventana → P1.\n\n## Contención (cambio aprobado)\n\n- Rate limiting o regla de bloqueo por ASN/país/ruta; Under Attack mode si afecta disponibilidad.\n- Pasar a `block` la regla administrada que está en `log`.\n- Nunca bloquear rangos de proveedores de B89 sin confirmar (pagos, monitoreo).\n\n## Investigación y cierre\n\nTop IPs, ASN y países (H08), user agents, horarios; correlacionar con errores 5xx de la aplicación y con logins\nexitosos en la misma ventana. Cerrar con la medida aplicada y su vencimiento.\n\n## Consultas\n\n```text\nrule.id:(101513 or 101740)\nrule.groups:b89_waf and data.cloudflare.firewall.host:\"<host>\"\nrule.id:101511\n```"
   },
   {
+   "id": "reglas-estandar-wazuh",
+   "title": "Reglas estándar de Wazuh con volumen en B89",
+   "path": "docs/detection-engineering/runbooks/reglas-estandar-wazuh.md",
+   "sections": [
+    "Triage en 10 minutos",
+    "Buzones de Exchange Online",
+    "SharePoint y OneDrive",
+    "Administración de Entra ID, Exchange y cumplimiento",
+    "Integridad de archivos, paquetes y rootcheck",
+    "SSH, SCA y agente",
+    "Cierre y evidencia",
+    "Consultas"
+   ],
+   "ruleIds": [
+    "19003",
+    "19007",
+    "220",
+    "2902",
+    "2904",
+    "510",
+    "521",
+    "550",
+    "553",
+    "554",
+    "5710",
+    "5762",
+    "91533",
+    "91548",
+    "91578",
+    "91702",
+    "91703",
+    "91707",
+    "91708",
+    "91712",
+    "91713"
+   ],
+   "useCases": [
+    "B89-STOCK-M365-001",
+    "B89-STOCK-M365-002",
+    "B89-STOCK-M365-003",
+    "B89-STOCK-HOST-001",
+    "B89-STOCK-HOST-002",
+    "B89-STOCK-HOST-003",
+    "B89-STOCK-HOST-004",
+    "B89-STOCK-HOST-005",
+    "B89-STOCK-WAZUH-001"
+   ],
+   "markdown": "# Runbook · Reglas estándar de Wazuh con volumen en B89\n\nAlcance: reglas estándar de Wazuh 4.14.8 con volumen en B89: Office 365 (91578, 91707, 91708, 91702, 91703, 91712, 91713, 91548, 91533), integridad de archivos (550, 553, 554), rootcheck (510, 521), paquetes (2902, 2904), SSH (5710, 5762), SCA (19003, 19007) y agente (220).\n\nMetadatos y guía por regla: [`detections/wazuh-stock/stock-rules.yaml`](../../../detections/wazuh-stock/stock-rules.yaml).\n\nCasi todo este volumen es **actividad normal registrada**, no ataque. El trabajo es separar lo\nhabitual de lo que no encaja, con la entidad (usuario, IP, host) como eje.\n\n## Triage en 10 minutos\n\n1. **¿Quién y dónde?** Usuario, IP y host de la alerta. ¿Es el dueño del recurso? ¿Es su IP o su país habitual?\n2. **¿Hay contexto que la explique?** Despliegue, actualización de paquetes, alta de personal o ventana de cambios en la misma hora.\n3. **¿Se acompaña de otra señal?** Alertas B89 de la misma entidad (fuerza bruta, regla de bandeja, descarga masiva, cambio de rol) en ±24 h.\n4. **Volumen:** comparar con el historial de 30 días de la misma regla y entidad. Lo habitual y sin otra señal se cierra como benigno con la razón.\n\n## Buzones de Exchange Online\n\nCasos de uso `wazuh-stock/m365-mailbox-access` (91578 MailItemsAccessed, 91707 envío, 91708 envío con otros permisos).\n\n- MailItemsAccessed es auditoría de lectura del buzón: la sincronización de Outlook del propio dueño la genera sin parar. **Benigno** si el actor es el dueño (o un delegado conocido), desde su IP habitual y con un cliente conocido.\n- **Escalar** si accede alguien que no es el dueño ni delegado, una aplicación desconocida, desde IP o país inusual, con lectura masiva (Bind de muchos elementos) o `IsThrottled=true`; o si 91708 aparece sin delegación documentada o tras una regla de bandeja o reenvío (100510).\n- Siguiente paso de investigación: [credenciales](credenciales.md) (cadena M365 y BEC).\n\n## SharePoint y OneDrive\n\nCasos de uso `wazuh-stock/m365-sharepoint-files` (91702 descarga, 91703 nivel de permiso).\n\n- Descargas individuales son trabajo normal; el volumen lo vigilan las reglas B89 de [exfiltración](exfiltracion-sharepoint.md).\n- **Escalar** si descarga un invitado o anónimo, desde IP inusual, o si se añade un nivel de permiso de control total por alguien que no administra el sitio.\n\n## Administración de Entra ID, Exchange y cumplimiento\n\nCasos de uso `wazuh-stock/m365-directory-admin` (91712, 91713, 91548, 91533).\n\n- **Escalar** si el grupo es privilegiado o da acceso a datos sensibles, si el actor no es administrador o actúa fuera de horario, o si el cmdlet cambia protección, retención o auditoría (Set-/Remove-/New-).\n- Ver [escalada de privilegios](escalada-de-privilegios.md).\n\n## Integridad de archivos, paquetes y rootcheck\n\nCasos de uso `wazuh-stock/host-integrity-fim` (550, 553, 554), `wazuh-stock/host-packages` (2902, 2904) y `wazuh-stock/host-rootcheck` (510, 521).\n\n- Un cambio FIM en binarios o en /etc a la misma hora que 2902/2904 es una **actualización**: benigno.\n- 521 sobre /var/lib/docker o /var/lib/containerd es el **falso positivo conocido** de las capas overlay (la política linux-servers lo ignora; si aparece, el agente no tiene la política al día).\n- **Escalar** cambios en SSH, sudoers, cuentas, cron, systemd o authorized_keys sin despliegue; binarios cambiados sin paquete; borrado de logs; herramientas ofensivas instaladas; 521 fuera de Docker o repetido.\n\n## SSH, SCA y agente\n\nCasos de uso `wazuh-stock/host-ssh` (5710, 5762), `wazuh-stock/host-hardening-sca` (19003, 19007) y `wazuh-stock/wazuh-agent-config` (220).\n\n- 5710 desde Internet es ruido de escáneres; **escalar** si después hay un login válido desde esa IP o si apuntan a usuarios reales.\n- SCA es postura, no incidente: P4 al backlog de hardening, salvo regresión súbita de controles críticos.\n- 220: la política de grupo publicada tiene algo que el agente no acepta; revisar `verify-agent-conf` y la visibilidad perdida del host.\n\n## Cierre y evidencia\n\n- Benigno: anotar la razón concreta (dueño del buzón desde IP habitual, actualización de paquetes a la misma hora…).\n- Si una misma causa benigna se repite, proponer afinamiento (lista CDB, exclusión de ruta o ajuste de nivel) en vez de cerrar a mano cada vez.\n- Verdadero positivo: abrir incidente y seguir el runbook específico enlazado arriba.\n\n## Consultas\n\n- MailItemsAccessed de un usuario: `rule.id:91578 and data.office365.UserId:\"usuario@b89.io\"`\n- Accesos a buzón por alguien distinto del dueño: `rule.id:91578 and not data.office365.MailboxOwnerUPN:data.office365.UserId` (revisar en Discover, el campo cambia según la operación)\n- FIM con actualización en la misma hora: `rule.id:(550 or 553 or 554 or 2902 or 2904) and agent.name:\"host\"`"
+  },
+  {
    "id": "vulnerabilidad-expuesta",
    "title": "Vulnerabilidad expuesta",
    "path": "docs/detection-engineering/runbooks/vulnerabilidad-expuesta.md",
@@ -306,6 +356,252 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
   }
  ],
  "useCases": [
+  {
+   "id": "B89-STOCK-M365-001",
+   "title": "Acceso a buzones de Exchange Online (MailItemsAccessed, envíos y envío con otros permisos)",
+   "source": "wazuh-stock",
+   "useCase": "m365-mailbox-access",
+   "status": "stable",
+   "ruleIds": [
+    "91578",
+    "91707",
+    "91708"
+   ],
+   "mitre": [
+    "T1114.002",
+    "T1114.003"
+   ],
+   "priorityHint": "P4",
+   "falsePositives": [
+    "El propio dueño sincronizando su buzón (Outlook escritorio, móvil o web): MailItemsAccessed de tipo Sync o Bind continuo, mismo usuario que el buzón y su IP habitual. Es el 99 % del volumen.",
+    "Buzones compartidos o delegados (asistentes, buzón de soporte): otro usuario con permiso FullAccess leyendo de forma habitual.",
+    "Aplicaciones de respaldo, archivado o eDiscovery con permiso de aplicación: AppId conocido y acceso masivo programado.",
+    "Envíos (91707) en el trabajo normal; envío con otros permisos (91708) de delegados configurados."
+   ],
+   "dataSources": [
+    "Office 365 Management Activity API: Audit.Exchange (MailItemsAccessed, Send, SendAs, SendOnBehalf)"
+   ],
+   "escalateWhen": [
+    "Quien accede NO es el dueño del buzón ni un delegado conocido, o es una aplicación (ClientAppId) desconocida.",
+    "IP o país inusual para el usuario, o la misma IP aparece en alertas de autenticación fallida o de spray.",
+    "Bind sobre muchos elementos en minutos (lectura masiva), o IsThrottled=true (más de 1000 eventos en 24 h: Microsoft deja de registrar el detalle).",
+    "Envío con otros permisos (91708) sin delegación documentada, o justo después de una regla de bandeja o reenvío (100510)."
+   ]
+  },
+  {
+   "id": "B89-STOCK-M365-002",
+   "title": "Archivos y permisos de SharePoint/OneDrive (descarga y nivel de permiso)",
+   "source": "wazuh-stock",
+   "useCase": "m365-sharepoint-files",
+   "status": "stable",
+   "ruleIds": [
+    "91702",
+    "91703"
+   ],
+   "mitre": [
+    "T1530",
+    "T1098"
+   ],
+   "priorityHint": "P4",
+   "falsePositives": [
+    "Descargas del trabajo diario y del cliente de sincronización de OneDrive.",
+    "Niveles de permiso creados por el propietario del sitio o por TI al montar un sitio nuevo."
+   ],
+   "dataSources": [
+    "Office 365 Management Activity API: Audit.SharePoint"
+   ],
+   "escalateWhen": [
+    "Volumen anómalo de descargas de una persona (lo cubren las reglas B89 101902/101913 de exfiltración).",
+    "Descarga por un usuario invitado o anónimo, o desde IP/país inusual.",
+    "Nivel de permiso con control total añadido por alguien que no administra el sitio."
+   ]
+  },
+  {
+   "id": "B89-STOCK-M365-003",
+   "title": "Cambios administrativos en Entra ID, Exchange y el centro de cumplimiento",
+   "source": "wazuh-stock",
+   "useCase": "m365-directory-admin",
+   "status": "stable",
+   "ruleIds": [
+    "91712",
+    "91713",
+    "91548",
+    "91533"
+   ],
+   "mitre": [
+    "T1098",
+    "T1098.007"
+   ],
+   "priorityHint": "P3",
+   "falsePositives": [
+    "Altas de grupos y miembros hechas por TI o por el flujo de alta de personal.",
+    "Cmdlets de lectura (Get-*) del centro de cumplimiento y del registro de administración de Exchange."
+   ],
+   "dataSources": [
+    "Office 365 Management Activity API: Audit.AzureActiveDirectory, Audit.Exchange (admin), SecurityComplianceCenterEOPCmdlet"
+   ],
+   "escalateWhen": [
+    "El grupo es privilegiado (administradores, Accesos_SOC, grupos con roles de Entra asignables) o da acceso a datos sensibles.",
+    "Quien hace el cambio no figura como administrador, o actúa fuera de horario o desde IP inusual.",
+    "Cmdlets que cambian protección o retención (Set-/Remove-/New- de políticas de antispam, antimalware, retención o auditoría)."
+   ]
+  },
+  {
+   "id": "B89-STOCK-HOST-001",
+   "title": "Integridad de archivos en servidores (FIM de Wazuh)",
+   "source": "wazuh-stock",
+   "useCase": "host-integrity-fim",
+   "status": "stable",
+   "ruleIds": [
+    "550",
+    "553",
+    "554"
+   ],
+   "mitre": [
+    "T1565.001",
+    "T1070.004",
+    "T1485"
+   ],
+   "priorityHint": "P4",
+   "falsePositives": [
+    "Actualizaciones de paquetes: cambios en /usr/bin, /usr/sbin, /etc o /boot en la misma ventana que 2902/2904 (dpkg) o unattended-upgrades.",
+    "Despliegues de B89 (releases en /opt/b89) y rotación de configuración por el propio orquestador.",
+    "Archivos temporales o de estado que el ruido conocido aún no ignora."
+   ],
+   "dataSources": [
+    "Wazuh syscheck (FIM programado cada 12 h y en tiempo real en rutas de persistencia)"
+   ],
+   "escalateWhen": [
+    "Cambio en /etc/ssh, sudoers, /etc/passwd|shadow, cron, systemd o authorized_keys sin despliegue ni actualización en la ventana.",
+    "Binario del sistema modificado sin paquete instalado o actualizado a la misma hora.",
+    "Borrado (553) de logs, de reglas de auditoría o de archivos de seguridad."
+   ]
+  },
+  {
+   "id": "B89-STOCK-HOST-002",
+   "title": "Instalación y configuración de paquetes Debian/Ubuntu",
+   "source": "wazuh-stock",
+   "useCase": "host-packages",
+   "status": "stable",
+   "ruleIds": [
+    "2902",
+    "2904"
+   ],
+   "mitre": [],
+   "priorityHint": "P4",
+   "falsePositives": [
+    "unattended-upgrades y parches programados: muchos paquetes juntos, nombres del sistema base.",
+    "«half configured» (2904) transitorio durante una actualización normal."
+   ],
+   "dataSources": [
+    "syslog /var/log/dpkg.log (agente Wazuh)"
+   ],
+   "escalateWhen": [
+    "Paquete de herramientas ofensivas o de red (nmap, netcat, socat, masscan, hydra, proxychains) o de acceso remoto.",
+    "Instalación manual fuera de una ventana de cambios, por una sesión SSH interactiva no esperada.",
+    "2904 repetido para el mismo paquete: actualización rota que deja el host sin parches."
+   ]
+  },
+  {
+   "id": "B89-STOCK-HOST-003",
+   "title": "Rootcheck (anomalías del host y posible rootkit de kernel)",
+   "source": "wazuh-stock",
+   "useCase": "host-rootcheck",
+   "status": "stable",
+   "ruleIds": [
+    "510",
+    "521"
+   ],
+   "mitre": [
+    "T1014"
+   ],
+   "priorityHint": "P3",
+   "falsePositives": [
+    "Capas overlay de Docker/containerd (/var/lib/docker, /var/lib/containerd): cambian mientras check_sys las recorre y disparan 521. La política linux-servers ya las ignora; si aparecen, el agente no tiene la política al día.",
+    "Procesos o puertos efímeros de contenedores que existen en un chequeo y no en el siguiente."
+   ],
+   "dataSources": [
+    "Wazuh rootcheck (cada 12 h)"
+   ],
+   "escalateWhen": [
+    "521 en una ruta fuera de Docker/containerd, o repetido en el mismo archivo en pasadas distintas.",
+    "Proceso oculto o puerto oculto confirmado con ps/ss en el host.",
+    "Coincide con cambios FIM en binarios del sistema o módulos del kernel."
+   ]
+  },
+  {
+   "id": "B89-STOCK-HOST-004",
+   "title": "SSH expuesto (usuarios inexistentes y conexiones reiniciadas)",
+   "source": "wazuh-stock",
+   "useCase": "host-ssh",
+   "status": "stable",
+   "ruleIds": [
+    "5710",
+    "5762"
+   ],
+   "mitre": [
+    "T1110.001",
+    "T1021.004"
+   ],
+   "priorityHint": "P4",
+   "falsePositives": [
+    "Escáneres de Internet contra un SSH expuesto: usuarios genéricos (admin, test, oracle) desde IPs de nube o de listas de reputación.",
+    "Conexiones reiniciadas (5762) por clientes que cortan el handshake o por balanceadores."
+   ],
+   "dataSources": [
+    "journald/sshd (agente Wazuh)"
+   ],
+   "escalateWhen": [
+    "La misma IP o rango consigue un login válido después (reglas B89 de fuerza bruta con éxito).",
+    "Intentos contra usuarios reales del host o desde IPs internas.",
+    "SSH no debería estar expuesto a Internet (allowed_admin_cidrs): revisar el security group."
+   ]
+  },
+  {
+   "id": "B89-STOCK-HOST-005",
+   "title": "Configuración segura (SCA, benchmarks CIS)",
+   "source": "wazuh-stock",
+   "useCase": "host-hardening-sca",
+   "status": "stable",
+   "ruleIds": [
+    "19003",
+    "19007"
+   ],
+   "mitre": [],
+   "priorityHint": "P4",
+   "falsePositives": [
+    "Controles CIS que B89 acepta por diseño (por ejemplo particiones separadas en instancias de nube): no son incidentes."
+   ],
+   "dataSources": [
+    "Wazuh SCA (cada 12 h)"
+   ],
+   "escalateWhen": [
+    "Un control que antes pasaba ahora falla (regresión de hardening) en SSH, auditd, permisos de archivos sensibles o cuentas.",
+    "Puntaje que cae de golpe tras un cambio: posible manipulación o despliegue defectuoso."
+   ]
+  },
+  {
+   "id": "B89-STOCK-WAZUH-001",
+   "title": "Agente Wazuh no aplica la configuración remota",
+   "source": "wazuh-stock",
+   "useCase": "wazuh-agent-config",
+   "status": "stable",
+   "ruleIds": [
+    "220"
+   ],
+   "mitre": [],
+   "priorityHint": "P3",
+   "falsePositives": [
+    "Política de grupo recién publicada con un bloque que el agente no admite (por ejemplo comandos remotos sin logcollector.remote_commands=1): el agente sigue con la configuración anterior."
+   ],
+   "dataSources": [
+    "Wazuh agentd (configuración centralizada agent.conf)"
+   ],
+   "escalateWhen": [
+    "El agente queda sin FIM, rootcheck o logs tras el fallo: se pierde visibilidad del host.",
+    "Nadie publicó un cambio de política: alguien modificó agent.conf en el manager fuera del repositorio."
+   ]
+  },
   {
    "id": "B89-DET-AD-002",
    "title": "Kerberoasting, AS-REP roasting, DCSync y spray Kerberos",
@@ -4528,6 +4824,16 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
     "B89-DET-NET-002"
    ]
   },
+  "101819": {
+   "id": "101819",
+   "level": 8,
+   "description": "B89 Plataforma: recursos del host. $(b89.health.summary)",
+   "mitre": [],
+   "groups": [
+    "b89_host"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
   "101820": {
    "id": "101820",
    "level": 10,
@@ -4559,6 +4865,54 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
    "useCases": [
     "B89-DET-NET-003"
    ]
+  },
+  "101822": {
+   "id": "101822",
+   "level": 10,
+   "description": "B89 Canario: el evento sintético de $(b89.health.source) no completó el recorrido. $(b89.health.summary)",
+   "mitre": [],
+   "groups": [
+    "b89_canary"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "101823": {
+   "id": "101823",
+   "level": 7,
+   "description": "B89 Plataforma: suscripción SNS sin confirmar. $(b89.health.summary)",
+   "mitre": [],
+   "groups": [
+    "b89_aws"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "101824": {
+   "id": "101824",
+   "level": 5,
+   "description": "B89 Plataforma: chequeo del monitor sin ejecutar. $(b89.health.summary)",
+   "mitre": [],
+   "groups": [
+    "b89_monitor"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "101825": {
+   "id": "101825",
+   "level": 10,
+   "description": "B89 Plataforma: el monitor de salud no corre. $(b89.health.summary)",
+   "mitre": [],
+   "groups": [
+    "b89_monitor"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "101829": {
+   "id": "101829",
+   "level": 5,
+   "description": "B89 Plataforma: problema de salud $(b89.health.check). $(b89.health.summary)",
+   "mitre": [],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
   },
   "101830": {
    "id": "101830",
@@ -4864,6 +5218,72 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
    "useCases": [
     "B89-DET-NET-004"
    ]
+  },
+  "101853": {
+   "id": "101853",
+   "level": 13,
+   "description": "B89 Snyk: vulnerabilidad ALTA con exploit maduro priorizada P1 ($(b89.vuln.reason)) $(b89.vuln.cve) en $(snyk.project.name).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
+  },
+  "101854": {
+   "id": "101854",
+   "level": 12,
+   "description": "B89 Snyk: vulnerabilidad media elevada a P1 ($(b89.vuln.reason); KEV=$(b89.vuln.kev), EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
+  },
+  "101855": {
+   "id": "101855",
+   "level": 12,
+   "description": "B89 Snyk: vulnerabilidad baja elevada a P1 ($(b89.vuln.reason); KEV=$(b89.vuln.kev), EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
+  },
+  "101856": {
+   "id": "101856",
+   "level": 11,
+   "description": "B89 Snyk: vulnerabilidad ALTA priorizada P2 ($(b89.vuln.reason); EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).",
+   "mitre": [],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
+  },
+  "101857": {
+   "id": "101857",
+   "level": 10,
+   "description": "B89 Snyk: vulnerabilidad media elevada a P2 ($(b89.vuln.reason); EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).",
+   "mitre": [],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
+  },
+  "101858": {
+   "id": "101858",
+   "level": 6,
+   "description": "B89 Snyk: vulnerabilidad crítica de baja prioridad P4 ($(b89.vuln.reason); EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).",
+   "mitre": [],
+   "groups": [
+    "b89_deprioritized"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
+  },
+  "101859": {
+   "id": "101859",
+   "level": 6,
+   "description": "B89 Snyk: vulnerabilidad alta de baja prioridad P4 ($(b89.vuln.reason); EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).",
+   "mitre": [],
+   "groups": [
+    "b89_deprioritized"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
   },
   "101860": {
    "id": "101860",
@@ -6240,6 +6660,395 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
    "runbooks": [
     "exfiltracion-sharepoint"
    ]
+  },
+  "19003": {
+   "id": "19003",
+   "level": 5,
+   "description": "SCA summary: $(sca.policy): Score less than 80% ($(sca.score))",
+   "mitre": [],
+   "groups": [
+    "sca"
+   ],
+   "file": "wazuh-ruleset/0570-sca_rules.xml (wazuh-4.14.8)",
+   "useCases": [
+    "B89-STOCK-HOST-005"
+   ],
+   "runbooks": [
+    "reglas-estandar-wazuh"
+   ]
+  },
+  "19007": {
+   "id": "19007",
+   "level": 7,
+   "description": "$(sca.policy): $(sca.check.title)",
+   "mitre": [],
+   "groups": [
+    "sca"
+   ],
+   "file": "wazuh-ruleset/0570-sca_rules.xml (wazuh-4.14.8)",
+   "useCases": [
+    "B89-STOCK-HOST-005"
+   ],
+   "runbooks": [
+    "reglas-estandar-wazuh"
+   ]
+  },
+  "220": {
+   "id": "220",
+   "level": 7,
+   "description": "The agent could not restart due to a $(module) failure in the remote configuration",
+   "mitre": [],
+   "groups": [
+    "wazuh",
+    "agent_restarting",
+    "configuration_failure"
+   ],
+   "file": "wazuh-ruleset/0016-wazuh_rules.xml (wazuh-4.14.8)",
+   "useCases": [
+    "B89-STOCK-WAZUH-001"
+   ],
+   "runbooks": [
+    "reglas-estandar-wazuh"
+   ]
+  },
+  "2902": {
+   "id": "2902",
+   "level": 7,
+   "description": "New dpkg (Debian Package) installed.",
+   "mitre": [],
+   "groups": [
+    "syslog",
+    "dpkg",
+    "config_changed"
+   ],
+   "file": "wazuh-ruleset/0020-syslog_rules.xml (wazuh-4.14.8)",
+   "useCases": [
+    "B89-STOCK-HOST-002"
+   ],
+   "runbooks": [
+    "reglas-estandar-wazuh"
+   ]
+  },
+  "2904": {
+   "id": "2904",
+   "level": 7,
+   "description": "Dpkg (Debian Package) half configured.",
+   "mitre": [],
+   "groups": [
+    "syslog",
+    "dpkg",
+    "config_changed"
+   ],
+   "file": "wazuh-ruleset/0020-syslog_rules.xml (wazuh-4.14.8)",
+   "useCases": [
+    "B89-STOCK-HOST-002"
+   ],
+   "runbooks": [
+    "reglas-estandar-wazuh"
+   ]
+  },
+  "510": {
+   "id": "510",
+   "level": 7,
+   "description": "Host-based anomaly detection event (rootcheck).",
+   "mitre": [],
+   "groups": [
+    "ossec",
+    "rootcheck"
+   ],
+   "file": "wazuh-ruleset/0015-ossec_rules.xml (wazuh-4.14.8)",
+   "useCases": [
+    "B89-STOCK-HOST-003"
+   ],
+   "runbooks": [
+    "reglas-estandar-wazuh"
+   ]
+  },
+  "521": {
+   "id": "521",
+   "level": 11,
+   "description": "Possible kernel level rootkit",
+   "mitre": [
+    "T1014"
+   ],
+   "groups": [
+    "ossec",
+    "rootcheck"
+   ],
+   "file": "wazuh-ruleset/0015-ossec_rules.xml (wazuh-4.14.8)",
+   "useCases": [
+    "B89-STOCK-HOST-003"
+   ],
+   "runbooks": [
+    "reglas-estandar-wazuh"
+   ]
+  },
+  "550": {
+   "id": "550",
+   "level": 7,
+   "description": "Integrity checksum changed.",
+   "mitre": [
+    "T1565.001"
+   ],
+   "groups": [
+    "ossec",
+    "syscheck",
+    "syscheck_entry_modified"
+   ],
+   "file": "wazuh-ruleset/0015-ossec_rules.xml (wazuh-4.14.8)",
+   "useCases": [
+    "B89-STOCK-HOST-001"
+   ],
+   "runbooks": [
+    "reglas-estandar-wazuh"
+   ]
+  },
+  "553": {
+   "id": "553",
+   "level": 7,
+   "description": "File deleted.",
+   "mitre": [
+    "T1070.004",
+    "T1485"
+   ],
+   "groups": [
+    "ossec",
+    "syscheck",
+    "syscheck_entry_deleted"
+   ],
+   "file": "wazuh-ruleset/0015-ossec_rules.xml (wazuh-4.14.8)",
+   "useCases": [
+    "B89-STOCK-HOST-001"
+   ],
+   "runbooks": [
+    "reglas-estandar-wazuh"
+   ]
+  },
+  "554": {
+   "id": "554",
+   "level": 5,
+   "description": "File added to the system.",
+   "mitre": [],
+   "groups": [
+    "ossec",
+    "syscheck",
+    "syscheck_entry_added"
+   ],
+   "file": "wazuh-ruleset/0015-ossec_rules.xml (wazuh-4.14.8)",
+   "useCases": [
+    "B89-STOCK-HOST-001"
+   ],
+   "runbooks": [
+    "reglas-estandar-wazuh"
+   ]
+  },
+  "5710": {
+   "id": "5710",
+   "level": 5,
+   "description": "sshd: Attempt to login using a non-existent user",
+   "mitre": [
+    "T1110.001",
+    "T1021.004"
+   ],
+   "groups": [
+    "syslog",
+    "sshd",
+    "authentication_failed",
+    "invalid_login"
+   ],
+   "file": "wazuh-ruleset/0095-sshd_rules.xml (wazuh-4.14.8)",
+   "useCases": [
+    "B89-STOCK-HOST-004"
+   ],
+   "runbooks": [
+    "reglas-estandar-wazuh"
+   ]
+  },
+  "5762": {
+   "id": "5762",
+   "level": 4,
+   "description": "sshd: connection reset",
+   "mitre": [],
+   "groups": [
+    "syslog",
+    "sshd"
+   ],
+   "file": "wazuh-ruleset/0095-sshd_rules.xml (wazuh-4.14.8)",
+   "useCases": [
+    "B89-STOCK-HOST-004"
+   ],
+   "runbooks": [
+    "reglas-estandar-wazuh"
+   ]
+  },
+  "91533": {
+   "id": "91533",
+   "level": 3,
+   "description": "Office 365: Events from the Exchange admin audit log.",
+   "mitre": [],
+   "groups": [
+    "office365",
+    "ExchangeAdmin"
+   ],
+   "file": "wazuh-ruleset/0755-office365_rules.xml (wazuh-4.14.8)",
+   "useCases": [
+    "B89-STOCK-M365-003"
+   ],
+   "runbooks": [
+    "reglas-estandar-wazuh"
+   ]
+  },
+  "91548": {
+   "id": "91548",
+   "level": 5,
+   "description": "Office 365: Admin actions from the Security and Compliance Center.",
+   "mitre": [],
+   "groups": [
+    "office365",
+    "SecurityComplianceCenterEOPCmdlet"
+   ],
+   "file": "wazuh-ruleset/0755-office365_rules.xml (wazuh-4.14.8)",
+   "useCases": [
+    "B89-STOCK-M365-003"
+   ],
+   "runbooks": [
+    "reglas-estandar-wazuh"
+   ]
+  },
+  "91578": {
+   "id": "91578",
+   "level": 5,
+   "description": "Office 365: Events related to the MailItemsAccessed mailbox auditing action.",
+   "mitre": [
+    "T1114.002"
+   ],
+   "groups": [
+    "office365",
+    "ExchangeItemAggregated"
+   ],
+   "file": "wazuh-ruleset/0755-office365_rules.xml (wazuh-4.14.8)",
+   "useCases": [
+    "B89-STOCK-M365-001"
+   ],
+   "runbooks": [
+    "reglas-estandar-wazuh"
+   ]
+  },
+  "91702": {
+   "id": "91702",
+   "level": 4,
+   "description": "Office 365: User downloads a file.",
+   "mitre": [
+    "T1530"
+   ],
+   "groups": [
+    "office365",
+    "OneDrive",
+    "SharePoint"
+   ],
+   "file": "wazuh-ruleset/0755-office365_rules.xml (wazuh-4.14.8)",
+   "useCases": [
+    "B89-STOCK-M365-002"
+   ],
+   "runbooks": [
+    "reglas-estandar-wazuh"
+   ]
+  },
+  "91703": {
+   "id": "91703",
+   "level": 6,
+   "description": "Office 365: A permission level was added to a site collection.",
+   "mitre": [
+    "T1098"
+   ],
+   "groups": [
+    "office365",
+    "OneDrive",
+    "SharePoint"
+   ],
+   "file": "wazuh-ruleset/0755-office365_rules.xml (wazuh-4.14.8)",
+   "useCases": [
+    "B89-STOCK-M365-002"
+   ],
+   "runbooks": [
+    "reglas-estandar-wazuh"
+   ]
+  },
+  "91707": {
+   "id": "91707",
+   "level": 4,
+   "description": "Office 365: Sent message",
+   "mitre": [
+    "T1114.003"
+   ],
+   "groups": [
+    "office365",
+    "Exchange"
+   ],
+   "file": "wazuh-ruleset/0755-office365_rules.xml (wazuh-4.14.8)",
+   "useCases": [
+    "B89-STOCK-M365-001"
+   ],
+   "runbooks": [
+    "reglas-estandar-wazuh"
+   ]
+  },
+  "91708": {
+   "id": "91708",
+   "level": 6,
+   "description": "Office 365: Sent message using different permissions",
+   "mitre": [
+    "T1114.003"
+   ],
+   "groups": [
+    "office365",
+    "Exchange"
+   ],
+   "file": "wazuh-ruleset/0755-office365_rules.xml (wazuh-4.14.8)",
+   "useCases": [
+    "B89-STOCK-M365-001"
+   ],
+   "runbooks": [
+    "reglas-estandar-wazuh"
+   ]
+  },
+  "91712": {
+   "id": "91712",
+   "level": 6,
+   "description": "Office 365: Added group",
+   "mitre": [
+    "T1098"
+   ],
+   "groups": [
+    "office365",
+    "AzureActiveDirectory"
+   ],
+   "file": "wazuh-ruleset/0755-office365_rules.xml (wazuh-4.14.8)",
+   "useCases": [
+    "B89-STOCK-M365-003"
+   ],
+   "runbooks": [
+    "reglas-estandar-wazuh"
+   ]
+  },
+  "91713": {
+   "id": "91713",
+   "level": 6,
+   "description": "Office 365: Added member to group",
+   "mitre": [
+    "T1098.007"
+   ],
+   "groups": [
+    "office365",
+    "AzureActiveDirectory"
+   ],
+   "file": "wazuh-ruleset/0755-office365_rules.xml (wazuh-4.14.8)",
+   "useCases": [
+    "B89-STOCK-M365-003"
+   ],
+   "runbooks": [
+    "reglas-estandar-wazuh"
+   ]
   }
  },
  "techniques": {
@@ -6249,6 +7058,15 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
     {
      "id": "TA0006",
      "name": "Acceso a credenciales"
+    }
+   ]
+  },
+  "T1014": {
+   "name": "Rootkit",
+   "tactics": [
+    {
+     "id": "TA0005",
+     "name": "Evasión de defensas"
     }
    ]
   },
@@ -6372,6 +7190,15 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
   },
   "T1070.001": {
    "name": "Indicator Removal: Clear Windows Event Logs",
+   "tactics": [
+    {
+     "id": "TA0005",
+     "name": "Evasión de defensas"
+    }
+   ]
+  },
+  "T1070.004": {
+   "name": "Indicator Removal: File Deletion",
    "tactics": [
     {
      "id": "TA0005",
@@ -6589,6 +7416,15 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
   },
   "T1114": {
    "name": "Email Collection",
+   "tactics": [
+    {
+     "id": "TA0009",
+     "name": "Recolección"
+    }
+   ]
+  },
+  "T1114.002": {
+   "name": "Email Collection: Remote Email Collection",
    "tactics": [
     {
      "id": "TA0009",
@@ -6994,6 +7830,15 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
     {
      "id": "TA0005",
      "name": "Evasión de defensas"
+    }
+   ]
+  },
+  "T1565.001": {
+   "name": "Data Manipulation: Stored Data Manipulation",
+   "tactics": [
+    {
+     "id": "TA0040",
+     "name": "Impacto"
     }
    ]
   },

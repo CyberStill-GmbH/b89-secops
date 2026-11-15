@@ -7,6 +7,7 @@ Fuentes (docs/17 · ingeniería de detección):
   - detections/*/*/metadata.yaml                     → casos de uso (MITRE, prioridad, falsos positivos)
   - XML de reglas B89 (rutas de RULE_FILES)          → descripción, nivel y técnicas por regla
   - detections/mitre/attack-b89.json                 → nombres y tácticas de técnicas
+  - detections/wazuh-stock/stock-rules.yaml          → reglas estándar de Wazuh con volumen y su guía
 
 Salida: apps/api/src/assistant/soc-knowledge.generated.ts (versionado; la imagen de la API no
 necesita docs/ ni detections/). Regenerar al cambiar runbooks o reglas:
@@ -30,6 +31,7 @@ OUT = ROOT / "apps/api/src/assistant/soc-knowledge.generated.ts"
 RUNBOOKS = ROOT / "docs/detection-engineering/runbooks"
 PLAYBOOKS = ROOT / "docs/detection-engineering/04-playbooks-b89-respond.md"
 ATTACK = ROOT / "detections/mitre/attack-b89.json"
+STOCK = ROOT / "detections/wazuh-stock/stock-rules.yaml"
 RULE_FILES = sorted(
     {
         *(p.relative_to(ROOT).as_posix() for p in ROOT.glob("detections/*/*/rule.xml")),
@@ -39,6 +41,8 @@ RULE_FILES = sorted(
         "infra/wazuh/launch-detections/rules/b89_provider_service_rules.xml",
         "wazuh/aws-events/rules/b89_aws_rules.xml",
         "wazuh/office365/rules/b89_office365_rules.xml",
+        "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml",
+        "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml",
         "wazuh/provider-ingestion/rules/b89_bitdefender_rules.xml",
         "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml",
         "wazuh/provider-ingestion/rules/b89_snyk_rules.xml",
@@ -101,7 +105,45 @@ def main() -> int:
             for rule in parse_rules(path):
                 rules.setdefault(rule["id"], rule)
 
+    # Reglas estándar de Wazuh: metadatos del ruleset y guía B89 (no se instalan; solo contexto).
+    stock = yaml.safe_load(STOCK.read_text(encoding="utf-8")) if STOCK.exists() else {}
+    stock_ids: list[str] = []
+    for rule in stock.get("rules") or []:
+        rule_id = str(rule["id"])
+        stock_ids.append(rule_id)
+        rules.setdefault(
+            rule_id,
+            {
+                "id": rule_id,
+                "level": int(rule.get("level", 0)),
+                "description": " ".join(str(rule.get("description", "")).split()),
+                "mitre": [str(t) for t in rule.get("mitre") or []],
+                "groups": [str(g) for g in rule.get("groups") or []][:8],
+                "file": f"wazuh-ruleset/{rule.get('file', '')} ({stock.get('ruleset', 'wazuh')})",
+            },
+        )
+
     use_cases = []
+    for item in stock.get("use_cases") or []:
+        ids = [str(i) for i in item.get("rule_ids") or []]
+        use_case = {
+            "id": item["id"],
+            "title": item["title"],
+            "source": "wazuh-stock",
+            "useCase": item["use_case"],
+            "status": "stable",
+            "ruleIds": ids,
+            "mitre": [str(t) for t in item.get("mitre") or []],
+            "priorityHint": item.get("priority_hint"),
+            "falsePositives": [str(fp) for fp in (item.get("false_positives") or [])][:6],
+            "dataSources": [str(ds) for ds in (item.get("data_sources") or [])][:4],
+            "escalateWhen": [str(e) for e in (item.get("escalate_when") or [])][:6],
+        }
+        use_cases.append(use_case)
+        for rule_id in ids:
+            if rule_id in rules:
+                rules[rule_id].setdefault("useCases", []).append(use_case["id"])
+
     for meta_path in sorted(ROOT.glob("detections/*/*/metadata.yaml")):
         meta = yaml.safe_load(meta_path.read_text(encoding="utf-8")) or {}
         ids = [str(i) for i in ((meta.get("rules") or {}).get("ids") or [])]
@@ -130,7 +172,9 @@ def main() -> int:
         markdown = path.read_text(encoding="utf-8").strip()
         title = markdown.splitlines()[0].lstrip("# ").replace("Runbook · ", "").strip()
         scope = next((l for l in markdown.splitlines() if l.startswith("Alcance")), "")
-        ids = set(rule_ids_in(scope) or rule_ids_in(markdown))
+        # El alcance manda; incluye ids de reglas estándar nombradas en él.
+        scoped = set(rule_ids_in(scope)) | {i for i in stock_ids if re.search(rf"(?<!\d){i}(?!\d)", scope)}
+        ids = scoped or set(rule_ids_in(markdown))
         # Los runbooks citan casos de uso como `fuente/caso-de-uso`: sus reglas también aplican.
         linked = [u for u in use_cases if f"{u['source']}/{u['useCase']}" in markdown]
         for use_case in linked:

@@ -337,6 +337,10 @@ export interface EvidenceRule {
   readonly runbooks: readonly string[];
   /** Falsos positivos conocidos documentados para el caso de uso. */
   readonly knownFalsePositives: readonly string[];
+  /** Criterios documentados para escalar (qué separa lo habitual de lo que no encaja). */
+  readonly escalateWhen?: readonly string[];
+  /** Prioridad típica del caso de uso (orientativa; la política B89 manda). */
+  readonly priorityHint?: string | null;
 }
 
 /** Incidente abierto que involucra a la entidad: conteos y título, nunca el texto de las notas. */

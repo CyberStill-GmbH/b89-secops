@@ -14,7 +14,11 @@
 
 import type { AssistantTool, Citation, ToolInput, ToolOutcome } from '@b89/assistant';
 
-import { ruleForTitle, ruleView, type SocKnowledge } from './soc-knowledge.js';
+import { ruleForAlert, ruleView, type SocKnowledge } from './soc-knowledge.js';
+
+/** Id de regla de una alerta del API (`ruleId`), si viene como texto. */
+const ruleIdOf = (alert: Record<string, unknown>): string | null =>
+  typeof alert['ruleId'] === 'string' ? alert['ruleId'] : null;
 import { SOC_KNOWLEDGE } from './soc-knowledge.generated.js';
 import type { InternalGet, InternalResponse } from './soc-tools.js';
 
@@ -138,7 +142,9 @@ export function compactAlert(alert: Row) {
     ? (alert['relatedAlertIds'] as string[])
     : [];
   const rule =
-    typeof alert['title'] === 'string' ? ruleForTitle(SOC_KNOWLEDGE, alert['title']) : undefined;
+    typeof alert['title'] === 'string'
+      ? ruleForAlert(SOC_KNOWLEDGE, { ruleId: ruleIdOf(alert), title: alert['title'] })
+      : undefined;
   return {
     id: alert['id'],
     title: alert['title'],
@@ -429,7 +435,9 @@ export function buildInvestigationTools(
         if (response.status !== 200) return failure(response);
         const alert = ((response.body as Row | null)?.['alert'] ?? {}) as Row;
         const rule =
-          typeof alert['title'] === 'string' ? ruleForTitle(knowledge, alert['title']) : undefined;
+          typeof alert['title'] === 'string'
+            ? ruleForAlert(knowledge, { ruleId: ruleIdOf(alert), title: alert['title'] })
+            : undefined;
         let sourceEvent: unknown = null;
         let sourceNote: string | undefined;
         const rawRef =

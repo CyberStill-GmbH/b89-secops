@@ -47,7 +47,7 @@ import type { SecurityEvent } from '@b89/contracts';
 
 import type { EventsReader } from '../runtime/events-reader.js';
 import { providerOf } from './investigation-tools.js';
-import { ruleForTitle, ruleView, type SocKnowledge } from './soc-knowledge.js';
+import { ruleForAlert, ruleView, type SocKnowledge } from './soc-knowledge.js';
 
 /**
  * Alcance de la recolección. Ya no son muestras: cada lectura pagina hasta agotar su alcance
@@ -419,7 +419,7 @@ export class RuntimeEvidenceReader implements EvidenceReader {
     // Regla y conocimiento SOC.
     let rule: EvidenceRule | null = null;
     if (this.sources.knowledge) {
-      const known = ruleForTitle(this.sources.knowledge, primary.title);
+      const known = ruleForAlert(this.sources.knowledge, primary);
       if (known) {
         const view = ruleView(this.sources.knowledge, known);
         rule = {
@@ -435,6 +435,8 @@ export class RuntimeEvidenceReader implements EvidenceReader {
           knownFalsePositives: view.useCases
             .flatMap((useCase) => [...useCase.falsePositives])
             .slice(0, 10),
+          escalateWhen: view.useCases.flatMap((useCase) => [...useCase.escalateWhen]).slice(0, 10),
+          priorityHint: view.useCases.find((useCase) => useCase.priorityHint)?.priorityHint ?? null,
         };
       } else {
         gaps.push('La regla de la alerta no figura en el conocimiento SOC versionado');

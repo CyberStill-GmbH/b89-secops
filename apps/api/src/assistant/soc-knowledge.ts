@@ -29,6 +29,8 @@ export interface KnowledgeUseCase {
   readonly priorityHint?: string | null;
   readonly falsePositives: readonly string[];
   readonly dataSources: readonly string[];
+  /** Criterios de escalado (casos de uso de reglas estándar de Wazuh). */
+  readonly escalateWhen?: readonly string[];
 }
 
 export interface KnowledgeRule {
@@ -93,12 +95,25 @@ export function ruleView(knowledge: SocKnowledge, rule: KnowledgeRule) {
       priorityHint: useCase.priorityHint ?? null,
       falsePositives: useCase.falsePositives,
       dataSources: useCase.dataSources,
+      escalateWhen: useCase.escalateWhen ?? [],
     })),
     runbooks: (rule.runbooks ?? []).map((id) => {
       const runbook = knowledge.runbooks.find((entry) => entry.id === id);
       return { id, title: runbook?.title ?? id, path: runbook?.path ?? null };
     }),
   };
+}
+
+/**
+ * Regla de una alerta: por id cuando la alerta lo trae (exacto, también para descripciones con
+ * variables como las de SCA) y, si no, por título.
+ */
+export function ruleForAlert(
+  knowledge: SocKnowledge,
+  alert: { readonly ruleId?: string | null; readonly title: string },
+): KnowledgeRule | undefined {
+  const id = alert.ruleId?.trim();
+  return (id ? knowledge.rules[id] : undefined) ?? ruleForTitle(knowledge, alert.title);
 }
 
 /**
