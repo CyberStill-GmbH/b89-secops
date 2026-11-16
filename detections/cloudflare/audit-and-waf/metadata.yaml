@@ -5,12 +5,12 @@ title: Auditoría de cuenta y WAF de Cloudflare
 source: cloudflare
 use_case: audit-and-waf
 status: production
-version: 1.0.0
+version: 1.1.0
 owner: provider-ingestion
 reviewers:
 - b89.soc.lead
 created: '2026-11-04'
-updated: '2026-11-04'
+updated: '2026-11-16'
 hypothesis: 'El perímetro público de B89 está en Cloudflare: los cambios de control y los ataques al WAF son la
   primera señal externa.'
 data_sources:
@@ -29,6 +29,7 @@ rules:
   - 101511
   - 101512
   - 101513
+  - 101514
 mitre:
 - technique: T1584.002
   tactic: resource-development
@@ -45,7 +46,7 @@ mitre:
 - technique: T1595
   tactic: reconnaissance
 severity:
-  levels: 2-5 actividad · 8-10 cambios de control/identidad · 10 ataque sostenido · 12 zona borrada
+  levels: 3-5 actividad · 8-10 cambios de control/identidad · 10 ataque sostenido · 12 zona borrada
   priority_hint: P2 controles; P1 zona borrada
   rationale: Perímetro público.
 false_positives:

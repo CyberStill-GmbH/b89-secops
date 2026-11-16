@@ -688,10 +688,14 @@ export class InvestigationRunner {
         (prior.status === 'completed' || prior.status === 'partial');
       await skip(reusable ? 'REUSED_PRIOR_RESULT' : 'PRIOR_INFERENCE_SETTLED');
       if (!reusable || !prior.result) return fallback('PRIOR_INFERENCE_SETTLED');
+      // Sampling the pack for the model is not missing evidence (EVIDENCE_SAMPLED_FOR_MODEL, 2026-11-15).
+      const partial = decision.partial || prior.status === 'partial';
       return this.finish(context, {
-        status: decision.partial ? 'partial' : 'completed',
+        status: partial ? 'partial' : 'completed',
         result: {
           ...prior.result,
+          verdict: partial ? 'inconclusive' : prior.result.verdict,
+          confidence: partial ? 'low' : prior.result.confidence,
           deterministic: { reasons: [...decision.reasons, 'REUSED_PRIOR_RESULT'] },
         },
         inference: 'none',

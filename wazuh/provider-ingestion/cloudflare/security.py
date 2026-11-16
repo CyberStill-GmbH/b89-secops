@@ -8,8 +8,14 @@ audit logs readable; GraphQL ``firewallEventsAdaptive`` readable for every zone.
   cursor = newest ``when``.
 - ``firewall``: GraphQL ``firewallEventsAdaptive`` per zone in windows of at most 1 h, from the
   cursor to now-2 min (Cloudflare indexes with a short delay). Events carry no id, so the dedupe
-  key is a hash of the record; the cursor is the newest ``datetime`` and the next query starts at
-  that instant (inclusive) to avoid gaps.
+  key is a hash of the record. Saturated windows are subdivided before advancing; saturation
+  at one second fails visibly. The cursor advances only to the end of an unsaturated window.
+  This adaptive API is not an exhaustive archive of all datasets. Normalized fields are bounded
+  for detection; ``cloudflare.raw_json`` keeps the provider record as one bounded JSON string
+  (never as nested fields: audit ``newValueJson``/``metadata`` vary per resource type and, as
+  dynamic Indexer fields, would cause mapping conflicts that reject the whole alert, or keyword
+  terms over 32 KiB). The shared durable writer rejects oversized batches without advancing
+  their checkpoint.
 """
 
 from __future__ import annotations
@@ -49,6 +55,36 @@ WINDOW = timedelta(hours=1)
 INGEST_DELAY = timedelta(minutes=2)
 MAX_WINDOWS_PER_RUN = 24
 MAX_AUDIT_PAGES = 50
+MAX_DISCOVERY_PAGES = 1000
+# Below the Indexer keyword term limit (32766 bytes) and well inside Wazuh's 64 KiB event line.
+RAW_JSON_MAX_CHARS = 8000
+
+
+def raw_evidence(record: dict) -> dict:
+    """Provider record as a bounded, compact JSON string plus an explicit truncation flag."""
+    text = json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    truncated = len(text) > RAW_JSON_MAX_CHARS
+    return {"raw_json": text[:RAW_JSON_MAX_CHARS], "raw_truncated": "true" if truncated else "false"}
+
+
+def discover(client, resource: str) -> list[dict]:
+    """Enumerate every accessible resource; never silently accept a partial inventory."""
+    result, ids = [], set()
+    for page in range(1, MAX_DISCOVERY_PAGES + 1):
+        payload = client.rest(f"/{resource}?per_page=50&page={page}")
+        records = payload.get("result")
+        if not isinstance(records, list):
+            raise ProviderError("Cloudflare resource inventory is invalid")
+        for record in records:
+            if not isinstance(record, dict) or not record.get("id"):
+                raise ProviderError("Cloudflare resource inventory contains invalid records")
+            if record["id"] in ids:
+                raise ProviderError("Cloudflare resource inventory pagination repeated")
+            ids.add(record["id"])
+            result.append(record)
+        if len(records) < 50:
+            return result
+    raise ProviderError("Cloudflare resource inventory exceeded pagination budget")
 
 
 class Cloudflare:
@@ -84,11 +120,13 @@ def audit_event(record: dict, account_id: str, now: str) -> dict:
         "b89": {"vendor": "cloudflare", "source": "audit_logs", "event_type": "audit", "collected_at": now},
         "cloudflare": {
             "account_id": account_id,
+            **raw_evidence(record),
             "audit": {
                 "id": str(record.get("id") or ""),
                 "when": str(record.get("when") or ""),
                 "action": str(action.get("type") or "")[:100],
-                "result": "true" if action.get("result") is True else "false",
+                "result": ("true" if action.get("result") is True else
+                           "false" if action.get("result") is False else "unknown"),
                 "actor_type": str(actor.get("type") or "")[:32],
                 "actor_email": str(actor.get("email") or "")[:200],
                 "actor_ip": str(actor.get("ip") or "")[:64],
@@ -107,6 +145,7 @@ def firewall_event(record: dict, zone: dict, now: str) -> dict:
         "cloudflare": {
             "zone_id": zone["id"],
             "zone_name": zone["name"],
+            **raw_evidence(record),
             "firewall": {
                 "datetime": str(record.get("datetime") or ""),
                 "action": str(record.get("action") or "")[:32],
@@ -135,9 +174,13 @@ def collect_audit(client: Cloudflare, account_id: str, since_text: str, seen: se
     events, keys, newest = [], [], since_text
     for page in range(1, MAX_AUDIT_PAGES + 1):
         query = urllib.parse.urlencode({"since": since_text, "direction": "asc", "per_page": 100, "page": page})
-        records = client.rest(f"/accounts/{account_id}/audit_logs?{query}").get("result") or []
+        records = client.rest(f"/accounts/{account_id}/audit_logs?{query}").get("result")
+        if not isinstance(records, list):
+            raise ProviderError("Cloudflare audit response is invalid")
         for record in records:
-            if not isinstance(record, dict) or not record.get("id") or record["id"] in seen:
+            if not isinstance(record, dict) or not record.get("id") or not record.get("when"):
+                raise ProviderError("Cloudflare audit record is invalid")
+            if record["id"] in seen:
                 continue
             keys.append(record["id"])
             events.append(audit_event(record, account_id, now))
@@ -147,39 +190,48 @@ def collect_audit(client: Cloudflare, account_id: str, since_text: str, seen: se
                     if parse_iso(when) > parse_iso(newest):
                         newest = iso(parse_iso(when))
                 except ValueError:
-                    pass
+                    raise ProviderError("Cloudflare audit timestamp is invalid")
         if len(records) < 100:
             break
+    else:
+        raise ProviderError("Cloudflare audit pagination exhausted; checkpoint preserved")
     return events, newest, keys
 
 
 def collect_firewall(client: Cloudflare, zone: dict, since, until, seen: set, now: str) -> tuple[list[dict], object, list[str]]:
     events, keys, cursor = [], [], since
     windows = 0
+    span = WINDOW
     while cursor < until and windows < MAX_WINDOWS_PER_RUN:
         windows += 1
-        window_end = min(cursor + WINDOW, until)
+        window_end = min(cursor + span, until)
         data = client.graphql(FIREWALL_QUERY, {"zone": zone["id"], "since": iso(cursor), "until": iso(window_end), "limit": FIREWALL_LIMIT})
         zones = ((data.get("viewer") or {}).get("zones")) or []
-        records = (zones[0] or {}).get("firewallEventsAdaptive") if zones else []
-        records = [r for r in records or [] if isinstance(r, dict)]
-        newest = cursor
+        if len(zones) != 1 or not isinstance(zones[0], dict):
+            raise ProviderError("Cloudflare zone missing from GraphQL response")
+        records = zones[0].get("firewallEventsAdaptive")
+        if not isinstance(records, list) or any(not isinstance(r, dict) for r in records):
+            raise ProviderError("Cloudflare firewall response is invalid")
+        if len(records) >= FIREWALL_LIMIT:
+            # Never advance past a saturated instant. Retry a smaller half-open window.
+            seconds = int((window_end - cursor).total_seconds())
+            if seconds <= 1:
+                raise ProviderError("Cloudflare firewall second saturated; use unsampled Logpush")
+            span = timedelta(seconds=max(1, seconds // 2))
+            continue
         for record in records:
             key = record_key(record)
             try:
-                newest = max(newest, parse_iso(str(record.get("datetime"))))
+                parse_iso(str(record.get("datetime")))
             except ValueError:
-                pass
+                raise ProviderError("Cloudflare firewall timestamp is invalid")
             if key in seen:
                 continue
             keys.append(key)
             seen.add(key)
             events.append(firewall_event(record, zone, now))
-        if len(records) >= FIREWALL_LIMIT:
-            # Truncated window: resume from the newest instant seen (inclusive, dedupe by key).
-            cursor = newest if newest > cursor else window_end
-        else:
-            cursor = window_end
+        cursor = window_end
+        span = WINDOW
     return events, cursor, keys
 
 
@@ -189,13 +241,12 @@ def collect(config: dict, state: dict, client: Cloudflare | None = None) -> tupl
     now = utc_now()
     now_text = iso(now)
     lookback = timedelta(hours=int(config.get("initial_lookback_hours", 1)))
-    max_lookback = timedelta(hours=int(config.get("max_lookback_hours", 24)))
     events: list[dict] = []
 
     audit_cursors = dict(state.get("audit_cursors") or {})
     audit_seen = list(state.get("audit_seen") or [])
     if config.get("audit", True):
-        accounts = config.get("account_ids") or [str(a.get("id")) for a in client.rest("/accounts?per_page=50").get("result") or []]
+        accounts = config.get("account_ids") or [str(a["id"]) for a in discover(client, "accounts")]
         for account_id in accounts:
             since_text = audit_cursors.get(account_id) or iso(now - lookback)
             batch, newest, keys = collect_audit(client, account_id, since_text, set(audit_seen), now_text)
@@ -208,23 +259,27 @@ def collect(config: dict, state: dict, client: Cloudflare | None = None) -> tupl
     if config.get("firewall", True):
         zones = [
             {"id": str(z.get("id")), "name": str(z.get("name") or "")}
-            for z in client.rest("/zones?per_page=50").get("result") or []
+            for z in discover(client, "zones")
             if isinstance(z, dict) and z.get("id")
         ]
         if config.get("zone_ids"):
             zones = [z for z in zones if z["id"] in set(config["zone_ids"])]
+            if {z["id"] for z in zones} != set(config["zone_ids"]):
+                raise ProviderError("Cloudflare configured zones are missing or inaccessible")
         until = now - INGEST_DELAY
         seen_set = set(fw_seen)
         for zone in zones:
             cursor_text = fw_cursors.get(zone["id"])
             since = parse_iso(cursor_text) if cursor_text else until - lookback
-            since = max(since, until - max_lookback)
+            # Preserve backlog: retention failures must be visible, never silently skip time.
             batch, cursor, keys = collect_firewall(client, zone, since, until, seen_set, now_text)
             events.extend(batch)
             fw_seen.extend(keys)
             fw_cursors[zone["id"]] = iso(cursor)
 
     return events, {
+        "coverage": {"mode": "audit_and_adaptive_firewall", "exhaustive": False,
+                     "reason": "GraphQL adaptive firewall is not an all-dataset log archive"},
         "audit_cursors": audit_cursors,
         "audit_seen": bounded_ids(audit_seen, 20000),
         "firewall_cursors": fw_cursors,

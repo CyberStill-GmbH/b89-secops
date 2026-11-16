@@ -188,6 +188,21 @@ describe('runner · caminos felices', () => {
     expect(done?.result?.summary).toContain('sin análisis de IA');
   });
 
+  it('preserves partial coverage when reusing an earlier inference', async () => {
+    const h = harness();
+    h.evidence.next = () => bundle({ completeness: {
+      complete: false, truncated: true, alertsScanned: 1, eventsScanned: 1, gaps: ['missing page'],
+    } });
+    await h.store.enqueue(draft({ priority: 'P1', idempotencyKey: 'partial-first' }));
+    await h.runner().runOnce();
+    const { job: second } = await h.store.enqueue(draft({ priority: 'P1', idempotencyKey: 'partial-second' }));
+    await h.runner().runOnce();
+    expect(calls(h)).toBe(1);
+    expect(await h.store.byId(TENANT, second.id)).toMatchObject({
+      status: 'partial', result: { verdict: 'inconclusive', confidence: 'low' },
+    });
+  });
+
   it('la misma evidencia no se factura dos veces', async () => {
     const h = harness();
     await h.store.enqueue(draft({ priority: 'P2', idempotencyKey: 'first' }));

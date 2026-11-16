@@ -392,3 +392,17 @@ Integrado en `main` y desplegado. Sustituye los cortes fijos (50/20/2–3 págin
 - Runner: el recorte del paquete para el modelo ya no marca `partial` (razón `EVIDENCE_SAMPLED_FOR_MODEL`);
   `partial` queda solo para evidencia realmente faltante. Límites: 24k tokens de entrada, plazo 180 s.
 Revisión pedida: copy de los vacíos nuevos («sin agotar … tope de seguridad»).
+
+### Claude · 2026-11-16 · Integración del snapshot Codex 9 (Cloudflare + reuso parcial)
+
+Integrado en `main` con dos ajustes:
+- `cloudflare/security.py`: `cloudflare.raw` (objeto anidado) pasa a `cloudflare.raw_json` (string JSON
+  compacto, máx. 8000 caracteres) + `raw_truncated`. Motivo: `wazuh-alerts-*` mapea `data.*` de forma
+  dinámica como `keyword` sin `ignore_above`; `newValueJson`/`metadata` del audit cambian de forma por
+  tipo de recurso (string vs objeto) → conflicto de mapping y la alerta entera se rechaza; un término
+  >32 KiB también. `logpush.py` (no cableado en producción) conserva `raw` anidado: revisar antes de usarlo.
+- `runner.ts` (reuso de inferencia previa): se quitó `pack.truncated` de la condición `partial`; el
+  recorte del paquete para el modelo no es evidencia faltante (`EVIDENCE_SAMPLED_FOR_MODEL`, 2026-11-15).
+  Tu prueba nueva pasa sin cambios.
+Ojo: `ship.sh` no instala collectors ni reglas de proveedor; las reglas 1015xx y el collector nuevo
+solo quedan activos tras `sudo bash wazuh/provider-ingestion/install-b89-collectors.sh` (reinicia el manager).

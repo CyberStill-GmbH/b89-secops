@@ -1,0 +1,2114 @@
+Starting wazuh-logtest v4.14.8
+Type one log per line
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'endpoint_status'
+	b89.source: 'gravityzone'
+	b89.vendor: 'bitdefender'
+	bitdefender.endpoint.antimalware_disabled: 'false'
+	bitdefender.endpoint.atc_disabled: 'false'
+	bitdefender.endpoint.change: 'new'
+	bitdefender.endpoint.detection: 'false'
+	bitdefender.endpoint.fqdn: 'pc01.example.test'
+	bitdefender.endpoint.group: 'Pilot'
+	bitdefender.endpoint.id: 'ep-0001'
+	bitdefender.endpoint.infected: 'false'
+	bitdefender.endpoint.ip: '192.0.2.10'
+	bitdefender.endpoint.isolated: 'false'
+	bitdefender.endpoint.last_seen: '2026-11-03T10:00:00'
+	bitdefender.endpoint.last_update: '2026-11-03T10:00:00'
+	bitdefender.endpoint.modules_disabled: '['firewall']'
+	bitdefender.endpoint.name: 'PC-SINTETICO-01'
+	bitdefender.endpoint.os: 'Windows 11'
+	bitdefender.endpoint.policy_applied: 'true'
+	bitdefender.endpoint.policy_name: 'B89 Default'
+	bitdefender.endpoint.product_outdated: 'false'
+	bitdefender.endpoint.product_version: '7.9'
+	bitdefender.endpoint.signature_outdated: 'false'
+	bitdefender.endpoint.state: '1'
+	bitdefender.event_type: 'endpoint_status'
+
+**Phase 3: Completed filtering (rules).
+	id: '101401'
+	level: '2'
+	description: 'B89 Bitdefender: estado del endpoint PC-SINTETICO-01 sin hallazgos de protección.'
+	groups: '['b89_provider', 'bitdefender', 'b89_endpoint_status']'
+	firedtimes: '1'
+	mail: 'False'
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'endpoint_status'
+	b89.source: 'gravityzone'
+	b89.vendor: 'bitdefender'
+	bitdefender.endpoint.antimalware_disabled: 'false'
+	bitdefender.endpoint.atc_disabled: 'false'
+	bitdefender.endpoint.change: 'new'
+	bitdefender.endpoint.detection: 'true'
+	bitdefender.endpoint.fqdn: 'pc01.example.test'
+	bitdefender.endpoint.group: 'Pilot'
+	bitdefender.endpoint.id: 'ep-0001'
+	bitdefender.endpoint.infected: 'true'
+	bitdefender.endpoint.ip: '192.0.2.10'
+	bitdefender.endpoint.isolated: 'false'
+	bitdefender.endpoint.last_seen: '2026-11-03T10:00:00'
+	bitdefender.endpoint.last_update: '2026-11-03T10:00:00'
+	bitdefender.endpoint.modules_disabled: '['firewall']'
+	bitdefender.endpoint.name: 'PC-SINTETICO-01'
+	bitdefender.endpoint.os: 'Windows 11'
+	bitdefender.endpoint.policy_applied: 'true'
+	bitdefender.endpoint.policy_name: 'B89 Default'
+	bitdefender.endpoint.product_outdated: 'false'
+	bitdefender.endpoint.product_version: '7.9'
+	bitdefender.endpoint.signature_outdated: 'false'
+	bitdefender.endpoint.state: '1'
+	bitdefender.event_type: 'endpoint_status'
+
+**Phase 3: Completed filtering (rules).
+	id: '101402'
+	level: '12'
+	description: 'B89 Bitdefender: endpoint PC-SINTETICO-01 infectado (malware activo sin remediar).'
+	groups: '['b89_provider', 'bitdefender', 'b89_malware']'
+	firedtimes: '1'
+	mail: 'True'
+	mitre.id: '['T1204']'
+	mitre.tactic: '['Execution']'
+	mitre.technique: '['User Execution']'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'endpoint_status'
+	b89.source: 'gravityzone'
+	b89.vendor: 'bitdefender'
+	bitdefender.endpoint.antimalware_disabled: 'false'
+	bitdefender.endpoint.atc_disabled: 'false'
+	bitdefender.endpoint.change: 'new'
+	bitdefender.endpoint.detection: 'true'
+	bitdefender.endpoint.fqdn: 'pc01.example.test'
+	bitdefender.endpoint.group: 'Pilot'
+	bitdefender.endpoint.id: 'ep-0001'
+	bitdefender.endpoint.infected: 'false'
+	bitdefender.endpoint.ip: '192.0.2.10'
+	bitdefender.endpoint.isolated: 'false'
+	bitdefender.endpoint.last_seen: '2026-11-03T10:00:00'
+	bitdefender.endpoint.last_update: '2026-11-03T10:00:00'
+	bitdefender.endpoint.modules_disabled: '['firewall']'
+	bitdefender.endpoint.name: 'PC-SINTETICO-01'
+	bitdefender.endpoint.os: 'Windows 11'
+	bitdefender.endpoint.policy_applied: 'true'
+	bitdefender.endpoint.policy_name: 'B89 Default'
+	bitdefender.endpoint.product_outdated: 'false'
+	bitdefender.endpoint.product_version: '7.9'
+	bitdefender.endpoint.signature_outdated: 'false'
+	bitdefender.endpoint.state: '1'
+	bitdefender.event_type: 'endpoint_status'
+
+**Phase 3: Completed filtering (rules).
+	id: '101403'
+	level: '10'
+	description: 'B89 Bitdefender: detección de malware en PC-SINTETICO-01.'
+	groups: '['b89_provider', 'bitdefender', 'b89_malware']'
+	firedtimes: '1'
+	mail: 'False'
+	mitre.id: '['T1204']'
+	mitre.tactic: '['Execution']'
+	mitre.technique: '['User Execution']'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'endpoint_status'
+	b89.source: 'gravityzone'
+	b89.vendor: 'bitdefender'
+	bitdefender.endpoint.antimalware_disabled: 'false'
+	bitdefender.endpoint.atc_disabled: 'false'
+	bitdefender.endpoint.change: 'new'
+	bitdefender.endpoint.detection: 'false'
+	bitdefender.endpoint.fqdn: 'pc01.example.test'
+	bitdefender.endpoint.group: 'Pilot'
+	bitdefender.endpoint.id: 'ep-0001'
+	bitdefender.endpoint.infected: 'false'
+	bitdefender.endpoint.ip: '192.0.2.10'
+	bitdefender.endpoint.isolated: 'true'
+	bitdefender.endpoint.last_seen: '2026-11-03T10:00:00'
+	bitdefender.endpoint.last_update: '2026-11-03T10:00:00'
+	bitdefender.endpoint.modules_disabled: '['firewall']'
+	bitdefender.endpoint.name: 'PC-SINTETICO-01'
+	bitdefender.endpoint.os: 'Windows 11'
+	bitdefender.endpoint.policy_applied: 'true'
+	bitdefender.endpoint.policy_name: 'B89 Default'
+	bitdefender.endpoint.product_outdated: 'false'
+	bitdefender.endpoint.product_version: '7.9'
+	bitdefender.endpoint.signature_outdated: 'false'
+	bitdefender.endpoint.state: '1'
+	bitdefender.event_type: 'endpoint_status'
+
+**Phase 3: Completed filtering (rules).
+	id: '101404'
+	level: '10'
+	description: 'B89 Bitdefender: endpoint PC-SINTETICO-01 aislado de la red.'
+	groups: '['b89_provider', 'bitdefender', 'b89_containment']'
+	firedtimes: '1'
+	mail: 'False'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'endpoint_status'
+	b89.source: 'gravityzone'
+	b89.vendor: 'bitdefender'
+	bitdefender.endpoint.antimalware_disabled: 'true'
+	bitdefender.endpoint.atc_disabled: 'false'
+	bitdefender.endpoint.change: 'new'
+	bitdefender.endpoint.detection: 'false'
+	bitdefender.endpoint.fqdn: 'pc01.example.test'
+	bitdefender.endpoint.group: 'Pilot'
+	bitdefender.endpoint.id: 'ep-0001'
+	bitdefender.endpoint.infected: 'false'
+	bitdefender.endpoint.ip: '192.0.2.10'
+	bitdefender.endpoint.isolated: 'false'
+	bitdefender.endpoint.last_seen: '2026-11-03T10:00:00'
+	bitdefender.endpoint.last_update: '2026-11-03T10:00:00'
+	bitdefender.endpoint.modules_disabled: '['firewall']'
+	bitdefender.endpoint.name: 'PC-SINTETICO-01'
+	bitdefender.endpoint.os: 'Windows 11'
+	bitdefender.endpoint.policy_applied: 'true'
+	bitdefender.endpoint.policy_name: 'B89 Default'
+	bitdefender.endpoint.product_outdated: 'false'
+	bitdefender.endpoint.product_version: '7.9'
+	bitdefender.endpoint.signature_outdated: 'false'
+	bitdefender.endpoint.state: '1'
+	bitdefender.event_type: 'endpoint_status'
+
+**Phase 3: Completed filtering (rules).
+	id: '101721'
+	level: '14'
+	description: 'B89 Bitdefender: protección deshabilitada en PC-SINTETICO-01 después de una detección de malware en 24 h (posible evasión).'
+	groups: '['b89_provider', 'bitdefender', 'b89_correlation', 'b89_defense_evasion', 'b89_attack_chain']'
+	firedtimes: '1'
+	frequency: '2'
+	mail: 'True'
+	mitre.id: '['T1562.001']'
+	mitre.tactic: '['Defense Evasion']'
+	mitre.technique: '['Disable or Modify Tools']'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'endpoint_status'
+	b89.source: 'gravityzone'
+	b89.vendor: 'bitdefender'
+	bitdefender.endpoint.antimalware_disabled: 'false'
+	bitdefender.endpoint.atc_disabled: 'true'
+	bitdefender.endpoint.change: 'new'
+	bitdefender.endpoint.detection: 'false'
+	bitdefender.endpoint.fqdn: 'pc01.example.test'
+	bitdefender.endpoint.group: 'Pilot'
+	bitdefender.endpoint.id: 'ep-0001'
+	bitdefender.endpoint.infected: 'false'
+	bitdefender.endpoint.ip: '192.0.2.10'
+	bitdefender.endpoint.isolated: 'false'
+	bitdefender.endpoint.last_seen: '2026-11-03T10:00:00'
+	bitdefender.endpoint.last_update: '2026-11-03T10:00:00'
+	bitdefender.endpoint.modules_disabled: '['firewall']'
+	bitdefender.endpoint.name: 'PC-SINTETICO-01'
+	bitdefender.endpoint.os: 'Windows 11'
+	bitdefender.endpoint.policy_applied: 'true'
+	bitdefender.endpoint.policy_name: 'B89 Default'
+	bitdefender.endpoint.product_outdated: 'false'
+	bitdefender.endpoint.product_version: '7.9'
+	bitdefender.endpoint.signature_outdated: 'false'
+	bitdefender.endpoint.state: '1'
+	bitdefender.event_type: 'endpoint_status'
+
+**Phase 3: Completed filtering (rules).
+	id: '101721'
+	level: '14'
+	description: 'B89 Bitdefender: protección deshabilitada en PC-SINTETICO-01 después de una detección de malware en 24 h (posible evasión).'
+	groups: '['b89_provider', 'bitdefender', 'b89_correlation', 'b89_defense_evasion', 'b89_attack_chain']'
+	firedtimes: '2'
+	frequency: '2'
+	mail: 'True'
+	mitre.id: '['T1562.001']'
+	mitre.tactic: '['Defense Evasion']'
+
+	mitre.technique: '['Disable or Modify Tools']'
+**Alert to be generated.
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'endpoint_status'
+	b89.source: 'gravityzone'
+	b89.vendor: 'bitdefender'
+	bitdefender.endpoint.antimalware_disabled: 'false'
+	bitdefender.endpoint.atc_disabled: 'false'
+	bitdefender.endpoint.change: 'new'
+	bitdefender.endpoint.detection: 'false'
+	bitdefender.endpoint.fqdn: 'pc01.example.test'
+
+	bitdefender.endpoint.group: 'Pilot'
+	bitdefender.endpoint.id: 'ep-0001'
+	bitdefender.endpoint.infected: 'false'
+	bitdefender.endpoint.ip: '192.0.2.10'
+	bitdefender.endpoint.isolated: 'false'
+	bitdefender.endpoint.last_seen: '2026-11-03T10:00:00'
+	bitdefender.endpoint.last_update: '2026-11-03T10:00:00'
+	bitdefender.endpoint.modules_disabled: '['firewall']'
+	bitdefender.endpoint.name: 'PC-SINTETICO-01'
+	bitdefender.endpoint.os: 'Windows 11'
+	bitdefender.endpoint.policy_applied: 'true'
+	bitdefender.endpoint.policy_name: 'B89 Default'
+	bitdefender.endpoint.product_outdated: 'false'
+	bitdefender.endpoint.product_version: '7.9'
+	bitdefender.endpoint.signature_outdated: 'true'
+	bitdefender.endpoint.state: '1'
+	bitdefender.event_type: 'endpoint_status'
+
+**Phase 3: Completed filtering (rules).
+	id: '101407'
+	level: '5'
+	description: 'B89 Bitdefender: firmas desactualizadas en PC-SINTETICO-01.'
+	groups: '['b89_provider', 'bitdefender', 'b89_hygiene']'
+	firedtimes: '1'
+	mail: 'False'
+**Alert to be generated.
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'endpoint_status'
+	b89.source: 'gravityzone'
+	b89.vendor: 'bitdefender'
+	bitdefender.endpoint.antimalware_disabled: 'false'
+	bitdefender.endpoint.atc_disabled: 'false'
+	bitdefender.endpoint.change: 'new'
+	bitdefender.endpoint.detection: 'false'
+	bitdefender.endpoint.fqdn: 'pc01.example.test'
+	bitdefender.endpoint.group: 'Pilot'
+	bitdefender.endpoint.id: 'ep-0001'
+	bitdefender.endpoint.infected: 'false'
+	bitdefender.endpoint.ip: '192.0.2.10'
+	bitdefender.endpoint.isolated: 'false'
+	bitdefender.endpoint.last_seen: '2026-11-03T10:00:00'
+	bitdefender.endpoint.last_update: '2026-11-03T10:00:00'
+	bitdefender.endpoint.modules_disabled: '['firewall']'
+	bitdefender.endpoint.name: 'PC-SINTETICO-01'
+	bitdefender.endpoint.os: 'Windows 11'
+	bitdefender.endpoint.policy_applied: 'true'
+	bitdefender.endpoint.policy_name: 'B89 Default'
+	bitdefender.endpoint.product_outdated: 'true'
+
+	bitdefender.endpoint.product_version: '7.9'
+	bitdefender.endpoint.signature_outdated: 'false'
+	bitdefender.endpoint.state: '1'
+	bitdefender.event_type: 'endpoint_status'
+
+**Phase 3: Completed filtering (rules).
+	id: '101408'
+	level: '4'
+	description: 'B89 Bitdefender: agente desactualizado en PC-SINTETICO-01.'
+	groups: '['b89_provider', 'bitdefender', 'b89_hygiene']'
+	firedtimes: '1'
+	mail: 'False'
+**Alert to be generated.
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'endpoint_status'
+	b89.source: 'gravityzone'
+	b89.vendor: 'bitdefender'
+	bitdefender.endpoint.antimalware_disabled: 'false'
+	bitdefender.endpoint.atc_disabled: 'false'
+	bitdefender.endpoint.change: 'new'
+	bitdefender.endpoint.detection: 'false'
+	bitdefender.endpoint.fqdn: 'pc01.example.test'
+	bitdefender.endpoint.group: 'Pilot'
+	bitdefender.endpoint.id: 'ep-0001'
+	bitdefender.endpoint.infected: 'false'
+	bitdefender.endpoint.ip: '192.0.2.10'
+	bitdefender.endpoint.isolated: 'false'
+	bitdefender.endpoint.last_seen: '2026-11-03T10:00:00'
+	bitdefender.endpoint.last_update: '2026-11-03T10:00:00'
+	bitdefender.endpoint.modules_disabled: '['firewall']'
+	bitdefender.endpoint.name: 'PC-SINTETICO-01'
+	bitdefender.endpoint.os: 'Windows 11'
+	bitdefender.endpoint.policy_applied: 'false'
+	bitdefender.endpoint.policy_name: 'B89 Default'
+	bitdefender.endpoint.product_outdated: 'false'
+	bitdefender.endpoint.product_version: '7.9'
+	bitdefender.endpoint.signature_outdated: 'false'
+	bitdefender.endpoint.state: '1'
+	bitdefender.event_type: 'endpoint_status'
+
+**Phase 3: Completed filtering (rules).
+	id: '101409'
+	level: '5'
+	description: 'B89 Bitdefender: la política B89 Default no está aplicada en PC-SINTETICO-01.'
+	groups: '['b89_provider', 'bitdefender', 'b89_hygiene']'
+	firedtimes: '1'
+	mail: 'False'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'quarantine_item'
+	b89.source: 'gravityzone'
+	b89.vendor: 'bitdefender'
+	bitdefender.event_type: 'quarantine_item'
+	bitdefender.quarantine.action_status: '1'
+	bitdefender.quarantine.endpoint_id: 'ep-0099'
+	bitdefender.quarantine.endpoint_ip: '192.0.2.99'
+	bitdefender.quarantine.endpoint_name: 'PC-SINTETICO-99'
+	bitdefender.quarantine.file_path: 'C:	emp\eicar.com'
+	bitdefender.quarantine.id: 'q-1'
+	bitdefender.quarantine.quarantined_on: '2026-11-03T09:00:00'
+	bitdefender.quarantine.threat_name: 'EICAR-Test-File'
+
+**Phase 3: Completed filtering (rules).
+	id: '101410'
+	level: '10'
+	description: 'B89 Bitdefender: amenaza EICAR-Test-File puesta en cuarentena en PC-SINTETICO-99.'
+	groups: '['b89_provider', 'bitdefender', 'b89_malware']'
+	firedtimes: '1'
+	mail: 'False'
+	mitre.id: '['T1204']'
+	mitre.tactic: '['Execution']'
+	mitre.technique: '['User Execution']'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'quarantine_item'
+	b89.source: 'gravityzone'
+	b89.vendor: 'bitdefender'
+	bitdefender.event_type: 'quarantine_item'
+	bitdefender.quarantine.action_status: '1'
+	bitdefender.quarantine.endpoint_id: 'ep-0099'
+	bitdefender.quarantine.endpoint_ip: '192.0.2.99'
+	bitdefender.quarantine.endpoint_name: 'PC-SINTETICO-99'
+	bitdefender.quarantine.file_path: 'C:	emp\eicar.com'
+	bitdefender.quarantine.id: 'q-2'
+	bitdefender.quarantine.quarantined_on: '2026-11-03T09:00:00'
+	bitdefender.quarantine.threat_name: 'EICAR-Test-File'
+
+**Phase 3: Completed filtering (rules).
+	id: '101410'
+	level: '10'
+	description: 'B89 Bitdefender: amenaza EICAR-Test-File puesta en cuarentena en PC-SINTETICO-99.'
+	groups: '['b89_provider', 'bitdefender', 'b89_malware']'
+	firedtimes: '2'
+	mail: 'False'
+	mitre.id: '['T1204']'
+	mitre.tactic: '['Execution']'
+	mitre.technique: '['User Execution']'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'quarantine_item'
+	b89.source: 'gravityzone'
+	b89.vendor: 'bitdefender'
+	bitdefender.event_type: 'quarantine_item'
+	bitdefender.quarantine.action_status: '1'
+	bitdefender.quarantine.endpoint_id: 'ep-0099'
+	bitdefender.quarantine.endpoint_ip: '192.0.2.99'
+	bitdefender.quarantine.endpoint_name: 'PC-SINTETICO-99'
+	bitdefender.quarantine.file_path: 'C:	emp\eicar.com'
+	bitdefender.quarantine.id: 'q-3'
+	bitdefender.quarantine.quarantined_on: '2026-11-03T09:00:00'
+	bitdefender.quarantine.threat_name: 'EICAR-Test-File'
+
+**Phase 3: Completed filtering (rules).
+	id: '101411'
+	level: '13'
+	description: 'B89 Bitdefender: 3+ amenazas en cuarentena en PC-SINTETICO-99 en 1 h; posible infección persistente.'
+	groups: '['b89_provider', 'bitdefender', 'b89_malware']'
+	firedtimes: '1'
+	frequency: '3'
+	mail: 'True'
+	mitre.id: '['T1204']'
+	mitre.tactic: '['Execution']'
+	mitre.technique: '['User Execution']'
+
+**Alert to be generated.
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'issue'
+	b89.source: 'issues'
+	b89.vendor: 'snyk'
+	snyk.issue.created_at: '2026-11-01T00:00:00Z'
+	snyk.issue.fixable: 'true'
+	snyk.issue.id: '00000000-0000-4000-8000-000000000001'
+	snyk.issue.ignored: 'false'
+	snyk.issue.key: 'SNYK-JS-SYNTH-1'
+	snyk.issue.package.name: 'synthetic-pkg'
+	snyk.issue.package.version: '1.0.0'
+	snyk.issue.problems: '['SNYK-JS-SYNTH-1']'
+	snyk.issue.risk_score: '500'
+	snyk.issue.severity: 'low'
+	snyk.issue.status: 'open'
+	snyk.issue.title: 'Prototype Pollution (sintético)'
+	snyk.issue.type: 'package_vulnerability'
+	snyk.issue.updated_at: '2026-11-03T09:00:00Z'
+	snyk.org_id: '00000000-0000-4000-8000-0000000000aa'
+	snyk.project.id: '00000000-0000-4000-8000-0000000000bb'
+	snyk.project.name: 'b89/synthetic:package.json'
+
+**Phase 3: Completed filtering (rules).
+	id: '101732'
+	level: '2'
+	description: 'B89 Snyk: vulnerabilidad baja sin exploit maduro Prototype Pollution (sintético) en b89/synthetic:package.json (backlog de AppSec).'
+	groups: '['b89_provider', 'snyk', 'b89_vulnerability', 'b89_tuning']'
+	firedtimes: '1'
+	mail: 'False'
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'issue'
+	b89.source: 'issues'
+	b89.vendor: 'snyk'
+	snyk.issue.created_at: '2026-11-01T00:00:00Z'
+	snyk.issue.fixable: 'true'
+	snyk.issue.id: '00000000-0000-4000-8000-000000000001'
+	snyk.issue.ignored: 'false'
+	snyk.issue.key: 'SNYK-JS-SYNTH-1'
+	snyk.issue.package.name: 'synthetic-pkg'
+	snyk.issue.package.version: '1.0.0'
+	snyk.issue.problems: '['SNYK-JS-SYNTH-1']'
+	snyk.issue.risk_score: '500'
+	snyk.issue.severity: 'medium'
+	snyk.issue.status: 'open'
+	snyk.issue.title: 'Prototype Pollution (sintético)'
+	snyk.issue.type: 'package_vulnerability'
+	snyk.issue.updated_at: '2026-11-03T09:00:00Z'
+	snyk.org_id: '00000000-0000-4000-8000-0000000000aa'
+	snyk.project.id: '00000000-0000-4000-8000-0000000000bb'
+	snyk.project.name: 'b89/synthetic:package.json'
+
+**Phase 3: Completed filtering (rules).
+	id: '101454'
+	level: '5'
+	description: 'B89 Snyk: vulnerabilidad media Prototype Pollution (sintético) en b89/synthetic:package.json.'
+
+	groups: '['b89_provider', 'snyk', 'b89_vulnerability']'
+	firedtimes: '1'
+	mail: 'False'
+**Alert to be generated.
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'issue'
+	b89.source: 'issues'
+	b89.vendor: 'snyk'
+	snyk.issue.created_at: '2026-11-01T00:00:00Z'
+	snyk.issue.fixable: 'true'
+	snyk.issue.id: '00000000-0000-4000-8000-000000000001'
+	snyk.issue.ignored: 'false'
+	snyk.issue.key: 'SNYK-JS-SYNTH-1'
+	snyk.issue.package.name: 'synthetic-pkg'
+	snyk.issue.package.version: '1.0.0'
+	snyk.issue.problems: '['SNYK-JS-SYNTH-1']'
+	snyk.issue.risk_score: '500'
+	snyk.issue.severity: 'high'
+	snyk.issue.status: 'open'
+	snyk.issue.title: 'Prototype Pollution (sintético)'
+	snyk.issue.type: 'package_vulnerability'
+	snyk.issue.updated_at: '2026-11-03T09:00:00Z'
+	snyk.org_id: '00000000-0000-4000-8000-0000000000aa'
+	snyk.project.id: '00000000-0000-4000-8000-0000000000bb'
+	snyk.project.name: 'b89/synthetic:package.json'
+
+**Phase 3: Completed filtering (rules).
+	id: '101733'
+	level: '7'
+	description: 'B89 Snyk: vulnerabilidad ALTA sin exposición ni exploit maduro Prototype Pollution (sintético) en b89/synthetic:package.json.'
+	groups: '['b89_provider', 'snyk', 'b89_vulnerability', 'b89_tuning']'
+	firedtimes: '1'
+	mail: 'False'
+	mitre.id: '['T1190']'
+	mitre.tactic: '['Initial Access']'
+	mitre.technique: '['Exploit Public-Facing Application']'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'issue'
+	b89.source: 'issues'
+	b89.vendor: 'snyk'
+	snyk.issue.created_at: '2026-11-01T00:00:00Z'
+	snyk.issue.fixable: 'true'
+	snyk.issue.id: '00000000-0000-4000-8000-000000000001'
+	snyk.issue.ignored: 'false'
+	snyk.issue.key: 'SNYK-JS-SYNTH-1'
+	snyk.issue.package.name: 'synthetic-pkg'
+	snyk.issue.package.version: '1.0.0'
+	snyk.issue.problems: '['SNYK-JS-SYNTH-1']'
+	snyk.issue.risk_score: '500'
+	snyk.issue.severity: 'critical'
+	snyk.issue.status: 'open'
+	snyk.issue.title: 'Prototype Pollution (sintético)'
+	snyk.issue.type: 'package_vulnerability'
+	snyk.issue.updated_at: '2026-11-03T09:00:00Z'
+	snyk.org_id: '00000000-0000-4000-8000-0000000000aa'
+	snyk.project.id: '00000000-0000-4000-8000-0000000000bb'
+	snyk.project.name: 'b89/synthetic:package.json'
+
+**Phase 3: Completed filtering (rules).
+	id: '101734'
+	level: '10'
+	description: 'B89 Snyk: vulnerabilidad CRÍTICA sin exposición ni exploit maduro Prototype Pollution (sintético) en b89/synthetic:package.json.'
+	groups: '['b89_provider', 'snyk', 'b89_vulnerability', 'b89_tuning']'
+	firedtimes: '1'
+	mail: 'False'
+	mitre.id: '['T1190']'
+	mitre.tactic: '['Initial Access']'
+	mitre.technique: '['Exploit Public-Facing Application']'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'issue'
+	b89.source: 'issues'
+	b89.vendor: 'snyk'
+	snyk.issue.created_at: '2026-11-01T00:00:00Z'
+	snyk.issue.exploit_maturity: 'Mature'
+	snyk.issue.fixable: 'true'
+	snyk.issue.id: '00000000-0000-4000-8000-000000000001'
+	snyk.issue.ignored: 'false'
+	snyk.issue.key: 'SNYK-JS-SYNTH-1'
+	snyk.issue.package.name: 'synthetic-pkg'
+	snyk.issue.package.version: '1.0.0'
+	snyk.issue.problems: '['SNYK-JS-SYNTH-1']'
+	snyk.issue.risk_score: '500'
+	snyk.issue.severity: 'critical'
+	snyk.issue.status: 'open'
+	snyk.issue.title: 'Prototype Pollution (sintético)'
+	snyk.issue.type: 'package_vulnerability'
+	snyk.issue.updated_at: '2026-11-03T09:00:00Z'
+	snyk.org_id: '00000000-0000-4000-8000-0000000000aa'
+	snyk.project.id: '00000000-0000-4000-8000-0000000000bb'
+	snyk.project.name: 'b89/synthetic:package.json'
+
+**Phase 3: Completed filtering (rules).
+	id: '101457'
+	level: '13'
+	description: 'B89 Snyk: vulnerabilidad CRÍTICA con exploit maduro Prototype Pollution (sintético) en b89/synthetic:package.json.'
+	groups: '['b89_provider', 'snyk', 'b89_vulnerability']'
+	firedtimes: '1'
+	mail: 'True'
+	mitre.id: '['T1190']'
+	mitre.tactic: '['Initial Access']'
+	mitre.technique: '['Exploit Public-Facing Application']'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'issue'
+	b89.source: 'issues'
+	b89.vendor: 'snyk'
+	snyk.issue.created_at: '2026-11-01T00:00:00Z'
+	snyk.issue.exploit_maturity: 'Mature'
+	snyk.issue.fixable: 'true'
+	snyk.issue.id: '00000000-0000-4000-8000-000000000001'
+	snyk.issue.ignored: 'false'
+	snyk.issue.key: 'SNYK-JS-SYNTH-1'
+	snyk.issue.package.name: 'synthetic-pkg'
+	snyk.issue.package.version: '1.0.0'
+	snyk.issue.problems: '['SNYK-JS-SYNTH-1']'
+	snyk.issue.risk_score: '500'
+	snyk.issue.severity: 'high'
+	snyk.issue.status: 'open'
+	snyk.issue.title: 'Prototype Pollution (sintético)'
+	snyk.issue.type: 'package_vulnerability'
+	snyk.issue.updated_at: '2026-11-03T09:00:00Z'
+	snyk.org_id: '00000000-0000-4000-8000-0000000000aa'
+	snyk.project.id: '00000000-0000-4000-8000-0000000000bb'
+	snyk.project.name: 'b89/synthetic:package.json'
+
+**Phase 3: Completed filtering (rules).
+	id: '101458'
+	level: '11'
+	description: 'B89 Snyk: vulnerabilidad ALTA con exploit maduro Prototype Pollution (sintético) en b89/synthetic:package.json.'
+	groups: '['b89_provider', 'snyk', 'b89_vulnerability']'
+	firedtimes: '1'
+	mail: 'False'
+	mitre.id: '['T1190']'
+	mitre.tactic: '['Initial Access']'
+	mitre.technique: '['Exploit Public-Facing Application']'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'issue'
+	b89.source: 'issues'
+	b89.vendor: 'snyk'
+	snyk.issue.created_at: '2026-11-01T00:00:00Z'
+	snyk.issue.fixable: 'true'
+	snyk.issue.id: '00000000-0000-4000-8000-000000000001'
+	snyk.issue.ignored: 'false'
+	snyk.issue.key: 'SNYK-JS-SYNTH-1'
+	snyk.issue.package.name: 'synthetic-pkg'
+	snyk.issue.package.version: '1.0.0'
+	snyk.issue.problems: '['SNYK-JS-SYNTH-1']'
+	snyk.issue.risk_score: '500'
+	snyk.issue.severity: 'critical'
+	snyk.issue.status: 'resolved'
+	snyk.issue.title: 'Prototype Pollution (sintético)'
+	snyk.issue.type: 'package_vulnerability'
+	snyk.issue.updated_at: '2026-11-03T09:00:00Z'
+	snyk.org_id: '00000000-0000-4000-8000-0000000000aa'
+	snyk.project.id: '00000000-0000-4000-8000-0000000000bb'
+	snyk.project.name: 'b89/synthetic:package.json'
+
+**Phase 3: Completed filtering (rules).
+	id: '101451'
+	level: '2'
+	description: 'B89 Snyk: issue resuelto Prototype Pollution (sintético) en b89/synthetic:package.json.'
+	groups: '['b89_provider', 'snyk', 'b89_vulnerability']'
+	firedtimes: '1'
+	mail: 'False'
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'issue'
+	b89.source: 'issues'
+	b89.vendor: 'snyk'
+	snyk.issue.created_at: '2026-11-01T00:00:00Z'
+	snyk.issue.fixable: 'true'
+	snyk.issue.id: '00000000-0000-4000-8000-000000000001'
+	snyk.issue.ignored: 'true'
+	snyk.issue.key: 'SNYK-JS-SYNTH-1'
+	snyk.issue.package.name: 'synthetic-pkg'
+	snyk.issue.package.version: '1.0.0'
+	snyk.issue.problems: '['SNYK-JS-SYNTH-1']'
+	snyk.issue.risk_score: '500'
+	snyk.issue.severity: 'critical'
+	snyk.issue.status: 'open'
+	snyk.issue.title: 'Prototype Pollution (sintético)'
+	snyk.issue.type: 'package_vulnerability'
+	snyk.issue.updated_at: '2026-11-03T09:00:00Z'
+	snyk.org_id: '00000000-0000-4000-8000-0000000000aa'
+	snyk.project.id: '00000000-0000-4000-8000-0000000000bb'
+	snyk.project.name: 'b89/synthetic:package.json'
+
+**Phase 3: Completed filtering (rules).
+	id: '101452'
+	level: '2'
+	description: 'B89 Snyk: issue ignorado Prototype Pollution (sintético) en b89/synthetic:package.json.'
+	groups: '['b89_provider', 'snyk', 'b89_vulnerability']'
+	firedtimes: '1'
+	mail: 'False'
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'audit'
+	b89.source: 'audit_logs'
+	b89.vendor: 'cloudflare'
+	cloudflare.account_id: 'acct-synthetic'
+	cloudflare.audit.action: 'update'
+	cloudflare.audit.actor_email: 'admin@example.test'
+	cloudflare.audit.actor_ip: '198.51.100.7'
+	cloudflare.audit.actor_type: 'user'
+	cloudflare.audit.id: 'audit-update-r2.bucket'
+	cloudflare.audit.interface: 'UI'
+	cloudflare.audit.resource_id: 'r1'
+	cloudflare.audit.resource_type: 'r2.bucket'
+	cloudflare.audit.result: 'true'
+	cloudflare.audit.when: '2026-11-03T09:00:00Z'
+	cloudflare.audit.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101501'
+	level: '3'
+	description: 'B89 Cloudflare: update sobre r2.bucket por admin@example.test.'
+	groups: '['b89_provider', 'cloudflare', 'b89_audit']'
+	firedtimes: '1'
+	mail: 'False'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'audit'
+	b89.source: 'audit_logs'
+	b89.vendor: 'cloudflare'
+	cloudflare.account_id: 'acct-synthetic'
+	cloudflare.audit.action: 'update'
+	cloudflare.audit.actor_email: 'admin@example.test'
+	cloudflare.audit.actor_ip: '198.51.100.7'
+	cloudflare.audit.actor_type: 'user'
+	cloudflare.audit.id: 'audit-update-r2.bucket'
+	cloudflare.audit.interface: 'UI'
+	cloudflare.audit.resource_id: 'r1'
+	cloudflare.audit.resource_type: 'r2.bucket'
+	cloudflare.audit.result: 'false'
+	cloudflare.audit.when: '2026-11-03T09:00:00Z'
+	cloudflare.audit.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101502'
+	level: '5'
+	description: 'B89 Cloudflare: acción fallida update sobre r2.bucket por admin@example.test.'
+	groups: '['b89_provider', 'cloudflare', 'b89_audit']'
+	firedtimes: '1'
+	mail: 'False'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'audit'
+	b89.source: 'audit_logs'
+	b89.vendor: 'cloudflare'
+	cloudflare.account_id: 'acct-synthetic'
+	cloudflare.audit.action: 'create'
+	cloudflare.audit.actor_email: 'admin@example.test'
+	cloudflare.audit.actor_ip: '198.51.100.7'
+	cloudflare.audit.actor_type: 'user'
+	cloudflare.audit.id: 'audit-create-dns.record'
+	cloudflare.audit.interface: 'UI'
+	cloudflare.audit.resource_id: 'r1'
+	cloudflare.audit.resource_type: 'dns.record'
+	cloudflare.audit.result: 'true'
+	cloudflare.audit.when: '2026-11-03T09:00:00Z'
+	cloudflare.audit.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101503'
+	level: '5'
+	description: 'B89 Cloudflare: cambio DNS (create) en example.test por admin@example.test.'
+	groups: '['b89_provider', 'cloudflare', 'b89_audit', 'b89_dns_change']'
+	firedtimes: '1'
+	mail: 'False'
+	mitre.id: '['T1584.002']'
+	mitre.tactic: '['Resource Development']'
+	mitre.technique: '['DNS Server']'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'audit'
+	b89.source: 'audit_logs'
+	b89.vendor: 'cloudflare'
+	cloudflare.account_id: 'acct-synthetic'
+	cloudflare.audit.action: 'update'
+	cloudflare.audit.actor_email: 'admin@example.test'
+	cloudflare.audit.actor_ip: '198.51.100.7'
+	cloudflare.audit.actor_type: 'user'
+	cloudflare.audit.id: 'audit-update-firewall.rule'
+	cloudflare.audit.interface: 'UI'
+	cloudflare.audit.resource_id: 'r1'
+	cloudflare.audit.resource_type: 'firewall.rule'
+	cloudflare.audit.result: 'true'
+	cloudflare.audit.when: '2026-11-03T09:00:00Z'
+	cloudflare.audit.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101504'
+	level: '8'
+	description: 'B89 Cloudflare: cambio de control de seguridad (update firewall.rule) por admin@example.test.'
+	groups: '['b89_provider', 'cloudflare', 'b89_audit', 'b89_defense_evasion']'
+	firedtimes: '1'
+	mail: 'False'
+	mitre.id: '['T1562']'
+	mitre.tactic: '['Defense Evasion']'
+	mitre.technique: '['Impair Defenses']'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'audit'
+	b89.source: 'audit_logs'
+	b89.vendor: 'cloudflare'
+	cloudflare.account_id: 'acct-synthetic'
+	cloudflare.audit.action: 'delete'
+	cloudflare.audit.actor_email: 'admin@example.test'
+	cloudflare.audit.actor_ip: '198.51.100.7'
+	cloudflare.audit.actor_type: 'user'
+	cloudflare.audit.id: 'audit-delete-waf.ruleset'
+	cloudflare.audit.interface: 'UI'
+	cloudflare.audit.resource_id: 'r1'
+	cloudflare.audit.resource_type: 'waf.ruleset'
+	cloudflare.audit.result: 'true'
+	cloudflare.audit.when: '2026-11-03T09:00:00Z'
+	cloudflare.audit.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101505'
+	level: '10'
+	description: 'B89 Cloudflare: control de seguridad eliminado/deshabilitado (waf.ruleset) por admin@example.test.'
+	groups: '['b89_provider', 'cloudflare', 'b89_audit', 'b89_defense_evasion']'
+	firedtimes: '1'
+	mail: 'False'
+	mitre.id: '['T1562.007']'
+	mitre.tactic: '['Defense Evasion']'
+	mitre.technique: '['Disable or Modify Cloud Firewall']'
+**Alert to be generated.
+
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'audit'
+	b89.source: 'audit_logs'
+	b89.vendor: 'cloudflare'
+	cloudflare.account_id: 'acct-synthetic'
+	cloudflare.audit.action: 'create'
+	cloudflare.audit.actor_email: 'admin@example.test'
+	cloudflare.audit.actor_ip: '198.51.100.7'
+	cloudflare.audit.actor_type: 'user'
+	cloudflare.audit.id: 'audit-create-api_token'
+	cloudflare.audit.interface: 'UI'
+	cloudflare.audit.resource_id: 'r1'
+	cloudflare.audit.resource_type: 'api_token'
+	cloudflare.audit.result: 'true'
+	cloudflare.audit.when: '2026-11-03T09:00:00Z'
+	cloudflare.audit.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101506'
+	level: '10'
+	description: 'B89 Cloudflare: cambio de identidad/credenciales (create api_token) por admin@example.test.'
+	groups: '['b89_provider', 'cloudflare', 'b89_audit', 'b89_persistence']'
+	firedtimes: '1'
+	mail: 'False'
+	mitre.id: '['T1098']'
+	mitre.tactic: '['Persistence']'
+	mitre.technique: '['Account Manipulation']'
+**Alert to be generated.
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'audit'
+	b89.source: 'audit_logs'
+	b89.vendor: 'cloudflare'
+
+	cloudflare.account_id: 'acct-synthetic'
+	cloudflare.audit.action: 'delete'
+	cloudflare.audit.actor_email: 'admin@example.test'
+	cloudflare.audit.actor_ip: '198.51.100.7'
+	cloudflare.audit.actor_type: 'user'
+	cloudflare.audit.id: 'audit-delete-zone'
+	cloudflare.audit.interface: 'UI'
+	cloudflare.audit.resource_id: 'r1'
+	cloudflare.audit.resource_type: 'zone'
+	cloudflare.audit.result: 'true'
+	cloudflare.audit.when: '2026-11-03T09:00:00Z'
+	cloudflare.audit.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101507'
+	level: '12'
+	description: 'B89 Cloudflare: zona example.test eliminada por admin@example.test.'
+	groups: '['b89_provider', 'cloudflare', 'b89_audit', 'b89_impact']'
+	firedtimes: '1'
+	mail: 'True'
+	mitre.id: '['T1485']'
+	mitre.tactic: '['Impact']'
+	mitre.technique: '['Data Destruction']'
+**Alert to be generated.
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'firewall'
+	b89.source: 'firewall_events'
+	b89.vendor: 'cloudflare'
+	cloudflare.firewall.action: 'log'
+	cloudflare.firewall.asn: '64500'
+	cloudflare.firewall.client_ip: '203.0.113.5'
+	cloudflare.firewall.country: 'XX'
+	cloudflare.firewall.datetime: '2026-11-03T09:00:00Z'
+	cloudflare.firewall.host: 'app.example.test'
+	cloudflare.firewall.method: 'POST'
+	cloudflare.firewall.path: '/login'
+	cloudflare.firewall.ray: 'ray0'
+	cloudflare.firewall.rule_description: 'SQLi'
+	cloudflare.firewall.rule_id: 'rule-1'
+	cloudflare.firewall.source: 'firewallManaged'
+	cloudflare.firewall.status: '403'
+	cloudflare.firewall.user_agent: 'synthetic'
+	cloudflare.zone_id: 'zone-synthetic'
+	cloudflare.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101511'
+	level: '5'
+	description: 'B89 Cloudflare: regla rule-1 coincidió solo en modo log para 203.0.113.5 en app.example.test.'
+	groups: '['b89_provider', 'cloudflare', 'b89_waf']'
+	firedtimes: '1'
+	mail: 'False'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'firewall'
+	b89.source: 'firewall_events'
+	b89.vendor: 'cloudflare'
+	cloudflare.firewall.action: 'skip'
+	cloudflare.firewall.asn: '64500'
+	cloudflare.firewall.client_ip: '203.0.113.5'
+	cloudflare.firewall.country: 'XX'
+	cloudflare.firewall.datetime: '2026-11-03T09:00:00Z'
+	cloudflare.firewall.host: 'app.example.test'
+	cloudflare.firewall.method: 'POST'
+	cloudflare.firewall.path: '/login'
+	cloudflare.firewall.ray: 'ray0'
+	cloudflare.firewall.rule_description: 'SQLi'
+	cloudflare.firewall.rule_id: 'rule-1'
+	cloudflare.firewall.source: 'firewallManaged'
+	cloudflare.firewall.status: '403'
+	cloudflare.firewall.user_agent: 'synthetic'
+	cloudflare.zone_id: 'zone-synthetic'
+	cloudflare.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101512'
+	level: '3'
+	description: 'B89 Cloudflare: evento de seguridad skip en app.example.test.'
+	groups: '['b89_provider', 'cloudflare', 'b89_waf']'
+	firedtimes: '1'
+
+	mail: 'False'
+**Alert to be generated.
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'firewall'
+	b89.source: 'firewall_events'
+	b89.vendor: 'cloudflare'
+	cloudflare.firewall.action: 'block'
+	cloudflare.firewall.asn: '64500'
+	cloudflare.firewall.client_ip: '203.0.113.66'
+	cloudflare.firewall.country: 'XX'
+	cloudflare.firewall.datetime: '2026-11-03T09:00:00Z'
+	cloudflare.firewall.host: 'app.example.test'
+	cloudflare.firewall.method: 'POST'
+	cloudflare.firewall.path: '/login'
+	cloudflare.firewall.ray: 'ray0'
+	cloudflare.firewall.rule_description: 'SQLi'
+	cloudflare.firewall.rule_id: 'rule-1'
+	cloudflare.firewall.source: 'firewallManaged'
+	cloudflare.firewall.status: '403'
+	cloudflare.firewall.user_agent: 'synthetic'
+	cloudflare.zone_id: 'zone-synthetic'
+	cloudflare.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101510'
+	level: '3'
+	description: 'B89 Cloudflare: block de 203.0.113.66 en app.example.test (firewallManaged).'
+	groups: '['b89_provider', 'cloudflare', 'b89_waf']'
+	firedtimes: '1'
+	mail: 'False'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'firewall'
+	b89.source: 'firewall_events'
+	b89.vendor: 'cloudflare'
+	cloudflare.firewall.action: 'block'
+	cloudflare.firewall.asn: '64500'
+	cloudflare.firewall.client_ip: '203.0.113.66'
+	cloudflare.firewall.country: 'XX'
+	cloudflare.firewall.datetime: '2026-11-03T09:00:01Z'
+	cloudflare.firewall.host: 'app.example.test'
+	cloudflare.firewall.method: 'POST'
+	cloudflare.firewall.path: '/login'
+	cloudflare.firewall.ray: 'ray1'
+	cloudflare.firewall.rule_description: 'SQLi'
+	cloudflare.firewall.rule_id: 'rule-1'
+	cloudflare.firewall.source: 'firewallManaged'
+	cloudflare.firewall.status: '403'
+	cloudflare.firewall.user_agent: 'synthetic'
+	cloudflare.zone_id: 'zone-synthetic'
+	cloudflare.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101510'
+	level: '3'
+	description: 'B89 Cloudflare: block de 203.0.113.66 en app.example.test (firewallManaged).'
+	groups: '['b89_provider', 'cloudflare', 'b89_waf']'
+	firedtimes: '2'
+	mail: 'False'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'firewall'
+	b89.source: 'firewall_events'
+	b89.vendor: 'cloudflare'
+	cloudflare.firewall.action: 'block'
+	cloudflare.firewall.asn: '64500'
+	cloudflare.firewall.client_ip: '203.0.113.66'
+	cloudflare.firewall.country: 'XX'
+	cloudflare.firewall.datetime: '2026-11-03T09:00:02Z'
+	cloudflare.firewall.host: 'app.example.test'
+	cloudflare.firewall.method: 'POST'
+	cloudflare.firewall.path: '/login'
+	cloudflare.firewall.ray: 'ray2'
+	cloudflare.firewall.rule_description: 'SQLi'
+	cloudflare.firewall.rule_id: 'rule-1'
+	cloudflare.firewall.source: 'firewallManaged'
+	cloudflare.firewall.status: '403'
+	cloudflare.firewall.user_agent: 'synthetic'
+	cloudflare.zone_id: 'zone-synthetic'
+	cloudflare.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101510'
+	level: '3'
+	description: 'B89 Cloudflare: block de 203.0.113.66 en app.example.test (firewallManaged).'
+	groups: '['b89_provider', 'cloudflare', 'b89_waf']'
+	firedtimes: '3'
+	mail: 'False'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'firewall'
+	b89.source: 'firewall_events'
+	b89.vendor: 'cloudflare'
+	cloudflare.firewall.action: 'block'
+	cloudflare.firewall.asn: '64500'
+	cloudflare.firewall.client_ip: '203.0.113.66'
+	cloudflare.firewall.country: 'XX'
+	cloudflare.firewall.datetime: '2026-11-03T09:00:03Z'
+	cloudflare.firewall.host: 'app.example.test'
+	cloudflare.firewall.method: 'POST'
+	cloudflare.firewall.path: '/login'
+	cloudflare.firewall.ray: 'ray3'
+	cloudflare.firewall.rule_description: 'SQLi'
+	cloudflare.firewall.rule_id: 'rule-1'
+	cloudflare.firewall.source: 'firewallManaged'
+	cloudflare.firewall.status: '403'
+	cloudflare.firewall.user_agent: 'synthetic'
+	cloudflare.zone_id: 'zone-synthetic'
+	cloudflare.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101510'
+	level: '3'
+	description: 'B89 Cloudflare: block de 203.0.113.66 en app.example.test (firewallManaged).'
+	groups: '['b89_provider', 'cloudflare', 'b89_waf']'
+	firedtimes: '4'
+	mail: 'False'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'firewall'
+	b89.source: 'firewall_events'
+	b89.vendor: 'cloudflare'
+	cloudflare.firewall.action: 'block'
+	cloudflare.firewall.asn: '64500'
+	cloudflare.firewall.client_ip: '203.0.113.66'
+	cloudflare.firewall.country: 'XX'
+	cloudflare.firewall.datetime: '2026-11-03T09:00:04Z'
+	cloudflare.firewall.host: 'app.example.test'
+	cloudflare.firewall.method: 'POST'
+	cloudflare.firewall.path: '/login'
+	cloudflare.firewall.ray: 'ray4'
+	cloudflare.firewall.rule_description: 'SQLi'
+	cloudflare.firewall.rule_id: 'rule-1'
+	cloudflare.firewall.source: 'firewallManaged'
+	cloudflare.firewall.status: '403'
+	cloudflare.firewall.user_agent: 'synthetic'
+	cloudflare.zone_id: 'zone-synthetic'
+	cloudflare.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101510'
+	level: '3'
+	description: 'B89 Cloudflare: block de 203.0.113.66 en app.example.test (firewallManaged).'
+
+	groups: '['b89_provider', 'cloudflare', 'b89_waf']'
+	firedtimes: '5'
+	mail: 'False'
+**Alert to be generated.
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'firewall'
+	b89.source: 'firewall_events'
+	b89.vendor: 'cloudflare'
+	cloudflare.firewall.action: 'block'
+	cloudflare.firewall.asn: '64500'
+	cloudflare.firewall.client_ip: '203.0.113.66'
+	cloudflare.firewall.country: 'XX'
+	cloudflare.firewall.datetime: '2026-11-03T09:00:05Z'
+	cloudflare.firewall.host: 'app.example.test'
+	cloudflare.firewall.method: 'POST'
+	cloudflare.firewall.path: '/login'
+	cloudflare.firewall.ray: 'ray5'
+	cloudflare.firewall.rule_description: 'SQLi'
+	cloudflare.firewall.rule_id: 'rule-1'
+	cloudflare.firewall.source: 'firewallManaged'
+	cloudflare.firewall.status: '403'
+	cloudflare.firewall.user_agent: 'synthetic'
+	cloudflare.zone_id: 'zone-synthetic'
+	cloudflare.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101510'
+	level: '3'
+	description: 'B89 Cloudflare: block de 203.0.113.66 en app.example.test (firewallManaged).'
+	groups: '['b89_provider', 'cloudflare', 'b89_waf']'
+	firedtimes: '6'
+
+	mail: 'False'
+**Alert to be generated.
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'firewall'
+	b89.source: 'firewall_events'
+	b89.vendor: 'cloudflare'
+	cloudflare.firewall.action: 'block'
+	cloudflare.firewall.asn: '64500'
+	cloudflare.firewall.client_ip: '203.0.113.66'
+	cloudflare.firewall.country: 'XX'
+	cloudflare.firewall.datetime: '2026-11-03T09:00:06Z'
+	cloudflare.firewall.host: 'app.example.test'
+	cloudflare.firewall.method: 'POST'
+	cloudflare.firewall.path: '/login'
+	cloudflare.firewall.ray: 'ray6'
+	cloudflare.firewall.rule_description: 'SQLi'
+	cloudflare.firewall.rule_id: 'rule-1'
+	cloudflare.firewall.source: 'firewallManaged'
+	cloudflare.firewall.status: '403'
+	cloudflare.firewall.user_agent: 'synthetic'
+	cloudflare.zone_id: 'zone-synthetic'
+	cloudflare.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101510'
+	level: '3'
+	description: 'B89 Cloudflare: block de 203.0.113.66 en app.example.test (firewallManaged).'
+	groups: '['b89_provider', 'cloudflare', 'b89_waf']'
+
+	firedtimes: '7'
+	mail: 'False'
+**Alert to be generated.
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'firewall'
+	b89.source: 'firewall_events'
+	b89.vendor: 'cloudflare'
+	cloudflare.firewall.action: 'block'
+	cloudflare.firewall.asn: '64500'
+	cloudflare.firewall.client_ip: '203.0.113.66'
+	cloudflare.firewall.country: 'XX'
+	cloudflare.firewall.datetime: '2026-11-03T09:00:07Z'
+	cloudflare.firewall.host: 'app.example.test'
+	cloudflare.firewall.method: 'POST'
+	cloudflare.firewall.path: '/login'
+	cloudflare.firewall.ray: 'ray7'
+	cloudflare.firewall.rule_description: 'SQLi'
+	cloudflare.firewall.rule_id: 'rule-1'
+	cloudflare.firewall.source: 'firewallManaged'
+	cloudflare.firewall.status: '403'
+	cloudflare.firewall.user_agent: 'synthetic'
+	cloudflare.zone_id: 'zone-synthetic'
+	cloudflare.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101510'
+	level: '3'
+	description: 'B89 Cloudflare: block de 203.0.113.66 en app.example.test (firewallManaged).'
+	groups: '['b89_provider', 'cloudflare', 'b89_waf']'
+	firedtimes: '8'
+	mail: 'False'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'firewall'
+	b89.source: 'firewall_events'
+	b89.vendor: 'cloudflare'
+	cloudflare.firewall.action: 'block'
+	cloudflare.firewall.asn: '64500'
+	cloudflare.firewall.client_ip: '203.0.113.66'
+	cloudflare.firewall.country: 'XX'
+	cloudflare.firewall.datetime: '2026-11-03T09:00:08Z'
+	cloudflare.firewall.host: 'app.example.test'
+	cloudflare.firewall.method: 'POST'
+	cloudflare.firewall.path: '/login'
+	cloudflare.firewall.ray: 'ray8'
+	cloudflare.firewall.rule_description: 'SQLi'
+	cloudflare.firewall.rule_id: 'rule-1'
+	cloudflare.firewall.source: 'firewallManaged'
+	cloudflare.firewall.status: '403'
+	cloudflare.firewall.user_agent: 'synthetic'
+	cloudflare.zone_id: 'zone-synthetic'
+	cloudflare.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101510'
+	level: '3'
+	description: 'B89 Cloudflare: block de 203.0.113.66 en app.example.test (firewallManaged).'
+	groups: '['b89_provider', 'cloudflare', 'b89_waf']'
+	firedtimes: '9'
+	mail: 'False'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'firewall'
+	b89.source: 'firewall_events'
+	b89.vendor: 'cloudflare'
+	cloudflare.firewall.action: 'block'
+	cloudflare.firewall.asn: '64500'
+	cloudflare.firewall.client_ip: '203.0.113.66'
+	cloudflare.firewall.country: 'XX'
+	cloudflare.firewall.datetime: '2026-11-03T09:00:09Z'
+	cloudflare.firewall.host: 'app.example.test'
+	cloudflare.firewall.method: 'POST'
+	cloudflare.firewall.path: '/login'
+	cloudflare.firewall.ray: 'ray9'
+	cloudflare.firewall.rule_description: 'SQLi'
+	cloudflare.firewall.rule_id: 'rule-1'
+	cloudflare.firewall.source: 'firewallManaged'
+	cloudflare.firewall.status: '403'
+	cloudflare.firewall.user_agent: 'synthetic'
+	cloudflare.zone_id: 'zone-synthetic'
+	cloudflare.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101510'
+	level: '3'
+	description: 'B89 Cloudflare: block de 203.0.113.66 en app.example.test (firewallManaged).'
+	groups: '['b89_provider', 'cloudflare', 'b89_waf']'
+	firedtimes: '10'
+
+	mail: 'False'
+**Alert to be generated.
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'firewall'
+	b89.source: 'firewall_events'
+	b89.vendor: 'cloudflare'
+	cloudflare.firewall.action: 'block'
+	cloudflare.firewall.asn: '64500'
+	cloudflare.firewall.client_ip: '203.0.113.66'
+	cloudflare.firewall.country: 'XX'
+	cloudflare.firewall.datetime: '2026-11-03T09:00:10Z'
+	cloudflare.firewall.host: 'app.example.test'
+	cloudflare.firewall.method: 'POST'
+	cloudflare.firewall.path: '/login'
+	cloudflare.firewall.ray: 'ray10'
+	cloudflare.firewall.rule_description: 'SQLi'
+	cloudflare.firewall.rule_id: 'rule-1'
+	cloudflare.firewall.source: 'firewallManaged'
+	cloudflare.firewall.status: '403'
+	cloudflare.firewall.user_agent: 'synthetic'
+	cloudflare.zone_id: 'zone-synthetic'
+	cloudflare.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101510'
+	level: '3'
+	description: 'B89 Cloudflare: block de 203.0.113.66 en app.example.test (firewallManaged).'
+	groups: '['b89_provider', 'cloudflare', 'b89_waf']'
+	firedtimes: '11'
+	mail: 'False'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'firewall'
+	b89.source: 'firewall_events'
+	b89.vendor: 'cloudflare'
+	cloudflare.firewall.action: 'block'
+	cloudflare.firewall.asn: '64500'
+	cloudflare.firewall.client_ip: '203.0.113.66'
+	cloudflare.firewall.country: 'XX'
+	cloudflare.firewall.datetime: '2026-11-03T09:00:11Z'
+	cloudflare.firewall.host: 'app.example.test'
+	cloudflare.firewall.method: 'POST'
+	cloudflare.firewall.path: '/login'
+	cloudflare.firewall.ray: 'ray11'
+	cloudflare.firewall.rule_description: 'SQLi'
+	cloudflare.firewall.rule_id: 'rule-1'
+	cloudflare.firewall.source: 'firewallManaged'
+	cloudflare.firewall.status: '403'
+	cloudflare.firewall.user_agent: 'synthetic'
+	cloudflare.zone_id: 'zone-synthetic'
+	cloudflare.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101510'
+	level: '3'
+	description: 'B89 Cloudflare: block de 203.0.113.66 en app.example.test (firewallManaged).'
+	groups: '['b89_provider', 'cloudflare', 'b89_waf']'
+	firedtimes: '12'
+	mail: 'False'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'firewall'
+	b89.source: 'firewall_events'
+	b89.vendor: 'cloudflare'
+	cloudflare.firewall.action: 'block'
+	cloudflare.firewall.asn: '64500'
+	cloudflare.firewall.client_ip: '203.0.113.66'
+	cloudflare.firewall.country: 'XX'
+	cloudflare.firewall.datetime: '2026-11-03T09:00:12Z'
+	cloudflare.firewall.host: 'app.example.test'
+	cloudflare.firewall.method: 'POST'
+	cloudflare.firewall.path: '/login'
+	cloudflare.firewall.ray: 'ray12'
+	cloudflare.firewall.rule_description: 'SQLi'
+	cloudflare.firewall.rule_id: 'rule-1'
+	cloudflare.firewall.source: 'firewallManaged'
+	cloudflare.firewall.status: '403'
+	cloudflare.firewall.user_agent: 'synthetic'
+	cloudflare.zone_id: 'zone-synthetic'
+	cloudflare.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101510'
+	level: '3'
+	description: 'B89 Cloudflare: block de 203.0.113.66 en app.example.test (firewallManaged).'
+	groups: '['b89_provider', 'cloudflare', 'b89_waf']'
+	firedtimes: '13'
+	mail: 'False'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'firewall'
+	b89.source: 'firewall_events'
+	b89.vendor: 'cloudflare'
+	cloudflare.firewall.action: 'block'
+	cloudflare.firewall.asn: '64500'
+	cloudflare.firewall.client_ip: '203.0.113.66'
+	cloudflare.firewall.country: 'XX'
+	cloudflare.firewall.datetime: '2026-11-03T09:00:13Z'
+	cloudflare.firewall.host: 'app.example.test'
+	cloudflare.firewall.method: 'POST'
+	cloudflare.firewall.path: '/login'
+	cloudflare.firewall.ray: 'ray13'
+	cloudflare.firewall.rule_description: 'SQLi'
+	cloudflare.firewall.rule_id: 'rule-1'
+	cloudflare.firewall.source: 'firewallManaged'
+	cloudflare.firewall.status: '403'
+	cloudflare.firewall.user_agent: 'synthetic'
+	cloudflare.zone_id: 'zone-synthetic'
+	cloudflare.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101510'
+	level: '3'
+	description: 'B89 Cloudflare: block de 203.0.113.66 en app.example.test (firewallManaged).'
+	groups: '['b89_provider', 'cloudflare', 'b89_waf']'
+	firedtimes: '14'
+	mail: 'False'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'firewall'
+	b89.source: 'firewall_events'
+	b89.vendor: 'cloudflare'
+	cloudflare.firewall.action: 'block'
+	cloudflare.firewall.asn: '64500'
+	cloudflare.firewall.client_ip: '203.0.113.66'
+	cloudflare.firewall.country: 'XX'
+	cloudflare.firewall.datetime: '2026-11-03T09:00:14Z'
+	cloudflare.firewall.host: 'app.example.test'
+	cloudflare.firewall.method: 'POST'
+	cloudflare.firewall.path: '/login'
+	cloudflare.firewall.ray: 'ray14'
+	cloudflare.firewall.rule_description: 'SQLi'
+	cloudflare.firewall.rule_id: 'rule-1'
+	cloudflare.firewall.source: 'firewallManaged'
+	cloudflare.firewall.status: '403'
+	cloudflare.firewall.user_agent: 'synthetic'
+	cloudflare.zone_id: 'zone-synthetic'
+	cloudflare.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101510'
+	level: '3'
+	description: 'B89 Cloudflare: block de 203.0.113.66 en app.example.test (firewallManaged).'
+	groups: '['b89_provider', 'cloudflare', 'b89_waf']'
+	firedtimes: '15'
+	mail: 'False'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'firewall'
+	b89.source: 'firewall_events'
+	b89.vendor: 'cloudflare'
+	cloudflare.firewall.action: 'block'
+	cloudflare.firewall.asn: '64500'
+	cloudflare.firewall.client_ip: '203.0.113.66'
+	cloudflare.firewall.country: 'XX'
+	cloudflare.firewall.datetime: '2026-11-03T09:00:15Z'
+	cloudflare.firewall.host: 'app.example.test'
+	cloudflare.firewall.method: 'POST'
+	cloudflare.firewall.path: '/login'
+	cloudflare.firewall.ray: 'ray15'
+	cloudflare.firewall.rule_description: 'SQLi'
+	cloudflare.firewall.rule_id: 'rule-1'
+	cloudflare.firewall.source: 'firewallManaged'
+	cloudflare.firewall.status: '403'
+	cloudflare.firewall.user_agent: 'synthetic'
+	cloudflare.zone_id: 'zone-synthetic'
+	cloudflare.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101510'
+	level: '3'
+	description: 'B89 Cloudflare: block de 203.0.113.66 en app.example.test (firewallManaged).'
+	groups: '['b89_provider', 'cloudflare', 'b89_waf']'
+	firedtimes: '16'
+	mail: 'False'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'firewall'
+	b89.source: 'firewall_events'
+	b89.vendor: 'cloudflare'
+	cloudflare.firewall.action: 'block'
+	cloudflare.firewall.asn: '64500'
+	cloudflare.firewall.client_ip: '203.0.113.66'
+	cloudflare.firewall.country: 'XX'
+	cloudflare.firewall.datetime: '2026-11-03T09:00:16Z'
+	cloudflare.firewall.host: 'app.example.test'
+	cloudflare.firewall.method: 'POST'
+	cloudflare.firewall.path: '/login'
+	cloudflare.firewall.ray: 'ray16'
+	cloudflare.firewall.rule_description: 'SQLi'
+	cloudflare.firewall.rule_id: 'rule-1'
+	cloudflare.firewall.source: 'firewallManaged'
+	cloudflare.firewall.status: '403'
+	cloudflare.firewall.user_agent: 'synthetic'
+	cloudflare.zone_id: 'zone-synthetic'
+	cloudflare.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101510'
+	level: '3'
+	description: 'B89 Cloudflare: block de 203.0.113.66 en app.example.test (firewallManaged).'
+	groups: '['b89_provider', 'cloudflare', 'b89_waf']'
+	firedtimes: '17'
+	mail: 'False'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'firewall'
+	b89.source: 'firewall_events'
+	b89.vendor: 'cloudflare'
+	cloudflare.firewall.action: 'block'
+	cloudflare.firewall.asn: '64500'
+	cloudflare.firewall.client_ip: '203.0.113.66'
+	cloudflare.firewall.country: 'XX'
+	cloudflare.firewall.datetime: '2026-11-03T09:00:17Z'
+	cloudflare.firewall.host: 'app.example.test'
+	cloudflare.firewall.method: 'POST'
+	cloudflare.firewall.path: '/login'
+	cloudflare.firewall.ray: 'ray17'
+	cloudflare.firewall.rule_description: 'SQLi'
+	cloudflare.firewall.rule_id: 'rule-1'
+	cloudflare.firewall.source: 'firewallManaged'
+	cloudflare.firewall.status: '403'
+	cloudflare.firewall.user_agent: 'synthetic'
+	cloudflare.zone_id: 'zone-synthetic'
+	cloudflare.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101510'
+	level: '3'
+	description: 'B89 Cloudflare: block de 203.0.113.66 en app.example.test (firewallManaged).'
+	groups: '['b89_provider', 'cloudflare', 'b89_waf']'
+	firedtimes: '18'
+	mail: 'False'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'firewall'
+	b89.source: 'firewall_events'
+	b89.vendor: 'cloudflare'
+	cloudflare.firewall.action: 'block'
+	cloudflare.firewall.asn: '64500'
+	cloudflare.firewall.client_ip: '203.0.113.66'
+	cloudflare.firewall.country: 'XX'
+	cloudflare.firewall.datetime: '2026-11-03T09:00:18Z'
+	cloudflare.firewall.host: 'app.example.test'
+	cloudflare.firewall.method: 'POST'
+	cloudflare.firewall.path: '/login'
+	cloudflare.firewall.ray: 'ray18'
+	cloudflare.firewall.rule_description: 'SQLi'
+	cloudflare.firewall.rule_id: 'rule-1'
+	cloudflare.firewall.source: 'firewallManaged'
+	cloudflare.firewall.status: '403'
+	cloudflare.firewall.user_agent: 'synthetic'
+	cloudflare.zone_id: 'zone-synthetic'
+	cloudflare.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101510'
+	level: '3'
+	description: 'B89 Cloudflare: block de 203.0.113.66 en app.example.test (firewallManaged).'
+	groups: '['b89_provider', 'cloudflare', 'b89_waf']'
+	firedtimes: '19'
+	mail: 'False'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'firewall'
+	b89.source: 'firewall_events'
+	b89.vendor: 'cloudflare'
+	cloudflare.firewall.action: 'block'
+	cloudflare.firewall.asn: '64500'
+	cloudflare.firewall.client_ip: '203.0.113.66'
+	cloudflare.firewall.country: 'XX'
+
+	cloudflare.firewall.datetime: '2026-11-03T09:00:19Z'
+	cloudflare.firewall.host: 'app.example.test'
+	cloudflare.firewall.method: 'POST'
+	cloudflare.firewall.path: '/login'
+	cloudflare.firewall.ray: 'ray19'
+	cloudflare.firewall.rule_description: 'SQLi'
+	cloudflare.firewall.rule_id: 'rule-1'
+	cloudflare.firewall.source: 'firewallManaged'
+	cloudflare.firewall.status: '403'
+	cloudflare.firewall.user_agent: 'synthetic'
+	cloudflare.zone_id: 'zone-synthetic'
+	cloudflare.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101742'
+	level: '7'
+	description: 'B89 Cloudflare: 20+ bloqueos de 203.0.113.66 en la zona no crítica example.test; el WAF contuvo el ataque.'
+	groups: '['b89_provider', 'cloudflare', 'b89_tuning', 'b89_waf']'
+	firedtimes: '1'
+	mail: 'False'
+	mitre.id: '['T1595']'
+	mitre.tactic: '['Reconnaissance']'
+	mitre.technique: '['Active Scanning']'
+**Alert to be generated.
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'audit'
+	b89.source: 'audit_logs'
+	b89.vendor: 'cloudflare'
+	cloudflare.account_id: 'acct-synthetic'
+	cloudflare.audit.action: 'create'
+	cloudflare.audit.actor_email: 'admin@example.test'
+	cloudflare.audit.actor_ip: '198.51.100.7'
+	cloudflare.audit.actor_type: 'user'
+	cloudflare.audit.id: 'audit-create-dns.record'
+	cloudflare.audit.interface: 'UI'
+	cloudflare.audit.resource_id: 'r1'
+	cloudflare.audit.resource_type: 'dns.record'
+	cloudflare.audit.result: 'false'
+	cloudflare.audit.when: '2026-11-03T09:00:00Z'
+	cloudflare.audit.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101502'
+	level: '5'
+	description: 'B89 Cloudflare: acción fallida create sobre dns.record por admin@example.test.'
+	groups: '['b89_provider', 'cloudflare', 'b89_audit']'
+	firedtimes: '2'
+	mail: 'False'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'audit'
+	b89.source: 'audit_logs'
+	b89.vendor: 'cloudflare'
+	cloudflare.account_id: 'acct-synthetic'
+	cloudflare.audit.action: 'update'
+	cloudflare.audit.actor_email: 'admin@example.test'
+	cloudflare.audit.actor_ip: '198.51.100.7'
+	cloudflare.audit.actor_type: 'user'
+	cloudflare.audit.id: 'audit-update-firewall.rule'
+	cloudflare.audit.interface: 'UI'
+	cloudflare.audit.resource_id: 'r1'
+	cloudflare.audit.resource_type: 'firewall.rule'
+	cloudflare.audit.result: 'false'
+	cloudflare.audit.when: '2026-11-03T09:00:00Z'
+	cloudflare.audit.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101502'
+	level: '5'
+	description: 'B89 Cloudflare: acción fallida update sobre firewall.rule por admin@example.test.'
+	groups: '['b89_provider', 'cloudflare', 'b89_audit']'
+	firedtimes: '3'
+	mail: 'False'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'audit'
+	b89.source: 'audit_logs'
+	b89.vendor: 'cloudflare'
+	cloudflare.account_id: 'acct-synthetic'
+	cloudflare.audit.action: 'delete'
+	cloudflare.audit.actor_email: 'admin@example.test'
+	cloudflare.audit.actor_ip: '198.51.100.7'
+	cloudflare.audit.actor_type: 'user'
+	cloudflare.audit.id: 'audit-delete-waf.ruleset'
+	cloudflare.audit.interface: 'UI'
+	cloudflare.audit.resource_id: 'r1'
+	cloudflare.audit.resource_type: 'waf.ruleset'
+	cloudflare.audit.result: 'false'
+	cloudflare.audit.when: '2026-11-03T09:00:00Z'
+	cloudflare.audit.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101502'
+	level: '5'
+	description: 'B89 Cloudflare: acción fallida delete sobre waf.ruleset por admin@example.test.'
+	groups: '['b89_provider', 'cloudflare', 'b89_audit']'
+	firedtimes: '4'
+	mail: 'False'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'audit'
+	b89.source: 'audit_logs'
+	b89.vendor: 'cloudflare'
+	cloudflare.account_id: 'acct-synthetic'
+	cloudflare.audit.action: 'create'
+	cloudflare.audit.actor_email: 'admin@example.test'
+	cloudflare.audit.actor_ip: '198.51.100.7'
+	cloudflare.audit.actor_type: 'user'
+	cloudflare.audit.id: 'audit-create-api_token'
+	cloudflare.audit.interface: 'UI'
+	cloudflare.audit.resource_id: 'r1'
+	cloudflare.audit.resource_type: 'api_token'
+	cloudflare.audit.result: 'false'
+	cloudflare.audit.when: '2026-11-03T09:00:00Z'
+	cloudflare.audit.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101502'
+	level: '5'
+	description: 'B89 Cloudflare: acción fallida create sobre api_token por admin@example.test.'
+	groups: '['b89_provider', 'cloudflare', 'b89_audit']'
+	firedtimes: '5'
+	mail: 'False'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'audit'
+	b89.source: 'audit_logs'
+	b89.vendor: 'cloudflare'
+	cloudflare.account_id: 'acct-synthetic'
+	cloudflare.audit.action: 'delete'
+	cloudflare.audit.actor_email: 'admin@example.test'
+	cloudflare.audit.actor_ip: '198.51.100.7'
+	cloudflare.audit.actor_type: 'user'
+	cloudflare.audit.id: 'audit-delete-zone'
+	cloudflare.audit.interface: 'UI'
+	cloudflare.audit.resource_id: 'r1'
+	cloudflare.audit.resource_type: 'zone'
+	cloudflare.audit.result: 'false'
+	cloudflare.audit.when: '2026-11-03T09:00:00Z'
+	cloudflare.audit.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101502'
+	level: '5'
+	description: 'B89 Cloudflare: acción fallida delete sobre zone por admin@example.test.'
+	groups: '['b89_provider', 'cloudflare', 'b89_audit']'
+	firedtimes: '6'
+	mail: 'False'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'audit'
+	b89.source: 'audit_logs'
+	b89.vendor: 'cloudflare'
+	cloudflare.account_id: 'acct-synthetic'
+	cloudflare.audit.action: 'list'
+	cloudflare.audit.actor_email: 'admin@example.test'
+	cloudflare.audit.actor_ip: '198.51.100.7'
+	cloudflare.audit.actor_type: 'user'
+	cloudflare.audit.id: 'audit-create-dns.record'
+	cloudflare.audit.interface: 'UI'
+	cloudflare.audit.resource_id: 'r1'
+	cloudflare.audit.resource_type: 'dns.record'
+	cloudflare.audit.result: 'true'
+	cloudflare.audit.when: '2026-11-03T09:00:00Z'
+	cloudflare.audit.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101501'
+	level: '3'
+	description: 'B89 Cloudflare: list sobre dns.record por admin@example.test.'
+	groups: '['b89_provider', 'cloudflare', 'b89_audit']'
+	firedtimes: '2'
+	mail: 'False'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'audit'
+	b89.source: 'audit_logs'
+	b89.vendor: 'cloudflare'
+	cloudflare.account_id: 'acct-synthetic'
+	cloudflare.audit.action: 'list'
+	cloudflare.audit.actor_email: 'admin@example.test'
+	cloudflare.audit.actor_ip: '198.51.100.7'
+	cloudflare.audit.actor_type: 'user'
+	cloudflare.audit.id: 'audit-update-firewall.rule'
+	cloudflare.audit.interface: 'UI'
+	cloudflare.audit.resource_id: 'r1'
+	cloudflare.audit.resource_type: 'firewall.rule'
+	cloudflare.audit.result: 'true'
+	cloudflare.audit.when: '2026-11-03T09:00:00Z'
+	cloudflare.audit.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101501'
+	level: '3'
+	description: 'B89 Cloudflare: list sobre firewall.rule por admin@example.test.'
+	groups: '['b89_provider', 'cloudflare', 'b89_audit']'
+	firedtimes: '3'
+	mail: 'False'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'audit'
+	b89.source: 'audit_logs'
+	b89.vendor: 'cloudflare'
+	cloudflare.account_id: 'acct-synthetic'
+	cloudflare.audit.action: 'list'
+	cloudflare.audit.actor_email: 'admin@example.test'
+	cloudflare.audit.actor_ip: '198.51.100.7'
+	cloudflare.audit.actor_type: 'user'
+	cloudflare.audit.id: 'audit-create-api_token'
+	cloudflare.audit.interface: 'UI'
+	cloudflare.audit.resource_id: 'r1'
+	cloudflare.audit.resource_type: 'api_token'
+	cloudflare.audit.result: 'true'
+	cloudflare.audit.when: '2026-11-03T09:00:00Z'
+	cloudflare.audit.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101501'
+	level: '3'
+	description: 'B89 Cloudflare: list sobre api_token por admin@example.test.'
+	groups: '['b89_provider', 'cloudflare', 'b89_audit']'
+	firedtimes: '4'
+	mail: 'False'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'audit'
+	b89.source: 'audit_logs'
+	b89.vendor: 'cloudflare'
+	cloudflare.account_id: 'acct-synthetic'
+	cloudflare.audit.action: 'purge'
+	cloudflare.audit.actor_email: 'admin@example.test'
+	cloudflare.audit.actor_ip: '198.51.100.7'
+	cloudflare.audit.actor_type: 'user'
+	cloudflare.audit.id: 'audit-delete-zone'
+	cloudflare.audit.interface: 'UI'
+	cloudflare.audit.resource_id: 'r1'
+	cloudflare.audit.resource_type: 'zone'
+	cloudflare.audit.result: 'true'
+	cloudflare.audit.when: '2026-11-03T09:00:00Z'
+	cloudflare.audit.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101501'
+	level: '3'
+	description: 'B89 Cloudflare: purge sobre zone por admin@example.test.'
+	groups: '['b89_provider', 'cloudflare', 'b89_audit']'
+	firedtimes: '5'
+	mail: 'False'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.collected_at: '2026-11-03T10:00:00Z'
+	b89.event_type: 'audit'
+	b89.source: 'audit_logs'
+	b89.vendor: 'cloudflare'
+	cloudflare.account_id: 'acct-synthetic'
+	cloudflare.audit.action: 'create'
+	cloudflare.audit.actor_email: 'admin@example.test'
+	cloudflare.audit.actor_ip: '198.51.100.7'
+	cloudflare.audit.actor_type: 'user'
+	cloudflare.audit.id: 'audit-create-dns.record'
+	cloudflare.audit.interface: 'UI'
+	cloudflare.audit.resource_id: 'r1'
+	cloudflare.audit.resource_type: 'dnsXrecord'
+	cloudflare.audit.result: 'true'
+	cloudflare.audit.when: '2026-11-03T09:00:00Z'
+	cloudflare.audit.zone_name: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101501'
+	level: '3'
+	description: 'B89 Cloudflare: create sobre dnsXrecord por admin@example.test.'
+	groups: '['b89_provider', 'cloudflare', 'b89_audit']'
+	firedtimes: '6'
+	mail: 'False'
+**Alert to be generated.
+
+
+**Phase 1: Completed pre-decoding.
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	b89.event_type: 'logpush'
+	b89.source: 'gateway_dns'
+	b89.vendor: 'cloudflare'
+	cloudflare.dataset: 'gateway_dns'
+	cloudflare.raw.Action: 'allow'
+	cloudflare.raw.QueryName: 'example.test'
+
+**Phase 3: Completed filtering (rules).
+	id: '101514'
+	level: '3'
+	description: 'B89 Cloudflare: registro Logpush recibido; revisar el conjunto de datos antes de clasificar.'
+	groups: '['b89_provider', 'cloudflare', 'b89_logpush']'
+	firedtimes: '1'
+	mail: 'False'
+**Alert to be generated.
+
