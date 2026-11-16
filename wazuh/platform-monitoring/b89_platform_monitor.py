@@ -219,10 +219,18 @@ def check_sources(config: dict, now: datetime, last_events: dict, heartbeats: di
             alive = info.get("running", False) and info.get("health") in ("healthy", "none", "")
             beat_desc = f"receptor {beat['container']} {info.get('health') or info.get('state') or 'ausente'}"
         quiet = window and (event_age is None or event_age > window)
-        problem = (not alive) or bool(quiet)
+        # Un collector que corre bien CONSULTA la API del proveedor y confirma que no hubo nada:
+        # el silencio es falta de actividad, no una falla. Un receptor pasivo (contenedor) vivo
+        # pero sin eventos sí puede ser una suscripción rota: ese silencio sigue siendo problema.
+        quiet_is_problem = bool(spec.get("alert_on_quiet", not beat.get("collector")))
+        problem = (not alive) or (bool(quiet) and quiet_is_problem)
         if not alive:
             summary = f"Fuente silenciosa: {name} sin latido ({beat_desc}; umbral {int(silence)} min)."
             severity = "critical"
+        elif quiet and not quiet_is_problem:
+            summary = (f"Fuente {name} activa ({beat_desc}); sin actividad nueva en Wazuh hace "
+                       f"{_fmt_age(event_age)}: el proveedor no informó eventos.")
+            severity = "info"
         elif quiet:
             summary = (f"Fuente silenciosa: {name} vivo ({beat_desc}) pero sin eventos en Wazuh hace "
                        f"{_fmt_age(event_age)} (ventana {int(window / 60)} h).")

@@ -75,6 +75,26 @@ def test_sources_events_and_heartbeat_logic():
     assert "office365" not in found
 
 
+def test_collector_heartbeat_quiet_beyond_window_is_no_activity_not_alarm():
+    spec = {"sources": {
+        "cloudflare": {"mode": "heartbeat", "heartbeat": {"collector": "cloudflare"}, "max_silence_minutes": 20,
+                       "event_window_hours": 72, "query": {}},
+        "strict": {"mode": "heartbeat", "heartbeat": {"collector": "strict"}, "max_silence_minutes": 20,
+                   "event_window_hours": 72, "alert_on_quiet": True, "query": {}},
+    }}
+    last = {"cloudflare": NOW - timedelta(days=4), "strict": NOW - timedelta(days=4)}
+    beats = {"cloudflare": NOW - timedelta(minutes=2), "strict": NOW - timedelta(minutes=2)}
+    found = {f.source: f for f in mon.check_sources(spec, NOW, last, beats, {})}
+    # Collector healthy and the provider reported nothing: «sin actividad», not a silent source.
+    assert not found["cloudflare"].problem
+    assert "sin actividad nueva" in found["cloudflare"].summary
+    # Opt-in keeps the old behavior for a source that must never be quiet.
+    assert found["strict"].problem and "silenciosa" in found["strict"].summary
+    # A dead collector is still critical.
+    dead = {f.source: f for f in mon.check_sources(spec, NOW, last, {"cloudflare": NOW - timedelta(hours=2)}, {})}
+    assert dead["cloudflare"].problem and dead["cloudflare"].severity == "critical"
+
+
 def test_heartbeat_dead_is_critical():
     found = {f.source: f for f in mon.check_sources(SOURCES, NOW, {"snyk": NOW}, {"snyk": NOW - timedelta(hours=2)},
                                                      {"b89-aws-events-1": {"running": False, "health": "unhealthy"}})}
