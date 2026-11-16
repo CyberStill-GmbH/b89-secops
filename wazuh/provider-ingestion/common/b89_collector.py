@@ -26,7 +26,7 @@ import sys
 import tempfile
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 MAX_RESPONSE_BYTES = 32 * 1024 * 1024
 MAX_BATCH_BYTES = 64 * 1024 * 1024
@@ -289,6 +289,26 @@ def commit_batch(output: pathlib.Path, state_path: pathlib.Path, state: dict, ev
     return len(events)
 
 
+def catchup_status(config: dict, previous: dict, current: dict, target: datetime) -> dict | None:
+    """Only watermark cursors opt in. Last-event timestamps cannot prove coverage."""
+    field = config.get("catchup_cursor_field")
+    if not field:
+        return None
+    cursors = current.get(field)
+    if not isinstance(cursors, dict) or not cursors:
+        raise ProviderError("recovery watermark is unavailable")
+    before = previous.get(field) or {}
+    parsed = {key: parse_iso(value) for key, value in cursors.items()}
+    if any(key in before and value < parse_iso(before[key]) for key, value in parsed.items()):
+        raise ProviderError("recovery watermark regressed; checkpoint preserved")
+    if any(key not in parsed for key in before):
+        raise ProviderError("recovery stream disappeared; checkpoint preserved")
+    lag = max(0, int((target - min(parsed.values())).total_seconds()))
+    progress = not before or any(key not in before or value > parse_iso(before[key]) for key, value in parsed.items())
+    return {"status": "caught_up" if lag == 0 else "catching_up" if progress else "stalled",
+            "lag_seconds": lag, "target": iso(target), "streams": len(parsed)}
+
+
 def run_collector(name: str, config_path: pathlib.Path, collect) -> int:
     """Generic driver. ``collect(config, state) -> (events, next_state)``."""
     try:
@@ -301,11 +321,27 @@ def run_collector(name: str, config_path: pathlib.Path, collect) -> int:
             print(f"{name}: recovered a durable batch from the previous run", file=sys.stderr)
             return 0
         rotate_if_needed(output, int(config.get("rotate_bytes", DEFAULT_ROTATE_BYTES)))
-        events, next_state = collect(config, state)
-        next_state = {key: value for key, value in next_state.items() if key != "pending"}
-        next_state["last_success"] = iso(utc_now())
-        written = commit_batch(output, state_path, state, events, next_state)
-        print(f"{name}: ok events={written}", file=sys.stderr)
+        batches = int(config.get("catchup_max_batches", 4)) if config.get("catchup_cursor_field") else 1
+        if not 1 <= batches <= 10:
+            raise ProviderError("recovery batch limit must be between 1 and 10")
+        delay = int(config.get("catchup_delay_seconds", 120))
+        if not 0 <= delay <= 86400:
+            raise ProviderError("recovery delay is invalid")
+        target = utc_now() - timedelta(seconds=delay)
+        for _ in range(batches):
+            events, next_state = collect(config, state)
+            next_state = {key: value for key, value in next_state.items() if key != "pending"}
+            recovery = catchup_status(config, state, next_state, target)
+            if recovery:
+                next_state["recovery"] = recovery
+            next_state["last_success"] = iso(utc_now())
+            written = commit_batch(output, state_path, state, events, next_state)
+            state = next_state
+            print(f"{name}: ok events={written}" + (f" recovery={recovery['status']} lag_seconds={recovery['lag_seconds']}" if recovery else ""), file=sys.stderr)
+            if not recovery or recovery["status"] == "caught_up":
+                break
+            if recovery["status"] == "stalled":
+                raise ProviderError("recovery stalled; retained cursor requires investigation")
         return 0
     except ProviderError as error:
         status = f" (HTTP {error.status})" if error.status else ""

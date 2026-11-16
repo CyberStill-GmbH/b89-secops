@@ -29,7 +29,9 @@
 
   <rule id="101503" level="5">
     <if_sid>101501</if_sid>
-    <field name="cloudflare.audit.resource_type">^dns.record$</field>
+    <field name="cloudflare.audit.result">^true$</field>
+    <field name="cloudflare.audit.action" type="pcre2" negate="yes">(?i)^(get|list|read|view|search)$</field>
+    <field name="cloudflare.audit.resource_type" type="pcre2">^dns\.record$</field>
     <description>B89 Cloudflare: cambio DNS ($(cloudflare.audit.action)) en $(cloudflare.audit.zone_name) por $(cloudflare.audit.actor_email).</description>
     <options>no_full_log</options>
     <mitre><id>T1584.002</id></mitre>
@@ -38,6 +40,8 @@
 
   <rule id="101504" level="8">
     <if_sid>101501</if_sid>
+    <field name="cloudflare.audit.result">^true$</field>
+    <field name="cloudflare.audit.action" type="pcre2" negate="yes">(?i)^(get|list|read|view|search)$</field>
     <field name="cloudflare.audit.resource_type" type="pcre2">(?i)(firewall|waf|ruleset|rate.?limit|access|zero.?trust|security|page.?shield|bot)</field>
     <description>B89 Cloudflare: cambio de control de seguridad ($(cloudflare.audit.action) $(cloudflare.audit.resource_type)) por $(cloudflare.audit.actor_email).</description>
     <options>no_full_log</options>
@@ -56,6 +60,8 @@
 
   <rule id="101506" level="10">
     <if_sid>101501</if_sid>
+    <field name="cloudflare.audit.result">^true$</field>
+    <field name="cloudflare.audit.action" type="pcre2" negate="yes">(?i)^(get|list|read|view|search)$</field>
     <field name="cloudflare.audit.resource_type" type="pcre2">(?i)(token|member|api.?key|role|two.?factor|sso|organization|^user$|^account$)</field>
     <description>B89 Cloudflare: cambio de identidad/credenciales ($(cloudflare.audit.action) $(cloudflare.audit.resource_type)) por $(cloudflare.audit.actor_email).</description>
     <options>no_full_log</options>
@@ -65,8 +71,9 @@
 
   <rule id="101507" level="12">
     <if_sid>101501</if_sid>
+    <field name="cloudflare.audit.result">^true$</field>
     <field name="cloudflare.audit.resource_type">^zone$</field>
-    <field name="cloudflare.audit.action" type="pcre2">(?i)^(delete|deleted|purge)$</field>
+    <field name="cloudflare.audit.action" type="pcre2">(?i)^(delete|deleted)$</field>
     <description>B89 Cloudflare: zona $(cloudflare.audit.zone_name) eliminada por $(cloudflare.audit.actor_email).</description>
     <options>no_full_log</options>
     <mitre><id>T1485</id></mitre>
@@ -92,7 +99,7 @@
     <group>b89_waf,</group>
   </rule>
 
-  <rule id="101512" level="2">
+  <rule id="101512" level="3">
     <if_sid>101500</if_sid>
     <field name="b89.event_type">^firewall$</field>
     <description>B89 Cloudflare: evento de seguridad $(cloudflare.firewall.action) en $(cloudflare.firewall.host).</description>
@@ -107,5 +114,13 @@
     <options>no_full_log</options>
     <mitre><id>T1190</id><id>T1595</id></mitre>
     <group>b89_waf,b89_attack,</group>
+  </rule>
+  <!-- Preserve visibility for Logpush datasets without a specialized detector. -->
+  <rule id="101514" level="3">
+    <if_sid>101500</if_sid>
+    <field name="b89.event_type">^logpush$</field>
+    <description>B89 Cloudflare: registro Logpush recibido; revisar el conjunto de datos antes de clasificar.</description>
+    <options>no_full_log</options>
+    <group>b89_logpush,</group>
   </rule>
 </group>

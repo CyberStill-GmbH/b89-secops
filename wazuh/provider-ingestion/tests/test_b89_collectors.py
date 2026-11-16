@@ -229,6 +229,113 @@ class SnykTests(unittest.TestCase):
 
 
 class CloudflareTests(unittest.TestCase):
+    def test_audit_result_requires_explicit_boolean(self):
+        for value, expected in [(True, "true"), (False, "false"), (None, "unknown"),
+                                ("false", "unknown"), (0, "unknown")]:
+            with self.subTest(value=value):
+                event = CF.audit_event({"action": {"result": value}}, "a", "now")
+                self.assertEqual(event["cloudflare"]["audit"]["result"], expected)
+        self.assertEqual(CF.audit_event({}, "a", "now")["cloudflare"]["audit"]["result"], "unknown")
+
+    def test_raw_evidence_survives_normalized_field_truncation(self):
+        audit = {"actor": {"email": "a" * 300}, "metadata": {"additional": ["evidence"]}}
+        firewall = {"clientRequestPath": "/" + "x" * 700, "additional": {"values": [1, 2]}}
+        for record, event, field, normalized, bound in [
+            (audit, CF.audit_event(audit, "a", "now"), "audit", "actor_email", 200),
+            (firewall, CF.firewall_event(firewall, {"id": "z", "name": "z"}, "now"),
+             "firewall", "path", 512),
+        ]:
+            self.assertEqual(event["cloudflare"]["raw"], record)
+            self.assertEqual(len(event["cloudflare"][field][normalized]), bound)
+            self.assertIsNot(event["cloudflare"]["raw"], record)
+        audit["metadata"]["additional"].append("later")
+        event = CF.audit_event(audit, "a", "now")
+        audit["metadata"]["additional"].append("mutated")
+        self.assertNotIn("mutated", event["cloudflare"]["raw"]["metadata"]["additional"])
+
+    def test_raw_evidence_cannot_bypass_batch_size_guard(self):
+        event = CF.audit_event({"extra": "x" * 512}, "a", "now")
+        with patch.object(COMMON, "MAX_BATCH_BYTES", 128), patch.object(COMMON, "save_state") as save:
+            with self.assertRaisesRegex(COMMON.ProviderError, "batch is too large"):
+                COMMON.commit_batch(pathlib.Path("unused-output"), pathlib.Path("unused-state"),
+                                    {}, [event], {"cursor": "next"})
+            save.assert_not_called()
+
+    def test_audit_page_budget_cannot_silently_commit_partial_page_set(self):
+        when = COMMON.iso(COMMON.utc_now())
+        class Client:
+            def rest(self, path):
+                return {"result": [{"id": str(i), "when": when} for i in range(100)]}
+        with patch.object(CF, "MAX_AUDIT_PAGES", 1):
+            with self.assertRaisesRegex(CF.ProviderError, "pagination exhausted"):
+                CF.collect_audit(Client(), "a", when, set(), when)
+
+    def test_invalid_audit_record_is_not_silently_skipped(self):
+        class Client:
+            def rest(self, path):
+                return {"result": [{"id": "a", "when": "invalid"}]}
+        with self.assertRaisesRegex(CF.ProviderError, "timestamp"):
+            CF.collect_audit(Client(), "a", COMMON.iso(COMMON.utc_now()), set(), "now")
+
+    def test_repeated_discovery_page_fails(self):
+        class Client:
+            def rest(self, path):
+                return {"result": [{"id": str(i)} for i in range(50)]}
+        with self.assertRaisesRegex(CF.ProviderError, "repeated"):
+            CF.discover(Client(), "zones")
+
+    def test_discovery_reads_beyond_first_page(self):
+        class Client:
+            def rest(self, path):
+                return {"result": ([{"id": str(i)} for i in range(50)]
+                                   if "page=1" in path else [{"id": "last"}])}
+        self.assertEqual(len(CF.discover(Client(), "zones")), 51)
+
+    def test_missing_zone_is_not_an_empty_success(self):
+        class Client:
+            def graphql(self, *_):
+                return {"viewer": {"zones": []}}
+        start = COMMON.utc_now() - timedelta(hours=1)
+        with self.assertRaises(CF.ProviderError):
+            CF.collect_firewall(Client(), {"id": "z", "name": "z"}, start,
+                                start + timedelta(hours=1), set(), COMMON.iso(start))
+
+    def test_saturated_second_preserves_checkpoint(self):
+        start = COMMON.utc_now().replace(microsecond=0)
+        class Client:
+            def graphql(self, *_):
+                return {"viewer": {"zones": [{"firewallEventsAdaptive":
+                    [{"datetime": COMMON.iso(start), "rayName": "same"}] * 2}]}}
+        with patch.object(CF, "FIREWALL_LIMIT", 2):
+            with self.assertRaisesRegex(CF.ProviderError, "saturated"):
+                CF.collect_firewall(Client(), {"id": "z", "name": "z"}, start,
+                                    start + timedelta(seconds=1), set(), COMMON.iso(start))
+
+    def test_saturated_window_is_subdivided_without_discarding_records(self):
+        start = COMMON.utc_now().replace(microsecond=0)
+        records = [{"datetime": COMMON.iso(start + timedelta(seconds=i)), "rayName": str(i)}
+                   for i in range(4)]
+        class Client:
+            def graphql(self, query, variables):
+                selected = [r for r in records if variables["since"] <= r["datetime"] < variables["until"]]
+                return {"viewer": {"zones": [{"firewallEventsAdaptive": selected[:2]}]}}
+        with patch.object(CF, "FIREWALL_LIMIT", 2):
+            events, cursor, _ = CF.collect_firewall(Client(), {"id": "z", "name": "z"}, start,
+                start + timedelta(seconds=4), set(), COMMON.iso(start))
+        self.assertEqual(len(events), 4)
+        self.assertEqual(cursor, start + timedelta(seconds=4))
+
+    def test_old_backlog_is_not_clamped_to_max_lookback(self):
+        start = COMMON.utc_now() - timedelta(days=3)
+        opener = Recorder([(lambda r, b: "/zones?" in r.full_url,
+                            {"success": True, "result": [{"id": "z", "name": "z"}]})])
+        with patch.object(CF, "collect_firewall", return_value=([], start, [])) as collect_fw:
+            _, state = CF.collect({"audit": False, "max_lookback_hours": 24},
+                                  {"firewall_cursors": {"z": COMMON.iso(start)}},
+                                  CF.Cloudflare("t", opener=opener))
+        self.assertEqual(collect_fw.call_args.args[2], COMMON.parse_iso(COMMON.iso(start)))
+        self.assertFalse(state["coverage"]["exhaustive"])
+
     def test_audit_and_firewall_with_dedupe(self) -> None:
         when = COMMON.iso(COMMON.utc_now() - timedelta(minutes=30))
         audit = [{"id": "a1", "when": when, "action": {"type": "delete", "result": True},
