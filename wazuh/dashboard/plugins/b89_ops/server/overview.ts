@@ -454,6 +454,16 @@ export async function buildOverview(
     settle(client.search({ index: ALERTS_INDEX, body: serviceAttentionQuery() })),
   ]);
   const parsed = alerts.status === 'fulfilled' ? parseAlertsAggregation(alerts.value.body) : null;
+  const health =
+    platform.status === 'fulfilled'
+      ? parsePlatformHealth(platform.value.body)
+      : {
+          access: (readabilityOf(platform.reason) === 'forbidden' ? 'forbidden' : 'error') as
+            | 'forbidden'
+            | 'error',
+          sources: {},
+          problems: [],
+        };
   return {
     attention:
       attention.status === 'fulfilled'
@@ -468,17 +478,29 @@ export async function buildOverview(
     alertsAccess: alerts.status === 'fulfilled' ? 'ok' : readabilityOf(alerts.reason),
     monitoringAccess: agents.status === 'fulfilled' ? 'ok' : readabilityOf(agents.reason),
     siem: parsed?.siem ?? null,
-    providers: parsed?.providers ?? null,
+    providers: parsed?.providers ? withCollectorScope(parsed.providers, health) : null,
     topEvents: top.status === 'fulfilled' ? parseTopEvents(top.value.body) : [],
     agents: agents.status === 'fulfilled' ? parseAgents(agents.value.body) : null,
     integrations,
-    platformHealth:
-      platform.status === 'fulfilled'
-        ? parsePlatformHealth(platform.value.body)
-        : {
-            access: readabilityOf(platform.reason) === 'forbidden' ? 'forbidden' : 'error',
-            sources: {},
-            problems: [],
-          },
+    platformHealth: health,
+  };
+}
+
+/**
+ * Zonas de Cloudflare: las que el collector VIGILA (alcance descubierto en la API en su última
+ * pasada, publicado por el monitor) y, aparte, cuántas tuvieron eventos. Sin alcance publicado
+ * (monitor viejo o sin estado) se mantiene el conteo por eventos.
+ */
+export function withCollectorScope<P extends Record<string, { metrics: Record<string, number> }>>(
+  providers: P,
+  health: { readonly sources: Readonly<Record<string, { readonly scopeCount?: number | null }>> },
+): P {
+  const cloudflare = providers.cloudflare;
+  const scope = health.sources.cloudflare?.scopeCount;
+  if (!cloudflare || typeof scope !== 'number' || !Number.isFinite(scope)) return providers;
+  const active = cloudflare.metrics.zones ?? 0;
+  return {
+    ...providers,
+    cloudflare: { ...cloudflare, metrics: { ...cloudflare.metrics, zones: scope, zones_active: active } },
   };
 }

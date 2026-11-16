@@ -609,6 +609,28 @@ def reconcile(findings: list[Finding], state: dict, now: datetime, renotify_hour
     return events, new_state
 
 
+def collector_scope(config: dict, source: str) -> dict:
+    """Alcance que el collector de la fuente vigiló en su última pasada (``scope`` de su estado).
+
+    Hoy solo zonas de Cloudflare: la consola muestra cuántas se vigilan aunque no tengan eventos.
+    Sin estado o sin ``scope`` no agrega nada (la consola cae al conteo por eventos).
+    """
+    spec = (config.get("sources") or {}).get(source) or {}
+    collector = ((spec.get("heartbeat") or {}).get("collector")) or source
+    state_file = ((config.get("collectors") or {}).get(collector) or {}).get("state_file")
+    if not state_file:
+        return {}
+    try:
+        scope = json.loads(pathlib.Path(state_file).read_text(encoding="utf-8")).get("scope") or {}
+    except (OSError, ValueError, AttributeError):
+        return {}
+    zones = [z for z in (scope.get("zones") or []) if isinstance(z, dict)]
+    if not zones:
+        return {}
+    names = ", ".join(str(z.get("name") or z.get("id") or "")[:80] for z in zones[:20])
+    return {"scope_kind": "zones", "scope_count": len(zones), "scope_items": names[:600]}
+
+
 def source_snapshots(findings: list[Finding], config: dict, state: dict, now: datetime) -> tuple[list[dict], dict]:
     """One ``source_status`` event per source every ``snapshot_minutes`` (UI «Integraciones» model)."""
     interval = float(config.get("snapshot_minutes", 60))
@@ -637,6 +659,7 @@ def source_snapshots(findings: list[Finding], config: dict, state: dict, now: da
         extra = {"source_state": entry["status"]}
         if entry["last_seen"]:
             extra["last_seen"] = entry["last_seen"]
+        extra.update(collector_scope(config, name))
         events.append(health_event(finding, now, "ok", extra))
     new_state = dict(state)
     new_state["last_snapshot"] = iso(now)

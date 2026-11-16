@@ -30,6 +30,10 @@ export interface PlatformSourceHealth {
   readonly summary: string;
   readonly lastSeen: string | null;
   readonly since: string | null;
+  /** Alcance vigilado por el collector (p. ej. zonas de Cloudflare); null si no se publica. */
+  readonly scopeCount?: number | null;
+  /** Nombres del alcance, separados por coma (recortado). */
+  readonly scopeItems?: string | null;
 }
 
 export interface PlatformProblem {
@@ -148,6 +152,12 @@ function healthOf(source: Json): Json {
   return obj(obj(obj(source.data).b89).health);
 }
 
+/** Conteo de alcance: entero 0–10000 (llega como número o texto desde el Indexer). */
+function scopeCountOf(value: unknown): number | null {
+  const parsed = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
+  return Number.isInteger(parsed) && parsed >= 0 && parsed <= 10000 ? parsed : null;
+}
+
 function severityOf(value: unknown): PlatformSeverity {
   return (SEVERITIES as readonly unknown[]).includes(value) ? (value as PlatformSeverity) : 'info';
 }
@@ -206,6 +216,8 @@ export function parsePlatformHealth(body: unknown): PlatformHealth {
       summary: (text(health.summary) ?? '').slice(0, 300),
       lastSeen: text(health.last_seen),
       since: text(health.since),
+      scopeCount: scopeCountOf(health.scope_count),
+      scopeItems: text(health.scope_items)?.slice(0, 600) ?? null,
     };
   }
   const problems: PlatformProblem[] = [];

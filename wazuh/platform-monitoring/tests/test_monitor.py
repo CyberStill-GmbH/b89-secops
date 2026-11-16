@@ -323,3 +323,22 @@ def test_run_once_dry_run_survives_failing_checks(tmp_path, monkeypatch):
     lines = (tmp_path / "out.jsonl").read_text(encoding="utf-8").splitlines()
     assert real["events"] == len(lines) > 0
     assert all(json.loads(l)["b89"]["vendor"] == "b89-platform" for l in lines)
+
+
+def test_source_status_carries_the_collector_scope(tmp_path):
+    state = tmp_path / "cloudflare.json"
+    state.write_text(json.dumps({"last_success": "2026-11-16T21:00:00Z", "scope": {"accounts": 1, "zones": [
+        {"id": "z1", "name": "b89.io"}, {"id": "z2", "name": "b89payments.com"}, {"id": "z3", "name": "b89payments.io"}]}}),
+        encoding="utf-8")
+    config = {"snapshot_minutes": 60,
+              "collectors": {"cloudflare": {"state_file": str(state)}},
+              "sources": {"cloudflare": {"mode": "heartbeat", "heartbeat": {"collector": "cloudflare"}, "query": {}}}}
+    findings = [mon.Finding("source_silent", "cloudflare", False, "ok", "info")]
+    events, _ = mon.source_snapshots(findings, config, {}, NOW)
+    health = events[0]["b89"]["health"]
+    assert health["scope_kind"] == "zones" and health["scope_count"] == 3
+    assert "b89payments.io" in health["scope_items"]
+    # Without collector state the snapshot still goes out, just without scope.
+    config["collectors"]["cloudflare"]["state_file"] = str(tmp_path / "missing.json")
+    events, _ = mon.source_snapshots(findings, config, {}, NOW)
+    assert "scope_count" not in events[0]["b89"]["health"]

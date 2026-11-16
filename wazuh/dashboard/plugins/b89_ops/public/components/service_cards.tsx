@@ -113,7 +113,12 @@ function providerMetrics(id: ProviderId, data: PlatformData): Metric[] {
       return [
         { label: 'Bloqueos WAF 24 h', value: formatNumber(m.waf_blocks ?? 0) },
         { label: 'Auditoría 24 h', value: formatNumber(m.audit ?? 0) },
-        { label: 'Zonas', value: formatNumber(m.zones ?? 0) },
+        m.zones_active !== undefined
+          ? {
+              label: 'Zonas vigiladas',
+              value: `${formatNumber(m.zones ?? 0)} · ${formatNumber(m.zones_active)} con eventos`,
+            }
+          : { label: 'Zonas', value: formatNumber(m.zones ?? 0) },
       ];
     default:
       return [

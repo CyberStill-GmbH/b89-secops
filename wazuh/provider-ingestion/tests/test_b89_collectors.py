@@ -366,6 +366,9 @@ class CloudflareTests(unittest.TestCase):
         self.assertEqual(kinds, ["audit", "firewall"])  # same record in 2 windows is deduped
         self.assertEqual(state["audit_cursors"]["acc1"], when)
         self.assertEqual(opener.requests[0].get_header("Authorization"), "Bearer tok")
+        # The scanned scope (discovered, not fixed) is recorded for the console, events or not.
+        self.assertEqual(state["scope"]["accounts"], 1)
+        self.assertEqual(state["scope"]["zones"], [{"id": "z1", "name": "example.test"}])
         events, _ = CF.collect({"initial_lookback_hours": 2}, state, client)
         self.assertEqual(events, [])
 

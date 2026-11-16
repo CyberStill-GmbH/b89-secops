@@ -245,6 +245,8 @@ def collect(config: dict, state: dict, client: Cloudflare | None = None) -> tupl
 
     audit_cursors = dict(state.get("audit_cursors") or {})
     audit_seen = list(state.get("audit_seen") or [])
+    accounts: list[str] = []
+    zones: list[dict] = []
     if config.get("audit", True):
         accounts = config.get("account_ids") or [str(a["id"]) for a in discover(client, "accounts")]
         for account_id in accounts:
@@ -278,6 +280,15 @@ def collect(config: dict, state: dict, client: Cloudflare | None = None) -> tupl
             fw_cursors[zone["id"]] = iso(cursor)
 
     return events, {
+        # Alcance vigilado en ESTA pasada (descubierto en la API, no fijo): lo publica el monitor de
+        # plataforma para que la consola muestre las zonas reales, también las que no tienen eventos.
+        "scope": {
+            "accounts": len(accounts),
+            "zones": [{"id": z["id"], "name": z["name"][:255]} for z in zones][:500],
+            "firewall": bool(config.get("firewall", True)),
+            "audit": bool(config.get("audit", True)),
+            "at": now_text,
+        },
         "coverage": {"mode": "audit_and_adaptive_firewall", "exhaustive": False,
                      "reason": "GraphQL adaptive firewall is not an all-dataset log archive"},
         "audit_cursors": audit_cursors,
