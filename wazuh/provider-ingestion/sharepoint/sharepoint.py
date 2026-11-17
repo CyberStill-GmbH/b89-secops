@@ -329,7 +329,10 @@ def collect_audit(config: dict, state: dict, graph: Graph | None = None, now: da
         max_window = timedelta(hours=float(config.get("max_window_hours", 24)))
         cursor = next_state.get("cursor")
         start = parse_iso(cursor) - overlap if cursor else now - timedelta(hours=float(config.get("initial_lookback_hours", 24)))
-        start = max(start, now - timedelta(days=int(config.get("max_lookback_days", 7))))
+        retention_start = now - timedelta(days=int(config.get("max_lookback_days", 7)))
+        if cursor and parse_iso(cursor) < retention_start:
+            raise ProviderError("SharePoint audit backlog exceeds configured retention; checkpoint preserved")
+        start = max(start, retention_start)
         end = min(now - lag, start + max_window)
         if end - start < timedelta(minutes=int(config.get("min_window_minutes", 10))):
             return events, next_state
@@ -358,11 +361,17 @@ def collect_audit(config: dict, state: dict, graph: Graph | None = None, now: da
                                 f"/records?$top={int(config.get('page_size', 1000))}")
     budget = int(config.get("max_records_per_run", 15000))
     processed = 0
-    while url and processed < budget:
+    visited = set()
+    max_pages = int(config.get("max_pages_per_run", 50))
+    while url and processed < budget and len(visited) < max_pages:
+        if url in visited:
+            raise ProviderError("SharePoint audit pagination repeated a page; checkpoint preserved")
+        visited.add(url)
         payload = graph.get(url)
-        for record in payload.get("value") or []:
-            if not isinstance(record, dict):
-                continue
+        records = payload.get("value")
+        if not isinstance(records, list) or any(not isinstance(record, dict) for record in records):
+            raise ProviderError("SharePoint audit records are invalid; checkpoint preserved")
+        for record in records:
             processed += 1
             key = text(record.get("id")) or digest(text(record.get("createdDateTime")), text(record.get("operation")),
                                                     text(record.get("objectId")), text(record.get("userId")))
@@ -370,11 +379,13 @@ def collect_audit(config: dict, state: dict, graph: Graph | None = None, now: da
                 continue
             event = audit_event(record, now, enricher, query["id"])
             if event is None:
-                continue
+                raise ProviderError("SharePoint audit record lacks identity or operation; checkpoint preserved")
             seen.add(key)
             seen_list.append(key)
             events.append(event)
         url = payload.get("@odata.nextLink")
+        if url and not isinstance(url, str):
+            raise ProviderError("SharePoint audit continuation is invalid; checkpoint preserved")
     next_state["seen"] = bounded_ids(seen_list, int(config.get("seen_limit", SEEN_LIMIT)))
     next_state["ip_baseline"] = enricher.prune(now)
     if url:  # presupuesto agotado: se retoma la paginación en la próxima ejecución

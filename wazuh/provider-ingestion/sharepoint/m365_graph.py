@@ -128,6 +128,11 @@ class TokenCache:
         except ProviderError as error:
             return error.status or 0, []
 
+    def invalidate(self, scope: str, rejected: str) -> None:
+        cached = self._cache.get(scope)
+        if cached and cached[0] == rejected:
+            self._cache.pop(scope, None)
+
     def _request(self, scope: str) -> tuple[str, float]:
         tenant = urllib.parse.quote(self.credentials.tenant, safe="")
         body = urllib.parse.urlencode({
@@ -168,11 +173,22 @@ class Graph:
 
     def call(self, method: str, url: str, body: object | None = None, scope: str = GRAPH_SCOPE,
              headers: dict | None = None, ok=(200,)) -> tuple[int, object]:
-        if not url.startswith("https://"):
-            url = GRAPH + url
+        origin = MANAGE if scope == MANAGE_SCOPE else GRAPH
+        if url.startswith("/") and not url.startswith("//"):
+            url = origin + url
+        parts = urllib.parse.urlsplit(url)
+        if (parts.scheme != "https" or parts.netloc != urllib.parse.urlsplit(origin).netloc
+                or parts.fragment):
+            raise ProviderError("Microsoft API continuation URL rejected")
+        refreshed = False
         for attempt in range(4):
-            request_headers = {"Authorization": "Bearer " + self.tokens.get(scope), **(headers or {})}
+            token = self.tokens.get(scope)
+            request_headers = {**(headers or {}), "Authorization": "Bearer " + token}
             status, payload = http_json(method, url, request_headers, body, timeout=60, opener=self.opener)
+            if status == 401 and method == "GET" and not refreshed and hasattr(self.tokens, "invalidate"):
+                self.tokens.invalidate(scope, token)
+                refreshed = True
+                continue
             if status in (429, 503, 504) and attempt < 3:
                 self.sleep(min(60, 5 * (attempt + 1) ** 2))
                 continue
@@ -187,11 +203,19 @@ class Graph:
 
     def pages(self, url: str, max_pages: int = 50, **kwargs):
         """Yield items of an OData collection following ``@odata.nextLink`` (bounded)."""
+        visited = set()
         for _ in range(max_pages):
+            if url in visited:
+                raise ProviderError("Microsoft API pagination repeated a page")
+            visited.add(url)
             payload = self.get(url, **kwargs)
-            for item in payload.get("value") or []:
-                if isinstance(item, dict):
-                    yield item
+            records = payload.get("value")
+            if not isinstance(records, list) or any(not isinstance(item, dict) for item in records):
+                raise ProviderError("Microsoft API collection response is invalid")
+            yield from records
             url = payload.get("@odata.nextLink")
             if not url:
                 return
+            if not isinstance(url, str):
+                raise ProviderError("Microsoft API continuation is invalid")
+        raise ProviderError("Microsoft API pagination budget exhausted; coverage incomplete")

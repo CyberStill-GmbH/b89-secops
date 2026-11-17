@@ -141,7 +141,8 @@ if org:
     snyk["org_id"] = org
 write("snyk.json", snyk)
 write("cloudflare.json", {"token_file": f"{cs}/cloudflare-api-token", "state_file": f"{state}/cloudflare.json",
-    "output_file": f"{out}/cloudflare-security.jsonl", "initial_lookback_hours": 1, "max_lookback_hours": 24})
+    "output_file": f"{out}/cloudflare-security.jsonl", "initial_lookback_hours": 1,
+    "catchup_cursor_field": "firewall_cursors", "catchup_max_batches": 4, "catchup_delay_seconds": 120})
 write("sharepoint-audit.json", {"credentials_dir": cs, "mode": "auto",
     "state_file": f"{state}/sharepoint-audit.json", "output_file": f"{out}/sharepoint-audit.jsonl",
     "initial_lookback_hours": 24, "lag_minutes": 30, "overlap_minutes": 120})
@@ -234,7 +235,7 @@ Description=Programa $2
 
 [Timer]
 OnBootSec=90s
-OnUnitActiveSec=$4
+OnUnitInactiveSec=$4
 RandomizedDelaySec=20s
 Persistent=true
 Unit=$1.service
