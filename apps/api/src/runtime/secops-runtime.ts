@@ -178,6 +178,36 @@ export interface SignInDiagnostic {
 
 const DIAGNOSTIC_CODE = /^[A-Za-z0-9_.,-]{1,80}$/u;
 
+/** Tope de vigencia de `B89_ENTRA_MFA_RELAXED_UNTIL`: no puede volverse permanente. */
+export const MFA_RELAXED_MAX_DAYS = 90;
+
+/**
+ * ¿Admite el MFA relajado esta denegación? Solo reemplaza una denegación por MFA/passkey de una
+ * identidad Entra real (no demo) con token válido, sin bloqueo y con al menos una capacidad
+ * (rol del dueño del grupo, asignación o grant), dentro de una ventana vigente de ≤ 90 días.
+ */
+export function relaxedMfaAdmits(input: {
+  readonly demo: boolean;
+  readonly denialReason: string | null;
+  readonly tokenValid: boolean;
+  readonly notLocked: boolean;
+  readonly capabilities: number;
+  readonly until: Date | undefined;
+  readonly at: Date;
+}): boolean {
+  const until = input.until?.getTime() ?? Number.NaN;
+  return (
+    !input.demo &&
+    (input.denialReason === 'MFA_REQUIRED' || input.denialReason === 'PASSKEY_REQUIRED') &&
+    input.tokenValid &&
+    input.notLocked &&
+    input.capabilities > 0 &&
+    Number.isFinite(until) &&
+    until <= input.at.getTime() + MFA_RELAXED_MAX_DAYS * 86_400_000 &&
+    input.at.getTime() < until
+  );
+}
+
 function diagnosticCode(value: unknown): string | undefined {
   return typeof value === 'string' && DIAGNOSTIC_CODE.test(value) ? value : undefined;
 }
@@ -208,6 +238,15 @@ export interface RuntimeOptions {
   /** Clave CSRF compartida entre réplicas; solo efímera en perfiles de memoria/tests. */
   readonly csrfKey?: Buffer;
   readonly demoMfaExceptionUntil?: Date;
+  /**
+   * MFA relajado para Entra real (decisión del dueño, 2026-11-17, temporal): hasta esta fecha,
+   * una identidad YA AUTORIZADA (rol de dueño del grupo, asignación o grant: al menos una
+   * capacidad) entra aunque el `id_token` no traiga `amr` de MFA. Entra no emite `amr` en el
+   * id_token v2; el MFA queda a cargo del Acceso condicional del tenant. Token, red, bloqueo y
+   * rol se siguen exigiendo; no se inventa evidencia de AMR. Configuración:
+   * `B89_ENTRA_MFA_RELAXED_UNTIL` (ISO 8601, como máximo 90 días). Cada admisión se audita.
+   */
+  readonly mfaRelaxedUntil?: Date;
   /**
    * Excepción demo de contraseña del administrador (temporal). Solo existe si la configuración
    * la habilitó y validó; su vigencia la decide `activeAt` en cada intento y en cada request.
@@ -1391,6 +1430,20 @@ export class SecOpsRuntime {
     if (demoMfaException) {
       decision = { admitted: true, requiredAmr: [] };
     }
+    // MFA relajado (temporal, Entra real): misma idea que la excepción demo pero para el tenant
+    // configurado. Solo identidades autorizadas (capacidades > 0) con token válido.
+    const mfaRelaxed = relaxedMfaAdmits({
+      demo: demo !== undefined,
+      denialReason: decision.admitted ? null : decision.reason,
+      tokenValid: validation.ok,
+      notLocked: lockout.allowed,
+      capabilities: capabilities.size,
+      until: this.options.mfaRelaxedUntil,
+      at,
+    });
+    if (mfaRelaxed) {
+      decision = { admitted: true, requiredAmr: [] };
+    }
     // Excepción demo de contraseña: decisión explícita y separada. Solo para el sujeto del
     // emisor demo, con la excepción vigente, desde la red permitida (`inside`), sin bloqueo y
     // con exactamente el rol de la cuenta verificada. Admite una sesión con `amr: ['pwd']`: no
@@ -1498,9 +1551,12 @@ export class SecOpsRuntime {
         ? DEMO_ADMIN_AUDIT.admitted
         : demoMfaException
           ? 'temporary_demo_mfa_exception'
-          : backendRole
-            ? 'backend_mvp_role_binding'
-            : undefined,
+          : mfaRelaxed
+            ? 'temporary_mfa_relaxed'
+            : backendRole
+              ? 'backend_mvp_role_binding'
+              : undefined,
+      mfaRelaxed ? { mfa: 'relaxed' } : undefined,
     );
     return { ok: true, value: { session, supersededSessions: plan.supersedes } };
   }

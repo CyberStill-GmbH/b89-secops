@@ -108,6 +108,23 @@ export function detectionContextFrom(config: DetectionContextConfig): Prioritiza
 
 type PostgresPersistenceConfig = Extract<SocPersistenceConfig, { mode: 'postgres' }>;
 
+/**
+ * `B89_ENTRA_MFA_RELAXED_UNTIL` (ISO 8601): MFA relajado temporal para Entra real. Una fecha
+ * inválida es un error de arranque (no se adivina); una ya vencida o a más de 90 días no
+ * relaja nada (la ventana la vuelve a comprobar el runtime en cada inicio de sesión).
+ */
+export function mfaRelaxedFrom(
+  environment: Readonly<Record<string, string | undefined>>,
+): { mfaRelaxedUntil?: Date } {
+  const raw = environment['B89_ENTRA_MFA_RELAXED_UNTIL']?.trim();
+  if (!raw) return {};
+  const until = new Date(raw);
+  if (!/^\d{4}-\d{2}-\d{2}(T[\d:.]+(Z|[+-]\d{2}:\d{2}))?$/u.test(raw) || Number.isNaN(until.getTime())) {
+    throw new Error('CONFIG_VALUE_INVALID: B89_ENTRA_MFA_RELAXED_UNTIL');
+  }
+  return { mfaRelaxedUntil: until };
+}
+
 /** URL de conexión armada solo en memoria del proceso; nunca se registra. */
 function connectionStringFor({ postgres }: PostgresPersistenceConfig): string {
   const url = new URL('postgresql://placeholder');
@@ -444,6 +461,7 @@ export async function buildApi(
   const runtime: SecOpsRuntime = new SecOpsRuntime({
     access,
     ...(demoMfaExceptionUntil ? { demoMfaExceptionUntil } : {}),
+    ...mfaRelaxedFrom(environment),
     ...(demoAdminLogin ? { demoAdminLogin } : {}),
     profile: config.profile,
     detectionContext: detectionContextFrom(detection),

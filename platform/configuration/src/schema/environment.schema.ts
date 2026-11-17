@@ -75,6 +75,8 @@ export const KNOWN_B89_VARIABLES = new Set([
   'B89_MVP_ROLE_BINDING_ROLE',
   'B89_MVP_ROLE_BINDING_EXPIRES_AT',
   'B89_DEMO_MFA_EXCEPTION_UNTIL',
+  // MFA relajado temporal para Entra real (apps/api secops-runtime, máximo 90 días).
+  'B89_ENTRA_MFA_RELAXED_UNTIL',
   'B89_DEMO_ADMIN_LOGIN_ENABLED',
   'B89_DEMO_ADMIN_LOGIN_UNTIL',
   'B89_DEMO_ADMIN_USERNAME',

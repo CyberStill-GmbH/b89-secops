@@ -257,6 +257,23 @@ else
   unset analyst_enabled analyst_ceiling
 fi
 
+# MFA relajado temporal para Entra (decisión del dueño, 2026-11-17): Entra no emite `amr` en el
+# id_token v2, así que el MFA queda a cargo del Acceso condicional del tenant hasta la fecha que
+# fije services.env (B89_ENTRA_MFA_RELAXED_UNTIL=AAAA-MM-DD, como máximo 90 días). Sin la línea,
+# o con una fecha vencida, B89 vuelve a exigir el `amr` de MFA en el token.
+mfa_relaxed="$(grep -s '^B89_ENTRA_MFA_RELAXED_UNTIL=.' "$SECRETS/services.env" | tail -1 | cut -d= -f2- || true)"
+if [[ -n $mfa_relaxed ]]; then
+  if ! grep -q "'B89_ENTRA_MFA_RELAXED_UNTIL'" "$SRC/platform/configuration/src/schema/environment.schema.ts"; then
+    log 'Entra: el código aún no admite B89_ENTRA_MFA_RELAXED_UNTIL; se exige MFA en el token'
+  elif [[ $mfa_relaxed =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+    printf 'B89_ENTRA_MFA_RELAXED_UNTIL=%s\n' "$mfa_relaxed" >>"$ROOT/config/api.env"
+    log "Entra: MFA relajado hasta $mfa_relaxed (identidades con rol; el MFA lo exige Entra)"
+  else
+    echo 'B89_ENTRA_MFA_RELAXED_UNTIL inválido en secrets/services.env (AAAA-MM-DD)' >&2; exit 1
+  fi
+fi
+unset mfa_relaxed
+
 # Teams Workflow: el webhook firmado es una credencial y solo vive en services.env (0600).
 # Se copia al env privado del API para activar el transporte SOC ya implementado; si no existe,
 # el canal queda apagado. Nunca mostrar ni pasar la URL por argumentos o logs.
