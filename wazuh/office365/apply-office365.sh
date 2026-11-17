@@ -134,18 +134,25 @@ conf = open(conf_path, encoding='utf-8').read()
 block = open(block_path, encoding='utf-8').read().rstrip('\n')
 
 begin, end = '<!-- B89:office365:begin', '<!-- B89:office365:end -->'
-pattern = re.compile(re.escape(begin) + r'.*?' + re.escape(end), re.S)
-if pattern.search(conf):
-    conf = pattern.sub(lambda _: block, conf, count=1)
+# El bloque vive en su PROPIO <ossec_config>, al final y fuera de cualquier otro bloque
+# administrado. Antes se insertaba antes del último </ossec_config>, que pertenecía al último
+# bloque administrado (collectors, aws-events…): el instalador de ese bloque lo borraba al
+# regenerar el suyo y Office 365 dejaba de recolectar (incidente 2026-11-16/17).
+wrapped = re.compile(r'<ossec_config>\s*' + re.escape(begin) + r'.*?' + re.escape(end)
+                     + r'\s*</ossec_config>\n?', re.S)
+loose = re.compile(r'[ \t]*' + re.escape(begin) + r'.*?' + re.escape(end) + r'\n?', re.S)
+if wrapped.search(conf):
+    conf = wrapped.sub('', conf)
+elif loose.search(conf):
+    conf = loose.sub('', conf)
 else:
     # Un bloque <office365> previo sin marcadores se deshabilita para no duplicar el módulo.
     conf = re.sub(r'<office365>(?:(?!</office365>).)*<enabled>yes</enabled>',
                   lambda m: m.group(0).replace('<enabled>yes</enabled>', '<enabled>no</enabled>'),
                   conf, flags=re.S)
-    index = conf.rfind('</ossec_config>')
-    if index < 0:
-        sys.exit('ossec.conf sin </ossec_config>')
-    conf = conf[:index] + '  ' + block + '\n' + conf[index:]
+if '</ossec_config>' not in conf:
+    sys.exit('ossec.conf sin </ossec_config>')
+conf = conf.rstrip('\n') + '\n<ossec_config>\n  ' + block + '\n</ossec_config>\n'
 
 # Registrar la lista CDB una sola vez dentro del primer <ruleset>.
 entry = f'<list>{list_path}</list>'

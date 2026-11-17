@@ -210,8 +210,9 @@ write("monitor.json", {
         "wazuh-agents": {"mode": "heartbeat", "heartbeat": {"container": "b89-wazuh.manager-1"},
                          "max_silence_minutes": 15, "event_window_hours": 0,
                          "query": {"bool": {"must_not": [{"terms": {"rule.groups": ["b89_provider", "office365", "aws", "b89_platform"]}}]}}},
-        "office365": {"enabled": False, "mode": "events", "max_silence_minutes": 360, "query": {"term": {"rule.groups": "office365"}},
-                      "disabled_reason": "Office 365 bloqueado: falta ActivityFeed.Read (docs/20)."},
+        # Office 365 activo desde 2026-11 (ActivityFeed.Read concedido; ~5000 eventos/día): 6 h sin
+        # eventos es un silencio real del módulo office365 de Wazuh.
+        "office365": {"mode": "events", "max_silence_minutes": 360, "query": {"term": {"rule.groups": "office365"}}},
         "sharepoint": {"mode": "heartbeat", "heartbeat": {"collector": "sharepoint-audit"}, "max_silence_minutes": 40,
                        "event_window_hours": 72, "query": {"term": {"rule.groups": "b89_sharepoint"}}},
     },
