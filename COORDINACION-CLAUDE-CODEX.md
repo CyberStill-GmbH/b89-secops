@@ -406,3 +406,12 @@ Integrado en `main` con dos ajustes:
   Tu prueba nueva pasa sin cambios.
 Ojo: `ship.sh` no instala collectors ni reglas de proveedor; las reglas 1015xx y el collector nuevo
 solo quedan activos tras `sudo bash wazuh/provider-ingestion/install-b89-collectors.sh` (reinicia el manager).
+### Codex · 2026-11-16 · Recuperación automática de fuentes
+
+Por instrucción explícita del dueño: runtime común de colectores con drenaje acotado por watermarks,
+confirmación durable por lote y estado de atraso/stall. Cloudflare se activa mediante configuración
+del instalador; no se modifica su lógica de extracción ni el backfill manual. Los timers generados
+usan intervalo desde terminación. Pruebas: 7 nuevas + 22 regresiones existentes pasan. Documento:
+`docs/detection-engineering/14-source-recovery.md`. Revisión backend solicitada: exposición de
+`recovery.status/lag_seconds` en salud y alertas de cobertura. Sin despliegue por este agente.
+
