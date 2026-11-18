@@ -297,6 +297,44 @@ services:
       options: { max-size: 10m, max-file: '3' }
     restart: unless-stopped
 
+  # Receptor de Cloudflare Logpush (destino HTTP; wazuh/provider-ingestion/cloudflare/receiver).
+  # Sin puerto publicado: solo el edge le llega por /hooks/cloudflare-logpush/. Publica cada lote
+  # en el spool del host; el consumidor b89-collector-cloudflare-logpush (systemd) lo lleva a Wazuh.
+  # El spool y el secreto los prepara prepare-logpush-receiver.sh antes de arrancarlo.
+  cloudflare-logpush:
+    image: node:24.21.0-trixie-slim
+    user: '1000:1000'
+    working_dir: /app
+    command: ['node', '/app/logpush-receiver.mjs']
+    environment:
+      B89_LOGPUSH_TOKEN_FILE: /run/secrets/logpush-token
+      B89_LOGPUSH_SPOOL: /spool
+      NODE_ENV: production
+    volumes:
+      - /opt/b89/src/wazuh/provider-ingestion/cloudflare/receiver/logpush-receiver.mjs:/app/logpush-receiver.mjs:ro
+      - /opt/b89/secrets/collectors/cloudflare-logpush-token:/run/secrets/logpush-token:ro
+      - /opt/b89/collectors/spool/cloudflare-logpush:/spool
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    mem_limit: 256m
+    pids_limit: 64
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: '3' }
+    restart: unless-stopped
+
   edge:
     image: nginx:1.29.3
     # IP fija: único proxy de confianza del API (B89_ACCESS_TRUSTED_PROXY_CIDRS).

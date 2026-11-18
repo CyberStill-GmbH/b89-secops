@@ -366,6 +366,10 @@ log 'instalando localfile y reglas AWS en Wazuh'
 B89_RESTART=true bash "$SRC/wazuh/aws-events/install-aws-events.sh"
 log 'arrancando receptor AWS después de preparar el localfile'
 "${COMPOSE[@]}" up -d --wait aws-events
+# Cloudflare Logpush: spool y secreto antes del contenedor (si no, Docker montaría un directorio).
+bash "$SRC/wazuh/provider-ingestion/cloudflare/prepare-logpush-receiver.sh"
+log 'arrancando receptor de Cloudflare Logpush'
+"${COMPOSE[@]}" up -d --force-recreate --wait cloudflare-logpush
 
 log 'roles de base de datos'
 # Las contraseñas viajan por variables de entorno del exec (\getenv), no por argumentos.

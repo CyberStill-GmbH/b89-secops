@@ -123,4 +123,109 @@
     <options>no_full_log</options>
     <group>b89_logpush,</group>
   </rule>
+
+  <!-- Logpush HTTP (http_requests): cada petición entra a nivel 0 (sin alerta); alertan los patrones. -->
+  <rule id="101515" level="0">
+    <if_sid>101500</if_sid>
+    <field name="b89.event_type">^http$</field>
+    <description>B89 Cloudflare: petición HTTP $(cloudflare.http.method) $(cloudflare.http.host)$(cloudflare.http.path) → $(cloudflare.http.status).</description>
+    <options>no_full_log</options>
+    <group>b89_http,</group>
+  </rule>
+
+  <rule id="101516" level="6">
+    <if_sid>101515</if_sid>
+    <field name="cloudflare.http.path" type="pcre2">(?i)(/\.env|/\.git/|/\.aws/|/\.ssh/|wp-login\.php|xmlrpc\.php|/phpmyadmin|/etc/passwd|\.\./|%2e%2e%2f|/actuator|/server-status|/cgi-bin/|/\.DS_Store|/config\.json|/backup|\.sql$|\.bak$)</field>
+    <description>B89 Cloudflare: sondeo de ruta sensible $(cloudflare.http.path) desde $(cloudflare.http.client_ip) en $(cloudflare.http.host) ($(cloudflare.http.status)).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1595.003</id></mitre>
+    <group>b89_http,b89_web_probe,</group>
+  </rule>
+
+  <rule id="101517" level="10" frequency="15" timeframe="120">
+    <if_matched_sid>101516</if_matched_sid>
+    <same_field>cloudflare.http.client_ip</same_field>
+    <description>B89 Cloudflare: escaneo de rutas sensibles desde $(cloudflare.http.client_ip): 15+ sondeos en 2 min.</description>
+    <options>no_full_log</options>
+    <mitre><id>T1595.003</id></mitre>
+    <group>b89_http,b89_web_probe,b89_attack,</group>
+  </rule>
+
+  <rule id="101518" level="0">
+    <if_sid>101515</if_sid>
+    <field name="cloudflare.http.status" type="pcre2">^4\d\d$</field>
+    <description>B89 Cloudflare: respuesta 4xx a $(cloudflare.http.client_ip).</description>
+    <options>no_full_log</options>
+    <group>b89_http,</group>
+  </rule>
+
+  <rule id="101519" level="8" frequency="60" timeframe="120">
+    <if_matched_sid>101518</if_matched_sid>
+    <same_field>cloudflare.http.client_ip</same_field>
+    <description>B89 Cloudflare: 60+ respuestas 4xx para $(cloudflare.http.client_ip) en 2 min; enumeración o fuerza bruta.</description>
+    <options>no_full_log</options>
+    <mitre><id>T1595</id></mitre>
+    <group>b89_http,b89_attack,</group>
+  </rule>
+
+  <rule id="101520" level="0">
+    <if_sid>101515</if_sid>
+    <field name="cloudflare.http.status" type="pcre2">^5\d\d$</field>
+    <description>B89 Cloudflare: error 5xx en $(cloudflare.http.host).</description>
+    <options>no_full_log</options>
+    <group>b89_http,</group>
+  </rule>
+
+  <rule id="101521" level="9" frequency="50" timeframe="300">
+    <if_matched_sid>101520</if_matched_sid>
+    <same_field>cloudflare.http.host</same_field>
+    <description>B89 Cloudflare: 50+ errores 5xx en $(cloudflare.http.host) en 5 min; origen caído o bajo carga.</description>
+    <options>no_full_log</options>
+    <mitre><id>T1499</id></mitre>
+    <group>b89_http,b89_availability,</group>
+  </rule>
+
+  <rule id="101522" level="7">
+    <if_sid>101515</if_sid>
+    <field name="cloudflare.http.method" type="pcre2">^(TRACE|TRACK|CONNECT|PROPFIND|DEBUG)$</field>
+    <description>B89 Cloudflare: método HTTP anómalo $(cloudflare.http.method) desde $(cloudflare.http.client_ip) en $(cloudflare.http.host).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1595</id></mitre>
+    <group>b89_http,b89_web_probe,</group>
+  </rule>
+
+  <!-- Logpush DNS (dns_logs, DNS autoritativo de Cloudflare) -->
+  <rule id="101525" level="0">
+    <if_sid>101500</if_sid>
+    <field name="b89.event_type">^dns$</field>
+    <description>B89 Cloudflare: consulta DNS $(cloudflare.dns.query) tipo $(cloudflare.dns.query_type).</description>
+    <options>no_full_log</options>
+    <group>b89_dns,</group>
+  </rule>
+
+  <rule id="101526" level="8">
+    <if_sid>101525</if_sid>
+    <field name="cloudflare.dns.query_type" type="pcre2">^(252|251|AXFR|IXFR)$</field>
+    <description>B89 Cloudflare: intento de transferencia de zona ($(cloudflare.dns.query_type)) de $(cloudflare.dns.query) desde $(cloudflare.dns.client_ip).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1590.002</id></mitre>
+    <group>b89_dns,b89_recon,</group>
+  </rule>
+
+  <rule id="101527" level="0">
+    <if_sid>101525</if_sid>
+    <field name="cloudflare.dns.response_code" type="pcre2">^(3|NXDOMAIN)$</field>
+    <description>B89 Cloudflare: NXDOMAIN para $(cloudflare.dns.query).</description>
+    <options>no_full_log</options>
+    <group>b89_dns,</group>
+  </rule>
+
+  <rule id="101528" level="8" frequency="100" timeframe="120">
+    <if_matched_sid>101527</if_matched_sid>
+    <same_field>cloudflare.dns.client_ip</same_field>
+    <description>B89 Cloudflare: 100+ NXDOMAIN desde $(cloudflare.dns.client_ip) en 2 min; enumeración de subdominios.</description>
+    <options>no_full_log</options>
+    <mitre><id>T1590.002</id></mitre>
+    <group>b89_dns,b89_recon,</group>
+  </rule>
 </group>

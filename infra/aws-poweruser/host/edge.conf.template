@@ -17,6 +17,8 @@ proxy_cache_path /var/cache/nginx/b89_auth levels=1 keys_zone=b89_auth:10m max_s
 # Webhook SNS (monitoreo de la cuenta AWS, wazuh/aws-events): límite por IP de origen de SNS.
 limit_req_zone $binary_remote_addr zone=b89_aws_sns:1m rate=50r/s;
 limit_req_zone $binary_remote_addr zone=b89_wazuh_push:1m rate=200r/s;
+# Cloudflare Logpush (destino HTTP): lotes de hasta ~32 MB desde la red de Cloudflare.
+limit_req_zone $binary_remote_addr zone=b89_cf_logpush:1m rate=20r/s;
 
 upstream b89_api {
   server api:3000;
@@ -94,6 +96,31 @@ server {
     proxy_read_timeout 20s;
   }
   # B89:aws-sns:end
+
+  # B89:cloudflare-logpush:begin — jobs Logpush (destino HTTP) → receptor cloudflare-logpush.
+  # Sin sesión B89: lo autentica el receptor (cabecera X-B89-Logpush-Token, tiempo constante).
+  # Solo POST, cuerpo acotado y límite de tasa (503 → Cloudflare reintenta).
+  location ^~ /hooks/cloudflare-logpush/ {
+    limit_except POST { deny all; }
+    limit_req zone=b89_cf_logpush burst=100 nodelay;
+    limit_req_status 503;
+    client_max_body_size 33m;
+    client_body_buffer_size 1m;
+    resolver 127.0.0.11 valid=30s ipv6=off;
+    set $b89_cf_logpush http://cloudflare-logpush:8080;
+    proxy_pass $b89_cf_logpush;
+    proxy_set_header Host cloudflare-logpush;
+    proxy_set_header Connection "";
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header Cookie "";
+    proxy_set_header Authorization "";
+    proxy_set_header x-proxy-user "";
+    proxy_set_header x-proxy-roles "";
+    proxy_request_buffering on;
+    proxy_connect_timeout 3s;
+    proxy_read_timeout 60s;
+  }
+  # B89:cloudflare-logpush:end
 
   # Wazuh Manager -> durable B89 inbox. This route is intentionally public at the edge but
   # authenticated by the endpoint's timestamped HMAC; it must not require a browser session.

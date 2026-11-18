@@ -21,6 +21,39 @@ from b89_collector import ProviderError, commit_batch, iso, read_state, recover_
 
 MAX_INPUT_BYTES = 16 * 1024 * 1024
 MAX_RECORD_BYTES = 60_000
+# Lotes ya confirmados que se recuerdan para suprimir reenvíos exactos (Logpush entrega cada pocos
+# minutos por job: sin tope el estado crecería sin límite).
+MAX_LEDGER = 20_000
+# Cloudflare valida un destino HTTP enviando este objeto: no es un registro del conjunto de datos.
+VALIDATION_RECORD = {"content": "tests"}
+
+HTTP_FIELDS = {
+    "ClientIP": "client_ip", "ClientCountry": "country", "ClientASN": "asn",
+    "ClientRequestHost": "host", "ClientRequestMethod": "method", "ClientRequestPath": "path",
+    "ClientRequestURI": "uri", "ClientRequestProtocol": "protocol", "ClientRequestUserAgent": "user_agent",
+    "ClientRequestReferer": "referer", "EdgeResponseStatus": "status", "OriginResponseStatus": "origin_status",
+    "EdgeStartTimestamp": "datetime", "RayID": "ray", "CacheCacheStatus": "cache", "SecurityAction": "security_action",
+    "SecuritySource": "security_source", "BotScore": "bot_score", "WAFAttackScore": "waf_attack_score",
+    "EdgeResponseBytes": "bytes", "ClientSSLProtocol": "tls",
+}
+DNS_FIELDS = {
+    "Timestamp": "datetime", "QueryName": "query", "QueryType": "query_type", "ResponseCode": "response_code",
+    "SourceIP": "client_ip", "ColoCode": "colo", "EDNSSubnet": "edns_subnet", "ResponseCached": "cached",
+}
+FIREWALL_FIELDS = {
+    "Action": "action", "Source": "source", "Datetime": "datetime",
+    "ClientIP": "client_ip", "ClientCountry": "country", "ClientASN": "asn",
+    "ClientRequestHost": "host", "ClientRequestPath": "path",
+    "ClientRequestMethod": "method", "RayID": "ray", "RuleID": "rule_id",
+    "Description": "rule_description", "UserAgent": "user_agent",
+    "EdgeResponseStatus": "status",
+}
+# dataset → (event_type, sección normalizada, campos)
+DATASETS = {
+    "firewall_events": ("firewall", "firewall", FIREWALL_FIELDS),
+    "http_requests": ("http", "http", HTTP_FIELDS),
+    "dns_logs": ("dns", "dns", DNS_FIELDS),
+}
 
 
 def read_batch(path: pathlib.Path) -> bytes:
@@ -46,17 +79,11 @@ def normalize(record: dict, dataset: str, scope: str, batch: str, now: str) -> d
         "b89": {"vendor": "cloudflare", "source": "logpush", "event_type": "logpush", "collected_at": now},
         "cloudflare": {"dataset": dataset, "scope_id": scope, "batch_sha256": batch, "raw": record},
     }
-    if dataset == "firewall_events":
-        event["b89"]["event_type"] = "firewall"
-        names = {
-            "Action": "action", "Source": "source", "Datetime": "datetime",
-            "ClientIP": "client_ip", "ClientCountry": "country", "ClientASN": "asn",
-            "ClientRequestHost": "host", "ClientRequestPath": "path",
-            "ClientRequestMethod": "method", "RayID": "ray", "RuleID": "rule_id",
-            "Description": "rule_description", "UserAgent": "user_agent",
-            "EdgeResponseStatus": "status",
-        }
-        event["cloudflare"]["firewall"] = {
+    known = DATASETS.get(dataset)
+    if known:
+        event_type, section, names = known
+        event["b89"]["event_type"] = event_type
+        event["cloudflare"][section] = {
             dest: str(record[source]) for source, dest in names.items() if record.get(source) is not None
         }
     return event
@@ -123,6 +150,8 @@ def _ingest(path: pathlib.Path, output: pathlib.Path, state_path: pathlib.Path, 
                                 parse_constant=lambda _: (_ for _ in ()).throw(ValueError()))
             if not isinstance(record, dict):
                 raise ValueError()
+            if record == VALIDATION_RECORD:
+                continue
             event = normalize(record, dataset, scope, digest, now)
             if len(json.dumps(event, ensure_ascii=False).encode("utf-8")) > MAX_RECORD_BYTES:
                 raise ProviderError("Logpush record exceeds delivery limit; retained for remediation")
@@ -130,7 +159,7 @@ def _ingest(path: pathlib.Path, output: pathlib.Path, state_path: pathlib.Path, 
     except (UnicodeError, ValueError, RecursionError) as error:
         raise ProviderError("Logpush batch contains an invalid JSON record; no records committed") from error
     return commit_batch(output, state_path, state, events, {
-        "output": binding, "batches": committed + [key], "last_success": now,
+        "output": binding, "batches": (committed + [key])[-MAX_LEDGER:], "last_success": now,
     })
 
 
