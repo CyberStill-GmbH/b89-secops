@@ -12,7 +12,18 @@ const health = (doc: Record<string, unknown>) =>
           buckets: [
             {
               key: 'cloudflare',
-              latest: { hits: { hits: [{ _source: { timestamp: '2026-11-16T21:35:13.124Z', data: { b89: { health: doc } } } }] } },
+              latest: {
+                hits: {
+                  hits: [
+                    {
+                      _source: {
+                        timestamp: '2026-11-16T21:35:13.124Z',
+                        data: { b89: { health: doc } },
+                      },
+                    },
+                  ],
+                },
+              },
             },
           ],
         },
@@ -23,9 +34,18 @@ const health = (doc: Record<string, unknown>) =>
 
 describe('zonas de Cloudflare vigiladas (alcance del collector)', () => {
   it('muestra las zonas que el collector vigila y aparte cuántas tuvieron eventos', () => {
-    const parsed = health({ source: 'cloudflare', source_state: 'ok', scope_kind: 'zones', scope_count: '3', scope_items: 'a, b, c' });
+    const parsed = health({
+      source: 'cloudflare',
+      source_state: 'ok',
+      scope_kind: 'zones',
+      scope_count: '3',
+      scope_items: 'a, b, c',
+    });
     expect(parsed.sources.cloudflare.scopeCount).toBe(3);
-    const providers = withCollectorScope({ cloudflare: { metrics: { zones: 2, waf_blocks: 0 } } }, parsed);
+    const providers = withCollectorScope(
+      { cloudflare: { metrics: { zones: 2, http_24h: 0 } } },
+      parsed,
+    );
     expect(providers.cloudflare.metrics).toMatchObject({ zones: 3, zones_active: 2 });
   });
 

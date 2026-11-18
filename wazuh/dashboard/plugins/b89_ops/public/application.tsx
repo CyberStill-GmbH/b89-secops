@@ -13,6 +13,7 @@ import { AccessView } from './components/access_view';
 import { AiAnalystView } from './components/ai_analyst_view';
 import { AlertsView } from './components/alerts_view';
 import { AuditView } from './components/audit_view';
+import { CloudflareTrafficView } from './components/cloudflare_traffic_view';
 import { ConsoleProvider } from './components/console_context';
 import { IncidentsView } from './components/incidents_view';
 import { IntegrationsView } from './components/integrations_view';
@@ -61,6 +62,18 @@ function Console({
       return <OverviewView basePath={basePath} />;
     case 'integrations':
       return <IntegrationsView basePath={basePath} />;
+    case 'cloudflare_traffic':
+      // Filtros en la query (`?from=…&ip=…`): el enlace se comparte tal cual.
+      return (
+        <CloudflareTrafficView
+          basePath={basePath}
+          navigator={{
+            search,
+            push: (next) =>
+              history.push({ pathname: history.location.pathname, search: next ? `?${next}` : '' }),
+          }}
+        />
+      );
     case 'policies':
       return <PoliciesView basePath={basePath} />;
     case 'alerts':
@@ -73,7 +86,9 @@ function Console({
             entity={params.get('entity')}
             at={params.get('at')}
             basePath={basePath}
-            onOpenTriage={(id) => history.push({ pathname: '/', search: `?id=${encodeURIComponent(id)}` })}
+            onOpenTriage={(id) =>
+              history.push({ pathname: '/', search: `?id=${encodeURIComponent(id)}` })
+            }
           />
         );
       }

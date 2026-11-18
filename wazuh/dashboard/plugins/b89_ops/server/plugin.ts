@@ -3,6 +3,7 @@
  */
 
 import { randomBytes } from 'crypto';
+import { Readable } from 'stream';
 import { schema } from '@osd/config-schema';
 import { first } from 'rxjs/operators';
 import type {
@@ -17,6 +18,18 @@ import { LEGACY_LOGIN_PATHS, LOGIN_PATH, LOGOUT_PATH } from '../common';
 import { OVERVIEW_ROUTE } from '../common/integrations';
 import { buildOverview, SearchClient } from './overview';
 import { findEvent, findRelated, findSource } from './investigation';
+import { exportFilename, exportTrafficCsv, searchTraffic } from './cloudflare_traffic';
+import {
+  CURSOR_MAX_LENGTH,
+  MAX_PAGE_SIZE,
+  MAX_ZONES,
+  normalizeTrafficFilters,
+  RawTrafficQuery,
+  TEXT_MAX,
+  TRAFFIC_ROUTES,
+  UA_MAX,
+} from '../common/cloudflare_traffic';
+import { readabilityOf } from './overview';
 import {
   INVESTIGATION_ROUTES,
   MAX_QUERY_ENTITIES,
@@ -60,6 +73,10 @@ const idValidator = (value: string) =>
   /^[A-Za-z0-9_-]{1,128}$/u.test(value) ? undefined : 'identificador no válido';
 const digitsValidator = (value: string) =>
   /^\d{1,10}$/u.test(value) ? undefined : 'regla no válida';
+
+interface TrafficResponseFactory {
+  customError(options: { statusCode: number; body: { message: string } }): unknown;
+}
 
 export class B89OpsServerPlugin implements Plugin<void, void> {
   private readonly logger: Logger;
@@ -172,6 +189,112 @@ export class B89OpsServerPlugin implements Plugin<void, void> {
             body: 'Cursor de investigacion no valido para estos filtros.',
           });
         }
+      },
+    );
+
+    // «Tráfico de Cloudflare»: todo b89-cloudflare-traffic-* (HTTP, DNS, firewall, auditoría)
+    // con la identidad de quien mira. Solo filtros validados; nunca DSL del navegador.
+    const shortText = schema.string({ maxLength: TEXT_MAX });
+    const repeated = (maxSize: number) =>
+      schema.maybe(
+        schema.oneOf([
+          schema.string({ maxLength: 300 }),
+          schema.arrayOf(schema.string({ maxLength: 253 }), { maxSize }),
+        ]),
+      );
+    const trafficQuery = {
+      from: schema.string({ maxLength: 40 }),
+      to: schema.string({ maxLength: 40 }),
+      dataset: repeated(4),
+      zone: repeated(MAX_ZONES),
+      ip: schema.maybe(schema.string({ maxLength: 64 })),
+      host: schema.maybe(schema.string({ maxLength: 253 })),
+      path: schema.maybe(shortText),
+      method: schema.maybe(schema.string({ maxLength: 16 })),
+      status: schema.maybe(schema.string({ maxLength: 3 })),
+      country: schema.maybe(schema.string({ maxLength: 2 })),
+      asn: schema.maybe(schema.string({ maxLength: 12 })),
+      ua: schema.maybe(schema.string({ maxLength: UA_MAX })),
+      q: schema.maybe(shortText),
+    };
+    const indexerError = (response: TrafficResponseFactory, error: unknown) => {
+      const status = readabilityOf(error);
+      if (status === 'forbidden') {
+        return response.customError({
+          statusCode: 403,
+          body: { message: 'Tu rol no puede leer b89-cloudflare-traffic-*.' },
+        });
+      }
+      const missing =
+        Number((error as { statusCode?: number })?.statusCode) === 404 ||
+        Number((error as { meta?: { statusCode?: number } })?.meta?.statusCode) === 404;
+      if (missing) {
+        return response.customError({
+          statusCode: 404,
+          body: { message: 'Aún no existe ningún índice b89-cloudflare-traffic-*.' },
+        });
+      }
+      this.logger.warn(`Tráfico de Cloudflare: el Indexer falló (${String(error).slice(0, 200)})`);
+      return response.customError({
+        statusCode: 502,
+        body: { message: 'El Indexer no respondió a la consulta de tráfico.' },
+      });
+    };
+    router.get(
+      {
+        path: TRAFFIC_ROUTES.search,
+        validate: {
+          query: schema.object({
+            ...trafficQuery,
+            cursor: schema.maybe(schema.string({ maxLength: CURSOR_MAX_LENGTH })),
+            size: schema.maybe(schema.string({ maxLength: 3 })),
+          }),
+        },
+      },
+      async (context, request, response) => {
+        const query = request.query as RawTrafficQuery & { cursor?: string; size?: string };
+        const filters = normalizeTrafficFilters(query);
+        if (!filters.ok) return response.badRequest({ body: { message: filters.error } });
+        const size = query.size === undefined ? undefined : Number(query.size);
+        if (size !== undefined && !(Number.isInteger(size) && size >= 1 && size <= MAX_PAGE_SIZE)) {
+          return response.badRequest({
+            body: { message: `Tamaño de página entre 1 y ${MAX_PAGE_SIZE}.` },
+          });
+        }
+        let result;
+        try {
+          result = await searchTraffic(currentUser(context), filters.value, {
+            cursor: query.cursor,
+            size,
+          });
+        } catch (error) {
+          if (error instanceof Error && error.message.startsWith('Cursor no válido')) {
+            return response.badRequest({ body: { message: error.message } });
+          }
+          return indexerError(response as TrafficResponseFactory, error);
+        }
+        return response.ok({ body: result, headers: json });
+      },
+    );
+    router.get(
+      { path: TRAFFIC_ROUTES.export, validate: { query: schema.object(trafficQuery) } },
+      async (context, request, response) => {
+        const filters = normalizeTrafficFilters(request.query as RawTrafficQuery);
+        if (!filters.ok) return response.badRequest({ body: { message: filters.error } });
+        let rows;
+        try {
+          rows = await exportTrafficCsv(currentUser(context), filters.value);
+        } catch (error) {
+          return indexerError(response as TrafficResponseFactory, error);
+        }
+        return response.ok({
+          body: Readable.from(rows),
+          headers: {
+            ...json,
+            'content-type': 'text/csv; charset=utf-8',
+            'content-disposition': `attachment; filename="${exportFilename(filters.value)}"`,
+          },
+        });
       },
     );
 

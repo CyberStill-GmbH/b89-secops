@@ -21,6 +21,7 @@ import {
   TrendBucket,
 } from '../common/integrations';
 import { parsePlatformHealth, platformHealthQuery } from '../common/platform_health';
+import { TRAFFIC_INDEX } from '../common/cloudflare_traffic';
 
 /**
  * `GET /api/b89_ops/overview`: cifras del «Resumen del SOC» calculadas en el Indexer.
@@ -35,16 +36,6 @@ import { parsePlatformHealth, platformHealthQuery } from '../common/platform_hea
 
 export const ALERTS_INDEX = 'wazuh-alerts-*';
 export const MONITORING_INDEX = 'wazuh-monitoring-*';
-
-/** Bloqueos y desafíos del WAF de Cloudflare (data.cloudflare.firewall.action). */
-const WAF_BLOCK_ACTIONS = [
-  'block',
-  'challenge',
-  'jschallenge',
-  'js_challenge',
-  'managed_challenge',
-  'drop',
-];
 
 const PROVIDER_GROUP: Readonly<Record<ProviderId, string>> = {
   office365: 'office365',
@@ -97,17 +88,6 @@ export function alertsAggregationQuery(): Json {
             filters: { filters: providerFilters },
             aggs: {
               levels: levelRanges(),
-              waf_blocks: {
-                filter: {
-                  bool: {
-                    filter: [
-                      groupFilter('b89_waf'),
-                      { terms: { 'data.cloudflare.firewall.action': WAF_BLOCK_ACTIONS } },
-                    ],
-                  },
-                },
-              },
-              audit: { filter: groupFilter('b89_audit') },
             },
           },
         },
@@ -265,6 +245,51 @@ export function agentsQuery(): Json {
   };
 }
 
+/**
+ * Cifras de Cloudflare desde `b89-cloudflare-traffic-*` (todo el tráfico, no solo el WAF):
+ * peticiones HTTP, consultas DNS y eventos de seguridad (firewall/WAF) de las últimas 24 h
+ * por la hora real del evento, y las zonas con tráfico.
+ */
+export function cloudflareTrafficQuery(): Json {
+  return {
+    size: 0,
+    track_total_hits: false,
+    query: { range: { '@timestamp': { gte: 'now-24h', lte: 'now' } } },
+    aggs: {
+      datasets: { terms: { field: 'event.dataset', size: 10 } },
+      http_sampled: {
+        filter: {
+          bool: {
+            filter: [{ term: { 'event.dataset': 'http' } }, { term: { 'event.sampled': true } }],
+          },
+        },
+      },
+      zones: { cardinality: { field: 'zone.name' } },
+      last: { max: { field: '@timestamp' } },
+    },
+  };
+}
+
+/** Métricas `traffic_*` del proveedor Cloudflare; `traffic_readable` 1 = leído, 0 = sin permiso, -1 = error. */
+export function parseCloudflareTraffic(body: unknown): Record<string, number> {
+  const aggregations = obj(obj(body).aggregations);
+  const counts: Record<string, number> = {};
+  for (const bucket of list(obj(aggregations.datasets).buckets)) {
+    counts[String(obj(bucket).key)] = num(obj(bucket).doc_count);
+  }
+  const last = obj(aggregations.last).value;
+  return {
+    traffic_readable: 1,
+    http_24h: counts.http ?? 0,
+    http_sampled_24h: num(obj(aggregations.http_sampled).doc_count),
+    dns_24h: counts.dns ?? 0,
+    security_24h: counts.firewall ?? 0,
+    audit_24h: counts.audit ?? 0,
+    zones_traffic: num(obj(aggregations.zones).value),
+    ...(typeof last === 'number' && Number.isFinite(last) ? { traffic_last: last } : {}),
+  };
+}
+
 /* ------------------------------------------------------------------- Lectura */
 
 function obj(value: unknown): Json {
@@ -344,8 +369,6 @@ export function parseAlertsAggregation(body: unknown): {
       metrics.projects = num(obj(all.projects).value);
     }
     if (id === 'cloudflare') {
-      metrics.waf_blocks = num(obj(recent.waf_blocks).doc_count);
-      metrics.audit = num(obj(recent.audit).doc_count);
       metrics.zones = num(obj(all.zones).value);
     }
     providers[id] = {
@@ -446,12 +469,13 @@ export async function buildOverview(
   integrations: IntegrationsConfig,
   now: Date = new Date(),
 ): Promise<OverviewResponse> {
-  const [alerts, top, agents, platform, attention] = await Promise.all([
+  const [alerts, top, agents, platform, attention, traffic] = await Promise.all([
     settle(client.search({ index: ALERTS_INDEX, body: alertsAggregationQuery() })),
     settle(client.search({ index: ALERTS_INDEX, body: topEventsQuery() })),
     settle(client.search({ index: MONITORING_INDEX, body: agentsQuery() })),
     settle(client.search({ index: ALERTS_INDEX, body: platformHealthQuery() })),
     settle(client.search({ index: ALERTS_INDEX, body: serviceAttentionQuery() })),
+    settle(client.search({ index: TRAFFIC_INDEX, body: cloudflareTrafficQuery() })),
   ]);
   const parsed = alerts.status === 'fulfilled' ? parseAlertsAggregation(alerts.value.body) : null;
   const health =
@@ -459,8 +483,7 @@ export async function buildOverview(
       ? parsePlatformHealth(platform.value.body)
       : {
           access: (readabilityOf(platform.reason) === 'forbidden' ? 'forbidden' : 'error') as
-            | 'forbidden'
-            | 'error',
+            'forbidden' | 'error',
           sources: {},
           problems: [],
         };
@@ -478,11 +501,48 @@ export async function buildOverview(
     alertsAccess: alerts.status === 'fulfilled' ? 'ok' : readabilityOf(alerts.reason),
     monitoringAccess: agents.status === 'fulfilled' ? 'ok' : readabilityOf(agents.reason),
     siem: parsed?.siem ?? null,
-    providers: parsed?.providers ? withCollectorScope(parsed.providers, health) : null,
+    providers: parsed?.providers
+      ? withCollectorScope(
+          withCloudflareTraffic(
+            parsed.providers,
+            traffic.status === 'fulfilled'
+              ? parseCloudflareTraffic(traffic.value.body)
+              : { traffic_readable: readabilityOf(traffic.reason) === 'forbidden' ? 0 : -1 },
+          ),
+          health,
+        )
+      : null,
     topEvents: top.status === 'fulfilled' ? parseTopEvents(top.value.body) : [],
     agents: agents.status === 'fulfilled' ? parseAgents(agents.value.body) : null,
     integrations,
     platformHealth: health,
+  };
+}
+
+/**
+ * Añade las cifras de tráfico a Cloudflare. Con tráfico legible, las zonas «con eventos» son
+ * las que tuvieron tráfico en 24 h (no solo alertas).
+ */
+export function withCloudflareTraffic<
+  P extends Record<string, { metrics: Record<string, number>; lastEventAt?: string | null }>,
+>(providers: P, traffic: Record<string, number>): P {
+  const cloudflare = providers.cloudflare;
+  if (!cloudflare) return providers;
+  const zones = traffic.traffic_readable === 1 ? traffic.zones_traffic : cloudflare.metrics.zones;
+  // El último evento de Cloudflare es el más reciente entre alertas y tráfico.
+  const alertLast = cloudflare.lastEventAt ? Date.parse(cloudflare.lastEventAt) : Number.NaN;
+  const trafficLast = traffic.traffic_last;
+  const lastEventAt =
+    trafficLast !== undefined && !(alertLast >= trafficLast)
+      ? new Date(trafficLast).toISOString()
+      : cloudflare.lastEventAt;
+  return {
+    ...providers,
+    cloudflare: {
+      ...cloudflare,
+      ...(lastEventAt !== undefined ? { lastEventAt } : {}),
+      metrics: { ...cloudflare.metrics, ...traffic, ...(zones !== undefined ? { zones } : {}) },
+    },
   };
 }
 
@@ -501,6 +561,9 @@ export function withCollectorScope<P extends Record<string, { metrics: Record<st
   const active = cloudflare.metrics.zones ?? 0;
   return {
     ...providers,
-    cloudflare: { ...cloudflare, metrics: { ...cloudflare.metrics, zones: scope, zones_active: active } },
+    cloudflare: {
+      ...cloudflare,
+      metrics: { ...cloudflare.metrics, zones: scope, zones_active: active },
+    },
   };
 }

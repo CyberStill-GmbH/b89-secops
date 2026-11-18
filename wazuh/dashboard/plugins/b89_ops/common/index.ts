@@ -80,6 +80,14 @@ export const B89_APPS = [
     category: 'soc',
   },
   {
+    id: 'b89-cloudflare-traffic',
+    view: 'cloudflare_traffic',
+    title: 'Tráfico de Cloudflare',
+    icon: 'b89-sources.svg',
+    order: 36,
+    category: 'soc',
+  },
+  {
     id: 'b89-policies',
     view: 'policies',
     title: 'Políticas',
@@ -155,3 +163,4 @@ export * from './navigation';
 export * from './platform_health';
 export * from './ai_investigations';
 export * from './ai_activity';
+export * from './cloudflare_traffic';
