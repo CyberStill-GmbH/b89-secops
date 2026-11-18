@@ -333,6 +333,36 @@ function mapOutcome(groups: readonly string[]): SecurityEvent['outcome'] {
 }
 
 /**
+ * Instante real del evento cuando el proveedor lo declara (Cloudflare: petición, consulta DNS,
+ * evento de firewall o auditoría). Wazuh sella `timestamp` con la hora de PROCESO: un evento
+ * recuperado de días anteriores aparecía como de hoy (2026-11-18). Se acepta solo un instante
+ * válido, no futuro (5 min de tolerancia) y de como mucho 400 días; si no, se usa `timestamp`.
+ */
+function providerOccurredAt(
+  data: Readonly<Record<string, unknown>> | undefined,
+  wazuhTimestamp: string,
+): string {
+  const fallback = new Date(wazuhTimestamp).toISOString();
+  const cloudflare = readObject(data?.['cloudflare']);
+  if (!cloudflare) return fallback;
+  const candidates = [
+    readObject(cloudflare['http'])?.['datetime'],
+    readObject(cloudflare['firewall'])?.['datetime'],
+    readObject(cloudflare['dns'])?.['datetime'],
+    readObject(cloudflare['audit'])?.['when'],
+  ];
+  const processed = Date.parse(fallback);
+  for (const value of candidates) {
+    if (typeof value !== 'string' || value.length > 40) continue;
+    const at = Date.parse(value);
+    if (!Number.isFinite(at)) continue;
+    if (at > processed + 5 * 60_000 || at < processed - 400 * 86_400_000) continue;
+    return new Date(at).toISOString();
+  }
+  return fallback;
+}
+
+/**
  * IP de origen genérica de Wazuh (`data.srcip`). Se valida igual que la de Office 365:
  * una correlación por IP solo es útil si la IP es real.
  */
@@ -525,7 +555,7 @@ export function normalizeWazuhAlert(
   const severity = mapSeverity(level);
   const origin = originHop(groups);
   const office365 = projectOffice365(readObject(source['data']));
-  const occurredAt = new Date(timestamp).toISOString();
+  const occurredAt = providerOccurredAt(readObject(source['data']), timestamp);
   const observedAt = new Date(record.collectedAt).toISOString();
   const receivedAt = context.receivedAt.toISOString();
 

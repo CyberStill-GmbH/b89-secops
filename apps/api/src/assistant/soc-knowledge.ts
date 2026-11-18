@@ -113,7 +113,10 @@ export function ruleForAlert(
   alert: { readonly ruleId?: string | null; readonly title: string },
 ): KnowledgeRule | undefined {
   const id = alert.ruleId?.trim();
-  return (id ? knowledge.rules[id] : undefined) ?? ruleForTitle(knowledge, alert.title);
+  // Con id de regla no se adivina por título: el prefijo común («B89 Cloudflare: …») emparejaba otra
+  // regla del mismo proveedor (101501 en lugar de 101532, 2026-11-18).
+  if (id) return knowledge.rules[id];
+  return ruleForTitle(knowledge, alert.title);
 }
 
 /**

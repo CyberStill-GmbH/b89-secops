@@ -171,7 +171,12 @@ export class RuntimeSocActions implements SocActions {
       resource: { type: 'incident', id: incidentId },
       outcome: 'succeeded',
       correlationId: correlationOf(job),
-      metadata: { alertId: alert.id, investigationId: job.id, disposition, priority: alert.priority },
+      metadata: {
+        alertId: alert.id,
+        investigationId: job.id,
+        disposition,
+        priority: alert.priority,
+      },
     });
   }
 
@@ -295,7 +300,8 @@ export class RuntimeSocActions implements SocActions {
       correlationId: correlationOf(job),
       investigationId: job.id,
       urgency: review.urgency,
-      groupKey: review.groupKey.replace(/[^A-Za-z0-9_:|.-]/gu, '_').slice(0, 200) || `job:${job.id}`,
+      groupKey:
+        review.groupKey.replace(/[^A-Za-z0-9_:|.-]/gu, '_').slice(0, 200) || `job:${job.id}`,
       reason: review.reason,
     });
     if (!outcome.ok) throw new AnalystActionError(outcome.reason);
@@ -305,17 +311,14 @@ export class RuntimeSocActions implements SocActions {
 
   public async attachReport(
     job: InvestigationJob,
-    report: { readonly filename: string; readonly markdown: string },
+    _report: { readonly filename: string; readonly markdown: string },
   ): Promise<{ readonly reportId?: string }> {
     const alert = await this.load(job);
     // Sin incidente no hay bitácora donde adjuntar: el informe queda en el expediente.
     if (!alert.incidentId) return {};
-    const footer = `\n\n_Informe completo: expediente ${job.id} en el Analista IA._`;
-    const max = INCIDENT_WORK_LIMITS.noteMax - footer.length;
-    const body =
-      report.markdown.length > max
-        ? `${report.markdown.slice(0, max - 2)}…${footer}`
-        : `${report.markdown}${footer}`;
+    // Nota legible en texto plano (la bitácora no interpreta markdown): el informe completo vive
+    // en el expediente; aquí solo lo que una persona necesita para decidir.
+    const body = analystNoteBody(job).slice(0, INCIDENT_WORK_LIMITS.noteMax);
     const added = await addIncidentNote(this.options.soc(), {
       actor: this.actor,
       incidentId: alert.incidentId,
@@ -325,4 +328,48 @@ export class RuntimeSocActions implements SocActions {
     if (!added.ok) throw new AnalystActionError(added.reason);
     return { reportId: added.value.id };
   }
+}
+
+const VERDICT_TEXT: Record<string, string> = {
+  likely_true_positive: 'Probable ataque real',
+  likely_false_positive: 'Probable falso positivo',
+  inconclusive: 'Sin conclusión firme',
+};
+const CONFIDENCE_TEXT: Record<string, string> = { low: 'baja', medium: 'media', high: 'alta' };
+
+/** Nota de incidente en texto plano y corta (veredicto, qué pasó, qué falta, qué hacer). */
+export function analystNoteBody(job: InvestigationJob): string {
+  const result = job.result;
+  const lines: string[] = [`Analista IA · ${job.priority} · ${job.subject.title}`.slice(0, 300)];
+  if (result) {
+    const how = job.inference && job.inference !== 'none' ? 'con IA' : 'por reglas, sin IA';
+    lines.push(
+      '',
+      `Veredicto: ${VERDICT_TEXT[result.verdict] ?? result.verdict} (confianza ${
+        CONFIDENCE_TEXT[result.confidence] ?? result.confidence
+      }, ${how}).`,
+      '',
+      result.summary.replace(/^Conclusión por reglas \(sin IA\):\s*/u, '').slice(0, 700),
+    );
+    const block = (title: string, items: readonly string[], max: number) => {
+      const picked = items.filter(Boolean).slice(0, max);
+      if (picked.length > 0)
+        lines.push('', title, ...picked.map((item) => `• ${item.slice(0, 240)}`));
+    };
+    block(
+      'Lo que pesa:',
+      result.inferences.map((item) => item.text.replace(/^Señal de riesgo:\s*/u, '')),
+      4,
+    );
+    block(
+      'Qué falta ver:',
+      result.gaps.filter((gap) => !/no medida por B89/u.test(gap)),
+      3,
+    );
+    block('Qué hacer:', result.nextSteps, 3);
+  } else {
+    lines.push('', 'La investigación no produjo resultado.');
+  }
+  lines.push('', `Expediente completo: /app/b89-ai-analyst?id=${job.id}`);
+  return lines.join('\n');
 }

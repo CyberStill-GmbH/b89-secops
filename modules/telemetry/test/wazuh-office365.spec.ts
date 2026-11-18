@@ -373,3 +373,45 @@ describe('Cloudflare · IP del cliente como entidad', () => {
     });
   });
 });
+
+describe('Cloudflare · hora real del evento', () => {
+  const build = (data: Record<string, unknown>) =>
+    normalizeWazuhAlert(
+      {
+        record: {
+          sourceRecordId: `cf-${JSON.stringify(data).length}`,
+          dataset: 'alerts',
+          collectedAt: '2026-11-18T19:00:00.000Z',
+          raw: {
+            timestamp: '2026-11-18T19:00:00.000Z',
+            rule: {
+              id: 101532,
+              level: 13,
+              description: 'B89 Cloudflare: exportación',
+              groups: ['cloudflare'],
+            },
+            data,
+          },
+        },
+        raw: office365Alert({}).raw,
+      },
+      context,
+    );
+
+  it('usa la hora de Cloudflare y no la de proceso de Wazuh', () => {
+    const outcome = build({
+      cloudflare: { http: { datetime: '2026-11-17T17:45:43Z', client_ip: '198.51.100.7' } },
+    });
+    if (outcome.status !== 'normalized') throw new Error('se esperaba normalización');
+    expect(outcome.event.occurredAt).toBe('2026-11-17T17:45:43.000Z');
+  });
+
+  it('ignora horas futuras o absurdas y vuelve al timestamp de Wazuh', () => {
+    const future = build({ cloudflare: { http: { datetime: '2027-01-01T00:00:00Z' } } });
+    const garbage = build({ cloudflare: { audit: { when: 'ayer' } } });
+    for (const outcome of [future, garbage]) {
+      if (outcome.status !== 'normalized') throw new Error('se esperaba normalización');
+      expect(outcome.event.occurredAt).toBe('2026-11-18T19:00:00.000Z');
+    }
+  });
+});

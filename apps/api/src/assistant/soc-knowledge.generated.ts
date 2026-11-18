@@ -268,6 +268,7 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
     "101511",
     "101512",
     "101513",
+    "101514",
     "101740"
    ],
    "useCases": [
@@ -797,7 +798,8 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
     "101510",
     "101511",
     "101512",
-    "101513"
+    "101513",
+    "101514"
    ],
    "mitre": [
     "T1584.002",
@@ -1456,6 +1458,25 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
    "dataSources": [
     "listas CDB b89-ti-blocklist y b89-ti-tor (timer diario del host)",
     "SSH, edge, command monitoring y auditd"
+   ]
+  },
+  {
+   "id": "B89-DET-PLAT-001",
+   "title": "Latido de los collectors de proveedores (cobertura de fuentes)",
+   "source": "platform",
+   "useCase": "source-health",
+   "status": "testing",
+   "ruleIds": [
+    "101980",
+    "101981"
+   ],
+   "mitre": [],
+   "priorityHint": "ninguna (evidencia de cobertura, no alerta)",
+   "falsePositives": [
+    "No aplica; el volumen es una alerta por corrida de cada collector."
+   ],
+   "dataSources": [
+    "Latido de wazuh/provider-ingestion/common/b89_collector.py (source_heartbeat, allowlist sin URLs ni secretos)"
    ]
   },
   {
@@ -3197,7 +3218,7 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
   },
   "101512": {
    "id": "101512",
-   "level": 2,
+   "level": 3,
    "description": "B89 Cloudflare: evento de seguridad $(cloudflare.firewall.action) en $(cloudflare.firewall.host).",
    "mitre": [],
    "groups": [
@@ -3230,6 +3251,219 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
    "runbooks": [
     "oleada-waf"
    ]
+  },
+  "101514": {
+   "id": "101514",
+   "level": 3,
+   "description": "B89 Cloudflare: registro Logpush recibido; revisar el conjunto de datos antes de clasificar.",
+   "mitre": [],
+   "groups": [
+    "b89_logpush"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml",
+   "useCases": [
+    "B89-DET-CF-001"
+   ],
+   "runbooks": [
+    "oleada-waf"
+   ]
+  },
+  "101515": {
+   "id": "101515",
+   "level": 0,
+   "description": "B89 Cloudflare: petición HTTP $(cloudflare.http.method) $(cloudflare.http.host)$(cloudflare.http.path) → $(cloudflare.http.status).",
+   "mitre": [],
+   "groups": [
+    "b89_http"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml"
+  },
+  "101516": {
+   "id": "101516",
+   "level": 2,
+   "description": "B89 Cloudflare: sondeo de ruta sensible $(cloudflare.http.path) desde $(cloudflare.http.client_ip) en $(cloudflare.http.host) ($(cloudflare.http.status)).",
+   "mitre": [
+    "T1595.003"
+   ],
+   "groups": [
+    "b89_http",
+    "b89_web_probe"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml"
+  },
+  "101517": {
+   "id": "101517",
+   "level": 10,
+   "description": "B89 Cloudflare: escaneo de rutas sensibles desde $(cloudflare.http.client_ip): 15+ sondeos en 2 min.",
+   "mitre": [
+    "T1595.003"
+   ],
+   "groups": [
+    "b89_http",
+    "b89_web_probe",
+    "b89_attack"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml"
+  },
+  "101518": {
+   "id": "101518",
+   "level": 0,
+   "description": "B89 Cloudflare: respuesta 4xx a $(cloudflare.http.client_ip).",
+   "mitre": [],
+   "groups": [
+    "b89_http"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml"
+  },
+  "101519": {
+   "id": "101519",
+   "level": 8,
+   "description": "B89 Cloudflare: 60+ respuestas 4xx para $(cloudflare.http.client_ip) en 2 min; enumeración o fuerza bruta.",
+   "mitre": [
+    "T1595"
+   ],
+   "groups": [
+    "b89_http",
+    "b89_attack"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml"
+  },
+  "101520": {
+   "id": "101520",
+   "level": 0,
+   "description": "B89 Cloudflare: error 5xx en $(cloudflare.http.host).",
+   "mitre": [],
+   "groups": [
+    "b89_http"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml"
+  },
+  "101521": {
+   "id": "101521",
+   "level": 9,
+   "description": "B89 Cloudflare: 50+ errores 5xx en $(cloudflare.http.host) en 5 min; origen caído o bajo carga.",
+   "mitre": [
+    "T1499"
+   ],
+   "groups": [
+    "b89_http",
+    "b89_availability"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml"
+  },
+  "101522": {
+   "id": "101522",
+   "level": 7,
+   "description": "B89 Cloudflare: método HTTP anómalo $(cloudflare.http.method) desde $(cloudflare.http.client_ip) en $(cloudflare.http.host).",
+   "mitre": [
+    "T1595"
+   ],
+   "groups": [
+    "b89_http",
+    "b89_web_probe"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml"
+  },
+  "101525": {
+   "id": "101525",
+   "level": 0,
+   "description": "B89 Cloudflare: consulta DNS $(cloudflare.dns.query) tipo $(cloudflare.dns.query_type).",
+   "mitre": [],
+   "groups": [
+    "b89_dns"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml"
+  },
+  "101526": {
+   "id": "101526",
+   "level": 8,
+   "description": "B89 Cloudflare: intento de transferencia de zona ($(cloudflare.dns.query_type)) de $(cloudflare.dns.query) desde $(cloudflare.dns.client_ip).",
+   "mitre": [
+    "T1590.002"
+   ],
+   "groups": [
+    "b89_dns",
+    "b89_recon"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml"
+  },
+  "101527": {
+   "id": "101527",
+   "level": 0,
+   "description": "B89 Cloudflare: NXDOMAIN para $(cloudflare.dns.query).",
+   "mitre": [],
+   "groups": [
+    "b89_dns"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml"
+  },
+  "101528": {
+   "id": "101528",
+   "level": 8,
+   "description": "B89 Cloudflare: 100+ NXDOMAIN desde $(cloudflare.dns.client_ip) en 2 min; enumeración de subdominios.",
+   "mitre": [
+    "T1590.002"
+   ],
+   "groups": [
+    "b89_dns",
+    "b89_recon"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml"
+  },
+  "101530": {
+   "id": "101530",
+   "level": 0,
+   "description": "B89 Cloudflare: backoffice de pagos $(cloudflare.http.method) $(cloudflare.http.path) desde $(cloudflare.http.client_ip) ($(cloudflare.http.status)).",
+   "mitre": [],
+   "groups": [
+    "b89_http",
+    "b89_backoffice"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml"
+  },
+  "101531": {
+   "id": "101531",
+   "level": 13,
+   "description": "B89 Cloudflare: sesión válida en el backoffice de pagos desde hosting/VPN ($(cloudflare.http.asn_name), $(cloudflare.http.country)) IP $(cloudflare.http.client_ip): $(cloudflare.http.method) $(cloudflare.http.path) el $(cloudflare.http.datetime) UTC. Posible uso de credenciales robadas.",
+   "mitre": [
+    "T1078",
+    "T1550.001"
+   ],
+   "groups": [
+    "b89_http",
+    "b89_backoffice",
+    "b89_credential_misuse"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml"
+  },
+  "101532": {
+   "id": "101532",
+   "level": 13,
+   "description": "B89 Cloudflare: exportación de datos del backoffice ($(cloudflare.http.path)) desde $(cloudflare.http.country) IP $(cloudflare.http.client_ip) ($(cloudflare.http.asn_name)) el $(cloudflare.http.datetime) UTC. Posible exfiltración.",
+   "mitre": [
+    "T1567",
+    "T1213"
+   ],
+   "groups": [
+    "b89_http",
+    "b89_backoffice",
+    "b89_exfiltration"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml"
+  },
+  "101533": {
+   "id": "101533",
+   "level": 12,
+   "description": "B89 Cloudflare: login correcto al backoffice de pagos desde $(cloudflare.http.country) IP $(cloudflare.http.client_ip) ($(cloudflare.http.asn_name)) el $(cloudflare.http.datetime) UTC.",
+   "mitre": [
+    "T1078"
+   ],
+   "groups": [
+    "b89_http",
+    "b89_backoffice",
+    "b89_credential_misuse"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml"
   },
   "101600": {
    "id": "101600",
@@ -6661,6 +6895,28 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
     "exfiltracion-sharepoint"
    ]
   },
+  "101980": {
+   "id": "101980",
+   "level": 3,
+   "description": "B89 Integración: latido del collector $(b89.heartbeat.source_id) ($(b89.heartbeat.outcome), atraso $(b89.heartbeat.provider_lag_seconds) s).",
+   "mitre": [],
+   "groups": [],
+   "file": "detections/platform/collector-heartbeat/rule.xml",
+   "useCases": [
+    "B89-DET-PLAT-001"
+   ]
+  },
+  "101981": {
+   "id": "101981",
+   "level": 3,
+   "description": "B89 Integración: latido del collector $(b89.heartbeat.source_id) ($(b89.heartbeat.outcome), atraso $(b89.heartbeat.provider_lag_seconds) s).",
+   "mitre": [],
+   "groups": [],
+   "file": "detections/platform/collector-heartbeat/rule.xml",
+   "useCases": [
+    "B89-DET-PLAT-001"
+   ]
+  },
   "19003": {
    "id": "19003",
    "level": 5,
@@ -7690,6 +7946,19 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
     {
      "id": "TA0005",
      "name": "Evasión de defensas"
+    }
+   ]
+  },
+  "T1550.001": {
+   "name": "Use Alternate Authentication Material: Application Access Token",
+   "tactics": [
+    {
+     "id": "TA0005",
+     "name": "Evasión de defensas"
+    },
+    {
+     "id": "TA0008",
+     "name": "Movimiento lateral"
     }
    ]
   },
