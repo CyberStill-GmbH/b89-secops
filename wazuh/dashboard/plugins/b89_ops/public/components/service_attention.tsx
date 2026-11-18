@@ -1,5 +1,12 @@
-import React, { useEffect, useState } from 'react';
-import { discoverUrlForQuery, ServiceAttention, ServiceId, TopEvent } from '../../common';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+  discoverUrlForQuery,
+  LEVEL_BAND_RANGES,
+  LevelBand,
+  ServiceAttention,
+  ServiceId,
+  TopEvent,
+} from '../../common';
 import { DataZone, Timestamp } from './primitives';
 
 const GROUPS: Partial<Record<ServiceId, string>> = {
@@ -11,8 +18,39 @@ const GROUPS: Partial<Record<ServiceId, string>> = {
   snyk: 'snyk',
 };
 
+function withGroup(range: string, service?: ServiceId): string {
+  const group = service ? GROUPS[service] : undefined;
+  return group ? `${range} and rule.groups: "${group}"` : range;
+}
+
+/** Eventos de nivel ≥ 8 (altas y críticas) o solo ≥ 12 (críticas) de un servicio. */
 export function attentionQuery(service: ServiceId, criticalOnly: boolean): string {
-  return `rule.level >= ${criticalOnly ? 12 : 8}${GROUPS[service] ? ` and rule.groups: "${GROUPS[service]}"` : ''}`;
+  return withGroup(`rule.level >= ${criticalOnly ? 12 : 8}`, service);
+}
+
+/**
+ * KQL de exactamente una banda de severidad (Crítica = nivel ≥ 12, Alta = 8–11, Media = 4–7,
+ * Baja = 0–3), opcionalmente de un servicio. La lista que abre cuenta lo mismo que la cifra.
+ */
+export function levelBandQuery(band: LevelBand, service?: ServiceId): string {
+  const { from, to } = LEVEL_BAND_RANGES[band];
+  const range =
+    band === 'critical'
+      ? `rule.level >= ${from}`
+      : from === 0
+        ? `rule.level <= ${to - 1}`
+        : `rule.level >= ${from} and rule.level <= ${to - 1}`;
+  return withGroup(range, service);
+}
+
+/** Discover con solo los eventos de una banda en la ventana indicada (por defecto 24 h). */
+export function levelBandHref(
+  basePath: string,
+  band: LevelBand,
+  service?: ServiceId,
+  from = 'now-24h',
+): string {
+  return discoverUrlForQuery(basePath, levelBandQuery(band, service), from, 'now');
 }
 
 export function filterAttention(events: readonly TopEvent[], criticalOnly: boolean, query: string) {
@@ -26,28 +64,41 @@ export function filterAttention(events: readonly TopEvent[], criticalOnly: boole
   );
 }
 
+/**
+ * Pulsación de una cifra de la tarjeta sobre la lista «Atención prioritaria»: `critical` deja solo
+ * las críticas; `all`, altas y críticas. `seq` cambia en cada pulsación (aunque se repita la
+ * cifra) para volver a aplicar el filtro y limpiar la búsqueda.
+ */
+export interface AttentionFocus {
+  readonly band: 'critical' | 'all';
+  readonly seq: number;
+}
+
 export function ServiceAttentionList({
   service,
   name,
   data,
   basePath,
-  focusCritical = 0,
+  focus,
+  criticalTotal,
 }: {
   service: ServiceId;
   name: string;
   data?: ServiceAttention;
   basePath: string;
-  /** Cambia cada vez que se pulsa «Altas y críticas»: limpia la búsqueda y deja solo críticas. */
-  focusCritical?: number;
+  focus?: AttentionFocus;
+  /** Total de críticas en 24 h (de la tarjeta), para el resumen cuando solo se ven críticas. */
+  criticalTotal?: number;
 }) {
-  const [criticalOnly, setCriticalOnly] = useState(false);
+  const [criticalOnly, setCriticalOnly] = useState(focus?.band === 'critical');
   const [query, setQuery] = useState('');
+  const statusRef = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
-    if (focusCritical > 0) {
-      setCriticalOnly(true);
-      setQuery('');
-    }
-  }, [focusCritical]);
+    if (!focus || focus.seq === 0) return;
+    setCriticalOnly(focus.band === 'critical');
+    setQuery('');
+    statusRef.current?.focus({ preventScroll: true });
+  }, [focus]);
   const events = filterAttention(data?.events ?? [], criticalOnly, query);
   const allHref = discoverUrlForQuery(
     basePath,
@@ -55,8 +106,13 @@ export function ServiceAttentionList({
     'now-24h',
     'now',
   );
+  const filtered = criticalOnly || query.trim() !== '';
   return (
-    <section className="b89Attention" aria-label={`Atención prioritaria: ${name}`}>
+    <section
+      className="b89Attention"
+      aria-label={`Atención prioritaria: ${name}`}
+      data-filter={criticalOnly ? 'critical' : 'all'}
+    >
       <header>
         <strong>Atención prioritaria</strong>
         <span>24 h · críticas primero</span>
@@ -70,7 +126,7 @@ export function ServiceAttentionList({
       ) : (
         <>
           <div className="b89Attention__controls">
-            <label>
+            <label className="b89Attention__toggle" data-active={criticalOnly}>
               <input
                 type="checkbox"
                 checked={criticalOnly}
@@ -86,8 +142,37 @@ export function ServiceAttentionList({
               onChange={(e) => setQuery(e.target.value)}
             />
           </div>
+          <p
+            className="b89Attention__filter"
+            role="status"
+            tabIndex={-1}
+            ref={statusRef}
+            data-active={filtered}
+          >
+            <span>
+              {criticalOnly
+                ? 'Mostrando solo críticas (nivel ≥ 12)'
+                : 'Mostrando altas y críticas (nivel ≥ 8)'}
+              {query.trim() ? ` que contienen «${query.trim()}»` : ''}
+            </span>
+            {filtered && (
+              <button
+                type="button"
+                className="b89Attention__clear"
+                onClick={() => {
+                  setCriticalOnly(false);
+                  setQuery('');
+                }}
+              >
+                Quitar filtro
+              </button>
+            )}
+          </p>
           <p className="b89Attention__scope">
-            {events.length} visibles · {data.total} altas y críticas.
+            {events.length} visibles ·{' '}
+            {criticalOnly && criticalTotal !== undefined
+              ? `${criticalTotal} críticas en 24 h.`
+              : `${data.total} altas y críticas.`}
             {(data.total ?? 0) > data.events.length &&
               ' Vista limitada a los 100 eventos de mayor severidad; abre la lista completa para revisar el resto.'}
           </p>
@@ -95,7 +180,9 @@ export function ServiceAttentionList({
             <p>
               {data.total === 0
                 ? 'Sin eventos altos o críticos en esta ventana.'
-                : 'Sin coincidencias en los eventos cargados.'}
+                : criticalOnly && !query.trim()
+                  ? 'Sin eventos críticos entre los cargados.'
+                  : 'Sin coincidencias en los eventos cargados.'}
             </p>
           ) : (
             <ol className="b89Attention__list" tabIndex={0} aria-label={`Eventos de ${name}`}>

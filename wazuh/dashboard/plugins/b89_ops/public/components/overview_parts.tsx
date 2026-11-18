@@ -130,8 +130,11 @@ export interface Metric {
   readonly path?: string;
   /** Destino del valor: la lista de alertas contadas, para investigarlas una a una. */
   readonly href?: string;
-  /** `critical`: el valor filtra la lista «Atención prioritaria» de la misma tarjeta (sin salir). */
-  readonly focus?: 'critical';
+  /**
+   * El valor filtra la lista «Atención prioritaria» de la misma tarjeta (sin salir):
+   * `critical` deja solo las críticas; `all`, altas y críticas.
+   */
+  readonly focus?: 'critical' | 'all';
   /** Acción en la tarjeta; tiene prioridad sobre `href`. */
   readonly onSelect?: () => void;
 }
@@ -149,7 +152,11 @@ export function MetricList({ metrics }: { metrics: readonly Metric[] }) {
                 type="button"
                 className="b89Metrics__link b89Metrics__button"
                 onClick={metric.onSelect}
-                aria-label={`${metric.label}: mostrar solo las críticas en esta tarjeta`}
+                aria-label={`${metric.label}: ${
+                  metric.focus === 'all'
+                    ? 'mostrar altas y críticas en esta tarjeta'
+                    : 'mostrar solo las críticas en esta tarjeta'
+                }`}
               >
                 {metric.value}
               </button>
@@ -171,45 +178,104 @@ export function MetricList({ metrics }: { metrics: readonly Metric[] }) {
   );
 }
 
-export function SeverityBar({ levels, label }: { levels: LevelCounts; label: string }) {
+/** Nombre en plural de cada banda, para enlaces del tipo «3 críticas →». */
+export const LEVEL_BAND_PLURAL: Readonly<Record<LevelBand, string>> = {
+  low: 'bajas',
+  medium: 'medias',
+  high: 'altas',
+  critical: 'críticas',
+};
+
+/** Destino de una banda (p. ej. Discover con solo esa banda); sin él, la pieza no es enlace. */
+export type BandHref = (band: LevelBand) => string;
+
+export function SeverityBar({
+  levels,
+  label,
+  hrefFor,
+}: {
+  levels: LevelCounts;
+  label: string;
+  hrefFor?: BandHref;
+}) {
   const total = LEVEL_BANDS.reduce((sum, band) => sum + levels[band], 0);
   const summary = LEVEL_BANDS.map(
     (band) => `${LEVEL_BAND_LABEL[band]} ${formatNumber(levels[band])}`,
   ).join(', ');
-  return (
+  const segments =
+    total === 0 ? (
+      <span className="b89SeverityBar__empty" />
+    ) : (
+      LEVEL_BANDS.map((band) => {
+        if (levels[band] === 0) return null;
+        const style = { flexGrow: levels[band], backgroundColor: LEVEL_COLOR[band] };
+        const title = `${LEVEL_BAND_LABEL[band]}: ${formatNumber(levels[band])}`;
+        return hrefFor ? (
+          <a
+            key={band}
+            className="b89SeverityBar__segment"
+            style={style}
+            href={hrefFor(band)}
+            title={`${title} · ver solo estos`}
+            aria-label={`Ver solo ${formatNumber(levels[band])} ${LEVEL_BAND_PLURAL[band]}`}
+            data-band={band}
+          />
+        ) : (
+          <span key={band} className="b89SeverityBar__segment" style={style} title={title} />
+        );
+      })
+    );
+  return hrefFor ? (
+    <div className="b89SeverityBar b89SeverityBar--links" aria-label={`${label}: ${summary}`}>
+      {segments}
+    </div>
+  ) : (
     <div className="b89SeverityBar" role="img" aria-label={`${label}: ${summary}`}>
-      {total === 0 ? (
-        <span className="b89SeverityBar__empty" />
-      ) : (
-        LEVEL_BANDS.map((band) =>
-          levels[band] > 0 ? (
-            <span
-              key={band}
-              className="b89SeverityBar__segment"
-              style={{ flexGrow: levels[band], backgroundColor: LEVEL_COLOR[band] }}
-              title={`${LEVEL_BAND_LABEL[band]}: ${formatNumber(levels[band])}`}
-            />
-          ) : null,
-        )
-      )}
+      {segments}
     </div>
   );
 }
 
-export function LevelLegend({ levels }: { levels?: LevelCounts }) {
+/**
+ * Leyenda de severidad. Con `hrefFor`, cada banda es un enlace a solo esa banda y con conteos
+ * dice exactamente lo que filtra («3 críticas →»).
+ */
+export function LevelLegend({ levels, hrefFor }: { levels?: LevelCounts; hrefFor?: BandHref }) {
   return (
-    <ul className="b89Legend">
-      {[...LEVEL_BANDS].reverse().map((band) => (
-        <li key={band}>
+    <ul className={`b89Legend${hrefFor ? ' b89Legend--links' : ''}`}>
+      {[...LEVEL_BANDS].reverse().map((band) => {
+        const swatch = (
           <span
             aria-hidden="true"
             className="b89Legend__swatch"
             style={{ backgroundColor: LEVEL_COLOR[band] }}
           />
-          <span>{LEVEL_BAND_LABEL[band]}</span>
-          {levels && <strong className="b89Tabular">{formatNumber(levels[band])}</strong>}
-        </li>
-      ))}
+        );
+        if (hrefFor) {
+          return (
+            <li key={band}>
+              <a className="b89Legend__link" href={hrefFor(band)} data-band={band}>
+                {swatch}
+                {levels ? (
+                  <span>
+                    <strong className="b89Tabular">{formatNumber(levels[band])}</strong>{' '}
+                    {LEVEL_BAND_PLURAL[band]} →
+                  </span>
+                ) : (
+                  <span>{LEVEL_BAND_LABEL[band]} →</span>
+                )}
+              </a>
+            </li>
+          );
+        }
+        return (
+          <li key={band}>
+            {swatch}
+            <span>{LEVEL_BAND_LABEL[band]}</span>
+            {levels && <strong className="b89Tabular">{formatNumber(levels[band])}</strong>}
+          </li>
+        );
+      })}
     </ul>
   );
 }
@@ -224,9 +290,12 @@ const DAY = new Intl.DateTimeFormat('es-PE', { weekday: 'short', day: '2-digit' 
 export function TrendChart({
   trend24h,
   trend7d,
+  hrefFor,
 }: {
   trend24h: readonly TrendBucket[];
   trend7d: readonly TrendBucket[];
+  /** Destino de una banda en el rango visible (`now-24h` o `now-7d`). */
+  hrefFor?: (band: LevelBand, from: string) => string;
 }) {
   const [range, setRange] = useState<'24h' | '7d'>('24h');
   const buckets = range === '24h' ? trend24h : trend7d;
@@ -239,7 +308,11 @@ export function TrendChart({
   return (
     <div className="b89Trend">
       <div className="b89Trend__toolbar">
-        <LevelLegend />
+        <LevelLegend
+          hrefFor={
+            hrefFor ? (band) => hrefFor(band, range === '24h' ? 'now-24h' : 'now-7d') : undefined
+          }
+        />
         <EuiButtonGroup
           legend="Rango del gráfico"
           buttonSize="compressed"

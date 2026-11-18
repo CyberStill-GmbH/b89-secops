@@ -22,6 +22,7 @@ import { useChanges, useConsole } from './console_context';
 import {
   formatNumber,
   LEVEL_COLOR,
+  LevelLegend,
   PlatformData,
   SeverityBar,
   TrendChart,
@@ -30,7 +31,9 @@ import {
 } from './overview_parts';
 import { DataZone, ErrorCallout, PriorityMark, Timestamp, useAsync } from './primitives';
 import { VendorLogo } from './vendor_logo';
-import { discoverUrlForQuery, vendorOfProvider } from '../../common';
+import { vendorOfProvider } from '../../common';
+import { alertsQueueHref, PRIORITY_NAME } from './alerts_filters';
+import { levelBandHref } from './service_attention';
 import { ServiceCard, serviceModels } from './service_cards';
 import { AttentionAlert, loadAttentionTop } from './attention_queue';
 
@@ -140,7 +143,11 @@ export function OverviewView({ basePath }: { basePath: string }) {
           <span className="b89Panel__meta">Todas las fuentes · wazuh-alerts-*</span>
         </div>
         {overview?.siem ? (
-          <TrendChart trend24h={overview.siem.trend24h} trend7d={overview.siem.trend7d} />
+          <TrendChart
+            trend24h={overview.siem.trend24h}
+            trend7d={overview.siem.trend7d}
+            hrefFor={(band, from) => levelBandHref(basePath, band, undefined, from)}
+          />
         ) : data.overview.loading ? (
           <EuiLoadingContent lines={5} />
         ) : (
@@ -249,7 +256,12 @@ function TopEventItem({ event, basePath }: { event: TopEvent; basePath: string }
         <span className="b89Feed__body">
           <DataZone className="b89Feed__title">{event.description}</DataZone>
           <span className="b89Feed__meta">
-            <VendorLogo id={vendorOfProvider(event.provider)} basePath={basePath} size="s" decorative />{' '}
+            <VendorLogo
+              id={vendorOfProvider(event.provider)}
+              basePath={basePath}
+              size="s"
+              decorative
+            />{' '}
             {source} · regla {event.ruleId}
           </span>
         </span>
@@ -261,7 +273,7 @@ function TopEventItem({ event, basePath }: { event: TopEvent; basePath: string }
   );
 }
 
-function KpiRow({
+export function KpiRow({
   data,
   queue,
   queueLoading,
@@ -278,22 +290,31 @@ function KpiRow({
   const pending = <span className="b89Kpi__pending">—</span>;
   return (
     <div className="b89KpiRow">
-      <a className="b89Kpi" href={`${basePath}${ALERTS_PATH}`}>
-        <span className="b89Kpi__label">Alertas abiertas</span>
-        <span className="b89Kpi__value b89Tabular">
-          {queue ? formatNumber(queue.open) : queueLoading ? pending : '—'}
-        </span>
+      <div className="b89Kpi">
+        <a className="b89Kpi__main" href={alertsQueueHref(basePath)}>
+          <span className="b89Kpi__label">Alertas abiertas</span>
+          <span className="b89Kpi__value b89Tabular">
+            {queue ? formatNumber(queue.open) : queueLoading ? pending : '—'}
+          </span>
+        </a>
         <span className="b89Kpi__sub">
           {queue
             ? PRIORITIES.filter((p) => p !== 'P4').map((priority) => (
-                <span key={priority} className="b89Kpi__chip">
+                <a
+                  key={priority}
+                  className="b89Kpi__chip"
+                  href={alertsQueueHref(basePath, priority)}
+                  title={`Ver solo las alertas abiertas ${priority} · ${PRIORITY_NAME[priority]}`}
+                  aria-label={`${formatNumber(queue.byPriority[priority])} alertas abiertas ${priority} ${PRIORITY_NAME[priority]}: ver solo estas`}
+                >
                   <PriorityMark priority={priority} />
+                  <span className="b89Kpi__chipName">{PRIORITY_NAME[priority]}</span>
                   <strong className="b89Tabular">{formatNumber(queue.byPriority[priority])}</strong>
-                </span>
+                </a>
               ))
             : 'Cola B89 no disponible'}
         </span>
-      </a>
+      </div>
       <div className="b89Kpi">
         <span className="b89Kpi__label">Eventos SIEM · 24 h</span>
         <span className="b89Kpi__value b89Tabular">
@@ -301,13 +322,15 @@ function KpiRow({
         </span>
         {siem ? (
           <>
-            <SeverityBar levels={siem.levels24h} label="Eventos 24 h por severidad" />
-            <a
-              className="b89Kpi__sub b89Kpi__drill"
-              href={discoverUrlForQuery(basePath, 'rule.level >= 8', 'now-24h', 'now')}
-            >
-              {formatNumber(siem.levels24h.high + siem.levels24h.critical)} altas o críticas →
-            </a>
+            <SeverityBar
+              levels={siem.levels24h}
+              label="Eventos 24 h por severidad"
+              hrefFor={(band) => levelBandHref(basePath, band)}
+            />
+            <LevelLegend
+              levels={siem.levels24h}
+              hrefFor={(band) => levelBandHref(basePath, band)}
+            />
           </>
         ) : (
           <span className="b89Kpi__sub">wazuh-alerts-*</span>

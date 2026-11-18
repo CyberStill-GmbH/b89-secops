@@ -3,7 +3,12 @@
  */
 
 import React, { useRef, useState } from 'react';
-import { attentionQuery, ServiceAttentionList } from './service_attention';
+import {
+  AttentionFocus,
+  attentionQuery,
+  levelBandHref,
+  ServiceAttentionList,
+} from './service_attention';
 import { EuiButtonEmpty, EuiText } from '@elastic/eui';
 import {
   INTEGRATIONS,
@@ -15,6 +20,7 @@ import {
   SOURCE_STATE_LABEL,
   SOURCE_TONE,
   ServiceAttention,
+  LevelCounts,
   TRAFFIC_APP_PATH,
 } from '../../common';
 import {
@@ -33,6 +39,8 @@ import { declaredStatus, providerStatus, ServiceStatus, wazuhStatus } from './se
 
 export interface ServiceModel {
   readonly attention?: ServiceAttention;
+  /** Críticas (nivel ≥ 12) en 24 h, para el resumen de la lista cuando solo se ven críticas. */
+  readonly critical24h?: number;
   readonly spec: IntegrationSpec;
   readonly status: ServiceStatus;
   readonly metrics: readonly Metric[];
@@ -121,6 +129,30 @@ export function cloudflareMetrics(m: Readonly<Record<string, number>>): Metric[]
   ];
 }
 
+/**
+ * «Críticas 24 h» y «Altas y críticas 24 h»: cada cifra muestra exactamente lo que cuenta
+ * (en la tarjeta filtra la lista «Atención prioritaria»; sin lista, abre Discover filtrado).
+ */
+export function severityMetrics(service: ServiceId, levels: LevelCounts): Metric[] {
+  return [
+    {
+      label: 'Críticas 24 h',
+      value: formatNumber(levels.critical),
+      hint: 'Eventos de nivel ≥ 12',
+      drill: { kql: attentionQuery(service, true), from: 'now-24h' },
+      focus: 'critical',
+      emphasis: levels.critical > 0 ? 'danger' : undefined,
+    },
+    {
+      label: 'Altas y críticas 24 h',
+      value: formatNumber(levels.high + levels.critical),
+      hint: 'Eventos de nivel ≥ 8',
+      drill: { kql: attentionQuery(service, false), from: 'now-24h' },
+      focus: 'all',
+    },
+  ];
+}
+
 function providerMetrics(id: ProviderId, data: PlatformData): Metric[] {
   const stats = data.overview.data?.providers?.[id];
   if (!stats) return [];
@@ -169,15 +201,7 @@ function providerMetrics(id: ProviderId, data: PlatformData): Metric[] {
     case 'cloudflare':
       return cloudflareMetrics(m);
     default:
-      return [
-        events,
-        {
-          label: 'Altas y críticas 24 h',
-          value: formatNumber(stats.levels24h.high + stats.levels24h.critical),
-          drill: { kql: attentionQuery(id, false), from: 'now-24h' },
-          focus: 'critical',
-        },
-      ];
+      return [events, ...severityMetrics(id, stats.levels24h)];
   }
 }
 
@@ -210,12 +234,7 @@ function serviceModel(spec: IntegrationSpec, data: PlatformData): ServiceModel {
     }
     if (overview?.siem) {
       metrics.push({ label: 'Alertas 24 h', value: formatNumber(overview.siem.total24h) });
-      metrics.push({
-        label: 'Altas y críticas',
-        value: formatNumber(overview.siem.levels24h.high + overview.siem.levels24h.critical),
-        drill: { kql: attentionQuery('wazuh', false), from: 'now-24h' },
-        focus: 'critical',
-      });
+      metrics.push(...severityMetrics('wazuh', overview.siem.levels24h));
     }
     if (source) {
       metrics.push({
@@ -315,9 +334,16 @@ function errorStatus(): ServiceStatus {
 }
 
 export function serviceModels(data: PlatformData): ServiceModel[] {
+  const overview = data.overview.data;
   return INTEGRATIONS.map((spec) => ({
     ...serviceModel(spec, data),
-    attention: data.overview.data?.attention?.[spec.id],
+    attention: overview?.attention?.[spec.id],
+    critical24h:
+      spec.id === 'wazuh'
+        ? overview?.siem?.levels24h.critical
+        : isProvider(spec.id)
+          ? overview?.providers?.[spec.id]?.levels24h.critical
+          : undefined,
   }));
 }
 
@@ -330,23 +356,24 @@ export function ServiceCard({
   basePath: string;
   compact?: boolean;
 }) {
-  const [criticalFocus, setCriticalFocus] = useState(0);
+  const [focus, setFocus] = useState<AttentionFocus>({ band: 'all', seq: 0 });
   const attentionRef = useRef<HTMLDivElement>(null);
   if (model.loading) return <SkeletonCard />;
   const { spec, status } = model;
   const hasAttention = spec.id === 'wazuh' || isProvider(spec.id);
-  // «Altas y críticas» filtra la lista de la propia tarjeta a solo críticas (limpia la búsqueda).
-  const metrics = linkedMetrics(model.metrics, basePath).map((metric) =>
-    metric.focus === 'critical' && hasAttention
-      ? {
-          ...metric,
-          onSelect: () => {
-            setCriticalFocus((n) => n + 1);
-            attentionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-          },
-        }
-      : metric,
-  );
+  // «Críticas» deja solo críticas en la lista de la propia tarjeta; «Altas y críticas», ambas.
+  // En los dos casos se limpia la búsqueda y el filtro activo queda a la vista.
+  const metrics = linkedMetrics(model.metrics, basePath).map((metric) => {
+    const band = metric.focus;
+    if (!band || !hasAttention || model.attention?.access !== 'ok') return metric;
+    return {
+      ...metric,
+      onSelect: () => {
+        setFocus((current) => ({ band, seq: current.seq + 1 }));
+        attentionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      },
+    };
+  });
   const links = integrationLinks(spec, basePath).slice(0, compact ? 2 : 6);
   return (
     <article className="b89Service" data-tone={status.tone} aria-label={spec.name}>
@@ -373,7 +400,8 @@ export function ServiceCard({
             name={spec.name}
             data={model.attention}
             basePath={basePath}
-            focusCritical={criticalFocus}
+            focus={focus}
+            criticalTotal={model.critical24h}
           />
         </div>
       )}
@@ -391,9 +419,24 @@ export function ServiceCard({
   );
 }
 
-export function ProviderSeverity({ model, data }: { model: ServiceModel; data: PlatformData }) {
+export function ProviderSeverity({
+  model,
+  data,
+  basePath,
+}: {
+  model: ServiceModel;
+  data: PlatformData;
+  basePath: string;
+}) {
   if (!isProvider(model.spec.id)) return null;
   const stats = data.overview.data?.providers?.[model.spec.id];
   if (!stats || stats.events24h === 0) return null;
-  return <SeverityBar levels={stats.levels24h} label={`${model.spec.name}, eventos 24 h`} />;
+  const service = model.spec.id;
+  return (
+    <SeverityBar
+      levels={stats.levels24h}
+      label={`${model.spec.name}, eventos 24 h`}
+      hrefFor={(band) => levelBandHref(basePath, band, service)}
+    />
+  );
 }

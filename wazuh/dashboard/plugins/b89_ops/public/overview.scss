@@ -200,6 +200,23 @@ $b89OvEase: cubic-bezier(0.16, 1, 0.3, 1);
   flex: 1;
 }
 
+// Barra con enlaces: más alta para poder pulsarla y con foco visible por segmento.
+.b89SeverityBar--links {
+  height: 12px;
+
+  .b89SeverityBar__segment {
+    display: block;
+    transition: filter 120ms $b89OvEase;
+
+    &:hover,
+    &:focus-visible {
+      filter: brightness(1.25);
+      outline: 2px solid $ouiTextColor;
+      outline-offset: -2px;
+    }
+  }
+}
+
 .b89Legend {
   display: flex;
   flex-wrap: wrap;
@@ -225,6 +242,65 @@ $b89OvEase: cubic-bezier(0.16, 1, 0.3, 1);
   width: 10px;
   height: 10px;
   border-radius: 3px;
+}
+
+.b89Legend__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: inherit;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+
+  &:hover,
+  &:focus-visible {
+    color: $ouiTextColor;
+    text-decoration: underline;
+  }
+}
+
+// Tarjeta KPI con varios destinos: el rótulo y la cifra abren la vista general y cada chip
+// abre su propio filtro (no se anidan enlaces).
+.b89Kpi__main {
+  display: flex;
+  flex-direction: column;
+  gap: $ouiSizeXS;
+  color: inherit;
+  text-decoration: none;
+
+  &:hover,
+  &:focus-visible {
+    color: inherit;
+    text-decoration: none;
+
+    .b89Kpi__value {
+      text-decoration: underline dotted;
+      text-underline-offset: 6px;
+    }
+  }
+}
+
+.b89Kpi .b89Legend {
+  margin-top: auto;
+}
+
+.b89Kpi__chipName {
+  font-size: 12px;
+}
+
+a.b89Kpi__chip {
+  padding: 2px 6px;
+  margin: -2px -6px;
+  border-radius: 6px;
+  color: inherit;
+  text-decoration: none;
+
+  &:hover,
+  &:focus-visible {
+    background: rgba(#ff5899, 0.12);
+    color: inherit;
+    text-decoration: none;
+  }
 }
 
 // ----------------------------------------------------------------------- Panel
@@ -931,6 +1007,40 @@ $b89OvEase: cubic-bezier(0.16, 1, 0.3, 1);
   }
   &__controls label {
     font-size: 13px;
+  }
+  &__toggle[data-active='true'] {
+    color: #ff9595;
+    font-weight: 700;
+  }
+  &__filter {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px 10px;
+    margin: 0 0 8px;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    background: rgba(255, 255, 255, 0.04);
+  }
+  &__filter[data-active='true'] {
+    border: 1px solid rgba(255, 95, 87, 0.55);
+    background: rgba(255, 95, 87, 0.1);
+    font-weight: 600;
+  }
+  &__filter:focus {
+    outline: 2px solid #e8af54;
+    outline-offset: 2px;
+  }
+  &__clear {
+    padding: 2px 8px;
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
   }
   input[type='search'] {
     width: 100%;

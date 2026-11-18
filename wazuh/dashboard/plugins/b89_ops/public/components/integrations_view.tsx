@@ -75,7 +75,7 @@ export function IntegrationsView({ basePath }: { basePath: string }) {
               key={model.spec.id}
               model={model}
               basePath={basePath}
-              severity={<ProviderSeverity model={model} data={data} />}
+              severity={<ProviderSeverity model={model} data={data} basePath={basePath} />}
               missing={
                 model.status.label === STATUS_LABEL.permission
                   ? (data.overview.data?.integrations[model.spec.id]?.missingPermissions ?? [])

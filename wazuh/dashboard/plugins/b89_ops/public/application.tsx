@@ -12,6 +12,7 @@ import { ViewErrorBoundary } from './render_failure';
 import { AccessView } from './components/access_view';
 import { AiAnalystView } from './components/ai_analyst_view';
 import { AlertsView } from './components/alerts_view';
+import { searchWithPriority } from './components/alerts_filters';
 import { AuditView } from './components/audit_view';
 import { CloudflareTrafficView } from './components/cloudflare_traffic_view';
 import { ConsoleProvider } from './components/console_context';
@@ -99,6 +100,12 @@ function Console({
           basePath={basePath}
           initialPriority={params.get('priority')}
           initialQuery={params.get('q')}
+          onPriorityChange={(priority) =>
+            history.push({
+              pathname: history.location.pathname,
+              search: searchWithPriority(history.location.search, priority),
+            })
+          }
         />
       );
     case 'incidents':

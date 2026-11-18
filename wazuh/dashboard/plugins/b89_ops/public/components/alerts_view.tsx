@@ -45,6 +45,7 @@ import {
   VERDICT_LABEL,
   vendorOfTitle,
 } from '../../common';
+import { PRIORITY_NAME, priorityFromParam } from './alerts_filters';
 import { openIncidentForAlert } from '../api/alert_review';
 import { B89ApiError } from '../api/client';
 import { alertInvestigationHref } from './investigation_links';
@@ -82,8 +83,54 @@ const ENTITY_KIND_LABEL: Record<string, string> = {
 const NOTE_MIN = 10;
 const NOTE_MAX = 2000;
 
-function isPriority(value: string | null): value is Priority {
-  return value !== null && (PRIORITIES as readonly string[]).includes(value);
+/** Selector de prioridad de la cola («P1 · Crítica»…). */
+export function PriorityFilter({
+  priority,
+  onChange,
+}: {
+  priority: Priority | '';
+  onChange: (priority: Priority | '') => void;
+}) {
+  return (
+    <EuiSelect
+      compressed
+      fullWidth
+      aria-label="Filtrar por prioridad"
+      value={priority}
+      onChange={(event) => onChange(priorityFromParam(event.target.value))}
+      options={[
+        { value: '', text: 'Todas las prioridades' },
+        ...PRIORITIES.map((value) => ({ value, text: `${value} · ${PRIORITY_NAME[value]}` })),
+      ]}
+    />
+  );
+}
+
+/**
+ * Aviso del filtro activo con «Quitar filtro»: quien llega desde «P1 Crítica» del resumen ve qué
+ * se está filtrando y cómo deshacerlo.
+ */
+export function PriorityFilterNotice({
+  priority,
+  onChange,
+  total,
+}: {
+  priority: Priority | '';
+  onChange: (priority: Priority | '') => void;
+  total?: number;
+}) {
+  if (!priority) return null;
+  return (
+    <p className="b89FilterNotice" role="status" data-priority={priority}>
+      <span>
+        Mostrando solo <PriorityMark priority={priority} /> {PRIORITY_NAME[priority]}
+        {total !== undefined ? ` · ${total} alerta${total === 1 ? '' : 's'}` : ''}
+      </span>
+      <button type="button" className="b89FilterNotice__clear" onClick={() => onChange('')}>
+        Quitar filtro
+      </button>
+    </p>
+  );
 }
 
 export function AlertsView({
@@ -92,19 +139,30 @@ export function AlertsView({
   basePath,
   initialPriority = null,
   initialQuery = null,
+  onPriorityChange,
 }: {
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   basePath: string;
+  /** `?priority=` de la URL; se vuelve a leer cada vez que cambia (también con la vista montada). */
   initialPriority?: string | null;
+  /** Escribe el filtro en la URL (`?priority=`): así el enlace se comparte y «Atrás» funciona. */
+  onPriorityChange?: (priority: Priority | '') => void;
   /** `?q=` (pivote desde una entidad de la investigación). */
   initialQuery?: string | null;
 }) {
   const { api } = useConsole();
   const [status, setStatus] = useState<StatusFilter>('open');
-  const [priority, setPriority] = useState<Priority | ''>(
-    isPriority(initialPriority) ? initialPriority : '',
-  );
+  const urlPriority = priorityFromParam(initialPriority);
+  const [localPriority, setLocalPriority] = useState<Priority | ''>(urlPriority);
+  // Con URL, la prioridad es la de la URL (fuente única): un enlace «P1 Crítica» pulsado con la
+  // cola ya abierta cambia el filtro sin remontar la vista.
+  const priority = onPriorityChange ? urlPriority : localPriority;
+  const setPriority = (next: Priority | '') => {
+    setLocalPriority(next);
+    onPriorityChange?.(next);
+  };
+  useEffect(() => setLocalPriority(urlPriority), [urlPriority]);
   const [search, setSearch] = useState((initialQuery ?? '').slice(0, 120));
   const [query, setQuery] = useState((initialQuery ?? '').trim().slice(0, 120));
   const [items, setItems] = useState<readonly Alert[]>([]);
@@ -229,19 +287,14 @@ export function AlertsView({
           />
         </EuiFlexItem>
         <EuiFlexItem grow={1}>
-          <EuiSelect
-            compressed
-            fullWidth
-            aria-label="Filtrar por prioridad"
-            value={priority}
-            onChange={(event) => setPriority(event.target.value as Priority | '')}
-            options={[
-              { value: '', text: 'Todas las prioridades' },
-              ...PRIORITIES.map((value) => ({ value, text: value })),
-            ]}
-          />
+          <PriorityFilter priority={priority} onChange={setPriority} />
         </EuiFlexItem>
       </EuiFlexGroup>
+      <PriorityFilterNotice
+        priority={priority}
+        onChange={setPriority}
+        total={page.loading ? undefined : page.data?.totalCount}
+      />
       <EuiSpacer size="m" />
       {page.error ? (
         <ErrorCallout error={page.error} onRetry={page.reload} />

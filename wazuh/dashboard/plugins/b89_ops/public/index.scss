@@ -63,6 +63,43 @@ $b89BreakpointTablet: 1023px;
   }
 }
 
+// Filtro activo de la cola (p. ej. tras pulsar «P1 Crítica» en el resumen).
+.b89FilterNotice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: $ouiSizeS $ouiSize;
+  margin: $ouiSizeS 0 0;
+  padding: $ouiSizeS $ouiSizeM;
+  border: 1px solid rgba(#ff5899, 0.45);
+  border-radius: $ouiBorderRadius;
+  background: rgba(#ff5899, 0.08);
+  font-weight: 600;
+
+  > span {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: $ouiSizeXS;
+  }
+}
+
+.b89FilterNotice__clear {
+  padding: 2px $ouiSizeM;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+
+  &:hover,
+  &:focus-visible {
+    background: rgba(#ff5899, 0.15);
+  }
+}
+
 // Severidad: glifo + rótulo; la forma distingue el paso sin color (doc 02 §2.5).
 .b89Severity {
   display: inline-flex;
