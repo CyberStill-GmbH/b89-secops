@@ -287,8 +287,10 @@ resource "aws_wafv2_web_acl" "soc" {
       block {}
     }
     statement {
+      # 2000/5 min bloqueaba (403) a la oficina: la consola sondea y varios analistas comparten
+      # una IP pública. 10 000/5 min sigue cortando inundaciones (2026-11-18).
       rate_based_statement {
-        limit              = 2000
+        limit              = 10000
         aggregate_key_type = "IP"
       }
     }
