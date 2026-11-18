@@ -377,7 +377,7 @@ export interface EvidenceEntityRisk {
 export interface EvidenceIpReputation {
   /** Referencia opaca `ent_…` de la IP. */
   readonly entityRef: string;
-  readonly provider: 'abuseipdb';
+  readonly provider: 'abuseipdb' | 'virustotal';
   /** 0–100: confianza de abuso que publica AbuseIPDB. */
   readonly abuseConfidenceScore: number;
   readonly totalReports: number;

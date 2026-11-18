@@ -240,6 +240,14 @@ else
   log 'AbuseIPDB: sin ABUSEIPDB_API_KEY en secrets/services.env, reputación de IP apagada'
 fi
 unset abuseipdb_key
+# VirusTotal como proveedor alternativo de reputación de IP (se usa solo si no hay AbuseIPDB).
+sed -i '/^B89_VIRUSTOTAL_/d' "$SECRETS/api.env"
+vt_key="$(grep -sE '^(VIRUS_TOTAL_API_KEY|VIRUSTOTAL_API_KEY)=.+' "$SECRETS/services.env" | tail -1 | cut -d= -f2- || true)"
+if [[ -n $vt_key ]] && grep -q "'B89_VIRUSTOTAL_API_KEY'" "$SRC/platform/configuration/src/schema/environment.schema.ts"; then
+  printf 'B89_VIRUSTOTAL_API_KEY=%s\n' "$vt_key" >>"$SECRETS/api.env"; chmod 600 "$SECRETS/api.env"
+  log 'VirusTotal: clave presente, reputación de IP por VirusTotal disponible'
+fi
+unset vt_key
 
 # Analista IA (24/7): el proceso vive dentro del API y lo enciende B89_ANALYST_ENABLED. Por decisión
 # del dueño queda ENCENDIDO por defecto; services.env puede apagarlo (B89_ANALYST_ENABLED=false) o

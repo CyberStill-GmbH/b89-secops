@@ -856,7 +856,7 @@ export class RuntimeEvidenceReader implements EvidenceReader {
           if (!report) continue;
           ipReputation.push({
             entityRef: target.ref,
-            provider: 'abuseipdb',
+            provider: report.provider ?? 'abuseipdb',
             abuseConfidenceScore: report.abuseConfidenceScore,
             totalReports: report.totalReports,
             distinctUsers: report.distinctUsers,

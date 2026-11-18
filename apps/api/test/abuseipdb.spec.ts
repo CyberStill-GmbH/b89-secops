@@ -13,6 +13,7 @@ import { createAlert, InMemorySoc, type Alert } from '@b89/soc';
 import { RuntimeEvidenceReader } from '../src/assistant/analyst-evidence.js';
 import { buildSocTools } from '../src/assistant/soc-tools.js';
 import {
+  abuseIpdbFromEnvironment,
   AbuseIpdbError,
   createAbuseIpdbClient,
   publicIp,
@@ -296,5 +297,48 @@ describe('herramienta ip_reputation de Bunny', () => {
         verdictHint: 'Maliciosa conocida (puntaje alto)',
       },
     });
+  });
+});
+
+describe('VirusTotal como proveedor de reputación', () => {
+  it('convierte los motores que marcan la IP en el mismo informe', async () => {
+    const calls: { url: string; headers: Record<string, string> }[] = [];
+    const client = createAbuseIpdbClient({
+      apiKey: 'vt-key',
+      provider: 'virustotal',
+      fetch: (async (url: string, init: RequestInit) => {
+        calls.push({ url, headers: init.headers as Record<string, string> });
+        return new Response(
+          JSON.stringify({
+            data: {
+              attributes: {
+                last_analysis_stats: { malicious: 3, suspicious: 1, harmless: 60, undetected: 30 },
+                country: 'CO',
+                as_owner: 'Datacamp Limited',
+                network: '62.93.176.0/21',
+                tags: [],
+                last_analysis_date: 1763400000,
+              },
+            },
+          }),
+          { status: 200 },
+        );
+      }) as unknown as typeof fetch,
+    });
+    const report = await client.check('62.93.177.8');
+    expect(calls[0]?.url).toBe('https://www.virustotal.com/api/v3/ip_addresses/62.93.177.8');
+    expect(calls[0]?.headers['x-apikey']).toBe('vt-key');
+    expect(report).toMatchObject({
+      provider: 'virustotal',
+      abuseConfidenceScore: 70,
+      totalReports: 4,
+      countryCode: 'CO',
+      isp: 'Datacamp Limited',
+    });
+  });
+
+  it('usa VirusTotal solo si no hay clave de AbuseIPDB', () => {
+    expect(abuseIpdbFromEnvironment({})).toBeUndefined();
+    expect(abuseIpdbFromEnvironment({ B89_VIRUSTOTAL_API_KEY: 'x' })).toBeDefined();
   });
 });

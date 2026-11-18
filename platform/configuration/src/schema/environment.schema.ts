@@ -140,6 +140,7 @@ export const KNOWN_B89_VARIABLES = new Set([
   'B89_ANALYST_BACKLOG_SWEEP',
   // Reputación de IP (AbuseIPDB) para el Analista IA y Bunny; secreto. Sin ella, apagada.
   'B89_ABUSEIPDB_API_KEY',
+  'B89_VIRUSTOTAL_API_KEY',
   // Política de ruido de avisos (configuration-loader › loadNotificationPolicy). Sin estas
   // entradas, definir cualquiera tumbaba el arranque con CONFIG_VALUE_INVALID.
   'B89_NOTIFY_QUIET_P1_MINUTES',

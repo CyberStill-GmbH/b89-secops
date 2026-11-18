@@ -11,8 +11,12 @@
 
 import { BlockList, isIP } from 'node:net';
 
+export type IpReputationProvider = 'abuseipdb' | 'virustotal';
+
 export interface IpReputationReport {
   readonly ip: string;
+  /** Proveedor que respondió (AbuseIPDB o, si no hay clave, VirusTotal). */
+  readonly provider?: IpReputationProvider;
   readonly abuseConfidenceScore: number;
   readonly totalReports: number;
   readonly distinctUsers: number;
@@ -45,6 +49,7 @@ export class AbuseIpdbError extends Error {
 }
 
 const ENDPOINT = 'https://api.abuseipdb.com/api/v2/check';
+const VIRUSTOTAL_ENDPOINT = 'https://www.virustotal.com/api/v3/ip_addresses/';
 
 /** Rangos que nunca se consultan (RFC 6890 y afines). */
 const NON_PUBLIC = (() => {
@@ -119,6 +124,8 @@ function isoOrNull(value: unknown): string | null {
 
 export interface AbuseIpdbOptions {
   readonly apiKey: string;
+  /** `virustotal`: `GET /api/v3/ip_addresses/{ip}` (motores que la marcan) con la misma caché y enfriamiento. */
+  readonly provider?: IpReputationProvider;
   readonly fetch?: typeof fetch;
   readonly now?: () => Date;
   readonly timeoutMs?: number;
@@ -138,15 +145,21 @@ export function createAbuseIpdbClient(options: AbuseIpdbOptions): IpReputationLo
   const inFlight = new Map<string, Promise<IpReputationReport>>();
   let coolDownUntil = 0;
 
+  const provider: IpReputationProvider = options.provider ?? 'abuseipdb';
   const fetchReport = async (ip: string, signal?: AbortSignal): Promise<IpReputationReport> => {
     const timeout = AbortSignal.timeout(timeoutMs);
     const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
-    const url = `${ENDPOINT}?${new URLSearchParams({ ipAddress: ip, maxAgeInDays: String(maxAgeInDays) })}`;
+    const virustotal = provider === 'virustotal';
+    const url = virustotal
+      ? `${VIRUSTOTAL_ENDPOINT}${encodeURIComponent(ip)}`
+      : `${ENDPOINT}?${new URLSearchParams({ ipAddress: ip, maxAgeInDays: String(maxAgeInDays) })}`;
     let response: Response;
     try {
       response = await doFetch(url, {
         method: 'GET',
-        headers: { Key: options.apiKey, Accept: 'application/json' },
+        headers: virustotal
+          ? { 'x-apikey': options.apiKey, Accept: 'application/json' }
+          : { Key: options.apiKey, Accept: 'application/json' },
         signal: combined,
         redirect: 'error',
       });
@@ -170,6 +183,7 @@ export function createAbuseIpdbClient(options: AbuseIpdbOptions): IpReputationLo
     } catch {
       throw new AbuseIpdbError('ABUSEIPDB_INVALID_RESPONSE');
     }
+    if (virustotal) return virusTotalReport(ip, body, now());
     const data = record(record(body)['data']);
     const score = data['abuseConfidenceScore'];
     if (typeof score !== 'number' || !Number.isFinite(score)) {
@@ -189,6 +203,7 @@ export function createAbuseIpdbClient(options: AbuseIpdbOptions): IpReputationLo
       isTor: data['isTor'] === true,
       isWhitelisted: typeof data['isWhitelisted'] === 'boolean' ? data['isWhitelisted'] : null,
       checkedAt: now().toISOString(),
+      provider: 'abuseipdb',
     };
   };
 
@@ -218,11 +233,49 @@ export function createAbuseIpdbClient(options: AbuseIpdbOptions): IpReputationLo
   };
 }
 
-/** Cliente desde el entorno; `undefined` si no hay clave (la reputación queda apagada). */
+/**
+ * VirusTotal → misma forma que AbuseIPDB. El puntaje (0–100) sale de los motores que marcan la IP:
+ * 20 por motor «malicious» y 10 por «suspicious» (2 motores maliciosos ya son 40; 4, 80).
+ */
+export function virusTotalReport(ip: string, body: unknown, at: Date): IpReputationReport {
+  const attributes = record(record(record(body)['data'])['attributes']);
+  const stats = record(attributes['last_analysis_stats']);
+  if (Object.keys(stats).length === 0) throw new AbuseIpdbError('ABUSEIPDB_INVALID_RESPONSE');
+  const malicious = count(stats['malicious']);
+  const suspicious = count(stats['suspicious']);
+  const country = text(attributes['country'], 2);
+  const tags = Array.isArray(attributes['tags']) ? attributes['tags'] : [];
+  const lastAnalysis = attributes['last_analysis_date'];
+  return {
+    ip,
+    provider: 'virustotal',
+    abuseConfidenceScore: Math.min(100, malicious * 20 + suspicious * 10),
+    totalReports: malicious + suspicious,
+    distinctUsers: malicious,
+    lastReportedAt:
+      typeof lastAnalysis === 'number' && Number.isFinite(lastAnalysis)
+        ? new Date(lastAnalysis * 1000).toISOString()
+        : null,
+    countryCode: country && /^[A-Z]{2}$/u.test(country) ? country : null,
+    usageType: text(attributes['network'], 80),
+    isp: text(attributes['as_owner'], 120),
+    domain: null,
+    isTor: tags.some((tag) => typeof tag === 'string' && tag.toLowerCase() === 'tor'),
+    isWhitelisted: null,
+    checkedAt: at.toISOString(),
+  };
+}
+
+/**
+ * Cliente desde el entorno: AbuseIPDB si hay `B89_ABUSEIPDB_API_KEY`; si no, VirusTotal con
+ * `B89_VIRUSTOTAL_API_KEY` (plan gratuito: 4/min, por eso la caché de 6 h); `undefined` sin clave.
+ */
 export function abuseIpdbFromEnvironment(
   environment: Readonly<Record<string, string | undefined>>,
 ): IpReputationLookup | undefined {
   const apiKey = environment['B89_ABUSEIPDB_API_KEY']?.trim();
-  if (!apiKey) return undefined;
-  return createAbuseIpdbClient({ apiKey });
+  if (apiKey) return createAbuseIpdbClient({ apiKey });
+  const vtKey = environment['B89_VIRUSTOTAL_API_KEY']?.trim();
+  if (vtKey) return createAbuseIpdbClient({ apiKey: vtKey, provider: 'virustotal' });
+  return undefined;
 }
