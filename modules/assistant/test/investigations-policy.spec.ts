@@ -1090,3 +1090,61 @@ describe('triage coverage and corroboration regression', () => {
     ).toMatchObject({ status: 'partial' });
   });
 });
+
+describe('triagePolicy · reputación de IP (AbuseIPDB)', () => {
+  const reputation = (score: number, isWhitelisted: boolean | null = false) => ({
+    rule: null,
+    incidents: [],
+    entityRisk: null,
+    activity: null,
+    notifications: [],
+    audit: [],
+    ipReputation: [
+      {
+        entityRef: 'ent_aaa',
+        provider: 'abuseipdb' as const,
+        abuseConfidenceScore: score,
+        totalReports: 40,
+        distinctUsers: 12,
+        lastReportedAt: '2026-11-18T10:00:00.000Z',
+        countryCode: 'NL',
+        usageType: 'Data Center/Web Hosting/Transit',
+        isp: 'Hosting',
+        isTor: false,
+        isWhitelisted,
+        checkedAt: '2026-11-18T15:00:00.000Z',
+      },
+    ],
+  });
+
+  it('una IP maliciosa conocida anula el atajo benigno y lleva un P4 aislado a análisis', () => {
+    const { decision } = benignCase('P4', { context: reputation(96) });
+    expect(decision.decision).toBe('infer');
+    expect(decision.reasons).toContain('IP_REPUTATION_MALICIOUS');
+    expect(decision.reasons).not.toContain('KNOWN_BENIGN_PATTERN');
+    expect(decision.tier).toBe('economy');
+  });
+
+  it('un P2 con IP maliciosa sube a nivel avanzado', () => {
+    const out = triagePolicy({ priority: 'P2', bundle: bundle({ context: reputation(80) }) });
+    expect(out.reasons).toContain('IP_REPUTATION_MALICIOUS');
+    expect(out.tier).toBe('advanced');
+  });
+
+  it('puntaje bajo o lista blanca no cambian la decisión', () => {
+    expect(benignCase('P4', { context: reputation(10) }).decision.reasons).toContain(
+      'KNOWN_BENIGN_PATTERN',
+    );
+    expect(benignCase('P4', { context: reputation(100, true) }).decision.decision).toBe(
+      'deterministic',
+    );
+  });
+
+  it('el paquete al modelo lleva la reputación con la referencia opaca', () => {
+    const pack = buildEvidencePack(bundle({ context: reputation(96) }), {
+      pseudonymizer: new Pseudonymizer(true),
+    });
+    expect(pack.text).toContain('"abuseScore":96');
+    expect(pack.text).toContain('"entity":"ent_aaa"');
+  });
+});

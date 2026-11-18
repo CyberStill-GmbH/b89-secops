@@ -34,6 +34,7 @@ import {
   normalizeBudget,
   normalizeDigest,
   normalizeRunDetail,
+  ipReputationBand,
   normalizeRunPage,
   normalizeRunReport,
   normalizeRunSummary,
@@ -520,5 +521,44 @@ describe('registro de la vista', () => {
     expect(placement.category).toBe('investigation');
     expect(placement.order).toBeGreaterThan(NAV_PLACEMENT['b89-incidents'].order);
     expect(placement.order).toBeLessThan(NAV_PLACEMENT['threat-hunting'].order);
+  });
+});
+
+describe('reputación de IP (AbuseIPDB) en la evidencia', () => {
+  it('normaliza las entradas válidas, descarta las incompletas y clasifica por banda', () => {
+    const detail = normalizeRunDetail({
+      id: 'run-ip',
+      status: 'completed',
+      evidence: {
+        complete: true,
+        gaps: [],
+        ipReputation: [
+          {
+            entityRef: 'ent_ipaaaa',
+            provider: 'abuseipdb',
+            abuseConfidenceScore: 96,
+            totalReports: 40,
+            distinctUsers: 12,
+            countryCode: 'NL',
+            isTor: false,
+            isWhitelisted: false,
+            lastReportedAt: '2026-11-18T10:00:00.000Z',
+            checkedAt: '2026-11-18T15:00:00.000Z',
+          },
+          { entityRef: 'ent_sinpuntaje' },
+          { entityRef: 'ent_blanca', abuseConfidenceScore: 100, isWhitelisted: true, countryCode: 'XYZ' },
+        ],
+      },
+    });
+    const entries = detail?.evidence?.ipReputation ?? [];
+    expect(entries.map((entry) => entry.entityRef)).toEqual(['ent_ipaaaa', 'ent_blanca']);
+    expect(ipReputationBand(entries[0]!)).toBe('malicious');
+    expect(ipReputationBand(entries[1]!)).toBe('whitelisted');
+    expect(entries[1]!.countryCode).toBeNull();
+  });
+
+  it('sin el campo la lista queda vacía (despliegue sin AbuseIPDB)', () => {
+    const detail = normalizeRunDetail({ id: 'run-x', status: 'completed', evidence: { gaps: [] } });
+    expect(detail?.evidence?.ipReputation).toEqual([]);
   });
 });

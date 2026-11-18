@@ -652,13 +652,21 @@ def collect_posture(config: dict, state: dict, graph: Graph | None = None, now: 
     return events, next_state
 
 
+def probe(config: dict, tokens: TokenCache | None = None) -> None:
+    """Auth check: a fresh client-credentials token for Graph. An expired secret (AADSTS7000222) is
+    reported as ``expired``; any other refusal as ``denied`` (``m365_graph.token_rejection``)."""
+    tokens = tokens or TokenCache(Credentials.from_dir(pathlib.Path(config["credentials_dir"])))
+    tokens.get(GRAPH_SCOPE)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="B89 SharePoint/OneDrive collector (read-only)")
     parser.add_argument("mode", choices=("audit", "posture"))
     parser.add_argument("--config", type=pathlib.Path, required=True)
     args = parser.parse_args()
     collect = collect_audit if args.mode == "audit" else collect_posture
-    return run_collector(f"b89-sharepoint-{args.mode}", args.config, collect)
+    return run_collector(f"b89-sharepoint-{args.mode}", args.config, collect, source_id=f"sharepoint-{args.mode}",
+                         vendor="m365", source=f"sharepoint_{args.mode}", probe=probe)
 
 
 if __name__ == "__main__":

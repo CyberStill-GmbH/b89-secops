@@ -25,6 +25,7 @@ from b89_collector import (  # noqa: E402
     bounded_ids,
     http_json,
     iso,
+    oldest_cursor,
     parse_iso,
     read_secret,
     run_collector,
@@ -213,10 +214,26 @@ def enrich_events(events: list[dict], config: dict) -> int:
     return enriched
 
 
+def probe(config: dict, opener=None) -> None:
+    """Read-only auth check: ``GET /rest/self`` identifies the token owner and returns no data."""
+    api = (config.get("api_url") or DEFAULT_API).rstrip("/")
+    if not API_PATTERN.fullmatch(api):
+        raise ProviderError("Snyk API URL is not an official snyk.io host", code="config_invalid")
+    token = read_secret(pathlib.Path(config["token_file"]))
+    status, payload = http_json("GET", f"{api}/rest/self?version={API_VERSION}",
+                                {"Authorization": f"token {token}", "Accept": "application/vnd.api+json"},
+                                opener=opener)
+    if status in (401, 403):
+        raise ProviderError("Snyk refused the token", status, auth="denied")
+    if status != 200 or not isinstance(payload, dict) or not isinstance(payload.get("data"), dict):
+        raise ProviderError("Snyk self check failed", status)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True, type=pathlib.Path)
-    return run_collector("b89-snyk", parser.parse_args().config, collect)
+    return run_collector("b89-snyk", parser.parse_args().config, collect, source_id="snyk", vendor="snyk",
+                         source="issues", probe=probe, watermark=oldest_cursor("cursors"))
 
 
 if __name__ == "__main__":

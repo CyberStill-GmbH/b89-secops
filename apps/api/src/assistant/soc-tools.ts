@@ -11,6 +11,7 @@
 import type { AssistantTool, Citation, ToolInput, ToolOutcome } from '@b89/assistant';
 import { INCIDENT_STATUSES } from '@b89/soc';
 
+import { AbuseIpdbError, publicIp, type IpReputationLookup } from '../runtime/abuseipdb.js';
 import { buildInvestigationTools, limaLabel } from './investigation-tools.js';
 import { buildKnowledgeTools } from './knowledge-tools.js';
 
@@ -202,6 +203,80 @@ export interface ActorSummary {
 export interface SocToolActions {
   /** Encola una investigación manual del Analista IA (`investigations.run`). */
   readonly startInvestigation?: (alertId: string) => Promise<ToolOutcome>;
+  /** Reputación de IP pública (AbuseIPDB); ausente si el despliegue no tiene clave. */
+  readonly ipReputation?: IpReputationLookup;
+}
+
+const IP_REPUTATION_ERROR: Readonly<Record<string, string>> = {
+  ABUSEIPDB_RATE_LIMITED:
+    'AbuseIPDB alcanzó su límite de consultas: no hay reputación ahora. No la estimes.',
+  ABUSEIPDB_UNAUTHORIZED: 'La clave de AbuseIPDB del despliegue no es válida: no hay reputación.',
+};
+
+/** Herramienta de solo lectura: reputación de una IP pública en AbuseIPDB (90 días). */
+function ipReputationTool(lookup: IpReputationLookup): AssistantTool {
+  return {
+    name: 'ip_reputation',
+    label: 'Consultando la reputación de la IP en AbuseIPDB',
+    description:
+      'Reputación externa de UNA dirección IP pública en AbuseIPDB (reportes de los últimos 90 días): puntaje de abuso 0–100, total de reportes y reportantes distintos, último reporte, país, tipo de uso (hosting, ISP, VPN…), ISP, dominio, si es nodo Tor y si está en lista blanca. Úsala al investigar alertas o eventos con IP de origen o destino externas. IP privadas o reservadas no se consultan. Puntaje ≥ 75 con varios reportantes es indicio fuerte de origen malicioso conocido; 0 o sin reportes NO prueba que sea legítima. Es contexto del origen, no prueba de que el ataque tuviera éxito.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        ip: { type: 'string', maxLength: 45, description: 'Dirección IPv4 o IPv6 pública.' },
+      },
+      required: ['ip'],
+    },
+    async run(input): Promise<ToolOutcome> {
+      const raw = input['ip'];
+      if (typeof raw !== 'string' || raw.length > 45) {
+        return { ok: false, error: 'El parámetro «ip» no es válido.' };
+      }
+      const ip = publicIp(raw);
+      if (!ip) {
+        return {
+          ok: true,
+          data: {
+            available: false,
+            note: 'La dirección no es una IP pública (privada, reservada o inválida): no se consulta reputación externa.',
+          },
+        };
+      }
+      try {
+        const report = await lookup.check(ip);
+        if (!report) return { ok: true, data: { available: false, note: 'IP no consultable.' } };
+        return {
+          ok: true,
+          data: {
+            available: true,
+            provider: 'AbuseIPDB',
+            ...report,
+            lastReportedLima: limaLabel(report.lastReportedAt),
+            verdictHint:
+              report.isWhitelisted === true
+                ? 'En lista blanca de AbuseIPDB'
+                : report.abuseConfidenceScore >= 75
+                  ? 'Maliciosa conocida (puntaje alto)'
+                  : report.abuseConfidenceScore >= 25
+                    ? 'Sospechosa (reportes moderados)'
+                    : report.totalReports > 0
+                      ? 'Pocos reportes'
+                      : 'Sin reportes en 90 días',
+          },
+        };
+      } catch (error) {
+        const code = error instanceof AbuseIpdbError ? error.code : '';
+        return {
+          ok: true,
+          data: {
+            available: false,
+            note: IP_REPUTATION_ERROR[code] ?? 'AbuseIPDB no respondió: no hay reputación ahora. No la estimes.',
+          },
+        };
+      }
+    },
+  };
 }
 
 export function buildSocTools(
@@ -467,8 +542,11 @@ export function buildSocTools(
     },
   ];
 
+  const canReputation =
+    actions.ipReputation && (allowed.has('alerts.read') || allowed.has('events.read'));
   const tools = [
     ...buildInvestigationTools(get, allowed),
+    ...(canReputation && actions.ipReputation ? [ipReputationTool(actions.ipReputation)] : []),
     ...buildKnowledgeTools(),
     ...specs
       .filter((spec) => spec.anyOf.some((capability) => allowed.has(capability)))

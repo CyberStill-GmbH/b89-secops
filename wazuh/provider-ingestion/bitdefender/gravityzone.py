@@ -212,10 +212,38 @@ def collect(config: dict, state: dict, client: GravityZone | None = None) -> tup
     return events, next_state
 
 
+def client_from(config: dict) -> GravityZone:
+    base = config.get("api_base") or REGION_BASES.get(str(config.get("region", "us")))
+    if not base:
+        raise ProviderError("GravityZone region is not supported", code="config_invalid")
+    return GravityZone(base, read_secret(pathlib.Path(config["api_key_file"])))
+
+
+def probe(config: dict, client: GravityZone | None = None) -> None:
+    """Read-only auth/permission check: ``general.getApiKeyDetails`` (no data, any key may call it).
+
+    When the response lists the enabled APIs, a key without ``Network`` cannot read endpoints:
+    that is a permission denial, not a network fault.
+    """
+    client = client or client_from(config)
+    details = client.call("general", "getApiKeyDetails", {})
+    enabled = details.get("enabledApis") if isinstance(details, dict) else None
+    if isinstance(enabled, list) and enabled:
+        names = {str(name).casefold() for name in enabled}
+        if "network" not in names:
+            raise ProviderError("GravityZone key lacks the Network API", 403, auth="denied")
+
+
+def watermark(state: dict) -> str | None:
+    value = state.get("last_snapshot")
+    return value if isinstance(value, str) and value else None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True, type=pathlib.Path)
-    return run_collector("b89-bitdefender", parser.parse_args().config, collect)
+    return run_collector("b89-bitdefender", parser.parse_args().config, collect, source_id="bitdefender",
+                         vendor="bitdefender", source="gravityzone", probe=probe, watermark=watermark)
 
 
 if __name__ == "__main__":

@@ -80,6 +80,26 @@ def feature_status(feature: str, roles: dict[str, list[str]]) -> tuple[bool, lis
     return False, [spec["roles"][0]]
 
 
+# Entra (AADSTS) codes that mean the client secret/certificate is expired, not merely refused.
+EXPIRED_CREDENTIAL_CODES = frozenset({7000222, 700027})
+
+
+def token_rejection(status: int, error) -> ProviderError:
+    """Classify a rejected token request: ``expired`` vs ``denied``. Reads only ``error_codes``."""
+    codes: list = []
+    try:
+        body = json.loads(error.read(64 * 1024) or b"{}")
+        codes = body.get("error_codes") if isinstance(body, dict) else []
+    except (OSError, ValueError, AttributeError):
+        codes = []
+    numbers = {code for code in codes or [] if type(code) is int}
+    if numbers & EXPIRED_CREDENTIAL_CODES:
+        return ProviderError("token request rejected (credential expired)", status, auth="expired")
+    if status in (400, 401, 403):
+        return ProviderError("token request rejected", status, auth="denied")
+    return ProviderError("token request rejected", status)
+
+
 class Credentials:
     def __init__(self, tenant: str, client_id: str, client_secret: str) -> None:
         self.tenant, self.client_id, self.client_secret = tenant, client_id, client_secret
@@ -146,9 +166,9 @@ class TokenCache:
             with self.opener(request, timeout=30) as response:
                 payload = json.loads(response.read(1024 * 1024))
         except urllib.error.HTTPError as error:
-            raise ProviderError("token request rejected", error.code) from None
+            raise token_rejection(error.code, error) from None
         except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
-            raise ProviderError("token request failed (network)") from None
+            raise ProviderError("token request failed (network)", code="network") from None
         token = payload.get("access_token") if isinstance(payload, dict) else None
         if not token:
             raise ProviderError("token response without access_token")

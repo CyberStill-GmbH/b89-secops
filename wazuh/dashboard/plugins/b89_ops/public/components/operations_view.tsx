@@ -17,6 +17,7 @@ import {
   CAPABILITIES,
   CORRELATOR_FEEDBACK_STATUS_LABEL,
   CORRELATOR_FEEDBACK_STATUS_TONE,
+  CorrelatorCoverage,
   DEGRADED_REASON_LABEL,
   HealthTone,
   NOTIFICATION_STATUS_LABEL,
@@ -26,6 +27,7 @@ import {
   SocCorrelatorHealth,
   OperationsHealth,
   OperationsStatus,
+  SOURCE_COVERAGE_REASON_LABEL,
 } from '../../common';
 import { B89Page, B89Section, useChanges, useConsole } from './console_context';
 import { ErrorCallout, HealthMark, Timestamp, useAsync } from './primitives';
@@ -61,9 +63,10 @@ export function formatOutboxQueueSummary(input: {
   return `${input.pending} pendientes · ${input.processing} en curso · más antigua ${duration(input.oldestPendingAgeSeconds)} · ${input.expiredProcessing} leases vencidos${expired}`;
 }
 
-export function describeCorrelatorHealth(
-  correlator: SocCorrelatorHealth | null | undefined,
-): { label: string; tone: HealthTone } {
+export function describeCorrelatorHealth(correlator: SocCorrelatorHealth | null | undefined): {
+  label: string;
+  tone: HealthTone;
+} {
   if (!correlator) return { label: 'Sin respuesta', tone: 'neutral' };
 
   if (correlator.feedbackStatus === 'stale') {
@@ -90,6 +93,42 @@ export function describeCorrelatorHealth(
   return {
     label: CORRELATOR_FEEDBACK_STATUS_LABEL[correlator.feedbackStatus],
     tone: CORRELATOR_FEEDBACK_STATUS_TONE[correlator.feedbackStatus],
+  };
+}
+
+/**
+ * Cobertura por fuente vista por el correlador. `unknown` (sin latido del colector) e
+ * `incomplete` se presentan como «Cobertura incompleta»: la ausencia de eventos en esas
+ * fuentes no prueba ausencia de actividad.
+ */
+export function describeSourceCoverage(coverage: CorrelatorCoverage | undefined): {
+  label: string;
+  tone: HealthTone;
+  details: readonly string[];
+} {
+  if (!coverage) return { label: 'Sin dato de cobertura', tone: 'neutral', details: [] };
+  const gaps = coverage.sources.filter((source) => source.state !== 'complete');
+  if (coverage.complete && gaps.length === 0) {
+    return {
+      label: coverage.sources.length === 0 ? 'Sin fuentes observadas' : 'Completa',
+      tone: coverage.sources.length === 0 ? 'neutral' : 'ok',
+      details: [],
+    };
+  }
+  const details = gaps.map((source) => {
+    const reason =
+      (source.reason && SOURCE_COVERAGE_REASON_LABEL[source.reason]) ??
+      (source.state === 'unknown' ? 'no verificada' : 'incompleta');
+    const lag =
+      source.providerLagSeconds !== null && source.reason === 'collector_behind_provider'
+        ? ` (${duration(source.providerLagSeconds)})`
+        : '';
+    return `${source.source}: ${reason}${lag}`;
+  });
+  return {
+    label: 'Cobertura incompleta',
+    tone: gaps.some((source) => source.state === 'incomplete') ? 'warn' : 'neutral',
+    details,
   };
 }
 
@@ -230,6 +269,25 @@ function OperationsContent({ embedded }: { embedded: boolean }) {
                                   Último éxito <Timestamp iso={correlator.lastFeedbackSuccess} />
                                 </>
                               )}
+                            </span>
+                          );
+                        })(),
+                      },
+                      {
+                        title: 'Cobertura de fuentes',
+                        description: (() => {
+                          const state = describeSourceCoverage(
+                            data.sections.soc?.correlator?.coverage,
+                          );
+                          return (
+                            <span>
+                              <HealthMark tone={state.tone} label={state.label} />
+                              {state.details.map((detail) => (
+                                <React.Fragment key={detail}>
+                                  <br />
+                                  {detail}
+                                </React.Fragment>
+                              ))}
                             </span>
                           );
                         })(),

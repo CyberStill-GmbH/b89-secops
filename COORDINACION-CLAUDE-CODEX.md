@@ -415,3 +415,75 @@ usan intervalo desde terminación. Pruebas: 7 nuevas + 22 regresiones existentes
 `docs/detection-engineering/14-source-recovery.md`. Revisión backend solicitada: exposición de
 `recovery.status/lag_seconds` en salud y alertas de cobertura. Sin despliegue por este agente.
 
+
+### Claude · 2026-11-18 · Correlador: cierre de las 8 mejoras de correlación (contratos para revisión)
+
+Continúa el trabajo de Codex del 2026-11-13/16 (ledger, watermark, overrides). Local, sin commit
+ni deploy. Doc: `docs/detection-engineering/15-correlacion-secuencias-y-cobertura.md`.
+
+- **Go `model`**: `Observation.{IngestedAt,TimeSource,Location,Provenance,StageCriteria}`;
+  `StageHit.{criteria,ingestedAt}`; `Candidate.{mode,revision,updatedAt}`; estado `shadow`;
+  `Explanation.{checks,contradictions,missingData,provenance,additionalStageEvidence,lifecycle}`.
+- **Etapas nuevas**: `identity.change`, `auth.new_location` (la deriva el motor) y
+  `endpoint.activity`. Patrón `identity-change-new-location-endpoint` con `Mode=shadow`, que nunca
+  se emite.
+- **API** `POST /api/internal/correlator/candidates`: la `explanation` acepta, de forma opcional y
+  con límites, `patternVersion`, `windowSeconds`, `checks[≤8]`, `contradictions[≤6]`,
+  `missingData[≤6]`, `lifecycle` y `stages[].criteria`. Se convierten en razones. Un
+  correlador anterior sigue siendo compatible. `GET /api/risk/candidates?status=shadow` pasa a
+  aceptarse.
+- **Salud**: `/readyz.observedSources[*]` suma `processed`, `duplicates`, `lateEvents`,
+  `providerLagSeconds`, `providerWatermark`, `coverage` y `coverageReason`. Se agregan
+  `coverageComplete` y `pendingWindowDocuments`.
+- **Corrección de despliegue**: allowlist de `PATTERNS_JSON` y `MEMBERS_DIR` en `config.Load`.
+- Revisión pedida a Codex: (1) en UI y salud, mostrar `coverage=unknown|incomplete` como «cobertura
+  incompleta o no verificada», nunca como «sin actividad»; (2) mostrar en el expediente los
+  candidatos `shadow` aparte de los propuestos; (3) confirmar el nivel de la regla Wazuh de
+  `source_heartbeat` frente a `B89_CORRELATOR_MIN_LEVEL`; (4) el copy de las razones
+  `Umbral`, `Contradicción`, `Dato faltante` y `Alcance` en la vista de alerta.
+
+### Claude · 2026-11-18 · Pendientes del bloque anterior, hechos por Claude (Codex apagado)
+
+Por indicación del usuario, Claude ejecutó los cuatro pendientes en archivos de UI. Local, sin
+commit ni deploy. Detalle en `docs/detection-engineering/15` § «Superficies de consola y API».
+
+1. **Cobertura**: `soc.correlator.coverage` en `/api/operations/health`, y «Cobertura de fuentes»
+   en Operaciones (`describeSourceCoverage`). `unknown` e `incomplete` se rotulan «Cobertura
+   incompleta». El razonamiento nuevo es `CORRELATOR_COVERAGE_INCOMPLETE`; se agregan también las
+   etiquetas faltantes de `CORRELATOR_UNREACHABLE` y `CORRELATOR_NOT_READY`. Corrección: la API
+   rechazaba el estado `catching_up` del correlador.
+2. **Sombra**: `shadowCandidates` separados en el expediente de la entidad (`/api/risk/entities`)
+   y `shadowNote` en la herramienta de Bunny.
+3. **Regla de latidos**: no existía. Se agrega `detections/platform/collector-heartbeat`
+   (101980/101981, nivel 3) y el rango 101980–101989 en `catalog.yaml`. `wazuh-logtest` 4/4.
+4. **Razones**: `common/alert_reasons.ts` y `AlertReasonsList` en alertas, investigación y
+   bandeja. Se corrigen las claves React duplicadas.
+
+Validación: Go `test -race`; API 476/477 (la única falla es
+`analyst-host.spec.ts › events24h`, en archivos sin versionar del analista IA que no se tocaron);
+plugin 297/297; typecheck del plugin con TS 4.0.2 limpio, salvo
+`ai_analyst_download.ts` (TS7053, sin versionar y ajeno). Revisión pedida a Codex al volver: copy
+y estilo de `AlertReasonsList` (no hay CSS nuevo para `b89Reasons__group`) y la falla de
+`events24h`.
+
+### Claude · 2026-11-18 · Reputación de IP con AbuseIPDB (contrato para revisión)
+
+Lo pidió el dueño. Local, sin commit ni despliegue. Doc: [18](docs/18-integraciones.md#abuseipdb--reputación-de-ip).
+
+- **Contrato API**: `GET /api/ai-investigations/:id` agrega `evidence.ipReputation[]` con
+  `{ entityRef, provider, abuseConfidenceScore, totalReports, distinctUsers, lastReportedAt,
+  countryCode, usageType, isp, isTor, isWhitelisted, checkedAt }`. Solo lleva la referencia `ent_…`,
+  nunca la IP. Una lista vacía significa que no se consultó.
+- **Dominio**: `EvidenceIpReputation` e `IP_REPUTATION_MALICIOUS_SCORE = 75` en `@b89/assistant`.
+  Motivo de triaje `IP_REPUTATION_MALICIOUS`. `POLICY_VERSION` pasa a `b89-analyst-2026-11-18.1`.
+- **UI (archivos tocados)**: `common/ai_investigations.ts` (normalizador, `ipReputationBand` y
+  rótulos) y `public/components/ai_analyst_case_file.tsx` (`AiIpReputationView`, que reutiliza
+  `.b89Ai__sources`; no hay CSS nuevo).
+- **Bunny**: herramienta `ip_reputation` (solo lectura; `alerts.read` o `events.read`).
+- Validación: vitest raíz 1421/1421 y plugin con la prueba nueva del normalizador. `tsc` del API y
+  los módulos sin errores. El typecheck del plugin con TS 4.0.2 **no se corrió**: falta
+  `B89_TOOLS_DIR` completo en esta máquina.
+- Revisión pedida a Codex: (1) el copy y el estilo de la sección del expediente; (2) si conviene
+  mostrar la reputación también en el detalle de alerta (hoy solo aparece en el expediente);
+  (3) correr el typecheck TS 4.0.2 del plugin.
+

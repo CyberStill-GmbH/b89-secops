@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -70,6 +71,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /v1/entities", s.guard(s.entities))
 	mux.HandleFunc("GET /v1/entities/keys", s.guard(s.keys))
 	mux.HandleFunc("GET /v1/entity", s.guard(s.entity))
+	mux.HandleFunc("GET /v1/candidates-by-alert/{alertId}", s.guard(s.candidateByAlert))
+	mux.HandleFunc("GET /v1/candidates/{id}", s.guard(s.candidateDetail))
+	mux.HandleFunc("GET /v1/candidates/{id}/members", s.guard(s.members))
 	mux.HandleFunc("GET /v1/candidates", s.guard(s.candidates))
 	mux.HandleFunc("GET /v1/feedback", s.guard(s.feedback))
 	mux.HandleFunc("GET /v1/feedback/allowlist.cdb", s.guard(s.cdb))
@@ -129,10 +133,73 @@ func (s *Server) entity(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"asOf": now, "entity": d, "candidates": cands})
 }
 
+func (s *Server) candidateDetail(w http.ResponseWriter, r *http.Request) {
+	c, ok, err := s.Runner.Eng.ArchivedCandidate(r.PathValue("id"))
+	writeCandidate(w, c, ok, err)
+}
+
+var alertIDFormat = regexp.MustCompile("^[A-Za-z0-9_-]{1,128}$")
+
+func (s *Server) candidateByAlert(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("alertId")
+	if !alertIDFormat.MatchString(id) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"code": "VALIDATION_FAILED"})
+		return
+	}
+	c, ok, err := s.Runner.Eng.CandidateByAlert(id)
+	writeCandidate(w, c, ok, err)
+}
+
+func writeCandidate(w http.ResponseWriter, c model.Candidate, ok bool, err error) {
+	if err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"code": "CANDIDATE_UNAVAILABLE"})
+		return
+	}
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"code": "RESOURCE_UNAVAILABLE"})
+		return
+	}
+	writeJSON(w, http.StatusOK, c)
+}
+
+func (s *Server) members(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	offset, limit := 0, 100
+	var err error
+	if q.Has("offset") {
+		offset, err = strconv.Atoi(q.Get("offset"))
+	}
+	if err == nil && q.Has("limit") {
+		limit, err = strconv.Atoi(q.Get("limit"))
+	}
+	if err != nil || offset < 0 || limit < 1 || limit > 500 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"code": "VALIDATION_FAILED"})
+		return
+	}
+	kind := q.Get("kind")
+	if kind == "" {
+		kind = "alerts"
+	}
+	if kind != "alerts" && kind != "observations" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"code": "VALIDATION_FAILED"})
+		return
+	}
+	page, found, err := s.Runner.Eng.MemberPageByKind(r.PathValue("id"), kind, offset, limit)
+	if err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"code": "MEMBERS_UNAVAILABLE"})
+		return
+	}
+	if !found {
+		writeJSON(w, http.StatusNotFound, map[string]string{"code": "RESOURCE_UNAVAILABLE"})
+		return
+	}
+	writeJSON(w, http.StatusOK, page)
+}
+
 func (s *Server) candidates(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
 	switch status {
-	case "", model.CandidateProposed, model.CandidateEmitted, model.CandidateSuppressed, model.CandidateFailed:
+	case "", model.CandidateProposed, model.CandidateEmitted, model.CandidateSuppressed, model.CandidateFailed, model.CandidateShadow:
 	default:
 		writeJSON(w, http.StatusBadRequest, map[string]string{"code": "VALIDATION_FAILED"})
 		return
@@ -241,6 +308,46 @@ func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(&b, "b89_correlator_observations_total{source=%q} %d\n", k, stats.BySource[k])
 	}
 	counter("b89_correlator_observations_duplicate_total", "Overlapping reads skipped by id", int64(stats.Duplicates))
+	counter("b89_correlator_observations_out_of_order_total", "Observations older than the newest event already processed", int64(stats.OutOfOrder))
+	counter("b89_correlator_candidates_opened_total", "Candidates opened (new episodes)", int64(stats.CandidatesOpened))
+	counter("b89_correlator_candidates_updated_total", "Candidate revisions caused by late or additional step evidence", int64(stats.CandidatesUpdated))
+	counter("b89_correlator_candidates_shadow_total", "Candidates produced by rules in shadow mode (never emitted)", int64(stats.ShadowCandidates))
+	counter("b89_correlator_collector_heartbeats_total", "Collector heartbeats read from the alert stream", s.Runner.C.Heartbeats.Load())
+	counter("b89_correlator_unparseable_total", "Documents without usable timestamp or rule", s.Runner.C.Unparseable.Load())
+	counter("b89_correlator_pages_total", "Indexer pages read", s.Runner.C.Pages.Load())
+	gauge("b89_correlator_pending_window_documents", "Documents read inside the current unfinished poll window", float64(readiness.PendingWindowDocs))
+	complete := 0.0
+	if readiness.CoverageComplete {
+		complete = 1
+	}
+	gauge("b89_correlator_coverage_complete", "1 only when every observed source has verified complete coverage; 0 means incomplete or unverified, not inactivity", complete)
+	sourceNames := make([]string, 0, len(readiness.Sources))
+	for k := range readiness.Sources {
+		sourceNames = append(sourceNames, k)
+	}
+	sort.Strings(sourceNames)
+	fmt.Fprintf(&b, "# HELP b89_correlator_source_processed_total Observations processed per source (excluding duplicates)\n# TYPE b89_correlator_source_processed_total counter\n")
+	for _, k := range sourceNames {
+		fmt.Fprintf(&b, "b89_correlator_source_processed_total{source=%q} %d\n", k, readiness.Sources[k].Processed)
+	}
+	fmt.Fprintf(&b, "# HELP b89_correlator_source_duplicates_total Duplicate reads per source\n# TYPE b89_correlator_source_duplicates_total counter\n")
+	for _, k := range sourceNames {
+		fmt.Fprintf(&b, "b89_correlator_source_duplicates_total{source=%q} %d\n", k, readiness.Sources[k].Duplicates)
+	}
+	fmt.Fprintf(&b, "# HELP b89_correlator_source_late_events_total Events ingested at least 5 minutes after their provider time\n# TYPE b89_correlator_source_late_events_total counter\n")
+	for _, k := range sourceNames {
+		fmt.Fprintf(&b, "b89_correlator_source_late_events_total{source=%q} %d\n", k, readiness.Sources[k].LateEvents)
+	}
+	fmt.Fprintf(&b, "# HELP b89_correlator_source_provider_lag_seconds Provider lag reported by the collector heartbeat\n# TYPE b89_correlator_source_provider_lag_seconds gauge\n")
+	for _, k := range sourceNames {
+		if lag := readiness.Sources[k].ProviderLagSeconds; lag != nil {
+			fmt.Fprintf(&b, "b89_correlator_source_provider_lag_seconds{source=%q} %g\n", k, *lag)
+		}
+	}
+	fmt.Fprintf(&b, "# HELP b89_correlator_source_coverage Coverage state per source; one state is 1\n# TYPE b89_correlator_source_coverage gauge\n")
+	for _, k := range sourceNames {
+		fmt.Fprintf(&b, "b89_correlator_source_coverage{source=%q,state=%q} 1\n", k, readiness.Sources[k].Coverage)
+	}
 	counter("b89_correlator_observations_suppressed_total", "Contributions zeroed by an active feedback suppression", int64(stats.Suppressed))
 	counter("b89_correlator_gateway_errors_total", "Failed wazuh-gateway reads", s.Runner.C.GatewayErrors.Load())
 	counter("b89_correlator_api_errors_total", "Failed B89 API calls", s.Runner.C.APIErrors.Load())
@@ -258,7 +365,7 @@ func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 		byStatus[c.Status]++
 	}
 	fmt.Fprintf(&b, "# HELP b89_correlator_candidates Candidates by status\n# TYPE b89_correlator_candidates gauge\n")
-	for _, st := range []string{model.CandidateProposed, model.CandidateEmitted, model.CandidateSuppressed, model.CandidateFailed} {
+	for _, st := range []string{model.CandidateProposed, model.CandidateEmitted, model.CandidateSuppressed, model.CandidateFailed, model.CandidateShadow} {
 		fmt.Fprintf(&b, "b89_correlator_candidates{status=%q} %d\n", st, byStatus[st])
 	}
 	_, _, wred := eng.GroupStats()

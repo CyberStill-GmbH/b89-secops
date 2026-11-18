@@ -43,7 +43,10 @@ export class AssistantMcpController {
     const tools = buildSocTools(
       createInternalGet(this.runtime.internalServer, request),
       { roles: actor.roles, capabilities: [...actor.capabilities] },
-      startInvestigation ? { startInvestigation } : {},
+      {
+        ...(startInvestigation ? { startInvestigation } : {}),
+        ...(this.runtime.ipReputation ? { ipReputation: this.runtime.ipReputation } : {}),
+      },
     );
     const result = await dispatchMcpRequest(body, tools);
     if (result === null) {

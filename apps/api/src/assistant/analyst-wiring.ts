@@ -122,6 +122,7 @@ export async function composeAnalyst(input: {
       notifications: runtime.notifications,
       ...(link ? { correlator: (path: string) => correlatorGet(link, path) } : {}),
       ...(sourceHealth ? { sourceHealth } : {}),
+      ...(runtime.ipReputation ? { ipReputation: runtime.ipReputation } : {}),
       now: () => runtime.now(),
     }),
     actions: new RuntimeSocActions({

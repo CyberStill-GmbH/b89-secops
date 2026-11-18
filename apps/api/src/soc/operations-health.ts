@@ -37,6 +37,80 @@ export interface CorrelatorHealth {
   readonly feedbackStatus: CorrelatorFeedbackStatus;
   readonly feedbackAgeSeconds: number | null;
   readonly lastFeedbackSuccess: string | null;
+  /** Ausente si el correlador no publica cobertura (versión previa) o el cuerpo no es válido. */
+  readonly coverage?: CorrelatorCoverage;
+}
+
+export const SOURCE_COVERAGE_STATES = ['complete', 'incomplete', 'unknown'] as const;
+export type SourceCoverageState = (typeof SOURCE_COVERAGE_STATES)[number];
+
+/** Motivos que publica el correlador (allowlist: cualquier otro texto se descarta). */
+export const SOURCE_COVERAGE_REASONS = [
+  'no_collector_heartbeat',
+  'collector_run_partial',
+  'collector_run_failed',
+  'collector_heartbeat_stale',
+  'collector_behind_provider',
+  'correlator_backfilling',
+  'correlator_read_failed',
+  'correlator_catching_up',
+] as const;
+export type SourceCoverageReason = (typeof SOURCE_COVERAGE_REASONS)[number];
+
+/**
+ * Cobertura por fuente vista por el correlador. `unknown` significa que no hay evidencia de
+ * cobertura (ningún latido del colector): nunca debe presentarse como «sin actividad».
+ */
+export interface CorrelatorSourceCoverage {
+  readonly source: string;
+  readonly state: SourceCoverageState;
+  readonly reason: SourceCoverageReason | null;
+  readonly providerLagSeconds: number | null;
+  readonly lastEventAgeSeconds: number | null;
+}
+
+export interface CorrelatorCoverage {
+  readonly complete: boolean;
+  readonly sources: readonly CorrelatorSourceCoverage[];
+}
+
+const MAX_COVERAGE_SOURCES = 20;
+const SOURCE_LABEL = /^[a-z0-9-]{1,20}$/u;
+
+function seconds(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? Math.round(value)
+    : null;
+}
+
+/** Proyección acotada de `observedSources`/`coverageComplete`; entradas inválidas se descartan. */
+function correlatorCoverage(body: Record<string, unknown>): CorrelatorCoverage | undefined {
+  const complete = body['coverageComplete'];
+  if (typeof complete !== 'boolean') return undefined;
+  const observed = recordOf(body['observedSources']);
+  const states = new Set<string>(SOURCE_COVERAGE_STATES);
+  const reasons = new Set<string>(SOURCE_COVERAGE_REASONS);
+  const sources: CorrelatorSourceCoverage[] = [];
+  for (const source of Object.keys(observed).sort()) {
+    if (sources.length === MAX_COVERAGE_SOURCES || !SOURCE_LABEL.test(source)) continue;
+    const entry = recordOf(observed[source]);
+    const state = entry['coverage'];
+    if (typeof state !== 'string' || !states.has(state)) continue;
+    const reason = entry['coverageReason'];
+    sources.push({
+      source,
+      state: state as SourceCoverageState,
+      reason:
+        typeof reason === 'string' && reasons.has(reason) ? (reason as SourceCoverageReason) : null,
+      providerLagSeconds: seconds(entry['providerLagSeconds']),
+      lastEventAgeSeconds: seconds(entry['lastEventAgeSeconds']),
+    });
+  }
+  // Una fuente no completa invalida "complete" aunque el cuerpo diga lo contrario.
+  return {
+    complete: complete && sources.every((source) => source.state === 'complete'),
+    sources,
+  };
 }
 
 interface CorrelatorReadResult {
@@ -83,7 +157,7 @@ export function correlatorHealth(
     typeof ready === 'boolean' &&
     typeof feedbackReady === 'boolean' &&
     typeof status === 'string' &&
-    ['ready', 'degraded', 'backfilling'].includes(status) &&
+    ['ready', 'degraded', 'backfilling', 'catching_up'].includes(status) &&
     typeof feedbackStatus === 'string' &&
     allowedFeedbackStatuses.has(feedbackStatus) &&
     feedbackReady === (feedbackStatus === 'ready') &&
@@ -96,12 +170,14 @@ export function correlatorHealth(
   const expectedHttpStatus = ready === true ? 200 : ready === false ? 503 : 0;
   if (!validState || response.status !== expectedHttpStatus) return unavailableCorrelator();
 
+  const coverage = correlatorCoverage(body);
   return {
     status: ready ? 'OK' : 'DEGRADED',
     ready,
     feedbackStatus: feedbackStatus as CorrelatorFeedbackStatus,
     feedbackAgeSeconds: hasAge ? (age as number) : null,
     lastFeedbackSuccess: hasTimestamp ? (lastSuccess as string) : null,
+    ...(coverage ? { coverage } : {}),
   };
 }
 
@@ -250,6 +326,10 @@ export function socSection(input: SocSectionInput, at: Date) {
     ...notificationChannelIssues(input.notificationChannels),
     ...(correlator.feedbackStatus === 'unavailable' ? ['CORRELATOR_UNREACHABLE'] : []),
     ...(correlator.ready === false ? ['CORRELATOR_NOT_READY'] : []),
+    // Solo una brecha positiva degrada; `unknown` (sin latidos) se muestra, pero no degrada.
+    ...(correlator.coverage?.sources.some((source) => source.state === 'incomplete')
+      ? ['CORRELATOR_COVERAGE_INCOMPLETE']
+      : []),
   ];
   return {
     status: (degradedReasons.length > 0 ? 'DEGRADED' : 'OK') as HealthStatus,

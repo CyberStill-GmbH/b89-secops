@@ -565,6 +565,7 @@ export class InvestigationRunner {
     context.bundle = bundle;
     const fingerprint = fingerprintOf(job.tenantId, job.alertIds, bundle.watermark, POLICY_VERSION);
     let evidence: InvestigationEvidenceSummary = {
+      ...(bundle.candidate ? { candidateId: bundle.candidate.id } : {}),
       alertCount: bundle.alerts.length,
       relatedAlertCount: bundle.relatedAlerts.length,
       eventCount: bundle.events.length,
@@ -577,6 +578,9 @@ export class InvestigationRunner {
       fingerprint,
       estimatedInputTokens: null,
       packTruncated: false,
+      ...(bundle.context?.ipReputation && bundle.context.ipReputation.length > 0
+        ? { ipReputation: bundle.context.ipReputation.slice(0, 5) }
+        : {}),
     };
     await this.note(context, 'fetching_evidence', 'completed', {
       alerts: evidence.alertCount,

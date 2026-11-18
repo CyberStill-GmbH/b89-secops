@@ -20,6 +20,7 @@
 | AWS (cuenta B89) | EventBridge → SNS → webhook → receptor `aws-events` | Push, casi tiempo real | 101600–101699 (+ 101710–101719) | Activo (17 suscripciones) |
 | Correo de alertas | `b89_alert_mail.py` → Microsoft Graph `sendMail` | `ALERT_INTERVAL_MIN` | Nivel ≥ 8 | **Bloqueado**: falta `Mail.Send` |
 | Bunny | API de Anthropic (Claude) | Bajo demanda | — | Activo si hay clave ([15](15-bunny-asistente.md)) |
+| AbuseIPDB (reputación de IP) | `GET /api/v2/check` desde el API | Bajo demanda, caché 6 h | — | Activo si hay clave ([abajo](#abuseipdb--reputación-de-ip)) |
 | B89 Respond | Embebido por SSO | Bajo demanda | — | Activo ([20](20-guia-de-usuario.md#b89-respond)) |
 
 Escala de severidad B89 sobre `rule.level` (`modules/telemetry`): baja 0–3, media 4–7, **alta
@@ -175,6 +176,28 @@ reinicia solo el manager. Estado: `systemctl list-timers 'b89-*'`.
 - **Habilitar en un nodo nuevo:** `terraform apply`, copiar `terraform output -raw
   aws_events_receiver_env` a `infra/aws-poweruser/host/aws-events.env`, `sudo bash
   wazuh/aws-events/install-aws-events.sh` y recrear `aws-events`. Las suscripciones se confirman solas.
+
+## AbuseIPDB · reputación de IP
+
+Enriquecimiento externo, no una fuente de eventos. El API consulta AbuseIPDB (reportes de 90 días)
+para las IP **públicas** de una alerta. Las IP privadas, reservadas o de documentación nunca salen.
+
+- **Analista IA**: el lector de evidencia consulta hasta 3 IP públicas de la alerta principal y las
+  agrega a `context.ipReputation`. Viajan con la referencia opaca `ent_…`, nunca con la IP. El modelo
+  recibe el puntaje, los reportes, el país, el tipo de uso, Tor y la lista blanca. La política de
+  triaje (`b89-analyst-2026-11-18.1`) trata un puntaje de 75 o más, fuera de lista blanca, como
+  `IP_REPUTATION_MALICIOUS`: anula el atajo «patrón benigno conocido», lleva un P3/P4 aislado a
+  inferencia económica y sube un P2 a nivel avanzado. Nunca cierra ni rebaja una alerta.
+- **Consola**: el expediente del analista muestra la sección «Reputación de IP (AbuseIPDB)» con la
+  banda, el puntaje, los reportes, el país, el tipo de uso, el ISP, Tor y la fecha del último reporte.
+- **Bunny/MCP**: la herramienta de solo lectura `ip_reputation` está disponible con `alerts.read` o
+  `events.read`.
+- **Fallas**: un 429 activa un enfriamiento hasta `Retry-After` (15 min si el proveedor no lo
+  indica). La falla queda como vacío del expediente, pero no vuelve parcial la evidencia interna.
+- **Secreto**: `ABUSEIPDB_API_KEY` va en `/opt/b89/secrets/services.env`. `deploy-host.sh` la copia
+  a `secrets/api.env` como `B89_ABUSEIPDB_API_KEY`. Sin clave, la integración queda apagada y el
+  expediente lo indica. El plan gratuito permite 1000 consultas al día; la caché en memoria (6 h,
+  2000 IP) las ahorra.
 
 ## Correo de alertas
 

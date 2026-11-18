@@ -71,6 +71,7 @@ import {
   Timestamp,
   useAsync,
 } from './primitives';
+import { AlertReasonsList } from './alert_reasons_list';
 import { entityInvestigationHref } from './investigation_links';
 import { SourceBadge, VendorLogo } from './vendor_logo';
 import { InvestigationActivityGroups } from './investigation_activity_groups';
@@ -415,17 +416,7 @@ export function InvestigationView({
                   <h2>Por qué tiene esta prioridad</h2>
                 </EuiTitle>
                 <EuiSpacer size="s" />
-                {current.reasons.length === 0 ? (
-                  <EmptyLine>El motor de priorización no registró motivos.</EmptyLine>
-                ) : (
-                  <ul className="b89List" data-b89-no-translate="">
-                    {current.reasons.map((reason) => (
-                      <li key={reason.code}>
-                        <Mono>{reason.code}</Mono> {reason.detail}
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                <AlertReasonsList reasons={current.reasons} />
               </EuiPanel>
               <EuiSpacer size="l" />
               <IncidentPanel alert={current} basePath={basePath} onChanged={alert.reload} />

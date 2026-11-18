@@ -273,6 +273,20 @@ export function buildEvidencePack(
                 actor: short(entry.actorType, 16),
                 at: short(entry.at, 40),
               })),
+              // Reputación externa (AbuseIPDB): solo la referencia opaca y atributos acotados.
+              ipReputation: (context.ipReputation ?? []).slice(0, contextLists).map((entry) => ({
+                entity: clean(entry.entityRef, ID_MAX),
+                provider: entry.provider,
+                abuseScore: entry.abuseConfidenceScore,
+                reports90d: entry.totalReports,
+                reporters: entry.distinctUsers,
+                lastReportedAt: entry.lastReportedAt ? short(entry.lastReportedAt, 40) : null,
+                country: entry.countryCode ? short(entry.countryCode, 2) : null,
+                usageType: entry.usageType ? clean(entry.usageType, 60) : null,
+                ...(caps.text && entry.isp ? { isp: clean(entry.isp, 60) } : {}),
+                tor: entry.isTor,
+                whitelisted: entry.isWhitelisted,
+              })),
             }
           : null,
       omitted,

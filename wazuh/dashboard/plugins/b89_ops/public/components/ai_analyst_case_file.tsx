@@ -11,12 +11,15 @@ import {
   AI_CITATION_KIND_LABEL,
   AI_EVENT_KIND_LABEL,
   AI_INFERENCE_LABEL,
+  AI_IP_REPUTATION_BAND_LABEL,
   AI_INVOCATION_STATE_LABEL,
   AI_INVOCATION_STATE_TONE,
   AI_RUN_STATUS_LABEL,
   AI_TRIGGER_LABEL,
   AiCitation,
   AiEvidence,
+  AiIpReputation,
+  AiIpReputationBand,
   AiResult,
   AiRunAction,
   AiRunDetail,
@@ -32,7 +35,9 @@ import {
   formatCount,
   formatDuration,
   formatMicroUsd,
+  HealthTone,
   inferenceLabel,
+  ipReputationBand,
   isActive,
   isTerminal,
   NO_DATA,
@@ -777,6 +782,73 @@ export function AiEvidenceCoverage({ evidence }: { evidence: AiEvidence | null }
   );
 }
 
+// ------------------------------------------------------------------ Reputación de IP
+
+const IP_BAND_TONE: Record<AiIpReputationBand, HealthTone> = {
+  malicious: 'fail',
+  suspicious: 'warn',
+  low: 'info',
+  clean: 'ok',
+  whitelisted: 'ok',
+};
+
+function ipReputationMeta(entry: AiIpReputation): string[] {
+  const parts: string[] = [];
+  if (entry.totalReports !== null) {
+    parts.push(
+      `${formatCount(entry.totalReports)} reporte(s)` +
+        (entry.distinctUsers !== null ? ` de ${formatCount(entry.distinctUsers)} usuario(s)` : ''),
+    );
+  }
+  if (entry.countryCode) parts.push(entry.countryCode);
+  if (entry.usageType) parts.push(entry.usageType);
+  if (entry.isp) parts.push(entry.isp);
+  if (entry.isTor === true) parts.push('Nodo Tor');
+  return parts;
+}
+
+/** Reputación externa de las IP públicas de la alerta, tal como la recibió el analista. */
+export function AiIpReputationView({ evidence }: { evidence: AiEvidence | null }) {
+  if (!evidence || evidence.ipReputation.length === 0) return null;
+  return (
+    <Section id="b89AiIpReputation" title="Reputación de IP (AbuseIPDB)">
+      <ul className="b89Ai__sources">
+        {evidence.ipReputation.map((entry) => {
+          const band = ipReputationBand(entry);
+          return (
+            <li key={entry.entityRef}>
+              <span>
+                <HealthMark
+                  tone={IP_BAND_TONE[band]}
+                  label={`${AI_IP_REPUTATION_BAND_LABEL[band]} · puntaje ${entry.abuseConfidenceScore}/100`}
+                />
+              </span>
+              <span className="b89CellMeta">
+                <Mono>{entry.entityRef}</Mono>
+                {ipReputationMeta(entry).map((part, index) => (
+                  <React.Fragment key={index}>
+                    {' · '}
+                    <span data-b89-no-translate="">{part}</span>
+                  </React.Fragment>
+                ))}
+              </span>
+              <span className="b89CellMeta">
+                Último reporte:{' '}
+                {entry.lastReportedAt ? <Timestamp iso={entry.lastReportedAt} /> : 'nunca'}
+                {' · '}consultada <Timestamp iso={entry.checkedAt} />
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="b89Ai__note">
+        Reportes de los últimos 90 días en AbuseIPDB. Es contexto del origen: un puntaje alto no
+        prueba que el ataque tuviera éxito y un puntaje bajo no prueba que la IP sea legítima.
+      </p>
+    </Section>
+  );
+}
+
 // ------------------------------------------------------------------ Uso y costo
 
 export function AiUsageView({ run }: { run: AiRunDetail }) {
@@ -928,6 +1000,7 @@ export function AiCaseFile({
               result={run.result}
               partial={run.status === 'partial'}
               basePath={basePath}
+              alertChanged={changedAlert(run.actions)}
             />
           ) : (
             <Section id="b89AiSummary" title="Resultado">
@@ -940,6 +1013,7 @@ export function AiCaseFile({
           )}
           <AiRunActions actions={run.actions} basePath={basePath} mode={mode} active={active} />
           <AiEvidenceCoverage evidence={run.evidence} />
+          <AiIpReputationView evidence={run.evidence} />
           <AiProgress run={run} now={now} />
         </div>
         <aside className="b89AiCase__aside" aria-label="Ficha del expediente">

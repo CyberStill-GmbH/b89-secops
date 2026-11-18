@@ -95,12 +95,17 @@ function explanationReasons(value: unknown): ExplanationReason[] | undefined {
     ) {
       return undefined;
     }
+    const criteria = raw['criteria'];
+    if (criteria !== undefined && criteria !== '' && !boundedText(criteria, 300)) return undefined;
     reasons.push({
       code: 'ATTACK_CHAIN',
       delta: 0,
       detail:
         `Etapa ${index + 1}: ${raw['stage']} · regla ${raw['ruleId']} · ${raw['source']} · ` +
-        `${at.toISOString()}${observationId ? ` · evidencia wazuh:${observationId}` : ''}`,
+        `${at.toISOString()}${observationId ? ` · evidencia wazuh:${observationId}` : ''}` +
+        (typeof criteria === 'string' && criteria.trim() !== ''
+          ? ` · criterio: ${criteria.trim()}`
+          : ''),
     });
   }
   const evidence = value['evidenceObservationIds'] ?? [];
@@ -124,6 +129,84 @@ function explanationReasons(value: unknown): ExplanationReason[] | undefined {
   }
   for (const step of steps as string[]) {
     reasons.push({ code: 'CORRELATED_ENTITY', delta: 0, detail: `Siguiente paso: ${step.trim()}` });
+  }
+  const analysis = analystReasons(value);
+  if (analysis === undefined) return undefined;
+  reasons.push(...analysis);
+  return reasons;
+}
+
+const PATTERN_VERSION = /^[a-z0-9][a-z0-9-]{0,99}$/u;
+const MAX_WINDOW_SECONDS = 72 * 60 * 60;
+
+/**
+ * Rule version, thresholds, contradictions and missing data of a correlation. All optional so
+ * older correlators stay compatible; when present they are bounded and rendered verbatim as
+ * reasons, so the analyst and the report cite the same validation the correlator applied.
+ */
+function analystReasons(value: Record<string, unknown>): ExplanationReason[] | undefined {
+  const reasons: ExplanationReason[] = [];
+  const version = value['patternVersion'];
+  const window = value['windowSeconds'];
+  if (version !== undefined && (typeof version !== 'string' || !PATTERN_VERSION.test(version))) {
+    return undefined;
+  }
+  if (
+    window !== undefined &&
+    (typeof window !== 'number' ||
+      !Number.isInteger(window) ||
+      window < 1 ||
+      window > MAX_WINDOW_SECONDS)
+  ) {
+    return undefined;
+  }
+  if (version !== undefined || window !== undefined) {
+    const parts = [
+      version === undefined ? undefined : `versión ${version}`,
+      window === undefined ? undefined : `ventana ${window} s`,
+    ].filter((part): part is string => part !== undefined);
+    reasons.push({ code: 'CORRELATED_ENTITY', delta: 0, detail: `Regla: ${parts.join(' · ')}` });
+  }
+  const checks = value['checks'] ?? [];
+  if (!Array.isArray(checks) || checks.length > 8) return undefined;
+  for (const raw of checks) {
+    if (
+      !isRecord(raw) ||
+      !boundedText(raw['name'], 60) ||
+      !boundedText(raw['required'], 60) ||
+      !boundedText(raw['observed'], 60) ||
+      typeof raw['met'] !== 'boolean'
+    ) {
+      return undefined;
+    }
+    reasons.push({
+      code: 'CORRELATED_ENTITY',
+      delta: 0,
+      detail:
+        `Umbral ${raw['name'].trim()}: requerido ${raw['required'].trim()} · ` +
+        `observado ${raw['observed'].trim()} · ${raw['met'] ? 'cumplido' : 'no cumplido'}`,
+    });
+  }
+  for (const [field, label] of [
+    ['contradictions', 'Contradicción'],
+    ['missingData', 'Dato faltante'],
+  ] as const) {
+    const lines = value[field] ?? [];
+    if (
+      !Array.isArray(lines) ||
+      lines.length > 6 ||
+      lines.some((line) => !boundedText(line, 300))
+    ) {
+      return undefined;
+    }
+    for (const line of lines as string[]) {
+      reasons.push({ code: 'CORRELATED_ENTITY', delta: 0, detail: `${label}: ${line.trim()}` });
+    }
+  }
+  const lifecycle = value['lifecycle'];
+  if (lifecycle !== undefined) {
+    if (!boundedText(lifecycle, 300)) return undefined;
+    reasons.push({ code: 'CORRELATED_ENTITY', delta: 0, detail: `Alcance: ${lifecycle.trim()}` });
   }
   return reasons;
 }
@@ -247,7 +330,17 @@ export class CorrelatorController {
       idempotencyKey: idem,
       priority: body['priority'] as Priority,
       score,
-      reasons: [{ code: 'ATTACK_CHAIN', delta: score, detail: summary }, ...explanation],
+      reasons: [
+        { code: 'ATTACK_CHAIN', delta: score, detail: summary },
+        {
+          code: 'CORRELATED_ENTITY',
+          delta: 0,
+          // Stable ID used by the Go archive (risk.candidateID).
+          detail: 'Expediente del correlador: rc_' +
+            createHash('sha256').update(body['idempotencyKey']).digest('hex').slice(0, 24),
+        },
+        ...explanation,
+      ],
       rulesetId: 'b89-correlator',
       rulesetVersion: '1.0.0',
       occurredAt,

@@ -693,9 +693,19 @@ export function buildInvestigationTools(
         const alertIds = candidates.flatMap((candidate) =>
           Array.isArray(candidate['b89AlertIds']) ? (candidate['b89AlertIds'] as string[]) : [],
         );
+        const shadow = Array.isArray(data['shadowCandidates']) ? data['shadowCandidates'] : [];
         return {
           ok: true,
-          data: withLima({ available: true, ...data }),
+          data: withLima({
+            available: true,
+            ...data,
+            ...(shadow.length > 0
+              ? {
+                  shadowNote:
+                    'shadowCandidates son reglas en evaluación (modo sombra): no se emitieron como alertas ni son hallazgos. No los presentes como detección confirmada; menciónalos solo como contexto en evaluación.',
+                }
+              : {}),
+          }),
           ...(alertIds.length > 0
             ? {
                 citations: alertIds.slice(0, 10).map((id) => ({

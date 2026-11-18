@@ -531,12 +531,33 @@ export interface ChangesResponse {
 export type OperationsStatus = 'OK' | 'NO_DATA' | 'STALE' | 'DEGRADED';
 
 export type CorrelatorFeedbackStatus =
-  | 'ready'
-  | 'pending'
-  | 'failed'
-  | 'stale'
-  | 'unavailable'
-  | 'unconfigured';
+  'ready' | 'pending' | 'failed' | 'stale' | 'unavailable' | 'unconfigured';
+
+export type SourceCoverageState = 'complete' | 'incomplete' | 'unknown';
+
+export type SourceCoverageReason =
+  | 'no_collector_heartbeat'
+  | 'collector_run_partial'
+  | 'collector_run_failed'
+  | 'collector_heartbeat_stale'
+  | 'collector_behind_provider'
+  | 'correlator_backfilling'
+  | 'correlator_read_failed'
+  | 'correlator_catching_up';
+
+/** `unknown` = sin evidencia de cobertura (ningún latido); nunca significa «sin actividad». */
+export interface CorrelatorSourceCoverage {
+  readonly source: string;
+  readonly state: SourceCoverageState;
+  readonly reason: SourceCoverageReason | null;
+  readonly providerLagSeconds: number | null;
+  readonly lastEventAgeSeconds: number | null;
+}
+
+export interface CorrelatorCoverage {
+  readonly complete: boolean;
+  readonly sources: readonly CorrelatorSourceCoverage[];
+}
 
 export interface SocCorrelatorHealth {
   readonly status: OperationsStatus;
@@ -544,6 +565,8 @@ export interface SocCorrelatorHealth {
   readonly feedbackStatus: CorrelatorFeedbackStatus;
   readonly feedbackAgeSeconds: number | null;
   readonly lastFeedbackSuccess: string | null;
+  /** Ausente con correladores anteriores a la cobertura por fuente. */
+  readonly coverage?: CorrelatorCoverage;
 }
 
 export interface OperationsHealth {

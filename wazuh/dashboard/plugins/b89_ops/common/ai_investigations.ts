@@ -136,6 +136,41 @@ export interface AiEvidenceSource {
   readonly fresh: boolean | null;
 }
 
+/** Reputación externa de una IP de la alerta (AbuseIPDB). La IP no viaja: solo la referencia. */
+export interface AiIpReputation {
+  readonly entityRef: string;
+  readonly provider: string;
+  readonly abuseConfidenceScore: number;
+  readonly totalReports: number | null;
+  readonly distinctUsers: number | null;
+  readonly lastReportedAt: string | null;
+  readonly countryCode: string | null;
+  readonly usageType: string | null;
+  readonly isp: string | null;
+  readonly isTor: boolean | null;
+  readonly isWhitelisted: boolean | null;
+  readonly checkedAt: string | null;
+}
+
+export type AiIpReputationBand = 'malicious' | 'suspicious' | 'low' | 'clean' | 'whitelisted';
+
+/** Banda legible: mismo umbral (75) que la política de triaje del analista. */
+export function ipReputationBand(entry: AiIpReputation): AiIpReputationBand {
+  if (entry.isWhitelisted === true) return 'whitelisted';
+  if (entry.abuseConfidenceScore >= 75) return 'malicious';
+  if (entry.abuseConfidenceScore >= 25) return 'suspicious';
+  if ((entry.totalReports ?? 0) > 0) return 'low';
+  return 'clean';
+}
+
+export const AI_IP_REPUTATION_BAND_LABEL: Record<AiIpReputationBand, string> = {
+  malicious: 'Maliciosa conocida',
+  suspicious: 'Sospechosa',
+  low: 'Pocos reportes',
+  clean: 'Sin reportes en 90 días',
+  whitelisted: 'En lista blanca',
+};
+
 export interface AiEvidence {
   /** `null`: el backend no informó si la evidencia está completa (no se asume que sí). */
   readonly complete: boolean | null;
@@ -144,6 +179,8 @@ export interface AiEvidence {
   readonly eventsScanned: number | null;
   readonly sources: readonly AiEvidenceSource[];
   readonly gaps: readonly string[];
+  /** Vacío: no se consultó reputación (sin IP pública o sin AbuseIPDB configurado). */
+  readonly ipReputation: readonly AiIpReputation[];
 }
 
 export interface AiStatement {
@@ -386,6 +423,28 @@ function normalizeEvidence(raw: unknown): AiEvidence | null {
       fresh: flag(source.fresh),
     });
   }
+  const ipReputation: AiIpReputation[] = [];
+  for (const item of list(value.ipReputation, 10)) {
+    const entry = bag(item);
+    const entityRef = entry ? text(entry.entityRef, 160) : null;
+    const score = entry ? count(entry.abuseConfidenceScore) : null;
+    if (!entry || !entityRef || score === null) continue;
+    const country = text(entry.countryCode, 3);
+    ipReputation.push({
+      entityRef,
+      provider: text(entry.provider, 40) ?? 'abuseipdb',
+      abuseConfidenceScore: Math.min(100, score),
+      totalReports: count(entry.totalReports),
+      distinctUsers: count(entry.distinctUsers),
+      lastReportedAt: isoOrNull(entry.lastReportedAt),
+      countryCode: country && /^[A-Z]{2}$/.test(country) ? country : null,
+      usageType: text(entry.usageType, 80),
+      isp: text(entry.isp, 120),
+      isTor: flag(entry.isTor),
+      isWhitelisted: flag(entry.isWhitelisted),
+      checkedAt: isoOrNull(entry.checkedAt),
+    });
+  }
   return {
     complete: flag(value.complete),
     truncated: flag(value.truncated),
@@ -393,6 +452,7 @@ function normalizeEvidence(raw: unknown): AiEvidence | null {
     eventsScanned: count(value.eventsScanned),
     sources,
     gaps: strings(value.gaps, 50),
+    ipReputation,
   };
 }
 
@@ -651,6 +711,7 @@ export const AI_EVENT_KIND_LABEL: Record<AiStepStatus, string> = {
 
 export const AI_DETERMINISTIC_REASON_LABEL: Record<string, string> = {
   KNOWN_BENIGN_PATTERN: 'Coincide con un patrón benigno conocido',
+  IP_REPUTATION_MALICIOUS: 'IP con reputación maliciosa conocida (AbuseIPDB)',
   DUPLICATE_OF_OPEN_INCIDENT: 'Duplica un incidente que ya está abierto',
   ISOLATED_LOW_SIGNAL: 'Señal aislada de baja relevancia',
   EVIDENCE_INCOMPLETE: 'La evidencia disponible está incompleta',

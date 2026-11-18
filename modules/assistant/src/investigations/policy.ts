@@ -11,6 +11,7 @@
 
 import type { Citation } from '../ports.js';
 import { assessEvidence } from './assessment.js';
+import { IP_REPUTATION_MALICIOUS_SCORE } from './types.js';
 import type {
   EvidenceBundle,
   InferenceTier,
@@ -26,7 +27,8 @@ import type {
 // 2026-11-15.2: el expediente determinista concluye con la valoración por reglas (assessment.ts).
 // 2026-11-15.3: explicación por dominio (vulnerabilidad, plataforma, FIM, rootcheck) y datos del evento.
 // 2026-11-15.4: unos pocos eventos sin normalizar ya no vuelven parcial la evidencia.
-export const POLICY_VERSION = 'b89-analyst-2026-11-15.4';
+// 2026-11-18.1: reputación de IP (AbuseIPDB) en el paquete y en la política de triaje.
+export const POLICY_VERSION = 'b89-analyst-2026-11-18.1';
 
 export interface TriageConfig {
   /** Cierres `false_positive` de la misma regla+entidad (30 d) para considerar el patrón benigno. */
@@ -62,6 +64,7 @@ export const TRIAGE_REASON_CODES = [
   'P3_CORRELATED',
   'OUT_OF_SCOPE',
   'BELOW_INFERENCE_PRIORITY',
+  'IP_REPUTATION_MALICIOUS',
 ] as const;
 export type TriageReasonCode = (typeof TRIAGE_REASON_CODES)[number];
 
@@ -114,6 +117,22 @@ function distinct(values: readonly (string | null | undefined)[]): string[] {
 
 export function isCorrelatedEvidence(bundle: EvidenceBundle): boolean {
   return isCorrelated(bundle);
+}
+
+/**
+ * IP de la alerta con reputación maliciosa conocida (AbuseIPDB ≥ umbral y no en lista blanca).
+ * Una sola fuente externa no basta para rebajar nada: solo impide el atajo benigno y pide análisis.
+ */
+export function maliciousIpReputation(bundle: EvidenceBundle): string[] {
+  return distinct(
+    (bundle.context?.ipReputation ?? [])
+      .filter(
+        (entry) =>
+          entry.abuseConfidenceScore >= IP_REPUTATION_MALICIOUS_SCORE &&
+          entry.isWhitelisted !== true,
+      )
+      .map((entry) => entry.entityRef),
+  );
 }
 
 export function evidenceSources(bundle: EvidenceBundle): string[] {
@@ -174,6 +193,8 @@ export function triagePolicy(
     unhealthySources(bundle, config).length > 0;
   const sources = evidenceSources(bundle);
   const correlated = isCorrelated(bundle);
+  // Origen malicioso conocido: anula el atajo benigno y lleva P3/P4 aislados a análisis.
+  const maliciousIp = maliciousIpReputation(bundle).length > 0;
   const tactics = distinct([
     ...(bundle.candidate?.tactics ?? []),
     ...(bundle.context?.entityRisk?.tactics ?? []),
@@ -196,7 +217,8 @@ export function triagePolicy(
     history.open === 0 &&
     history.falsePositive >= config.knownBenignMinFalsePositives &&
     sources.length < config.ambiguousMinSources &&
-    tactics.length < config.ambiguousMinTactics;
+    tactics.length < config.ambiguousMinTactics &&
+    !maliciousIp;
   // Coverage takes precedence over cheap low-priority/duplicate paths.
   if (incomplete && priority !== 'P1') return deterministic(['EVIDENCE_INCOMPLETE'], 'partial');
   /** Baja prioridad sin modelo; si además el historial es benigno y completo, lo deja dicho. */
@@ -210,9 +232,9 @@ export function triagePolicy(
         )
       : deterministic([reason], 'completed');
 
-  if (priority === 'P4') return lowSignal('NOT_ELIGIBLE');
+  if (priority === 'P4' && !maliciousIp) return lowSignal('NOT_ELIGIBLE');
 
-  if (priority === 'P3' && !correlated) {
+  if (priority === 'P3' && !correlated && !maliciousIp) {
     return lowSignal(sources.length <= 1 ? 'ISOLATED_LOW_SIGNAL' : 'NOT_ELIGIBLE');
   }
 
@@ -255,11 +277,14 @@ export function triagePolicy(
     if (history.truePositive > 0 && history.falsePositive > 0) {
       reasons.push('P2_CONTRADICTORY_HISTORY');
     }
+    if (maliciousIp) reasons.push('IP_REPUTATION_MALICIOUS');
     if (reasons.length > 0) tier = 'advanced';
     else reasons.push('P2_ROUTINE');
   } else {
-    reasons.push('P3_CORRELATED');
+    if (correlated) reasons.push('P3_CORRELATED');
+    if (maliciousIp) reasons.push('IP_REPUTATION_MALICIOUS');
   }
+  if (priority === 'P1' && maliciousIp) reasons.push('IP_REPUTATION_MALICIOUS');
 
   return {
     decision: 'infer',

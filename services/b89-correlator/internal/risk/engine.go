@@ -31,39 +31,59 @@ type episode struct {
 	cand  *model.Candidate
 }
 
-type patternMark struct {
-	at       time.Time
-	complete bool
-}
+// CandidateLifecycle is attached to every explanation so no consumer reads a candidate as
+// an incident: the SOC accepts incidents; the correlator only proposes groupings.
+const CandidateLifecycle = "candidate: agrupación propuesta para investigar; no es un incidente aceptado por el SOC y no reemplaza las alertas originales"
+
+// maxKnownLocations bounds the per-user location baseline.
+const maxKnownLocations = 32
+
+// locationBaseline is how long a sign-in location remains "known" for a user.
+const locationBaseline = 30 * 24 * time.Hour
+
+// CoverageFunc returns human-readable gaps (sources without complete coverage) for the
+// evidence window of a candidate. It must not call back into the engine.
+type CoverageFunc func(sources []string, from, to time.Time) []string
 
 // Engine is the stateful correlator core. All methods are safe for concurrent use.
 type Engine struct {
-	mu            sync.RWMutex
-	P             Policy
-	Patterns      []Pattern
-	Resolver      *resolve.Resolver
-	Criticality   func(model.Entity) string
-	supp          Suppressor
-	GroupMinLevel int
+	pendingObservations map[*model.Candidate][]string
+	mu                  sync.RWMutex
+	P                   Policy
+	Patterns            []Pattern
+	Resolver            *resolve.Resolver
+	Criticality         func(model.Entity) string
+	supp                Suppressor
+	coverage            CoverageFunc
+	GroupMinLevel       int
 
-	states      map[string]*EntityState
-	related     map[string]map[string]time.Time
-	history     map[string]stageHistory
-	episodes    map[string]*episode
-	patternMark map[string]patternMark
-	open        map[string][]*model.Candidate // entity key -> candidates still accepting members
-	candidates  []*model.Candidate
-	byID        map[string]*model.Candidate
-	grouper     *Grouper
-	seen        map[string]time.Time // observation ids (dedup of overlapping reads)
+	states       map[string]*EntityState
+	related      map[string]map[string]time.Time
+	history      map[string]stageHistory
+	episodes     map[string]*episode
+	patternCands map[string][]*model.Candidate   // pattern|entity -> candidates (episode lookup)
+	stageObs     map[string]map[string]bool      // candidate -> observation ids cited as stage evidence
+	locations    map[string]map[string]time.Time // user key -> location -> last seen
+	prov         map[string]model.Provenance     // entity key -> strongest attribution seen
+	open         map[string][]*model.Candidate   // entity key -> candidates still accepting members
+	candidates   []*model.Candidate
+	byID         map[string]*model.Candidate
+	members      *memberLedger
+	grouper      *Grouper
+	seen         map[string]time.Time // observation ids (dedup of overlapping reads)
 
-	Clock         time.Time
-	Observations  int
-	Duplicates    int
-	SuppressedObs int
-	BySource      map[string]int
-	ByStage       map[string]int
-	horizon       time.Duration
+	Clock              time.Time
+	Observations       int
+	Duplicates         int
+	DuplicatesBySource map[string]int
+	OutOfOrder         int
+	SuppressedObs      int
+	CandidatesOpened   int
+	CandidatesUpdated  int
+	ShadowCandidates   int
+	BySource           map[string]int
+	ByStage            map[string]int
+	horizon            time.Duration
 }
 
 // NewEngine builds an engine. crit may be nil (every entity is "medium").
@@ -78,15 +98,102 @@ func NewEngine(p Policy, patterns []Pattern, r *resolve.Resolver, crit func(mode
 		}
 	}
 	return &Engine{
-		P: p, Patterns: patterns, Resolver: r, Criticality: crit, supp: noSuppression{},
+		pendingObservations: map[*model.Candidate][]string{},
+		members:             newMemberLedger(),
+		P:                   p, Patterns: patterns, Resolver: r, Criticality: crit, supp: noSuppression{},
 		GroupMinLevel: groupMinLevel,
 		states:        map[string]*EntityState{}, related: map[string]map[string]time.Time{},
 		history: map[string]stageHistory{}, episodes: map[string]*episode{},
-		patternMark: map[string]patternMark{}, open: map[string][]*model.Candidate{},
+		patternCands: map[string][]*model.Candidate{}, stageObs: map[string]map[string]bool{},
+		locations: map[string]map[string]time.Time{}, prov: map[string]model.Provenance{},
+		open: map[string][]*model.Candidate{},
 		byID: map[string]*model.Candidate{}, grouper: NewGrouper(p.GroupGap, p.GroupMaxSpan),
 		seen: map[string]time.Time{}, BySource: map[string]int{}, ByStage: map[string]int{},
-		horizon: h,
+		DuplicatesBySource: map[string]int{},
+		horizon:            h,
 	}
+}
+
+// SetCoverage installs the source-coverage lookup used to state missing data.
+func (e *Engine) SetCoverage(f CoverageFunc) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.coverage = f
+}
+
+// pivotEligible reports whether an entity attribution is strong enough to connect the
+// steps of a sequence. Observations built without provenance (legacy fixtures) are exact.
+func pivotEligible(o model.Observation, key string) bool {
+	if o.Provenance == nil {
+		return true
+	}
+	pv, ok := o.Provenance[key]
+	return ok && pv.Confidence.Rank() >= PivotMinConfidence.Rank()
+}
+
+// observeLocation derives auth.new_location for a user: a successful sign-in from a
+// location of the same kind (country, else exact IP) absent from the user's baseline. The
+// first location ever seen is never "new": there is no baseline to differ from.
+func (e *Engine) observeLocation(key string, o model.Observation) (model.StageHit, bool) {
+	loc, label := "", ""
+	if o.Location != "" {
+		loc, label = "country:"+o.Location, "país «"+o.Location+"»"
+	} else {
+		for _, ent := range o.Entities {
+			if ent.Type != model.EntityIP {
+				continue
+			}
+			if pv, ok := o.Provenance[ent.Key()]; o.Provenance != nil && (!ok || pv.Method != "exact") {
+				continue
+			}
+			loc, label = "ip:"+ent.Value, "IP "+ent.Value
+			break
+		}
+	}
+	if loc == "" {
+		return model.StageHit{}, false
+	}
+	kind := loc[:strings.IndexByte(loc, ':')+1]
+	known := e.locations[key]
+	if known == nil {
+		known = map[string]time.Time{}
+		e.locations[key] = known
+	}
+	previous, since := []string{}, time.Time{}
+	for k, t := range known {
+		if strings.HasPrefix(k, kind) && k != loc && o.Time.Sub(t) <= locationBaseline {
+			previous = append(previous, strings.TrimPrefix(k, kind))
+			if since.IsZero() || t.Before(since) {
+				since = t
+			}
+		}
+	}
+	_, seenBefore := known[loc]
+	if o.Time.After(known[loc]) {
+		known[loc] = o.Time
+	}
+	if len(known) > maxKnownLocations {
+		oldest, at := "", time.Time{}
+		for k, t := range known {
+			if oldest == "" || t.Before(at) {
+				oldest, at = k, t
+			}
+		}
+		delete(known, oldest)
+	}
+	if seenBefore || len(previous) == 0 {
+		return model.StageHit{}, false
+	}
+	sort.Strings(previous)
+	if len(previous) > 3 {
+		previous = previous[:3]
+	}
+	return model.StageHit{
+		ProviderTenant: o.ProviderTenant, SessionRef: o.SessionRef, Stage: model.StageNewLocation,
+		At: o.Time, RuleID: o.RuleID, ObsID: o.ID, Source: o.Source, IngestedAt: o.IngestedAt,
+		Criteria: fmt.Sprintf("inicio de sesión exitoso desde %s, no observado antes para el usuario; ubicaciones previas observadas por el correlador desde %s: %s",
+			label, since.UTC().Format("2006-01-02 15:04Z"), strings.Join(previous, ", ")),
+	}, true
 }
 
 // SetSuppressor replaces the suppression source (feedback loop).
@@ -106,18 +213,34 @@ func candidateID(key string) string {
 
 // Process ingests one observation and returns the candidates it created.
 func (e *Engine) Process(o model.Observation) []*model.Candidate {
+	created, _ := e.ProcessStatus(o)
+	return created
+}
+
+// ProcessStatus is Process that also reports whether the observation was a duplicate
+// (already ingested through an overlapping or replayed read).
+func (e *Engine) ProcessStatus(o model.Observation) ([]*model.Candidate, bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if o.ID != "" {
 		if _, dup := e.seen[o.ID]; dup {
 			e.Duplicates++
-			return nil
+			e.DuplicatesBySource[o.Source]++
+			return nil, true
 		}
 		e.seen[o.ID] = o.Time
 	}
 	e.applyMerges()
+	if o.Time.Before(e.Clock) {
+		e.OutOfOrder++
+	}
 	if o.Time.After(e.Clock) {
 		e.Clock = o.Time
+	}
+	for key, pv := range o.Provenance {
+		if prev, ok := e.prov[key]; !ok || pv.Confidence.Rank() > prev.Confidence.Rank() {
+			e.prov[key] = pv
+		}
 	}
 	e.Observations++
 	e.BySource[o.Source]++
@@ -166,6 +289,9 @@ func (e *Engine) Process(o model.Observation) []*model.Candidate {
 			// inflate a current case and contaminate downstream investigation.
 			if !o.Time.Before(c.FirstSeen) && o.Time.Sub(c.LastSeen) <= e.P.GroupGap && o.Time.Sub(c.FirstSeen) <= e.P.GroupMaxSpan {
 				c.MemberCount++
+				if o.ID != "" {
+					e.pendingObservations[c] = append(e.pendingObservations[c], o.ID)
+				}
 				if !suppressed {
 					c.Sources = unionStrings(c.Sources, []string{o.Source})
 					c.Tactics = unionStrings(c.Tactics, o.Tactics)
@@ -184,18 +310,40 @@ func (e *Engine) Process(o model.Observation) []*model.Candidate {
 				hist = stageHistory{}
 				e.history[key] = hist
 			}
+			stages := o.Stages
 			for _, s := range o.Stages {
-				hist.add(model.StageHit{Stage: s, At: o.Time, RuleID: o.RuleID, ObsID: o.ID, Source: o.Source}, e.horizon)
+				criteria := o.StageCriteria[s]
+				if criteria == "" {
+					criteria = fmt.Sprintf("regla %s (%s) clasificada como %s", o.RuleID, o.Source, s)
+				}
+				hist.add(model.StageHit{ProviderTenant: o.ProviderTenant, SessionRef: o.SessionRef, Stage: s, At: o.Time, RuleID: o.RuleID, ObsID: o.ID, Source: o.Source, Criteria: criteria, IngestedAt: o.IngestedAt}, e.horizon)
 			}
-			if len(o.Stages) > 0 {
-				created = append(created, e.evaluatePatterns(st, hist, o)...)
+			eligible := pivotEligible(o, key)
+			if eligible && ent.Type == model.EntityUser && containsStage(o.Stages, model.StageAuthSuccess) {
+				if hit, ok := e.observeLocation(key, o); ok {
+					hist.add(hit, e.horizon)
+					stages = append(append([]model.Stage{}, o.Stages...), model.StageNewLocation)
+					e.ByStage[string(model.StageNewLocation)]++
+				}
+			}
+			if len(stages) > 0 && eligible {
+				created = append(created, e.evaluatePatterns(st, hist, o, stages)...)
 			}
 		}
 		if c := e.evaluateThreshold(st, o.Time); c != nil {
 			created = append(created, c)
 		}
 	}
-	return created
+	return created, false
+}
+
+func containsStage(list []model.Stage, s model.Stage) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
 }
 
 func trimRelated(rel map[string]time.Time, keep int) {
@@ -246,17 +394,36 @@ func (e *Engine) applyMerges() {
 		}
 		e.open[m.Into] = append(e.open[m.Into], e.open[m.From]...)
 		delete(e.open, m.From)
+		for _, p := range e.Patterns {
+			if list := e.patternCands[p.ID+"|"+m.From]; len(list) > 0 {
+				e.patternCands[p.ID+"|"+m.Into] = append(e.patternCands[p.ID+"|"+m.Into], list...)
+				delete(e.patternCands, p.ID+"|"+m.From)
+			}
+		}
+		if known := e.locations[m.From]; known != nil {
+			dst := e.locations[m.Into]
+			if dst == nil {
+				dst = map[string]time.Time{}
+				e.locations[m.Into] = dst
+			}
+			for k, t := range known {
+				if t.After(dst[k]) {
+					dst[k] = t
+				}
+			}
+			delete(e.locations, m.From)
+		}
 	}
 }
 
-func (e *Engine) evaluatePatterns(st *EntityState, hist stageHistory, o model.Observation) []*model.Candidate {
+func (e *Engine) evaluatePatterns(st *EntityState, hist stageHistory, o model.Observation, stages []model.Stage) []*model.Candidate {
 	out := []*model.Candidate{}
 	for _, p := range e.Patterns {
 		if !p.pivots(st.Entity.Type) {
 			continue
 		}
 		touches := false
-		for _, s := range o.Stages {
+		for _, s := range stages {
 			if p.uses(s) {
 				touches = true
 			}
@@ -264,64 +431,281 @@ func (e *Engine) evaluatePatterns(st *EntityState, hist stageHistory, o model.Ob
 		if !touches {
 			continue
 		}
-		hits, complete := p.Match(hist, o.Time)
-		if len(hits) < p.MinStages {
-			continue
-		}
-		markKey := p.ID + "|" + st.Entity.Key()
-		if mark, ok := e.patternMark[markKey]; ok && o.Time.Sub(mark.at) <= p.Window && (mark.complete || !complete) {
-			continue
-		}
-		e.patternMark[markKey] = patternMark{at: o.Time, complete: complete}
-		priority := p.PartialPriority
-		variant := "partial"
-		if complete {
-			priority, variant = p.Priority, "complete"
-		}
-		if st.Criticality == "critical" || st.Criticality == "high" {
-			priority = bump(priority)
-		}
-		if e.supp.Suppressed(CorrelatorRulePrefix+p.ID, st.Entity.Key(), o.Time) {
-			continue
-		}
-		idem := fmt.Sprintf("b89-correlator|pattern|%s|%s|%s|%d", p.ID, variant, st.Entity.Key(), hits[0].At.Unix())
-		c := e.newCandidate(st, o.Time, idem, "pattern", p.ID, priority, p.Signal)
-		c.Stages = hits
-		c.FirstSeen = hits[0].At
-		names := make([]string, len(hits))
-		for i, h := range hits {
-			// Match returns definition order for unordered patterns. The investigation
-			// window must still include every selected stage, including earlier stages
-			// listed later in the pattern (for example malware before protection-off).
-			if h.At.Before(c.FirstSeen) {
-				c.FirstSeen = h.At
+		// A late observation can complete a chain whose terminal step was already
+		// processed. Evaluate at its own time and at each later step inside the window.
+		for _, at := range p.anchors(hist, o.Time) {
+			hits, complete := p.Match(hist, at)
+			if len(hits) < p.MinStages {
+				continue
 			}
-			names[i] = fmt.Sprintf("%s (regla %s, %s)", h.Stage, h.RuleID, h.At.UTC().Format("2006-01-02 15:04Z"))
-		}
-		c.Title = "B89 Riesgo: " + p.Title
-		c.Explanation.PatternTitle = p.Title
-		c.Explanation.Stages = hits
-		stageEvidence := []string{}
-		for _, h := range hits {
-			if h.ObsID != "" {
-				stageEvidence = append(stageEvidence, h.ObsID)
+			if c := e.applyMatch(st, p, hits, complete); c != nil {
+				out = append(out, c)
 			}
 		}
-		c.Explanation.EvidenceObservationIDs = mergeIDs(stageEvidence, c.Explanation.EvidenceObservationIDs, 20)
-		order, separator := "sin exigir orden temporal", "; "
-		if p.Ordered {
-			order, separator = "en orden temporal no decreciente", " → "
-		}
-		// Keep the limitation near the start so bounded notification/MCP projections
-		// retain it. Matching timestamps and entities do not establish causality.
-		c.Explanation.Narrative = fmt.Sprintf("Correlación temporal; no demuestra causalidad ni compromiso. %s. Se observaron %d de %d etapas %s sobre la misma entidad (%s) dentro de %s: %s. Riesgo %.1f (base %.1f x diversidad %.2f + progresión %.1f).",
-			p.Title, len(hits), len(p.Stages), order, st.Entity.Type, p.Window, strings.Join(names, separator), c.RiskScore,
-			c.Explanation.ScoreBase, c.Explanation.DiversityMultiplier, c.Explanation.ProgressionBonus)
-		c.Summary = fmt.Sprintf("Patrón %s (%s, %d/%d etapas) sobre %s: %s. Riesgo %.1f.",
-			p.ID, variant, len(hits), len(p.Stages), st.Entity.Type, strings.Join(names, separator), c.RiskScore)
-		out = append(out, e.register(st, c))
 	}
 	return out
+}
+
+// maxAnchors bounds re-evaluation work per observation and pattern.
+const maxAnchors = 16
+
+// anchors returns the evaluation times for an observation at `at`: `at` itself and the
+// distinct times of this pattern's steps later than `at` but within the window.
+func (p Pattern) anchors(h stageHistory, at time.Time) []time.Time {
+	set := map[time.Time]bool{at: true}
+	for _, s := range p.Stages {
+		for _, hit := range h[s] {
+			if hit.At.After(at) && hit.At.Sub(at) <= p.Window {
+				set[hit.At] = true
+			}
+		}
+	}
+	out := make([]time.Time, 0, len(set))
+	for t := range set {
+		out = append(out, t)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Before(out[j]) })
+	if len(out) > maxAnchors {
+		out = out[:maxAnchors]
+	}
+	return out
+}
+
+func chainSpan(hits []model.StageHit) (time.Time, time.Time) {
+	first, last := hits[0].At, hits[0].At
+	for _, h := range hits[1:] {
+		if h.At.Before(first) {
+			first = h.At
+		}
+		if h.At.After(last) {
+			last = h.At
+		}
+	}
+	return first, last
+}
+
+// applyMatch creates a candidate for a new episode, or updates the candidate of the same
+// episode with evidence that arrived later. A partial candidate is escalated by a separate
+// complete candidate (different priority/idempotency key); a complete one absorbs updates.
+func (e *Engine) applyMatch(st *EntityState, p Pattern, hits []model.StageHit, complete bool) *model.Candidate {
+	key := st.Entity.Key()
+	markKey := p.ID + "|" + key
+	first, last := chainSpan(hits)
+	list := e.patternCands[markKey]
+	for i := len(list) - 1; i >= 0; i-- {
+		c := list[i]
+		cFirst, cLast := chainSpan(c.Stages)
+		lo, hi := first, last
+		if cFirst.Before(lo) {
+			lo = cFirst
+		}
+		if cLast.After(hi) {
+			hi = cLast
+		}
+		if hi.Sub(lo) > p.Window {
+			continue // a different episode
+		}
+		if len(c.Stages) == len(p.Stages) || !complete {
+			e.enrich(c, hits)
+			return nil
+		}
+		break // partial episode escalated by a complete chain
+	}
+	variant, priority := "partial", p.PartialPriority
+	if complete {
+		priority, variant = p.Priority, "complete"
+	}
+	if st.Criticality == "critical" || st.Criticality == "high" {
+		priority = bump(priority)
+	}
+	if e.supp.Suppressed(CorrelatorRulePrefix+p.ID, key, last) {
+		return nil
+	}
+	idem := fmt.Sprintf("b89-correlator|pattern|%s|%s|%s|%d", p.ID, variant, key, hits[0].At.Unix())
+	c := e.newCandidate(st, last, idem, "pattern", p.ID, priority, p.Signal)
+	c.Stages = hits
+	c.FirstSeen = first
+	names := make([]string, len(hits))
+	for i, h := range hits {
+		names[i] = fmt.Sprintf("%s (regla %s, %s)", h.Stage, h.RuleID, h.At.UTC().Format("2006-01-02 15:04Z"))
+	}
+	c.Title = "B89 Riesgo: " + p.Title
+	c.Explanation.PatternTitle = p.Title
+	c.Explanation.PatternVersion = p.Fingerprint()
+	c.Explanation.WindowSeconds = int64(p.Window / time.Second)
+	c.Explanation.RequiredStages = p.MinStages
+	c.Explanation.MinimumSources = p.MinSources
+	c.Explanation.Stages = hits
+	stageEvidence := []string{}
+	for _, h := range hits {
+		if h.ObsID != "" {
+			stageEvidence = append(stageEvidence, h.ObsID)
+		}
+	}
+	c.Explanation.EvidenceObservationIDs = mergeIDs(stageEvidence, c.Explanation.EvidenceObservationIDs, 20)
+	order, separator := "sin exigir orden temporal", "; "
+	if p.Ordered {
+		order, separator = "en orden temporal no decreciente", " → "
+	}
+	// Keep the limitation near the start so bounded notification/MCP projections
+	// retain it. Matching timestamps and entities do not establish causality.
+	c.Explanation.Narrative = fmt.Sprintf("Correlación temporal; no demuestra causalidad ni compromiso. %s. Se observaron %d de %d etapas %s sobre la misma entidad (%s) dentro de %s: %s. Riesgo %.1f (base %.1f x diversidad %.2f + progresión %.1f).",
+		p.Title, len(hits), len(p.Stages), order, st.Entity.Type, p.Window, strings.Join(names, separator), c.RiskScore,
+		c.Explanation.ScoreBase, c.Explanation.DiversityMultiplier, c.Explanation.ProgressionBonus)
+	c.Summary = fmt.Sprintf("Patrón %s (%s, %d/%d etapas) sobre %s: %s. Riesgo %.1f.",
+		p.ID, variant, len(hits), len(p.Stages), st.Entity.Type, strings.Join(names, separator), c.RiskScore)
+	e.explainPattern(c, p, hits)
+	if p.IsShadow() {
+		c.Mode, c.Status = model.ModeShadow, model.CandidateShadow
+		c.StatusDetail = "regla en modo sombra: se mide y revisa, no se materializa como alerta B89"
+	}
+	registered := e.register(st, c)
+	if registered == c {
+		e.patternCands[markKey] = append(e.patternCands[markKey], c)
+		obs := map[string]bool{}
+		for _, h := range hits {
+			if h.ObsID != "" {
+				obs[h.ObsID] = true
+			}
+		}
+		e.stageObs[c.ID] = obs
+		if c.Mode == model.ModeShadow {
+			e.ShadowCandidates++
+		}
+	}
+	return registered
+}
+
+// maxAdditionalEvidence bounds the late/extra step evidence kept inline on a candidate.
+// The full membership remains in the ledger.
+const maxAdditionalEvidence = 20
+
+// enrich records step evidence that satisfies an existing episode (late or repeated
+// arrivals). It never rewrites the explained chain; it adds and revises.
+func (e *Engine) enrich(c *model.Candidate, hits []model.StageHit) {
+	seen := e.stageObs[c.ID]
+	if seen == nil {
+		seen = map[string]bool{}
+		e.stageObs[c.ID] = seen
+	}
+	added := false
+	for _, h := range hits {
+		if h.ObsID == "" || seen[h.ObsID] {
+			continue
+		}
+		seen[h.ObsID] = true
+		added = true
+		e.pendingObservations[c] = append(e.pendingObservations[c], h.ObsID)
+		if len(c.Explanation.AdditionalStageEvidence) < maxAdditionalEvidence {
+			c.Explanation.AdditionalStageEvidence = append(c.Explanation.AdditionalStageEvidence, h)
+		}
+		if h.At.Before(c.FirstSeen) {
+			c.FirstSeen = h.At
+		}
+		if h.At.After(c.LastSeen) {
+			c.LastSeen = h.At
+		}
+	}
+	if added {
+		c.Revision++
+		c.UpdatedAt = e.Clock
+		e.CandidatesUpdated++
+		if _, exists := e.pendingObservations[c]; !exists {
+			e.pendingObservations[c] = nil
+		}
+	}
+}
+
+// explainPattern fills the thresholds, contradictions, missing data and provenance an
+// analyst needs to validate the correlation quickly.
+func (e *Engine) explainPattern(c *model.Candidate, p Pattern, hits []model.StageHit) {
+	x := &c.Explanation
+	sources, rules, sessions := map[string]bool{}, map[string]bool{}, map[string]bool{}
+	for _, h := range hits {
+		if h.Source != "" && h.Source != "unknown" {
+			sources[h.Source] = true
+		}
+		rules[h.RuleID] = true
+		if h.SessionRef != "" {
+			sessions[h.SessionRef] = true
+		}
+	}
+	first, last := chainSpan(hits)
+	x.Checks = append(x.Checks,
+		model.Check{Name: "etapas", Required: fmt.Sprintf(">= %d de %d", p.MinStages, len(p.Stages)), Observed: fmt.Sprintf("%d", len(hits)), Met: len(hits) >= p.MinStages},
+		model.Check{Name: "ventana", Required: "<= " + p.Window.String(), Observed: last.Sub(first).String(), Met: last.Sub(first) <= p.Window},
+	)
+	if p.MinSources > 1 {
+		x.Checks = append(x.Checks, model.Check{Name: "fuentes distintas", Required: fmt.Sprintf(">= %d", p.MinSources), Observed: fmt.Sprintf("%d", len(sources)), Met: len(sources) >= p.MinSources})
+	}
+	if p.MinDistinctRules > 1 {
+		x.Checks = append(x.Checks, model.Check{Name: "reglas distintas", Required: fmt.Sprintf(">= %d", p.MinDistinctRules), Observed: fmt.Sprintf("%d", len(rules)), Met: len(rules) >= p.MinDistinctRules})
+	}
+	if p.Ordered {
+		ordered := true
+		for i := 1; i < len(hits); i++ {
+			if hits[i].At.Before(hits[i-1].At) {
+				ordered = false
+			}
+		}
+		x.Checks = append(x.Checks, model.Check{Name: "orden temporal", Required: "no decreciente", Observed: map[bool]string{true: "cumplido", false: "no cumplido"}[ordered], Met: ordered})
+	}
+	pivot := e.prov[c.Entity.Key()]
+	if pivot.Confidence == "" {
+		pivot = model.Provenance{Key: c.Entity.Key(), Method: "exact", Confidence: model.ConfidenceHigh}
+	}
+	x.Checks = append(x.Checks, model.Check{Name: "confianza del pivote", Required: ">= " + string(PivotMinConfidence), Observed: string(pivot.Confidence), Met: pivot.Confidence.Rank() >= PivotMinConfidence.Rank()})
+	if pivot.Confidence != model.ConfidenceHigh {
+		x.Contradictions = append(x.Contradictions, fmt.Sprintf("La entidad pivote se normalizó por %s (campo %s); confirmar que todas las etapas corresponden a la misma identidad.", pivot.Method, fieldLabel(pivot.Field)))
+	}
+	if len(sessions) > 1 {
+		x.Contradictions = append(x.Contradictions, fmt.Sprintf("Las etapas pertenecen a %d sesiones distintas del proveedor; la secuencia no está ligada a una sola sesión.", len(sessions)))
+	}
+	present := map[model.Stage]bool{}
+	for _, h := range hits {
+		present[h.Stage] = true
+		if !h.IngestedAt.IsZero() && h.IngestedAt.Equal(h.At) && h.Source != "" {
+			x.MissingData = appendUnique(x.MissingData, fmt.Sprintf("La etapa %s usa la hora de ingesta: el proveedor no informó hora del evento.", h.Stage))
+		}
+		if h.Stage == model.StageNewLocation && strings.Contains(h.Criteria, "desde IP ") {
+			x.MissingData = appendUnique(x.MissingData, "Sin geolocalización del acceso: la ubicación nueva se basa en la IP exacta (puede variar por red móvil o VPN).")
+		}
+	}
+	for _, s := range p.Stages {
+		if !present[s] {
+			x.MissingData = append(x.MissingData, fmt.Sprintf("Etapa no observada en la ventana: %s.", s))
+		}
+	}
+	e.explainCommon(c)
+}
+
+// explainCommon adds the provenance of connecting entities and source coverage gaps.
+func (e *Engine) explainCommon(c *model.Candidate) {
+	x := &c.Explanation
+	for _, ent := range x.Entities {
+		if pv, ok := e.prov[ent.Key]; ok {
+			x.Provenance = append(x.Provenance, pv)
+		}
+	}
+	if e.coverage != nil {
+		for _, gap := range e.coverage(c.Sources, c.FirstSeen, c.LastSeen) {
+			x.MissingData = appendUnique(x.MissingData, gap)
+		}
+	}
+}
+
+func fieldLabel(field string) string {
+	if field == "" {
+		return "no informado"
+	}
+	return field
+}
+
+func appendUnique(list []string, v string) []string {
+	if contains(list, v) {
+		return list
+	}
+	return append(list, v)
 }
 
 func (e *Engine) evaluateThreshold(st *EntityState, at time.Time) *model.Candidate {
@@ -368,6 +752,18 @@ func (e *Engine) evaluateThreshold(st *EntityState, at time.Time) *model.Candida
 		strings.Join(st.TacticsAt(at, e.P), ", "), strings.Join(top, "; "))
 	c.Explanation.PatternTitle = "Umbral de riesgo por entidad"
 	c.Explanation.Narrative = c.Summary
+	c.Explanation.WindowSeconds = int64(e.P.Window / time.Second)
+	c.Explanation.Checks = append(c.Explanation.Checks,
+		model.Check{Name: "riesgo efectivo", Required: fmt.Sprintf(">= %.0f", e.P.Threshold), Observed: fmt.Sprintf("%.1f", b.Effective), Met: b.Effective >= e.P.Threshold},
+		model.Check{Name: "fuentes distintas", Required: "informativo", Observed: fmt.Sprintf("%d", len(c.Sources)), Met: true},
+	)
+	if len(c.Sources) < 2 {
+		c.Explanation.Contradictions = append(c.Explanation.Contradictions, "Todo el riesgo proviene de una sola fuente; no hay corroboración independiente.")
+	}
+	if pv, ok := e.prov[key]; ok && pv.Confidence == model.ConfidenceLow {
+		c.Explanation.Contradictions = append(c.Explanation.Contradictions, fmt.Sprintf("La entidad se atribuyó con confianza baja (%s, campo %s): puede agrupar identidades distintas.", pv.Method, fieldLabel(pv.Field)))
+	}
+	e.explainCommon(c)
 	e.episodes[key].cand = c
 	return e.register(st, c)
 }
@@ -420,6 +816,9 @@ func (e *Engine) newCandidate(st *EntityState, at time.Time, idem, kind, pattern
 		PatternID: patternID, Entities: entities, TopContributors: top, EvidenceObservationIDs: evidence,
 		ScoreBase: b.Base, DiversityMultiplier: b.Diversity, ProgressionBonus: b.Progression,
 		NextSteps: nextSteps(patternID), Stages: []model.StageHit{},
+		Checks: []model.Check{}, Contradictions: []string{}, MissingData: []string{},
+		Provenance: []model.Provenance{}, AdditionalStageEvidence: []model.StageHit{},
+		Lifecycle: CandidateLifecycle,
 	}
 	return &model.Candidate{
 		Explanation: expl,
@@ -427,7 +826,7 @@ func (e *Engine) newCandidate(st *EntityState, at time.Time, idem, kind, pattern
 		Entity: st.Entity, RelatedKeys: related, Score: score, RiskScore: b.Effective,
 		Priority: priority, Signal: signal, MemberCount: 1, Sources: st.SourcesAt(at, e.P),
 		Tactics: st.TacticsAt(at, e.P), LastSeen: at, CreatedAt: at, Status: model.CandidateProposed,
-		B89AlertIDs: []string{},
+		B89AlertIDs: []string{}, Mode: model.ModeActive, Revision: 1, UpdatedAt: at,
 	}
 }
 
@@ -435,8 +834,23 @@ func (e *Engine) register(st *EntityState, c *model.Candidate) *model.Candidate 
 	if existing, ok := e.byID[c.ID]; ok {
 		return existing
 	}
+	if alertID := e.members.emitted[c.ID]; alertID != "" {
+		c.AlertID, c.Status = alertID, model.CandidateEmitted
+	}
 	e.candidates = append(e.candidates, c)
 	e.byID[c.ID] = c
+	e.CandidatesOpened++
+	e.pendingObservations[c] = append(e.pendingObservations[c], c.Explanation.EvidenceObservationIDs...)
+	for _, hit := range c.Stages {
+		if hit.ObsID != "" {
+			e.pendingObservations[c] = append(e.pendingObservations[c], hit.ObsID)
+		}
+	}
+	for _, ctr := range st.Contributors {
+		if !ctr.Suppressed && ctr.ObsID != "" && !ctr.At.Before(c.FirstSeen) && !ctr.At.After(c.LastSeen) {
+			e.pendingObservations[c] = append(e.pendingObservations[c], ctr.ObsID)
+		}
+	}
 	key := st.Entity.Key()
 	e.open[key] = append(e.open[key], c)
 	st.CandidateIDs = append(st.CandidateIDs, c.ID)
@@ -471,11 +885,13 @@ func signalFromTactics(tactics []string) string {
 }
 
 // AttachAlerts links B89 alerts to the candidates of their entities (same stage window).
-func (e *Engine) AttachAlerts(alerts []model.B89Alert) {
+func (e *Engine) AttachAlerts(alerts []model.B89Alert) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	links := make(map[*model.Candidate][]string)
+	benign := make(map[*model.Candidate]map[string]bool)
 	for _, a := range alerts {
-		if strings.HasPrefix(a.RuleID, CorrelatorRulePrefix) {
+		if a.ID == "" || strings.HasPrefix(a.RuleID, CorrelatorRulePrefix) {
 			continue
 		}
 		for _, k := range a.EntityKeys {
@@ -487,13 +903,42 @@ func (e *Engine) AttachAlerts(alerts []model.B89Alert) {
 				if a.OccurredAt.Before(c.FirstSeen.Add(-e.P.GroupGap)) || a.OccurredAt.After(c.LastSeen.Add(e.P.GroupGap)) {
 					continue
 				}
-				if len(c.B89AlertIDs) >= 50 || contains(c.B89AlertIDs, a.ID) {
-					continue
+				links[c] = append(links[c], a.ID)
+				if a.IsFalsePositive() {
+					if benign[c] == nil {
+						benign[c] = map[string]bool{}
+					}
+					benign[c][a.ID] = true
 				}
-				c.B89AlertIDs = append(c.B89AlertIDs, a.ID)
 			}
 		}
 	}
+	for c, ids := range benign {
+		line := fmt.Sprintf("%d alertas vinculadas tienen veredicto de analista benigno o falso positivo.", len(ids))
+		kept := []string{}
+		for _, v := range c.Explanation.Contradictions {
+			if !strings.HasSuffix(v, "tienen veredicto de analista benigno o falso positivo.") {
+				kept = append(kept, v)
+			}
+		}
+		c.Explanation.Contradictions = append(kept, line)
+	}
+	for c, ids := range links {
+		all, err := e.members.merge(c.ID, ids)
+		if err != nil {
+			return err
+		}
+		c.B89AlertIDs = append([]string{}, all[:min(50, len(all))]...)
+		if c.LinkedAlertCount != len(all) && e.members.dir != "" {
+			snapshot := *c
+			snapshot.LinkedAlertCount = len(all)
+			if err := e.members.store(c.ID+".snapshot", &snapshot); err != nil {
+				return err
+			}
+		}
+		c.LinkedAlertCount = len(all)
+	}
+	return nil
 }
 
 func contains(list []string, v string) bool {
@@ -523,6 +968,9 @@ func (e *Engine) UpdateCandidate(id string, fn func(*model.Candidate)) {
 	defer e.mu.Unlock()
 	if c := e.byID[id]; c != nil {
 		fn(c)
+		if _, exists := e.pendingObservations[c]; !exists {
+			e.pendingObservations[c] = nil
+		}
 	}
 }
 
@@ -681,18 +1129,28 @@ func (e *Engine) Detail(key string, at time.Time) (EntityDetail, bool) {
 
 // Stats is a consistent copy of the engine counters.
 type Stats struct {
-	Observations int
-	Duplicates   int
-	Suppressed   int
-	BySource     map[string]int
-	ByStage      map[string]int
+	Observations       int
+	Duplicates         int
+	DuplicatesBySource map[string]int
+	OutOfOrder         int
+	Suppressed         int
+	CandidatesOpened   int
+	CandidatesUpdated  int
+	ShadowCandidates   int
+	BySource           map[string]int
+	ByStage            map[string]int
 }
 
 // Stats copies the counters under the lock.
 func (e *Engine) Stats() Stats {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	st := Stats{Observations: e.Observations, Duplicates: e.Duplicates, Suppressed: e.SuppressedObs, BySource: map[string]int{}, ByStage: map[string]int{}}
+	st := Stats{Observations: e.Observations, Duplicates: e.Duplicates, Suppressed: e.SuppressedObs,
+		OutOfOrder: e.OutOfOrder, CandidatesOpened: e.CandidatesOpened, CandidatesUpdated: e.CandidatesUpdated,
+		ShadowCandidates: e.ShadowCandidates, DuplicatesBySource: map[string]int{}, BySource: map[string]int{}, ByStage: map[string]int{}}
+	for k, v := range e.DuplicatesBySource {
+		st.DuplicatesBySource[k] = v
+	}
 	for k, v := range e.BySource {
 		st.BySource[k] = v
 	}
@@ -750,10 +1208,48 @@ func (e *Engine) Prune(at time.Time) {
 			delete(e.seen, id)
 		}
 	}
+	// Episodes outside every pattern window can no longer absorb late evidence.
+	for key, list := range e.patternCands {
+		kept := list[:0]
+		for _, c := range list {
+			if at.Sub(c.LastSeen) <= e.horizon {
+				kept = append(kept, c)
+			} else {
+				delete(e.stageObs, c.ID)
+			}
+		}
+		if len(kept) == 0 {
+			delete(e.patternCands, key)
+		} else {
+			e.patternCands[key] = kept
+		}
+	}
+	for key, known := range e.locations {
+		for loc, t := range known {
+			if at.Sub(t) > locationBaseline {
+				delete(known, loc)
+			}
+		}
+		if len(known) == 0 {
+			delete(e.locations, key)
+		}
+	}
+	for key := range e.prov {
+		if e.states[key] == nil {
+			delete(e.prov, key)
+		}
+	}
 	// Candidate history is bounded: keep the most recent 5000.
 	if len(e.candidates) > 5000 {
 		for _, c := range e.candidates[:len(e.candidates)-5000] {
 			delete(e.byID, c.ID)
+			delete(e.stageObs, c.ID)
+			delete(e.members.memory, c.ID)
+			if e.members.dir == "" {
+				delete(e.members.byAlert, c.AlertID)
+				delete(e.members.emitted, c.ID)
+			}
+			delete(e.members.memory, c.ID+".obs")
 		}
 		e.candidates = append([]*model.Candidate(nil), e.candidates[len(e.candidates)-5000:]...)
 	}

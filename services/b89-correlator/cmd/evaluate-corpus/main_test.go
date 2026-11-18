@@ -91,6 +91,40 @@ func TestRunPassesOnlyWithSufficientEvidenceAndNoRegressions(t *testing.T) {
 	if !report.SufficientEvidence || !report.GuardrailsPassed {
 		t.Fatalf("report does not satisfy evidence and guardrail gates: %+v", report)
 	}
+	if code := run([]string{"-input", input, "-require-fp-reduction"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("expected significant paired reduction, exit=%d", code)
+	}
+	if report.OverallBaseline.ConfusionMatrix.FalsePositive != evaluation.MinNegativeExamples || report.Overall.ConfusionMatrix.FalsePositive != 0 {
+		t.Fatal("comparison omits baseline or candidate false positives")
+	}
+	// A global reduction can coincide with a new false alert in a particular source.
+	last := &corpus.Families[0].Examples[len(corpus.Families[0].Examples)-1]
+	last.Source, last.CandidateDetected = "cloudflare", true
+	encoded, err = json.Marshal(corpus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mixed := writeCorpus(t, string(encoded))
+	if code := run([]string{"-input", mixed, "-require-fp-reduction"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("overall decrease should still pass: %d", code)
+	}
+	if code := run([]string{"-input", mixed, "-require-fp-reduction", "-require-no-slice-fp-increase"}, &stdout, &stderr); code != 6 ||
+		!strings.Contains(stderr.String(), `source "cloudflare": observed false positives increased from 0 to 1`) {
+		t.Fatalf("expected source regression: exit=%d stderr=%s", code, stderr.String())
+	}
+	for i := range corpus.Families[0].Examples {
+		row := &corpus.Families[0].Examples[i]
+		if row.Label == "negative" {
+			row.CandidateDetected = true
+		}
+	}
+	encoded, err = json.Marshal(corpus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code := run([]string{"-input", writeCorpus(t, string(encoded)), "-require-fp-reduction"}, &stdout, &stderr); code != 5 {
+		t.Fatalf("significant increase in false positives should fail the reduction gate, exit=%d", code)
+	}
 }
 
 func TestRunWritesGuardrailReportAndReturnsNonzero(t *testing.T) {
@@ -118,5 +152,19 @@ func TestRunRejectsMissingInputAndMalformedCorpus(t *testing.T) {
 	stderr.Reset()
 	if code := run([]string{"-input", input}, &stdout, &stderr); code != 2 {
 		t.Fatalf("malformed corpus exit code = %d", code)
+	}
+}
+
+func TestIncompleteReplayCannotBeScoredAsNegative(t *testing.T) {
+	for _, field := range []string{"baselineDetected", "candidateDetected"} {
+		for _, replacement := range []string{"", `"` + field + `":null,`} {
+			valid := corpusJSON(true, "P1")
+			incomplete := strings.Replace(valid, `"`+field+`":true,`, replacement, 1)
+			var stdout, stderr bytes.Buffer
+			code := run([]string{"-input", writeCorpus(t, incomplete)}, &stdout, &stderr)
+			if code != 2 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "requires explicit") {
+				t.Fatalf("field %s, replacement %q: exit=%d, stderr=%s", field, replacement, code, stderr.String())
+			}
+		}
 	}
 }

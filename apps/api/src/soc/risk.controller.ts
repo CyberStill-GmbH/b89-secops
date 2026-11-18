@@ -21,7 +21,7 @@ import { alertView } from './soc.controller.js';
 import { SECOPS_RUNTIME } from './tokens.js';
 
 const ENTITY_TYPES = new Set(['user', 'host', 'ip', 'cloud']);
-const CANDIDATE_STATUSES = new Set(['proposed', 'emitted', 'suppressed', 'emit_failed']);
+const CANDIDATE_STATUSES = new Set(['proposed', 'emitted', 'suppressed', 'emit_failed', 'shadow']);
 
 type Json = Record<string, unknown>;
 
@@ -109,6 +109,13 @@ export class RiskController {
     };
   }
 
+  private splitShadow<T extends { mode: string }>(items: T[]) {
+    return {
+      candidates: items.filter((item) => item.mode !== 'shadow'),
+      shadowCandidates: items.filter((item) => item.mode === 'shadow'),
+    };
+  }
+
   private candidate(item: unknown) {
     const c = record(item);
     const entity = record(c['entity']);
@@ -138,6 +145,11 @@ export class RiskController {
       firstSeen: c['firstSeen'],
       lastSeen: c['lastSeen'],
       status: c['status'],
+      // `shadow` si la regla está en evaluación (status `shadow`); correladores previos no lo envían.
+      mode: c['mode'] === 'shadow' || c['status'] === 'shadow' ? 'shadow' : 'active',
+      revision: typeof c['revision'] === 'number' ? c['revision'] : null,
+      updatedAt: c['updatedAt'] ?? null,
+      linkedAlertCount: typeof c['linkedAlertCount'] === 'number' ? c['linkedAlertCount'] : null,
       alertId: c['alertId'] ?? null,
       explanation: this.explanation(c['explanation']),
     };
@@ -152,6 +164,10 @@ export class RiskController {
     return {
       patternId: x['patternId'] ?? null,
       patternTitle: x['patternTitle'] ?? null,
+      patternVersion: x['patternVersion'] ?? null,
+      windowSeconds: x['windowSeconds'] ?? null,
+      minStages: x['minStages'] ?? null,
+      minSources: x['minSources'] ?? null,
       narrative: x['narrative'] ?? null,
       stages: list(x['stages']),
       entities: list(x['entities'])
@@ -171,6 +187,11 @@ export class RiskController {
         progressionBonus: x['progressionBonus'] ?? null,
       },
       nextSteps: list(x['nextSteps']),
+      checks: list(x['checks']),
+      contradictions: list(x['contradictions']),
+      missingData: list(x['missingData']),
+      additionalStageEvidence: list(x['additionalStageEvidence']),
+      lifecycle: typeof x['lifecycle'] === 'string' ? x['lifecycle'] : null,
     };
   }
 
@@ -317,7 +338,9 @@ export class RiskController {
         }),
         timeline: list(detail['timeline']),
       },
-      candidates: list(body['candidates']).map((item) => this.candidate(item)),
+      // Un candidato en sombra es una regla en evaluación: nunca se emitió como alerta y no
+      // debe leerse como hallazgo. Va en una lista aparte del expediente.
+      ...this.splitShadow(list(body['candidates']).map((item) => this.candidate(item))),
     };
   }
 

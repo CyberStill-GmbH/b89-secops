@@ -52,6 +52,7 @@ id_ranges:
   - {from: 101770, to: 101799, source: reserved,    owner: soc-detection-engineering, note: "Reservado: correlación Windows/AD cuando haya agentes"}
   - {from: 101800, to: 101899, source: network,     owner: network-visibility,        note: "Visibilidad de red (docs/18): conexiones Linux, auditd, SSH, Docker, edge, reputación, correlación y red Windows"}
   - {from: 101900, to: 101979, source: sharepoint, owner: provider-ingestion,        note: "SharePoint y OneDrive: auditoría, postura y exfiltración"}
+  - {from: 101980, to: 101989, source: platform,   owner: soc-detection-engineering, note: "Latido de collectors (cobertura de fuentes para el correlador)"}
 
 # Archivos de reglas B89 existentes (ruta canónica, no se mueven) y su suite de wazuh-logtest.
 rule_files:

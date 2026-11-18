@@ -149,10 +149,23 @@ describe('contrato privado del correlador', () => {
           source: 'linux-ssh',
           at: now.toISOString(),
           observationId: '1762250400.00007',
+          criteria: 'rule.groups sshd + fallo de autenticación',
         },
       ],
       evidenceObservationIds: ['1762250400.00001', '1762250400.00007'],
       nextSteps: ['Confirmar en Cloudflare los bloqueos WAF.'],
+      patternVersion: 'sequence-v2-0a1b2c',
+      windowSeconds: 86400,
+      checks: [
+        { name: 'fuentes distintas', required: '>= 2', observed: '2', met: true },
+        { name: 'confianza del pivote', required: '>= medium', observed: 'high', met: true },
+      ],
+      contradictions: [
+        'Todo el riesgo proviene de una sola fuente; no hay corroboración independiente.',
+      ],
+      missingData: ['Cobertura incompleta de linux-ssh (collector_behind_provider).'],
+      lifecycle:
+        'candidate: agrupación propuesta para investigar; no es un incidente aceptado por el SOC',
     };
     const created = await server().inject({
       method: 'POST',
@@ -164,17 +177,35 @@ describe('contrato privado del correlador', () => {
     const alert = [...memorySoc().alertRows.values()][0];
     const details = (alert?.reasons ?? []).map((reason) => reason.detail);
     expect(details[0]).toBe('Multiple independent signals share a user entity.');
+    expect(details).toContain('Expediente del correlador: rc_8ef40b1e64cc4ea692464a33');
     expect(details).toContain(
       'Explicación: Misma IP: bloqueo WAF, escaneo del borde y fuerza bruta SSH.',
     );
     expect(details.some((d) => d.startsWith('Etapa 2: ssh.bruteforce · regla 5712'))).toBe(true);
     expect(details).toContain('Evidencia (alertas Wazuh): 1762250400.00001, 1762250400.00007');
     expect(details).toContain('Siguiente paso: Confirmar en Cloudflare los bloqueos WAF.');
+    expect(
+      details.some((d) => d.endsWith('· criterio: rule.groups sshd + fallo de autenticación')),
+    ).toBe(true);
+    expect(details).toContain('Regla: versión sequence-v2-0a1b2c · ventana 86400 s');
+    expect(details).toContain('Umbral fuentes distintas: requerido >= 2 · observado 2 · cumplido');
+    expect(details).toContain(
+      'Contradicción: Todo el riesgo proviene de una sola fuente; no hay corroboración independiente.',
+    );
+    expect(details).toContain(
+      'Dato faltante: Cobertura incompleta de linux-ssh (collector_behind_provider).',
+    );
+    expect(details.some((d) => d.startsWith('Alcance: candidate:'))).toBe(true);
 
     for (const bad of [
       { stages: [{ stage: 'X;drop', ruleId: '1', source: 'aws', at: now.toISOString() }] },
       { evidenceObservationIds: ['<script>'] },
       { nextSteps: Array.from({ length: 5 }, () => 'paso') },
+      { checks: [{ name: 'x', required: 'y', observed: 'z', met: 'yes' }] },
+      { contradictions: ['x'.repeat(301)] },
+      { missingData: Array.from({ length: 7 }, () => 'falta') },
+      { patternVersion: 'v1; drop' },
+      { windowSeconds: 0 },
       'texto',
     ]) {
       const rejected = await server().inject({

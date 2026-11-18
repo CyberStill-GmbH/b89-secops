@@ -175,6 +175,8 @@ services:
     env_file:
       - /opt/b89/config/correlator.env
     environment:
+      B89_CORRELATOR_PATTERNS_JSON: '${B89_CORRELATOR_PATTERNS_JSON:-[]}'
+      B89_CORRELATOR_MEMBERS_DIR: /var/lib/b89/members
       B89_CORRELATOR_LISTEN: ':8080'
       B89_CORRELATOR_API_URL: http://api:3000/api
       B89_CORRELATOR_GATEWAY_URL: https://wazuh-gateway:8443
@@ -186,6 +188,7 @@ services:
       B89_CORRELATOR_CRITICALITY_FILE: /etc/b89-correlator/criticality
       B89_CORRELATOR_ADMIN_IPS_FILE: /etc/b89-correlator/b89-admin-ips
     volumes:
+      - b89-correlator-members:/var/lib/b89/members
       - /opt/b89/secrets/correlator/gateway.token:/run/secrets/b89-correlator/gateway.token:ro
       - /opt/b89/secrets/correlator/service.token:/run/secrets/b89-correlator/service.token:ro
       - /opt/b89/secrets/correlator/read.token:/run/secrets/b89-correlator/read.token:ro
@@ -321,4 +324,5 @@ services:
     restart: unless-stopped
 
 volumes:
+  b89-correlator-members:
   b89-postgres:

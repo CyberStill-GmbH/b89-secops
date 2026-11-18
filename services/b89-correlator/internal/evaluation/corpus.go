@@ -59,6 +59,60 @@ type Example struct {
 	BaselineDetected  bool   `json:"baselineDetected"`
 	CandidateDetected bool   `json:"candidateDetected"`
 	BaselinePriority  string `json:"baselinePriority"` // P1-P4; required for P1 preservation audit
+	// Source is the telemetry source of the window (optional; enables per-source metrics).
+	Source string `json:"source,omitempty"`
+	// CandidateDuplicate marks a candidate detection whose window another candidate of the
+	// same rule already covered. It is counted separately from false positives.
+	CandidateDuplicate bool `json:"candidateDuplicate,omitempty"`
+	// Absent in older corpora; a missing annotation on a detection makes its total unknown.
+	BaselineDuplicate *bool `json:"baselineDuplicate,omitempty"`
+}
+
+// DuplicateMetrics counts adjudicated detections inside the holdout window.
+// BaselineDuplicates is null whenever any baseline detection lacks an annotation.
+type DuplicateMetrics struct {
+	CandidateDuplicates          int  `json:"candidateDuplicates"`
+	BaselineDuplicates           *int `json:"baselineDuplicates"`
+	BaselineDetections           int  `json:"baselineDetections"`
+	BaselineDuplicateAnnotations int  `json:"baselineDuplicateAnnotations"`
+}
+
+type duplicateCounts struct {
+	candidate, baseline, detections, annotated int
+}
+
+func (d *duplicateCounts) observe(e Example) {
+	if e.CandidateDuplicate {
+		d.candidate++
+	}
+	if !e.BaselineDetected {
+		return
+	}
+	d.detections++
+	if e.BaselineDuplicate != nil {
+		d.annotated++
+		if *e.BaselineDuplicate {
+			d.baseline++
+		}
+	}
+}
+
+func (d duplicateCounts) metrics() DuplicateMetrics {
+	result := DuplicateMetrics{CandidateDuplicates: d.candidate, BaselineDetections: d.detections, BaselineDuplicateAnnotations: d.annotated}
+	if d.annotated == d.detections {
+		result.BaselineDuplicates = &d.baseline
+	}
+	return result
+}
+
+// SliceReport is one breakdown (source or priority) of the overall comparison. Metrics
+// come from the same de-duplicated adjudicated examples as the overall report.
+type SliceReport struct {
+	Key                 string  `json:"key"`
+	AdjudicatedExamples int     `json:"adjudicatedExamples"`
+	Baseline            Metrics `json:"baseline"`
+	Candidate           Metrics `json:"candidate"`
+	DuplicateMetrics
 }
 
 type ConfusionMatrix struct {
@@ -90,6 +144,7 @@ type PairedFalsePositiveComparison struct {
 }
 
 type FamilyReport struct {
+	DuplicateMetrics
 	ID                     string                        `json:"id"`
 	EligibleSourceEvents   int64                         `json:"eligibleSourceEvents"`
 	CalibrationExamples    int                           `json:"calibrationExamplesExcluded"`
@@ -119,9 +174,14 @@ type Report struct {
 	EvaluationEnd               string                        `json:"evaluationEnd"`
 	Families                    []FamilyReport                `json:"families"`
 	Overall                     Metrics                       `json:"overallCandidate"`
+	OverallBaseline             Metrics                       `json:"overallBaseline"`
 	OverallPairedFalsePositives PairedFalsePositiveComparison `json:"overallPairedFalsePositives"`
 	SufficientEvidence          bool                          `json:"sufficientEvidence"`
 	GuardrailsPassed            bool                          `json:"guardrailsPassed"`
+	// Breakdowns. A slice is descriptive only: it has no significance test of its own.
+	BySource   []SliceReport `json:"bySource"`
+	ByPriority []SliceReport `json:"byBaselinePriority"`
+	DuplicateMetrics
 }
 
 type counts struct {
@@ -165,7 +225,29 @@ func Evaluate(corpus Corpus) (Report, error) {
 		SufficientEvidence: len(corpus.Families) > 0, GuardrailsPassed: true,
 	}
 	allCandidate := counts{}
+	allBaseline := counts{}
 	seenOverallCandidates := make(map[string]struct{})
+	type slice struct {
+		baseline, candidate counts
+		adjudicated         int
+		duplicates          duplicateCounts
+	}
+	bySource, byPriority := map[string]*slice{}, map[string]*slice{}
+	addSlice := func(m map[string]*slice, key string, example Example) {
+		if key == "" {
+			key = "unspecified"
+		}
+		sl := m[key]
+		if sl == nil {
+			sl = &slice{}
+			m[key] = sl
+		}
+		sl.adjudicated++
+		countPrediction(&sl.baseline, example.Label == "positive", example.BaselineDetected)
+		countPrediction(&sl.candidate, example.Label == "positive", example.CandidateDetected)
+		sl.duplicates.observe(example)
+	}
+	var overallDuplicates duplicateCounts
 	overallFPRemoved, overallFPAdded := 0, 0
 
 	families := append([]Family(nil), corpus.Families...)
@@ -177,6 +259,7 @@ func Evaluate(corpus Corpus) (Report, error) {
 			Violations: []string{},
 		}
 		baseline, candidate := counts{}, counts{}
+		var familyDuplicates duplicateCounts
 		familyFPRemoved, familyFPAdded := 0, 0
 		for _, example := range family.Examples {
 			at, _ := time.Parse(time.RFC3339Nano, example.OccurredAt) // validated above
@@ -193,6 +276,7 @@ func Evaluate(corpus Corpus) (Report, error) {
 				continue
 			}
 			familyReport.AdjudicatedExamples++
+			familyDuplicates.observe(example)
 			if example.Label == "positive" {
 				familyReport.PositiveExamples++
 			} else {
@@ -208,6 +292,10 @@ func Evaluate(corpus Corpus) (Report, error) {
 				}
 			}
 			if _, seen := seenOverallCandidates[example.ID]; !seen {
+				addSlice(bySource, example.Source, example)
+				addSlice(byPriority, example.BaselinePriority, example)
+				overallDuplicates.observe(example)
+				countPrediction(&allBaseline, example.Label == "positive", example.BaselineDetected)
 				countPrediction(&allCandidate, example.Label == "positive", example.CandidateDetected)
 				if example.Label == "negative" {
 					if example.BaselineDetected && !example.CandidateDetected {
@@ -223,6 +311,7 @@ func Evaluate(corpus Corpus) (Report, error) {
 				familyReport.Violations = append(familyReport.Violations, "candidate_regressed_known_true_positive:"+example.ID)
 			}
 		}
+		familyReport.DuplicateMetrics = familyDuplicates.metrics()
 		familyReport.Baseline = metrics(baseline, family.EligibleSourceEvents)
 		familyReport.Candidate = metrics(candidate, family.EligibleSourceEvents)
 		familyReport.FalsePositivesDelta = baseline.FalsePositive - candidate.FalsePositive
@@ -251,8 +340,28 @@ func Evaluate(corpus Corpus) (Report, error) {
 		report.Families = append(report.Families, familyReport)
 	}
 	applyHolmCorrection(report.Families)
+	for _, group := range []struct {
+		from map[string]*slice
+		into *[]SliceReport
+	}{{bySource, &report.BySource}, {byPriority, &report.ByPriority}} {
+		*group.into = []SliceReport{}
+		keys := make([]string, 0, len(group.from))
+		for k := range group.from {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			sl := group.from[k]
+			*group.into = append(*group.into, SliceReport{
+				Key: k, AdjudicatedExamples: sl.adjudicated, DuplicateMetrics: sl.duplicates.metrics(),
+				Baseline: metrics(sl.baseline, 0), Candidate: metrics(sl.candidate, 0),
+			})
+		}
+	}
 	// Family eligible-event sets can overlap, so the overall FP/1k denominator is undefined.
+	report.DuplicateMetrics = overallDuplicates.metrics()
 	report.Overall = metrics(allCandidate, 0)
+	report.OverallBaseline = metrics(allBaseline, 0)
 	report.OverallPairedFalsePositives = PairedFalsePositiveComparison{
 		FalsePositivesRemoved: overallFPRemoved,
 		FalsePositivesAdded:   overallFPAdded,
@@ -363,11 +472,14 @@ func validateCorpus(corpus Corpus) (time.Time, time.Time, error) {
 	totalExamples := 0
 	familyIDs := make(map[string]struct{}, len(corpus.Families))
 	type candidateIdentity struct {
-		occurredAt        int64
-		label             string
-		baselineDetected  bool
-		candidateDetected bool
-		baselinePriority  string
+		occurredAt                                int64
+		label                                     string
+		baselineDetected                          bool
+		candidateDetected                         bool
+		baselinePriority                          string
+		source                                    string
+		duplicate                                 bool
+		baselineDuplicate, baselineDuplicateKnown bool
 	}
 	candidateIDs := make(map[string]candidateIdentity)
 	for _, family := range corpus.Families {
@@ -408,10 +520,22 @@ func validateCorpus(corpus Corpus) (time.Time, time.Time, error) {
 				example.BaselinePriority != "P3" && example.BaselinePriority != "P4" {
 				return time.Time{}, time.Time{}, fmt.Errorf("example %q baselinePriority must be P1-P4", example.ID)
 			}
+			if example.Source != "" && !stableID.MatchString(example.Source) {
+				return time.Time{}, time.Time{}, fmt.Errorf("example %q source is not a stable identifier", example.ID)
+			}
+			if example.CandidateDuplicate && !example.CandidateDetected {
+				return time.Time{}, time.Time{}, fmt.Errorf("example %q is a candidate duplicate without a candidate detection", example.ID)
+			}
 			identity := candidateIdentity{
 				occurredAt: at.UTC().UnixNano(), label: example.Label,
 				baselineDetected: example.BaselineDetected, candidateDetected: example.CandidateDetected,
-				baselinePriority: example.BaselinePriority,
+				baselinePriority: example.BaselinePriority, source: example.Source, duplicate: example.CandidateDuplicate,
+			}
+			if example.BaselineDuplicate != nil && example.BaselineDetected {
+				identity.baselineDuplicateKnown = true
+				identity.baselineDuplicate = *example.BaselineDuplicate
+			} else if example.BaselineDuplicate != nil && *example.BaselineDuplicate {
+				return time.Time{}, time.Time{}, fmt.Errorf("example %q is a baseline duplicate without a baseline detection", example.ID)
 			}
 			if previous, exists := candidateIDs[example.ID]; exists && previous != identity {
 				return time.Time{}, time.Time{}, fmt.Errorf("candidate id %q has conflicting adjudication or predictions across families", example.ID)

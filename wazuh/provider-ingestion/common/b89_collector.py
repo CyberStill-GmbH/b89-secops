@@ -33,13 +33,38 @@ MAX_BATCH_BYTES = 64 * 1024 * 1024
 DEFAULT_ROTATE_BYTES = 256 * 1024 * 1024
 USER_AGENT = "b89-soc-collector/1.0"
 
+# Source-health heartbeat (docs/20 «Salud por fuente»). One event per run, in the same JSONL as the
+# data, so its arrival proves collector → logcollector → analysisd → indexer even with zero events.
+COLLECTOR_VERSION = "2026.11.17"
+HEARTBEAT_SCHEMA = 1
+HEARTBEAT_EVENT_TYPE = "source_heartbeat"
+AUTH_STATES = ("ok", "denied", "expired", "unknown")
+RUN_OUTCOMES = ("ok", "partial", "failed")
+# Sanitized error enum: the heartbeat never carries free text, provider bodies, URLs or secrets.
+ERROR_CODES = (
+    "auth_denied", "auth_expired", "rate_limited", "provider_server_error", "provider_client_error",
+    "network", "invalid_response", "config_invalid", "secret_unavailable", "local_io",
+    "recovery_stalled", "pagination_limit", "unknown",
+)
+
 
 class ProviderError(Exception):
-    """A connector failure that is safe to report (no secrets, no provider payload)."""
+    """A connector failure that is safe to report (no secrets, no provider payload).
 
-    def __init__(self, message: str, status: int | None = None) -> None:
+    ``code`` is an optional member of ``ERROR_CODES``; ``auth`` (``denied``/``expired``) is set
+    when the provider answered that the credential or its permission was refused.
+    """
+
+    def __init__(self, message: str, status: int | None = None, code: str | None = None,
+                 auth: str | None = None) -> None:
         super().__init__(message)
         self.status = status
+        self.code = code if code in ERROR_CODES else None
+        self.auth = auth if auth in ("denied", "expired") else None
+
+
+# Last HTTP status seen by ``http_json`` in this process (reset per run by ``run_collector``).
+RUN_HTTP = {"last_status": None}
 
 
 def utc_now() -> datetime:
@@ -127,7 +152,8 @@ def http_json(
         except OSError:
             raw = b""
     except (urllib.error.URLError, TimeoutError, OSError) as error:
-        raise ProviderError("provider request failed (network)") from error
+        raise ProviderError("provider request failed (network)", code="network") from error
+    RUN_HTTP["last_status"] = status
     if len(raw) > MAX_RESPONSE_BYTES:
         raise ProviderError("provider response is too large", status)
     if not raw:
@@ -309,8 +335,132 @@ def catchup_status(config: dict, previous: dict, current: dict, target: datetime
             "lag_seconds": lag, "target": iso(target), "streams": len(parsed)}
 
 
-def run_collector(name: str, config_path: pathlib.Path, collect) -> int:
-    """Generic driver. ``collect(config, state) -> (events, next_state)``."""
+def http_status_class(status: object) -> str:
+    """``2xx``/``3xx``/``4xx``/``5xx`` or ``none`` when no HTTP response was received."""
+    if type(status) is not int or not 100 <= status <= 599:
+        return "none"
+    return f"{status // 100}xx"
+
+
+def classify_failure(error: BaseException) -> tuple[str, str]:
+    """``(auth, error_code)`` for a failed run. Uses only the status and our own messages."""
+    if isinstance(error, ProviderError):
+        status = error.status
+        if error.auth == "expired":
+            return "expired", "auth_expired"
+        if error.auth == "denied" or status in (401, 403):
+            return "denied", "auth_denied"
+        if error.code:
+            return "unknown", error.code
+        if status == 429:
+            return "unknown", "rate_limited"
+        if type(status) is int and status >= 500:
+            return "unknown", "provider_server_error"
+        if type(status) is int and status >= 400:
+            return "unknown", "provider_client_error"
+        message = str(error).lower()
+        for needle, code in (
+            ("secret", "secret_unavailable"), ("configuration", "config_invalid"), ("local", "local_io"),
+            ("recovery", "recovery_stalled"), ("pagination", "pagination_limit"), ("not json", "invalid_response"),
+            ("too large", "invalid_response"), ("invalid", "invalid_response"),
+        ):
+            if needle in message:
+                return "unknown", code
+        return "unknown", "unknown"
+    if isinstance(error, OSError):
+        return "unknown", "local_io"
+    return "unknown", "unknown"
+
+
+_VOLATILE_STATE_KEYS = frozenset({"last_success", "recovery", "pending", "coverage"})
+
+
+def cursor_advanced(previous: dict, current: dict) -> bool:
+    """True when the persisted cursor/dedupe state moved (volatile bookkeeping excluded)."""
+    def view(state: dict) -> dict:
+        return {key: value for key, value in state.items() if key not in _VOLATILE_STATE_KEYS}
+    return view(previous) != view(current)
+
+
+def oldest_cursor(*fields: str):
+    """Watermark helper: the oldest ISO timestamp among the cursor maps named by ``fields``."""
+    def position(state: dict) -> str | None:
+        values = []
+        for field in fields:
+            cursors = state.get(field)
+            if isinstance(cursors, dict):
+                for value in cursors.values():
+                    try:
+                        values.append(parse_iso(str(value)))
+                    except ValueError:
+                        continue
+        return iso(min(values)) if values else None
+    return position
+
+
+def heartbeat_event(*, source_id: str, vendor: str, source: str, run_id: str, started: datetime,
+                    finished: datetime, outcome: str, auth: str, http_class: str, items: int,
+                    advanced: bool, position: str | None = None, lag_seconds: int | None = None,
+                    error_code: str | None = None, extra: dict | None = None) -> dict:
+    """The structured heartbeat (allowlisted fields only: no URLs, tokens or provider text)."""
+    heartbeat = {
+        "schema": HEARTBEAT_SCHEMA,
+        "source_id": source_id,
+        "run_id": run_id,
+        "started_at": iso(started),
+        "finished_at": iso(finished),
+        "outcome": outcome if outcome in RUN_OUTCOMES else "failed",
+        "auth": auth if auth in AUTH_STATES else "unknown",
+        "http_status_class": http_class,
+        "items_fetched": max(0, int(items)),
+        "cursor_advanced": bool(advanced),
+        "collector_version": COLLECTOR_VERSION,
+    }
+    if position:
+        heartbeat["cursor_position"] = position
+    if lag_seconds is not None:
+        heartbeat["provider_lag_seconds"] = max(0, int(lag_seconds))
+    if error_code:
+        heartbeat["error_code"] = error_code if error_code in ERROR_CODES else "unknown"
+    if extra:
+        heartbeat.update(extra)
+    return {"b89": {"vendor": vendor, "source": source, "event_type": HEARTBEAT_EVENT_TYPE,
+                    "collected_at": iso(finished), "heartbeat": heartbeat}}
+
+
+def emit_heartbeat(config: dict | None, event: dict, name: str) -> bool:
+    """Append the heartbeat to the collector's own JSONL, never over a pending batch."""
+    if not config or config.get("heartbeat", True) is False:
+        return False
+    try:
+        output = pathlib.Path(config["output_file"])
+        state = read_state(pathlib.Path(config["state_file"]))
+        if state.get("pending") is not None:
+            # Appending now would break the write-ahead recovery of the interrupted batch.
+            print(f"{name}: heartbeat skipped (pending batch)", file=sys.stderr)
+            return False
+        append_bytes(output, serialize_events([event]))
+        return True
+    except (ProviderError, OSError, KeyError, TypeError, ValueError) as error:
+        print(f"{name}: heartbeat not written ({type(error).__name__})", file=sys.stderr)
+        return False
+
+
+def run_collector(name: str, config_path: pathlib.Path, collect, *, source_id: str | None = None,
+                  vendor: str | None = None, source: str | None = None, probe=None, watermark=None) -> int:
+    """Generic driver. ``collect(config, state) -> (events, next_state)``.
+
+    ``probe(config)`` is an optional cheap read-only auth/permission check that runs before
+    collecting; it raises ``ProviderError`` (with ``auth``) when the credential is refused.
+    ``watermark(state)`` returns the cursor position (ISO) for the heartbeat. Every run ends
+    with one heartbeat appended to the same JSONL, whatever the outcome.
+    """
+    RUN_HTTP["last_status"] = None
+    source_id = source_id or name.removeprefix("b89-")
+    started = utc_now()
+    run = {"outcome": "failed", "auth": "unknown", "items": 0, "advanced": False, "position": None,
+           "lag": None, "error_code": None}
+    config = None
     try:
         config = load_config(config_path)
         output = pathlib.Path(config["output_file"])
@@ -319,37 +469,68 @@ def run_collector(name: str, config_path: pathlib.Path, collect) -> int:
         state, recovered = recover_pending(output, state_path, state)
         if recovered:
             print(f"{name}: recovered a durable batch from the previous run", file=sys.stderr)
+            run["outcome"] = "ok"
+            run["position"] = watermark(state) if watermark else None
             return 0
         rotate_if_needed(output, int(config.get("rotate_bytes", DEFAULT_ROTATE_BYTES)))
         batches = int(config.get("catchup_max_batches", 4)) if config.get("catchup_cursor_field") else 1
         if not 1 <= batches <= 10:
-            raise ProviderError("recovery batch limit must be between 1 and 10")
+            raise ProviderError("recovery batch limit must be between 1 and 10", code="config_invalid")
         delay = int(config.get("catchup_delay_seconds", 120))
         if not 0 <= delay <= 86400:
-            raise ProviderError("recovery delay is invalid")
+            raise ProviderError("recovery delay is invalid", code="config_invalid")
+        if probe is not None:
+            probe(config)
+            run["auth"] = "ok"
         target = utc_now() - timedelta(seconds=delay)
+        recovery = None
         for _ in range(batches):
             events, next_state = collect(config, state)
+            # A successful authenticated read proves the credential, with or without a probe.
+            run["auth"] = "ok"
             next_state = {key: value for key, value in next_state.items() if key != "pending"}
             recovery = catchup_status(config, state, next_state, target)
             if recovery:
                 next_state["recovery"] = recovery
             next_state["last_success"] = iso(utc_now())
             written = commit_batch(output, state_path, state, events, next_state)
+            run["items"] += written
+            run["advanced"] = run["advanced"] or cursor_advanced(state, next_state)
             state = next_state
             print(f"{name}: ok events={written}" + (f" recovery={recovery['status']} lag_seconds={recovery['lag_seconds']}" if recovery else ""), file=sys.stderr)
             if not recovery or recovery["status"] == "caught_up":
                 break
             if recovery["status"] == "stalled":
-                raise ProviderError("recovery stalled; retained cursor requires investigation")
+                run["lag"] = recovery["lag_seconds"]
+                raise ProviderError("recovery stalled; retained cursor requires investigation", code="recovery_stalled")
+        run["position"] = watermark(state) if watermark else None
+        if recovery:
+            run["lag"] = recovery["lag_seconds"]
+        run["outcome"] = "partial" if recovery and recovery["status"] != "caught_up" else "ok"
         return 0
     except ProviderError as error:
         status = f" (HTTP {error.status})" if error.status else ""
         print(f"{name}: poll failed: {error}{status}; cursor preserved", file=sys.stderr)
+        auth, run["error_code"] = classify_failure(error)
+        if auth != "unknown" or run["auth"] != "ok":
+            run["auth"] = auth
+        # Earlier batches of this run were committed: the run moved, but did not finish.
+        run["outcome"] = "partial" if run["items"] or run["advanced"] else "failed"
         return 1
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
         print(f"{name}: poll failed ({type(error).__name__}); cursor preserved", file=sys.stderr)
+        _, run["error_code"] = classify_failure(error)
+        run["outcome"] = "partial" if run["items"] or run["advanced"] else "failed"
         return 1
+    finally:
+        finished = utc_now()
+        emit_heartbeat(config, heartbeat_event(
+            source_id=source_id, vendor=vendor or source_id, source=source or "collector",
+            run_id=f"{source_id}-{finished.strftime('%Y%m%dT%H%M%SZ')}-{os.urandom(3).hex()}",
+            started=started, finished=finished, outcome=run["outcome"], auth=run["auth"],
+            http_class=http_status_class(RUN_HTTP["last_status"]), items=run["items"],
+            advanced=run["advanced"], position=run["position"], lag_seconds=run["lag"],
+            error_code=run["error_code"]), name)
 
 
 def bounded_ids(values, limit: int) -> list:

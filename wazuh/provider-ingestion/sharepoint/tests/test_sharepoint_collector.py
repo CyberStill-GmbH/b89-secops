@@ -253,7 +253,9 @@ class DriverTests(unittest.TestCase):
             code = SP.run_collector("t", cfg, lambda c, s: SP.collect_audit(c, s, graph, NOW))
             self.assertEqual(code, 0)
             lines = out.read_text().splitlines()
-            self.assertTrue(lines and all(json.loads(x)["b89"]["event_type"] == "capability" for x in lines))
+            # Data lines, then exactly one source-health heartbeat for the run.
+            self.assertEqual(json.loads(lines[-1])["b89"]["event_type"], "source_heartbeat")
+            self.assertTrue(lines[:-1] and all(json.loads(x)["b89"]["event_type"] == "capability" for x in lines[:-1]))
             self.assertEqual(json.loads(st.read_text())["audit_path"], "blocked")
 
     def test_safe_path_hides_ids(self):

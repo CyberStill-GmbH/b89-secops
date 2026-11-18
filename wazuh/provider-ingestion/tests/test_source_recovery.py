@@ -10,7 +10,9 @@ runtime = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(runtime)
 NOW = runtime.parse_iso("2026-11-16T12:00:00Z")
 CONFIG = {"output_file": "output", "state_file": "state", "catchup_cursor_field": "cursors",
-          "catchup_max_batches": 2, "catchup_delay_seconds": 0}
+          "catchup_max_batches": 2, "catchup_delay_seconds": 0,
+          # The heartbeat writes a real file; these tests patch the I/O and must not touch the cwd.
+          "heartbeat": False}
 
 
 class RecoveryTests(unittest.TestCase):

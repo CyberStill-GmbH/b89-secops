@@ -18,6 +18,9 @@ stage=$(mktemp -d); trap 'rm -rf "$stage"' EXIT
 
 mkdir -p "$stage/rules" "$stage/lists" "$stage/integrations" "$stage/groups"
 cp "$SRC"/wazuh/office365/rules/*.xml "$SRC"/infra/wazuh/{active-directory,endpoint,launch-detections}/rules/*.xml "$stage/rules/"
+# El nombre del catálogo carga el latido después de las raíces b89_provider de Office 365 y launch.
+cp "$SRC/detections/platform/collector-heartbeat/rule.xml" \
+  "$stage/rules/b89_soc_collector_heartbeat.xml"
 # Estas reglas calibran la severidad Snyk (101732-101734), de la que dependen las reglas
 # b89_watch_vulnprio_rules.xml instaladas por platform-monitoring. Sin ellas, Wazuh las ignora.
 cp "$SRC/detections/snyk/severity-calibration/rule.xml" \

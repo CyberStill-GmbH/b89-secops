@@ -23,6 +23,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	inputPath := flags.String("input", "", "path to the approved de-identified corpus JSON")
 	outputPath := flags.String("output", "-", "report path, or - for stdout")
+	requireReduction := flags.Bool("require-fp-reduction", false, "require a significant paired decrease in false positives on the temporal holdout")
+	protectSlices := flags.Bool("require-no-slice-fp-increase", false, "reject an observed increase in false positives in any family, source or baseline priority")
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
@@ -77,6 +79,35 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if !report.SufficientEvidence {
 		fmt.Fprintln(stderr, "insufficient evidence; metrics were written, but this corpus cannot pass the quality gate")
 		return 4
+	}
+	if *protectSlices {
+		regressed := false
+		check := func(dimension, key string, baseline, candidate evaluation.Metrics) {
+			before, after := baseline.ConfusionMatrix.FalsePositive, candidate.ConfusionMatrix.FalsePositive
+			if after > before {
+				fmt.Fprintf(stderr, "%s %q: observed false positives increased from %d to %d\n", dimension, key, before, after)
+				regressed = true
+			}
+		}
+		for _, family := range report.Families {
+			check("family", family.ID, family.Baseline, family.Candidate)
+		}
+		for _, source := range report.BySource {
+			check("source", source.Key, source.Baseline, source.Candidate)
+		}
+		for _, priority := range report.ByPriority {
+			check("baseline priority", priority.Key, priority.Baseline, priority.Candidate)
+		}
+		if regressed {
+			return 6
+		}
+	}
+	if *requireReduction {
+		paired := report.OverallPairedFalsePositives
+		if paired.SignificantAt05 == nil || !*paired.SignificantAt05 || paired.FalsePositivesRemoved <= paired.FalsePositivesAdded {
+			fmt.Fprintln(stderr, "no significant false-positive reduction demonstrated on this holdout")
+			return 5
+		}
 	}
 	return 0
 }

@@ -607,3 +607,41 @@ Se corrigió el HELP de Prometheus: `reviewCoverage` enumera también `duplicate
   `b89-ai-analyst-bunny.webp` (2x), KPI del día, cola, atraso y feed con sondeo de 5 s.
 - Validación local: specs API/assistant/arquitectura, plugin, typecheck (incluido el del plugin con
   TS 4.0.2), lint, boundaries e integración PostgreSQL 18.6 efímera del store. Sin deploy.
+
+## 2026-11-18 · Correlador: secuencias, identidad tipada, evidencia tardía y cobertura (local)
+
+- Nueva secuencia `identity-change-new-location-endpoint`, en modo sombra. Las reglas admiten
+  `MinDistinctRules` y `Mode`, que se pueden ajustar por configuración. Cada etapa registra el
+  criterio que la satisfizo. Detalle en `docs/detection-engineering/15-correlacion-secuencias-y-cobertura.md`.
+- Procedencia y confianza por entidad. Solo una confianza `medium` o mayor puede conectar etapas.
+- Hora del proveedor separada de la hora de ingesta. La reevaluación con evidencia tardía actualiza
+  el candidato del mismo episodio (`revision`, `additionalStageEvidence`). Probado con orden
+  invertido, replay y reinicio.
+- Explicación con umbrales, contradicciones, datos faltantes y alcance «candidato, no incidente».
+  La API los guarda como razones de la alerta.
+- Cobertura por fuente a partir de los latidos de los colectores (`complete|incomplete|unknown`).
+  Nuevas métricas de duplicados, eventos tardíos, candidatos abiertos y actualizados, y ventana
+  pendiente.
+- `evaluate-corpus`: cortes por fuente y prioridad, y duplicados contados aparte.
+- Corrección: `B89_CORRELATOR_PATTERNS_JSON` y `B89_CORRELATOR_MEMBERS_DIR` se agregan al allowlist
+  de `config.Load`. El compose ya las definía y el correlador no habría arrancado.
+- Validación: `go vet` y `go test -race ./...` (golang:1.23.12) más `apps/api/test/correlator.spec.ts`
+  y `tsc`. Sin despliegue ni datos reales.
+- Consola y API (misma fecha): cobertura por fuente en Operaciones («Cobertura incompleta», nunca
+  «sin actividad»); candidatos en sombra separados en el expediente de la entidad; razones de
+  alerta agrupadas (secuencia, umbrales, contradicciones, datos faltantes). Nueva regla Wazuh de
+  latidos de collectors (101980/101981). La API acepta el estado `catching_up` del correlador.
+
+## 2026-11-18 · Reputación de IP con AbuseIPDB (local, sin commit ni despliegue)
+
+- API: cliente `apps/api/src/runtime/abuseipdb.ts`. Solo consulta IP públicas, con caché de 6 h,
+  enfriamiento ante 429 y errores `ABUSEIPDB_*`. Variable secreta `B89_ABUSEIPDB_API_KEY`, que se
+  agrega a `KNOWN_B89_VARIABLES`.
+- Analista IA: `EvidenceContext.ipReputation` y `InvestigationEvidenceSummary.ipReputation`
+  (JSONB opcional, sin migración). La política sube a `b89-analyst-2026-11-18.1` con el motivo
+  `IP_REPUTATION_MALICIOUS`, y el prompt incluye una guía para ponderar la reputación.
+- Bunny/MCP: herramienta `ip_reputation`.
+- Consola: sección «Reputación de IP (AbuseIPDB)» en el expediente y rótulo del motivo nuevo.
+- Despliegue: `deploy-host.sh` copia `ABUSEIPDB_API_KEY` de `services.env`. Detalle en
+  [18](18-integraciones.md#abuseipdb--reputación-de-ip).
+

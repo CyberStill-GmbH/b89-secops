@@ -498,7 +498,10 @@ export class AssistantController {
     const handlers = buildSocTools(
       createInternalGet(server, request, signal),
       { roles: actor.roles, capabilities },
-      startInvestigation ? { startInvestigation } : {},
+      {
+        ...(startInvestigation ? { startInvestigation } : {}),
+        ...(this.runtime.ipReputation ? { ipReputation: this.runtime.ipReputation } : {}),
+      },
     );
     const connected = await connectMcpInProcess(handlers);
     // Informes: la herramienta escribe un archivo propio de la persona (no es una lectura MCP), así

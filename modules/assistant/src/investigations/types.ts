@@ -78,6 +78,7 @@ export interface InvestigationSubject {
 
 /** Resumen de la evidencia leída (conteos y cobertura; nunca contenido). */
 export interface InvestigationEvidenceSummary {
+  readonly candidateId?: string;
   readonly alertCount: number;
   readonly relatedAlertCount: number;
   readonly eventCount: number;
@@ -94,6 +95,8 @@ export interface InvestigationEvidenceSummary {
   readonly estimatedInputTokens: number | null;
   /** El paquete enviado al modelo omitió ejemplares para caber en el presupuesto. */
   readonly packTruncated: boolean;
+  /** Reputación de IP consultada (se persiste para mostrarla en el expediente). Opcional. */
+  readonly ipReputation?: readonly EvidenceIpReputation[];
 }
 
 export interface InvestigationJob {
@@ -367,6 +370,35 @@ export interface EvidenceEntityRisk {
   readonly sources: readonly string[];
 }
 
+/**
+ * Reputación externa de una IP pública de la alerta (AbuseIPDB, reportes de los últimos 90 días).
+ * La IP nunca viaja en el paquete: solo la referencia opaca `ent_…` y los atributos del proveedor.
+ */
+export interface EvidenceIpReputation {
+  /** Referencia opaca `ent_…` de la IP. */
+  readonly entityRef: string;
+  readonly provider: 'abuseipdb';
+  /** 0–100: confianza de abuso que publica AbuseIPDB. */
+  readonly abuseConfidenceScore: number;
+  readonly totalReports: number;
+  readonly distinctUsers: number;
+  /** ISO 8601 del último reporte; `null` si nunca fue reportada. */
+  readonly lastReportedAt: string | null;
+  /** ISO 3166-1 alfa-2. */
+  readonly countryCode: string | null;
+  /** Tipo de uso declarado (p. ej. «Data Center/Web Hosting/Transit»). */
+  readonly usageType: string | null;
+  readonly isp: string | null;
+  readonly isTor: boolean;
+  /** `null`: el proveedor no lo informó. */
+  readonly isWhitelisted: boolean | null;
+  /** ISO 8601 de la consulta (puede venir de caché). */
+  readonly checkedAt: string;
+}
+
+/** Umbral de AbuseIPDB a partir del cual una IP se trata como maliciosa conocida. */
+export const IP_REPUTATION_MALICIOUS_SCORE = 75;
+
 /** Actividad de la entidad: alertas en 7 días y eventos en 24 h (conteos acotados). */
 export interface EvidenceActivity {
   readonly entityRef: string;
@@ -406,6 +438,8 @@ export interface EvidenceContext {
   readonly activity: EvidenceActivity | null;
   readonly notifications: readonly EvidenceNotification[];
   readonly audit: readonly EvidenceAuditAction[];
+  /** Reputación de las IP públicas de la alerta (ausente: el despliegue no la consulta). */
+  readonly ipReputation?: readonly EvidenceIpReputation[];
 }
 
 /** Un conteo por valor (fuente, acción, resultado, categoría), de mayor a menor. */

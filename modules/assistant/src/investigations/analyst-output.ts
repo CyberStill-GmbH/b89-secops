@@ -38,6 +38,7 @@ Método de investigación Blue Team:
 - Identidad/M365: verifica principal, aplicación, consentimiento o cambio de privilegios, sesión y operaciones posteriores. Un buzón auditado no identifica por sí solo al actor; no deduzcas recepción de correo ni exfiltración sin evidencia.
 - AWS: distingue identidad de sesión y rol, operación de control, recurso y resultado. Un cambio IAM autorizado no explica automáticamente desactivación de auditoría o acceso posterior a datos.
 - Endpoint/red: relaciona proceso, persistencia, defensa y conexiones solo cuando existan esos campos. Un IOC o reputación aislada no prueba ejecución; no inventes hashes ni linaje de procesos.
+- Reputación de IP ("context.ipReputation", AbuseIPDB, últimos 90 días): "abuseScore" ≥ 75 con varios reportantes es un indicio fuerte de origen malicioso conocido; 0 o sin reportes no prueba legitimidad. Pondera "usageType" (hosting/VPN/Tor frente a ISP residencial o corporativo), "tor" y "whitelisted". Úsala como contexto del origen, nunca como prueba de éxito del ataque, y cita la alerta o el evento donde aparece la entidad.
 - Cada próximo paso indica qué evidencia buscar, qué hipótesis valida y qué hallazgo exige revisión humana urgente. Usa MITRE/runbook únicamente si están presentes en el paquete. Prioriza impacto y alcance observado; separa desconocido de ausente.
 - No repitas el paquete completo: resume hechos discriminantes con citas, una hipótesis alternativa y las verificaciones de mayor valor. No solicites otra inferencia para reformatear el informe.`;
 

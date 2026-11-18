@@ -30,6 +30,7 @@ import type { Actor, Capability } from '@b89/access';
 import {
   ACTIVITY_LIMITS,
   buildRunReport,
+  escapeReportText,
   INVESTIGATION_STATUSES,
   isInvestigationId,
   parseAnalystSettings,
@@ -44,6 +45,8 @@ import type { IncomingRequest } from '../http/http-contracts.js';
 import type { AnalystHost } from '../runtime/analyst-host.js';
 import { limaClock, limaDayStart } from '../runtime/analyst-host.js';
 import type { SecOpsRuntime } from '../runtime/secops-runtime.js';
+import { correlatorGet } from '../runtime/correlator-link.js';
+import { readCandidateMembers } from './candidate-members.js';
 import { needsRecentAuth } from '../soc/notification-channels.controller.js';
 import { mutatingActor, readingActor } from '../soc/session-actor.js';
 import { SECOPS_RUNTIME } from '../soc/tokens.js';
@@ -437,14 +440,49 @@ export class AiInvestigationsController {
 
   @Get(':id/report')
   public async report(@Req() request: IncomingRequest, @Param('id') id: string) {
-    const { correlationId, host } = await this.reader(request);
+    const { actor, correlationId, host } = await this.reader(request);
     const job = await this.job(host, id, correlationId);
     const [events, extras] = await Promise.all([
       host.store.events(job.tenantId, job.id),
       this.extras(host, job),
     ]);
     const report = buildRunReport(job, events, extras.invocations, extras.actions, job.evidence);
-    return { correlationId, report: reportView(report, this.runtime.now()) };
+    const generatedAt = this.runtime.now();
+    const candidateId = job.evidence?.candidateId;
+    if (!candidateId && job.subject.kind !== 'candidate') {
+      return { correlationId, report: reportView(report, generatedAt) };
+    }
+    const lines = [report.markdown, '', '## Anexo de alertas correlacionadas', ''];
+    const link = this.runtime.correlatorRead;
+    if (!actor.capabilities.has('alerts.read')) {
+      lines.push('Se requiere permiso de lectura de alertas para consultar el anexo.');
+    } else if (!candidateId || !link) {
+      lines.push('Membresía actual sin verificar. El expediente conserva las referencias recogidas durante el análisis.');
+    } else {
+      try {
+        const ids = await readCandidateMembers((path) => correlatorGet(link, path), candidateId, AbortSignal.timeout(30_000));
+        lines.push(
+          `Consulta al exportar (${generatedAt.toISOString()}). Alertas vinculadas al candidato en ese momento: ${ids.length}.`,
+          'La evidencia y el veredicto anteriores corresponden al momento de la investigación.',
+        );
+        for (const member of ids) lines.push(`- ${escapeReportText(member)}`);
+      } catch {
+        lines.push('Membresía actual sin verificar. La consulta al correlador no pudo completarse.');
+      }
+      if (actor.capabilities.has('events.read')) {
+        lines.push('', '### Referencias de eventos Wazuh al exportar', '');
+        try {
+          const observations = await readCandidateMembers(
+            (path) => correlatorGet(link, path), candidateId, AbortSignal.timeout(30_000), 'observations',
+          );
+          lines.push(`Eventos vinculados al exportar: ${observations.length}.`);
+          for (const observation of observations) lines.push(`- ${escapeReportText(observation)}`);
+        } catch {
+          lines.push('No se pudo verificar la lista de eventos vinculados.');
+        }
+      }
+    }
+    return { correlationId, report: reportView({ ...report, markdown: lines.join('\n') }, generatedAt) };
   }
 
   @Post(':id/cancel')

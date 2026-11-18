@@ -206,6 +206,21 @@ export function runDetailView(
               : []),
             ...evidence.gaps,
           ],
+          // Reputación de IP (AbuseIPDB): solo referencia opaca y atributos del proveedor.
+          ipReputation: (evidence.ipReputation ?? []).map((entry) => ({
+            entityRef: entry.entityRef,
+            provider: entry.provider,
+            abuseConfidenceScore: entry.abuseConfidenceScore,
+            totalReports: entry.totalReports,
+            distinctUsers: entry.distinctUsers,
+            lastReportedAt: entry.lastReportedAt,
+            countryCode: entry.countryCode,
+            usageType: entry.usageType,
+            isp: entry.isp,
+            isTor: entry.isTor,
+            isWhitelisted: entry.isWhitelisted,
+            checkedAt: entry.checkedAt,
+          })),
         }
       : null,
     result: result

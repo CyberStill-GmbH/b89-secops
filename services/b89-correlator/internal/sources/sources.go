@@ -100,7 +100,7 @@ func (p sortPosition) after(previous sortPosition) bool {
 }
 
 // sourceFields limits the payload to what entity resolution and classification read.
-var sourceFields = []string{"timestamp", "id", "rule", "agent", "data", "predecoder.hostname", "decoder.name", "location"}
+var sourceFields = []string{"timestamp", "id", "rule", "agent", "data", "predecoder.hostname", "decoder.name", "location", "GeoLocation.country_name"}
 
 // Page fetches alerts with timestamp in [from, to) after the cursor, ascending.
 func (g *WazuhGateway) Page(ctx context.Context, from, to time.Time, after *Cursor) ([]map[string]any, *Cursor, error) {
@@ -302,6 +302,12 @@ type ExplanationRequest struct {
 	Stages                 []model.StageHit `json:"stages"`
 	EvidenceObservationIDs []string         `json:"evidenceObservationIds"`
 	NextSteps              []string         `json:"nextSteps"`
+	PatternVersion         string           `json:"patternVersion,omitempty"`
+	WindowSeconds          int64            `json:"windowSeconds,omitempty"`
+	Checks                 []model.Check    `json:"checks,omitempty"`
+	Contradictions         []string         `json:"contradictions,omitempty"`
+	MissingData            []string         `json:"missingData,omitempty"`
+	Lifecycle              string           `json:"lifecycle,omitempty"`
 }
 
 // CandidateResponse is the API's answer.

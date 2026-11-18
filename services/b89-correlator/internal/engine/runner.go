@@ -5,6 +5,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"math"
 	"sort"
@@ -13,6 +14,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/CyberStill-GmbH/b89-secops/services/b89-correlator/internal/feedback"
 	"github.com/CyberStill-GmbH/b89-secops/services/b89-correlator/internal/model"
@@ -51,6 +53,7 @@ type Options struct {
 	FeedbackLookback time.Duration
 	Feedback         feedback.Policy
 	MaxPagesPerPoll  int
+	WatermarkPath    string
 }
 
 // Counters are monotonic metrics.
@@ -67,6 +70,7 @@ type Counters struct {
 	PollYields     atomic.Int64
 	Pages          atomic.Int64
 	Unparseable    atomic.Int64
+	Heartbeats     atomic.Int64
 }
 
 // Runner owns the loops and the derived views.
@@ -80,23 +84,26 @@ type Runner struct {
 	Now     func() time.Time
 	C       Counters
 
-	mu              sync.RWMutex
-	pollMu          sync.Mutex // one owner of the ordered ingest cursor at a time
-	pendingPoll     *pollWindow
-	fb              feedback.Result
-	alerts          []model.B89Alert
-	truncated       bool
-	dedup           risk.DedupResult
-	lastTo          time.Time
-	cursorAt        time.Time
-	ready           bool
-	backfilled      bool
-	lastPoll        time.Time
-	lastFeedback    time.Time
-	lastPollErr     string
-	lastFeedbackErr string
-	audited         map[string]bool
-	emitTimes       []time.Time
+	mu                sync.RWMutex
+	pollMu            sync.Mutex // one owner of the ordered ingest cursor at a time
+	pendingPoll       *pollWindow
+	windowDocs        int // documents read inside the current poll window (progress, not a total)
+	sourceProgress    map[string]SourceProgress
+	fb                feedback.Result
+	alerts            []model.B89Alert
+	truncated         bool
+	dedup             risk.DedupResult
+	lastTo            time.Time
+	cursorAt          time.Time
+	ready             bool
+	backfilled        bool
+	lastPoll          time.Time
+	lastFeedback      time.Time
+	lastPollErr       string
+	lastFeedbackErr   string
+	memberWriteFailed bool
+	audited           map[string]bool
+	emitTimes         []time.Time
 }
 
 // pollWindow fixes the time bounds while a bounded poll drains its search_after
@@ -111,10 +118,14 @@ func New(opt Options, eng *risk.Engine, res *resolve.Resolver, gw Gateway, api A
 	if opt.MaxPagesPerPoll <= 0 {
 		opt.MaxPagesPerPoll = 200
 	}
-	return &Runner{
+	r := &Runner{
 		Opt: opt, Eng: eng, Res: res, Gateway: gw, API: api, Log: log, Now: time.Now,
 		fb: feedback.Result{ReviewCoverageStatus: feedback.ReviewCoverageNoData}, audited: map[string]bool{},
 	}
+	if eng != nil {
+		eng.SetCoverage(r.coverageGaps)
+	}
+	return r
 }
 
 // Readiness describes whether the initial backfill completed, Wazuh polling is fresh, and
@@ -122,21 +133,26 @@ func New(opt Options, eng *risk.Engine, res *resolve.Resolver, gw Gateway, api A
 // or feedback refresh degrades readiness immediately. Otherwise, either input older than
 // three configured intervals (at least 30 seconds) is considered stale.
 type Readiness struct {
-	Ready               bool       `json:"ready"`
-	Status              string     `json:"status"`
-	Reason              string     `json:"reason,omitempty"`
-	LastPoll            time.Time  `json:"lastPoll,omitempty"`
-	PollAgeSecs         float64    `json:"pollAgeSeconds,omitempty"`
-	FeedbackReady       bool       `json:"feedbackReady"`
-	FeedbackStatus      string     `json:"feedbackStatus"`
-	FeedbackReason      string     `json:"feedbackReason,omitempty"`
-	LastFeedbackSuccess *time.Time `json:"lastFeedbackSuccess,omitempty"`
-	FeedbackAgeSecs     *float64   `json:"feedbackAgeSeconds,omitempty"`
-	PollWindowPending   bool       `json:"pollWindowPending"`
-	PollWindowFrom      *time.Time `json:"pollWindowFrom,omitempty"`
-	PollWindowTo        *time.Time `json:"pollWindowTo,omitempty"`
-	CoverageThrough     *time.Time `json:"coverageThrough,omitempty"`
-	CoverageLagSecs     *float64   `json:"coverageLagSeconds,omitempty"`
+	Sources             map[string]SourceProgress `json:"observedSources,omitempty"`
+	Ready               bool                      `json:"ready"`
+	Status              string                    `json:"status"`
+	Reason              string                    `json:"reason,omitempty"`
+	LastPoll            time.Time                 `json:"lastPoll,omitempty"`
+	PollAgeSecs         float64                   `json:"pollAgeSeconds,omitempty"`
+	FeedbackReady       bool                      `json:"feedbackReady"`
+	FeedbackStatus      string                    `json:"feedbackStatus"`
+	FeedbackReason      string                    `json:"feedbackReason,omitempty"`
+	LastFeedbackSuccess *time.Time                `json:"lastFeedbackSuccess,omitempty"`
+	FeedbackAgeSecs     *float64                  `json:"feedbackAgeSeconds,omitempty"`
+	PollWindowPending   bool                      `json:"pollWindowPending"`
+	PollWindowFrom      *time.Time                `json:"pollWindowFrom,omitempty"`
+	PollWindowTo        *time.Time                `json:"pollWindowTo,omitempty"`
+	CoverageThrough     *time.Time                `json:"coverageThrough,omitempty"`
+	CoverageLagSecs     *float64                  `json:"coverageLagSeconds,omitempty"`
+	// CoverageComplete is false when any observed source lacks verified complete
+	// coverage. Consumers must show "incomplete coverage", never "no activity".
+	CoverageComplete  bool `json:"coverageComplete"`
+	PendingWindowDocs int  `json:"pendingWindowDocuments"`
 }
 
 func (r *Runner) Readiness(at time.Time) Readiness {
@@ -147,6 +163,13 @@ func (r *Runner) Readiness(at time.Time) Readiness {
 
 func (r *Runner) readinessLocked(at time.Time) Readiness {
 	state := Readiness{Status: "backfilling", Reason: "initial_backfill_incomplete"}
+	state.Sources = r.coverageLocked(at)
+	state.CoverageComplete = r.backfilled && r.pendingPoll == nil && r.lastPollErr == ""
+	for _, progress := range state.Sources {
+		if progress.Coverage != "complete" {
+			state.CoverageComplete = false
+		}
+	}
 	if !r.lastTo.IsZero() {
 		through := r.lastTo
 		lag := at.Add(-r.Opt.Lag).Sub(through).Seconds()
@@ -159,8 +182,13 @@ func (r *Runner) readinessLocked(at time.Time) Readiness {
 		from, to := r.pendingPoll.from, r.pendingPoll.to
 		state.PollWindowPending = true
 		state.PollWindowFrom, state.PollWindowTo = &from, &to
+		state.PendingWindowDocs = r.windowDocs
 	}
 	feedbackReady := r.feedbackReadinessLocked(at, &state)
+	if r.memberWriteFailed {
+		state.Status, state.Reason = "degraded", "candidate_membership_write_failed"
+		return state
+	}
 	if !r.backfilled || !r.ready {
 		if r.lastPollErr != "" {
 			state.Status, state.Reason = "degraded", "upstream_backfill_failed"
@@ -269,18 +297,32 @@ func (r *Runner) ingest(ctx context.Context, from, to time.Time, maxPages int, c
 			return created, cursor, err
 		}
 		r.C.Pages.Add(1)
+		readAt := r.Now().UTC()
 		for _, d := range docs {
+			if hb, ok := resolve.ParseHeartbeat(d); ok {
+				r.C.Heartbeats.Add(1)
+				r.mu.Lock()
+				r.noteHeartbeat(hb, readAt)
+				r.mu.Unlock()
+				continue
+			}
 			obs, ok := r.Res.Observe(d)
 			if !ok {
 				r.C.Unparseable.Add(1)
 				continue
 			}
-			created = append(created, r.Eng.Process(obs)...)
+			c, duplicate := r.Eng.ProcessStatus(obs)
+			created = append(created, c...)
 			r.mu.Lock()
-			if obs.Time.After(r.cursorAt) {
-				r.cursorAt = obs.Time
+			r.noteSourceRead(obs.Source, obs.Time, obs.IngestedAt, readAt, duplicate)
+			if obs.IngestedAt.After(r.cursorAt) {
+				r.cursorAt = obs.IngestedAt
 			}
+			r.windowDocs++
 			r.mu.Unlock()
+		}
+		if err := r.Eng.FlushMembers(); err != nil {
+			return created, cursor, err
 		}
 		if next == nil {
 			return created, nil, nil
@@ -297,6 +339,17 @@ func (r *Runner) Backfill(ctx context.Context) ([]*model.Candidate, error) {
 	now := r.Now().UTC()
 	to := now.Add(-r.Opt.Lag)
 	from := to.Add(-r.Opt.Backfill)
+	previous, err := loadWatermark(r.Opt.WatermarkPath)
+	if err != nil {
+		return nil, err
+	}
+	if previous.After(to) {
+		return nil, errors.New("poll watermark exceeds safe event time")
+	}
+	if !previous.IsZero() {
+		// Restore risk history leading up to the interruption before draining the gap.
+		from = previous.Add(-r.Opt.Backfill)
+	}
 	// Feedback first so that historical suppressions apply in time order.
 	if err := r.RefreshFeedback(ctx); err != nil {
 		r.Log.Warn("feedback.unavailable_at_start", "error", errText(err))
@@ -318,12 +371,17 @@ func (r *Runner) Backfill(ctx context.Context) ([]*model.Candidate, error) {
 			return created, err
 		}
 	}
+	if err := r.attachAlerts(); err != nil {
+		return created, err
+	}
+	if err := saveWatermark(r.Opt.WatermarkPath, to); err != nil {
+		return created, err
+	}
 	r.mu.Lock()
 	r.lastTo, r.backfilled, r.ready = to, true, true
 	r.pendingPoll = nil
 	r.lastPoll, r.lastPollErr = r.Now().UTC(), ""
 	r.mu.Unlock()
-	r.attachAlerts()
 	r.Log.Info("backfill.completed", "from", from, "to", to, "observations", r.Eng.Stats().Observations,
 		"candidates", len(created), "duration_ms", time.Since(start).Milliseconds())
 	return created, nil
@@ -336,14 +394,30 @@ func (r *Runner) Poll(ctx context.Context) ([]*model.Candidate, error) {
 	r.mu.RLock()
 	window := r.pendingPoll
 	if window == nil {
-		window = &pollWindow{from: r.lastTo.Add(-r.Opt.Overlap), to: r.Now().UTC().Add(-r.Opt.Lag)}
+		to := r.Now().UTC().Add(-r.Opt.Lag)
+		if to.Before(r.lastTo) {
+			r.mu.RUnlock()
+			return nil, errors.New("poll clock precedes completed watermark")
+		}
+		window = &pollWindow{from: r.lastTo.Add(-r.Opt.Overlap), to: to}
 	}
+	fresh := r.pendingPoll == nil
 	r.mu.RUnlock()
+	if fresh {
+		r.mu.Lock()
+		r.windowDocs = 0
+		r.mu.Unlock()
+	}
 	if !window.to.After(window.from) {
 		return nil, nil
 	}
 	r.C.Polls.Add(1)
 	created, next, err := r.ingest(ctx, window.from, window.to, r.Opt.MaxPagesPerPoll, window.after)
+	if err == nil && next == nil && r.Opt.WatermarkPath != "" {
+		if err = r.attachAlerts(); err == nil {
+			err = saveWatermark(r.Opt.WatermarkPath, window.to)
+		}
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if err != nil {
@@ -358,6 +432,7 @@ func (r *Runner) Poll(ctx context.Context) ([]*model.Candidate, error) {
 		return created, nil
 	}
 	r.pendingPoll = nil
+	r.windowDocs = 0
 	r.lastTo, r.lastPoll = window.to, r.Now().UTC()
 	return created, nil
 }
@@ -407,17 +482,21 @@ func (r *Runner) RefreshFeedback(ctx context.Context) error {
 	r.fb, r.alerts, r.truncated, r.dedup, r.lastFeedback = fb, alerts, truncated, dedup, completedAt
 	r.lastFeedbackErr = ""
 	r.mu.Unlock()
-	r.attachAlerts()
-	return nil
+	return r.attachAlerts()
 }
 
-func (r *Runner) attachAlerts() {
+func (r *Runner) attachAlerts() error {
 	r.mu.RLock()
 	alerts := r.alerts
 	r.mu.RUnlock()
 	if len(alerts) > 0 {
-		r.Eng.AttachAlerts(alerts)
+		err := r.Eng.AttachAlerts(alerts)
+		r.mu.Lock()
+		r.memberWriteFailed = err != nil
+		r.mu.Unlock()
+		return err
 	}
+	return nil
 }
 
 // AuditFeedback records feedback decisions (idempotent on the API side).
@@ -528,6 +607,21 @@ func (r *Runner) Emit(ctx context.Context, cands []*model.Candidate) {
 		if !r.Opt.Emit {
 			continue
 		}
+		// Coverage may have changed since the candidate opened: state it at emission.
+		if gaps := r.coverageGaps(cur.Sources, cur.FirstSeen, cur.LastSeen); len(gaps) > 0 {
+			r.Eng.UpdateCandidate(c.ID, func(x *model.Candidate) {
+				missing := append([]string{}, x.Explanation.MissingData...)
+				for _, g := range gaps {
+					if !containsString(missing, g) {
+						missing = append(missing, g)
+					}
+				}
+				x.Explanation.MissingData = missing
+			})
+			if refreshed, ok := r.Eng.Candidate(c.ID); ok {
+				cur = &refreshed
+			}
+		}
 		eligible, late := r.emitVerdict(now, cur)
 		if !eligible {
 			r.C.EmitSkipped.Add(1)
@@ -566,14 +660,16 @@ func (r *Runner) Emit(ctx context.Context, cands []*model.Candidate) {
 			r.Eng.UpdateCandidate(c.ID, func(x *model.Candidate) { x.Status, x.StatusDetail = model.CandidateFailed, errText(err) })
 			continue
 		}
+		if err := r.Eng.RecordEmission(c.ID, resp.AlertID); err != nil {
+			r.C.EmitErrors.Add(1)
+			r.Log.Error("candidate.emit_archive_failed", "candidate", c.ID, "error", errText(err))
+			continue
+		}
 		r.C.Emitted.Add(1)
 		if late {
 			r.C.EmittedLate.Add(1)
 		}
 		r.Log.Info("candidate.emitted", "candidate", c.ID, "alert", resp.AlertID, "created", resp.Created, "priority", cur.Priority, "pattern", cur.PatternID)
-		r.Eng.UpdateCandidate(c.ID, func(x *model.Candidate) {
-			x.Status, x.AlertID, x.StatusDetail = model.CandidateEmitted, resp.AlertID, ""
-		})
 	}
 }
 
@@ -634,7 +730,10 @@ func (r *Runner) Run(ctx context.Context) {
 			if err != nil {
 				r.Log.Warn("poll.failed", "error", errText(err))
 			}
-			r.attachAlerts()
+			if err := r.attachAlerts(); err != nil {
+				r.Log.Error("candidate.membership_write_failed")
+				continue
+			}
 			r.Emit(ctx, append(created, r.retryable()...))
 		case <-fbTick.C:
 			if err := r.RefreshFeedback(ctx); err != nil {
@@ -716,17 +815,60 @@ func explanationRequest(x model.Explanation) *sources.ExplanationRequest {
 	if len(ev) > 20 {
 		ev = ev[:20]
 	}
-	stages := x.Stages
+	stages := append([]model.StageHit{}, x.Stages...)
 	if len(stages) > 6 {
 		stages = stages[:6]
 	}
-	narrative := x.Narrative
-	if len(narrative) > 600 {
-		narrative = narrative[:600]
+	for i := range stages {
+		stages[i].Criteria = truncateUTF8(stages[i].Criteria, 280)
 	}
+	narrative := truncateUTF8(x.Narrative, 600)
 	steps := x.NextSteps
 	if len(steps) > 4 {
 		steps = steps[:4]
 	}
-	return &sources.ExplanationRequest{Narrative: narrative, Stages: stages, EvidenceObservationIDs: ev, NextSteps: steps}
+	checks := x.Checks
+	if len(checks) > 8 {
+		checks = checks[:8]
+	}
+	return &sources.ExplanationRequest{
+		Narrative: narrative, Stages: stages, EvidenceObservationIDs: ev, NextSteps: steps,
+		PatternVersion: x.PatternVersion, WindowSeconds: x.WindowSeconds, Checks: checks,
+		Contradictions: boundedLines(x.Contradictions, 6, 280), MissingData: boundedLines(x.MissingData, 6, 280),
+		Lifecycle: truncateUTF8(x.Lifecycle, 280),
+	}
+}
+
+func boundedLines(lines []string, n, size int) []string {
+	out := []string{}
+	for _, line := range lines {
+		if len(out) == n {
+			break
+		}
+		if len(line) > size {
+			line = truncateUTF8(line, size)
+		}
+		out = append(out, line)
+	}
+	return out
+}
+
+// truncateUTF8 cuts at a rune boundary so the API's text validation never sees a split rune.
+func truncateUTF8(s string, size int) string {
+	if len(s) <= size {
+		return s
+	}
+	for size > 0 && !utf8.RuneStart(s[size]) {
+		size--
+	}
+	return s[:size]
+}
+
+func containsString(list []string, v string) bool {
+	for _, x := range list {
+		if x == v {
+			return true
+		}
+	}
+	return false
 }

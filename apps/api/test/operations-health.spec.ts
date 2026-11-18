@@ -94,6 +94,108 @@ describe('operations/health · estados', () => {
     });
   });
 
+  it('proyecta la cobertura por fuente del correlador y acepta catching_up como no listo', () => {
+    const body = {
+      ready: false,
+      status: 'catching_up',
+      feedbackReady: true,
+      feedbackStatus: 'ready',
+      feedbackAgeSeconds: 5,
+      lastFeedbackSuccess: '2026-10-12T11:59:55.000Z',
+      coverageComplete: true,
+      observedSources: {
+        m365: {
+          coverage: 'incomplete',
+          coverageReason: 'collector_behind_provider',
+          providerLagSeconds: 3600.4,
+          lastEventAgeSeconds: 120,
+          providerWatermark: 'cursor-interno',
+        },
+        wazuh: { coverage: 'unknown', coverageReason: 'no_collector_heartbeat' },
+        aws: { coverage: 'complete', providerLagSeconds: 30, lastEventAgeSeconds: 10 },
+        'BAD label': { coverage: 'complete' },
+        snyk: { coverage: 'silent', coverageReason: 'texto libre' },
+      },
+    };
+    const health = correlatorHealth({ status: 503, body });
+    expect(health.feedbackStatus).toBe('ready');
+    expect(health.ready).toBe(false);
+    expect(health.coverage).toEqual({
+      complete: false,
+      sources: [
+        {
+          source: 'aws',
+          state: 'complete',
+          reason: null,
+          providerLagSeconds: 30,
+          lastEventAgeSeconds: 10,
+        },
+        {
+          source: 'm365',
+          state: 'incomplete',
+          reason: 'collector_behind_provider',
+          providerLagSeconds: 3600,
+          lastEventAgeSeconds: 120,
+        },
+        {
+          source: 'wazuh',
+          state: 'unknown',
+          reason: 'no_collector_heartbeat',
+          providerLagSeconds: null,
+          lastEventAgeSeconds: null,
+        },
+      ],
+    });
+    expect(JSON.stringify(health)).not.toContain('cursor-interno');
+    const section = socSection(
+      {
+        persistence: 'postgres',
+        dispatcherRunning: true,
+        outbox: {
+          pending: 0,
+          processing: 0,
+          oldestPendingAt: null,
+          expiredProcessing: 0,
+          oldestExpiredProcessingLeaseUntil: null,
+        },
+        notificationsByStatus: {},
+        correlator: health,
+      },
+      AT,
+    );
+    expect(section.degradedReasons).toContain('CORRELATOR_COVERAGE_INCOMPLETE');
+
+    // Solo `unknown`: se muestra, pero no degrada la sección.
+    const unknownOnly = correlatorHealth({
+      status: 200,
+      body: {
+        ...body,
+        ready: true,
+        status: 'ready',
+        observedSources: { wazuh: { coverage: 'unknown' } },
+      },
+    });
+    expect(unknownOnly.coverage?.complete).toBe(false);
+    expect(
+      socSection(
+        {
+          persistence: 'postgres',
+          dispatcherRunning: true,
+          outbox: {
+            pending: 0,
+            processing: 0,
+            oldestPendingAt: null,
+            expiredProcessing: 0,
+            oldestExpiredProcessingLeaseUntil: null,
+          },
+          notificationsByStatus: {},
+          correlator: unknownOnly,
+        },
+        AT,
+      ).degradedReasons,
+    ).not.toContain('CORRELATOR_COVERAGE_INCOMPLETE');
+  });
+
   it('sin alertas el resumen es NO_DATA y la cobertura de fuentes se declara NO_DATA', () => {
     const summary = summarySection({ lastAlertAt: null }, AT);
     expect(summary).toMatchObject({ status: 'NO_DATA', sourceCoverage: 'NO_DATA' });

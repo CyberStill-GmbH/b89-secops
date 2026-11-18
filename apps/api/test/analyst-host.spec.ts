@@ -141,6 +141,18 @@ beforeEach(() => {
 });
 
 describe('lector de evidencia', () => {
+  it('recupera los miembros explícitos más allá de los antiguos topes de lectura', async () => {
+    const related = Array.from({ length: 24 }, () => putAlert({ priority: 'P3' }));
+    const parent = putAlert({ priority: 'P2', relatedAlertIds: related.map(a => a.id) });
+    const assigned = [parent, ...Array.from({ length: 51 }, () => putAlert({ priority: 'P2' }))];
+    const reader = new RuntimeEvidenceReader({ tenantId: T, soc, now: () => new Date() });
+    const bundle = await reader.collect(
+      { tenantId: T, alertIds: assigned.map(a => a.id) } as unknown as InvestigationJob,
+      new AbortController().signal,
+    );
+    expect(bundle.alerts.map(a => a.id)).toEqual(assigned.map(a => a.id));
+    expect(bundle.relatedAlerts.map(a => a.id)).toEqual(related.map(a => a.id));
+  });
   it('lee solo el tenant del runtime y no publica claves de entidad', async () => {
     const own = putAlert({ priority: 'P3', relatedAlertIds: [] });
     const foreign = putAlert({ tenantId: 't2', priority: 'P1' });
@@ -703,7 +715,7 @@ describe('evidencia ampliada (mismo alcance que Bunny, sin modelo)', () => {
         category: ['authentication'],
         action: 'logon',
         outcome: 'failure',
-        entities: { identities: [{ kind: 'user', id: 'x', principal }] },
+        entities: { identities: [{ kind: 'user', id: 'x', principal }], resources: [] },
       },
       raw: { full_log: 'CRUDO' },
     });

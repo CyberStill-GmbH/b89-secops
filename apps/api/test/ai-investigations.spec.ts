@@ -5,7 +5,7 @@
 
 import { randomUUID } from 'node:crypto';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   DEFAULT_ANALYST_SETTINGS,
@@ -39,6 +39,7 @@ function harness(options: {
   analystEnabled?: boolean;
   deploymentCeiling?: number | null;
   withAnalyst?: boolean;
+  correlatorRead?: { baseUrl: string; token: string };
 }) {
   const audit = new InMemoryAuditStore();
   const soc = new InMemorySoc();
@@ -70,6 +71,7 @@ function harness(options: {
     consoleBaseUrl: 'https://soc.example',
   });
   const runtime = {
+    correlatorRead: options.correlatorRead,
     now: () => NOW,
     audit,
     soc,
@@ -116,6 +118,41 @@ function settingsBody(patch: Record<string, unknown> = {}, expectedRevision = 0)
   const { maxImmediatePerHour: _omit, ...uiReview } = review;
   return { settings: { ...rest, review: uiReview, ...patch }, expectedRevision };
 }
+
+describe('anexo de referencias del correlador', () => {
+  it.each([[true, true], [true, false], [false, false]])('pagina 101 miembros con permisos alertas=%s eventos=%s', async (allowed, eventsAllowed) => {
+    const h = harness({
+      capabilities: eventsAllowed ? ['investigations.read', 'alerts.read', 'events.read'] : allowed ? ['investigations.read', 'alerts.read'] : ['investigations.read'],
+      correlatorRead: { baseUrl: 'http://correlator', token: 'synthetic' },
+    });
+    const { job } = await h.store.enqueue({
+      id: randomUUID(), tenantId: T, subject: { kind: 'candidate', id: 'cand', title: 'caso' },
+      alertIds: ['alert-1'], priority: 'P2', trigger: 'system', source: 'backlog', initiatedBy: null,
+      idempotencyKey: 'candidate:cand', fingerprint: 'fp', policyVersion: '1', createdAt: NOW,
+    });
+    vi.spyOn(h.store, 'byId').mockResolvedValue({
+      ...job, evidence: {
+        candidateId: 'cand', alertCount: 1, relatedAlertCount: 0, eventCount: 1, sourceCount: 1,
+        unhealthySourceCount: 0, complete: true, truncated: false, gaps: [], watermark: '',
+        fingerprint: 'fp', estimatedInputTokens: null, packTruncated: false,
+      },
+    });
+    const get = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      const offset = Number(new URL(String(url)).searchParams.get('offset'));
+      const prefix = new URL(String(url)).searchParams.get('kind') === 'observations' ? 'wazuh' : 'member';
+      const items = Array.from({ length: offset === 0 ? 100 : 1 }, (_, i) => `${prefix}-${offset + i}`);
+      return Response.json({ items, total: 101, nextOffset: offset === 0 ? 100 : null });
+    });
+    try {
+      const { report } = await h.controller.report(h.request, job.id);
+      expect(report.markdown).toContain(allowed ? 'member-100' : 'permiso de lectura');
+      expect(report.markdown.includes('wazuh-100')).toBe(eventsAllowed);
+      expect(get).toHaveBeenCalledTimes(eventsAllowed ? 4 : allowed ? 2 : 0);
+    } finally {
+      get.mockRestore();
+    }
+  });
+});
 
 function putAlert(soc: InMemorySoc, tenantId = T) {
   const id = randomUUID();

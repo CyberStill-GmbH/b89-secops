@@ -14,13 +14,27 @@ type Pattern struct {
 	Pivots          []model.EntityType
 	Stages          []model.Stage
 	Required        []model.Stage // must be part of any match
+	MinSources      int           // minimum distinct named sources among the matched hits
 	MinStages       int
 	Ordered         bool
 	Window          time.Duration
 	Priority        string // complete match
 	PartialPriority string // >= MinStages but not every stage
 	Signal          string // B89 signal class of the resulting alert
+	// MinDistinctRules is a diversity threshold: distinct detection rules among the hits
+	// (0 = not required). Repeats of one rule do not make a sequence.
+	MinDistinctRules int
+	// Mode is "active" (materialized as B89 alerts) or "shadow" (measured, never emitted).
+	// New rules start in shadow until analyst-labeled data supports activation.
+	Mode string
 }
+
+// IsShadow reports whether the pattern only produces reviewable shadow candidates.
+func (p Pattern) IsShadow() bool { return p.Mode == model.ModeShadow }
+
+// PivotMinConfidence: a sequence pivots only on exact or canonical identities. A bare name
+// or other low-confidence attribution can add risk context but cannot connect steps.
+const PivotMinConfidence = model.ConfidenceMedium
 
 // DefaultPatterns are the multi-stage detections the correlator ships with.
 func DefaultPatterns() []Pattern {
@@ -31,6 +45,7 @@ func DefaultPatterns() []Pattern {
 			Pivots:          []model.EntityType{model.EntityIP},
 			Stages:          []model.Stage{model.StageEdgeWAFBlock, model.StageEdgeScan, model.StageSSHBruteForce},
 			Required:        []model.Stage{model.StageSSHBruteForce},
+			MinSources:      2,
 			MinStages:       2,
 			Ordered:         true,
 			Window:          24 * time.Hour,
@@ -85,6 +100,24 @@ func DefaultPatterns() []Pattern {
 			Priority:        "P1",
 			PartialPriority: "P1",
 			Signal:          "defense_evasion",
+		},
+		{
+			// Ordered sequence on the same canonical user: credential/MFA change, then a
+			// sign-in from a location not seen before for that user, then activity on a
+			// managed endpoint. The order raises suspicion; it does not prove causality.
+			ID:               "identity-change-new-location-endpoint",
+			Title:            "Cambio de identidad, acceso desde una ubicación nueva y actividad en endpoint del mismo usuario",
+			Pivots:           []model.EntityType{model.EntityUser},
+			Stages:           []model.Stage{model.StageIdentityChange, model.StageNewLocation, model.StageEndpointActivity},
+			MinStages:        3,
+			MinSources:       2,
+			MinDistinctRules: 2,
+			Ordered:          true,
+			Window:           24 * time.Hour,
+			Priority:         "P2",
+			PartialPriority:  "P3",
+			Signal:           "initial_access",
+			Mode:             model.ModeShadow,
 		},
 	}
 }
@@ -180,45 +213,75 @@ func (p Pattern) Match(h stageHistory, now time.Time) ([]model.StageHit, bool) {
 		// made the explanation point at stale evidence even when a tighter chain was
 		// present later in the same window. For ordered patterns, walk backward from
 		// the final stage and take the newest hit that still preserves stage order.
-		picked := make([]model.StageHit, 0, count)
 		selected := make([]int, 0, count)
 		for i := 0; i < n; i++ {
 			if mask&(1<<i) != 0 {
 				selected = append(selected, i)
 			}
 		}
-		if p.Ordered {
-			chosen := make([]model.StageHit, len(selected))
-			ceiling := now
-			for j := len(selected) - 1; j >= 0; j-- {
-				stageHits := inWindow(p.Stages[selected[j]])
-				found := false
-				for k := len(stageHits) - 1; k >= 0; k-- {
-					if !stageHits[k].At.After(ceiling) {
-						chosen[j] = stageHits[k]
-						ceiling = stageHits[k].At
-						found = true
+		if p.MinSources > 1 {
+			available := make(map[string]bool)
+			for _, i := range selected {
+				for _, hit := range inWindow(p.Stages[i]) {
+					if hit.Source != "" && hit.Source != "unknown" {
+						available[hit.Source] = true
+					}
+				}
+			}
+			if len(available) < p.MinSources {
+				continue
+			}
+		}
+		// Traverse terminal-first so the first valid chain is the newest coherent one.
+		// Look past a newer hit when it merely duplicates a source or observation.
+		picked := make([]model.StageHit, len(selected))
+		var choose func(int) bool
+		choose = func(j int) bool {
+			if j < 0 {
+				if p.MinDistinctRules > 1 {
+					rules := make(map[string]bool, len(picked))
+					for _, hit := range picked {
+						rules[hit.RuleID] = true
+					}
+					if len(rules) < p.MinDistinctRules {
+						return false
+					}
+				}
+				if p.MinSources <= 1 {
+					return true
+				}
+				sources := make(map[string]bool, len(picked))
+				for _, hit := range picked {
+					if hit.Source != "" && hit.Source != "unknown" {
+						sources[hit.Source] = true
+					}
+				}
+				return len(sources) >= p.MinSources
+			}
+			hits := inWindow(p.Stages[selected[j]])
+			for k := len(hits) - 1; k >= 0; k-- {
+				hit := hits[k]
+				if p.Ordered && j+1 < len(selected) && hit.At.After(picked[j+1].At) {
+					continue
+				}
+				duplicate := false
+				for _, later := range picked[j+1:] {
+					if (hit.ObsID != "" && hit.ObsID == later.ObsID) || (hit.ProviderTenant != "" && later.ProviderTenant != "" && hit.ProviderTenant != later.ProviderTenant) {
+						duplicate = true
 						break
 					}
 				}
-				if !found {
-					ok = false
-					break
+				if duplicate {
+					continue
+				}
+				picked[j] = hit
+				if choose(j - 1) {
+					return true
 				}
 			}
-			if ok {
-				picked = append(picked, chosen...)
-			}
-		} else {
-			for _, i := range selected {
-				stageHits := inWindow(p.Stages[i])
-				if len(stageHits) == 0 {
-					ok = false
-					break
-				}
-				picked = append(picked, stageHits[len(stageHits)-1])
-			}
+			return false
 		}
+		ok = choose(len(selected) - 1)
 		if ok && (len(picked) > len(best) || (len(picked) == len(best) && newerEvidenceChain(picked, best))) {
 			best = picked
 		}

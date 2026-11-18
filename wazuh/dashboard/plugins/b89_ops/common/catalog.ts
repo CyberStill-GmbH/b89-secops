@@ -243,4 +243,20 @@ export const DEGRADED_REASON_LABEL: Record<string, string> = {
     'Ningún canal (Teams o correo) puede entregar un aviso P1; solo queda la bandeja',
   DATABASE_UNAVAILABLE: 'La base de datos no respondió',
   DATABASE_SLOW: 'La base de datos responde lento (> 1 s)',
+  CORRELATOR_UNREACHABLE: 'El correlador no respondió o su respuesta no es válida',
+  CORRELATOR_NOT_READY: 'El correlador no está listo (backfill, atraso o lectura fallida)',
+  CORRELATOR_COVERAGE_INCOMPLETE:
+    'Cobertura incompleta: al menos una fuente va atrasada o su colector falló; pueden faltar eventos',
+};
+
+/** Motivo de cobertura por fuente (correlador). `unknown` se presenta como no verificada. */
+export const SOURCE_COVERAGE_REASON_LABEL: Record<string, string> = {
+  no_collector_heartbeat: 'no verificada: no llegó latido del colector',
+  collector_run_partial: 'la última corrida del colector fue parcial',
+  collector_run_failed: 'la última corrida del colector falló',
+  collector_heartbeat_stale: 'el colector no reporta hace más de 1 h',
+  collector_behind_provider: 'el colector va atrasado respecto del proveedor',
+  correlator_backfilling: 'el correlador aún está cargando el historial',
+  correlator_read_failed: 'el correlador no pudo leer el Indexer',
+  correlator_catching_up: 'el correlador se está poniendo al día',
 };

@@ -155,6 +155,7 @@ import {
   type NotificationPolicyConfig,
 } from '@b89/soar';
 import { CONNECTED_SOURCE_SIGNAL_CATALOG } from './signal-catalog.js';
+import type { IpReputationLookup } from './abuseipdb.js';
 
 /**
  * Diagnóstico de un inicio de sesión rechazado. Solo códigos: ni tokens, ni claims, ni texto
@@ -261,6 +262,8 @@ export interface RuntimeOptions {
    * Absent: the risk endpoints answer DEPENDENCY_DEGRADED.
    */
   readonly correlatorRead?: { readonly baseUrl: string; readonly token: string };
+  /** Reputación externa de IP (AbuseIPDB). Ausente: el enriquecimiento queda apagado. */
+  readonly ipReputation?: IpReputationLookup;
   readonly teamsWorkflowUrl?: string;
   readonly transport?: NotificationTransport;
   readonly clock?: () => Date;
@@ -400,6 +403,7 @@ export class SecOpsRuntime {
   private readonly digests: NotificationDispatcher;
   public readonly correlatorServiceToken: string | undefined;
   public readonly correlatorRead: { readonly baseUrl: string; readonly token: string } | undefined;
+  public readonly ipReputation: IpReputationLookup | undefined;
   /** Bandeja de la consola: último eslabón del respaldo, siempre presente. */
   public readonly consoleFallback = new ConsoleFallbackChannel();
 
@@ -445,6 +449,7 @@ export class SecOpsRuntime {
     this.wazuhPushInbox = options.wazuhPushInbox;
     this.correlatorServiceToken = options.correlatorServiceToken;
     this.correlatorRead = options.correlatorRead;
+    this.ipReputation = options.ipReputation;
     this.clock = options.clock ?? (() => new Date());
     this.csrfKey = options.csrfKey ?? randomBytes(32);
     this.soc = options.soc ?? new InMemorySoc();

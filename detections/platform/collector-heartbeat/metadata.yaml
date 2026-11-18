@@ -1,0 +1,37 @@
+# B89 SOC · metadatos de detección (estándar: docs/detection-engineering/01-ciclo-de-vida.md#metadatos)
+id: B89-DET-PLAT-001
+title: Latido de los collectors de proveedores (cobertura de fuentes)
+source: platform
+use_case: source-health
+status: testing
+version: 1.0.0
+owner: soc-detection-engineering
+reviewers:
+- b89.soc.lead
+created: '2026-11-18'
+updated: '2026-11-18'
+hypothesis: Sin un latido indexado, un colector atrasado o caído es indistinguible de una fuente sin actividad; el
+  correlador necesita el atraso y el watermark del proveedor para declarar cobertura incompleta.
+data_sources:
+- Latido de wazuh/provider-ingestion/common/b89_collector.py (source_heartbeat, allowlist sin URLs ni secretos)
+rules:
+  file: detections/platform/collector-heartbeat/rule.xml
+  ids:
+  - 101980
+  - 101981
+  installed_as: etc/rules/b89_soc_collector_heartbeat.xml
+mitre: []
+severity:
+  levels: 3 por corrida (informativo; no notifica)
+  priority_hint: ninguna (evidencia de cobertura, no alerta)
+  rationale: Debe superar B89_CORRELATOR_MIN_LEVEL (3) y el nivel de registro de alertas de Wazuh para indexarse.
+false_positives:
+- No aplica; el volumen es una alerta por corrida de cada collector.
+tuning:
+- Si el volumen molesta en Discover, filtrar rule.groups:b89_collector_heartbeat; no bajar el nivel por debajo de 3.
+tests:
+  runner: logtest
+  fixtures: detections/platform/collector-heartbeat/fixtures.jsonl
+  expected: detections/platform/collector-heartbeat/expected.txt
+runbook: docs/detection-engineering/14-source-recovery.md
+notes: Consumido por services/b89-correlator (resolve.ParseHeartbeat → cobertura por fuente). Probado con fixtures sintéticos.

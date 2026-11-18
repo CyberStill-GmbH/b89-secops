@@ -6,6 +6,7 @@ import {
 } from '../../common/api_contract';
 import {
   describeCorrelatorHealth,
+  describeSourceCoverage,
   formatLatencySummary,
   formatOutboxQueueSummary,
 } from './operations_view';
@@ -49,9 +50,7 @@ describe('operations correlator contract and copy', () => {
   it('reports a missing correlator response and degraded overall readiness clearly', () => {
     expect(describeCorrelatorHealth(undefined).label).toBe('Sin respuesta');
     expect(
-      describeCorrelatorHealth(
-        correlator('ready', { status: 'DEGRADED', ready: false }),
-      ).label,
+      describeCorrelatorHealth(correlator('ready', { status: 'DEGRADED', ready: false })).label,
     ).toBe('Degradado');
   });
 });
@@ -92,5 +91,84 @@ describe('operations outbox lease copy', () => {
         oldestExpiredLeaseAgeSeconds: null,
       }),
     ).toBe('0 pendientes · 1 en curso · más antigua Sin dato · 0 leases vencidos');
+  });
+});
+
+describe('source coverage copy', () => {
+  it('never presents missing heartbeats or lag as inactivity', () => {
+    const state = describeSourceCoverage({
+      complete: false,
+      sources: [
+        {
+          source: 'aws',
+          state: 'complete',
+          reason: null,
+          providerLagSeconds: 30,
+          lastEventAgeSeconds: 5,
+        },
+        {
+          source: 'm365',
+          state: 'incomplete',
+          reason: 'collector_behind_provider',
+          providerLagSeconds: 3600,
+          lastEventAgeSeconds: 120,
+        },
+        {
+          source: 'wazuh',
+          state: 'unknown',
+          reason: 'no_collector_heartbeat',
+          providerLagSeconds: null,
+          lastEventAgeSeconds: null,
+        },
+      ],
+    });
+    expect(state.label).toBe('Cobertura incompleta');
+    expect(state.tone).toBe('warn');
+    expect(state.details).toEqual([
+      'm365: el colector va atrasado respecto del proveedor (1 h)',
+      'wazuh: no verificada: no llegó latido del colector',
+    ]);
+    expect(JSON.stringify(state)).not.toMatch(/sin actividad/i);
+  });
+
+  it('treats unknown-only coverage as incomplete but not as a warning', () => {
+    const state = describeSourceCoverage({
+      complete: false,
+      sources: [
+        {
+          source: 'snyk',
+          state: 'unknown',
+          reason: null,
+          providerLagSeconds: null,
+          lastEventAgeSeconds: null,
+        },
+      ],
+    });
+    expect(state).toEqual({
+      label: 'Cobertura incompleta',
+      tone: 'neutral',
+      details: ['snyk: no verificada'],
+    });
+  });
+
+  it('distinguishes complete, no sources and older correlators', () => {
+    expect(describeSourceCoverage(undefined).label).toBe('Sin dato de cobertura');
+    expect(describeSourceCoverage({ complete: true, sources: [] }).label).toBe(
+      'Sin fuentes observadas',
+    );
+    expect(
+      describeSourceCoverage({
+        complete: true,
+        sources: [
+          {
+            source: 'aws',
+            state: 'complete',
+            reason: null,
+            providerLagSeconds: 1,
+            lastEventAgeSeconds: 1,
+          },
+        ],
+      }),
+    ).toMatchObject({ label: 'Completa', tone: 'ok' });
   });
 });

@@ -226,6 +226,21 @@ else
 fi
 unset bunny_key
 
+# Reputación de IP (AbuseIPDB) para el Analista IA y Bunny: clave ABUSEIPDB_API_KEY de
+# secrets/services.env (nunca en el repo), copiada en cada despliegue (una rotación se aplica).
+# Sin clave el enriquecimiento queda apagado y los expedientes lo declaran como vacío.
+sed -i '/^B89_ABUSEIPDB_/d' "$SECRETS/api.env"
+abuseipdb_key="$(grep -s '^ABUSEIPDB_API_KEY=.\+' "$SECRETS/services.env" | tail -1 | cut -d= -f2- || true)"
+if ! grep -q "'B89_ABUSEIPDB_API_KEY'" "$SRC/platform/configuration/src/schema/environment.schema.ts"; then
+  log 'AbuseIPDB: el código aún no admite B89_ABUSEIPDB_API_KEY; reputación de IP apagada'
+elif [[ -n $abuseipdb_key ]]; then
+  printf 'B89_ABUSEIPDB_API_KEY=%s\n' "$abuseipdb_key" >>"$SECRETS/api.env"; chmod 600 "$SECRETS/api.env"
+  log 'AbuseIPDB: clave presente, reputación de IP activada'
+else
+  log 'AbuseIPDB: sin ABUSEIPDB_API_KEY en secrets/services.env, reputación de IP apagada'
+fi
+unset abuseipdb_key
+
 # Analista IA (24/7): el proceso vive dentro del API y lo enciende B89_ANALYST_ENABLED. Por decisión
 # del dueño queda ENCENDIDO por defecto; services.env puede apagarlo (B89_ANALYST_ENABLED=false) o
 # cambiar el techo diario de gasto estimado (B89_ANALYST_DAILY_CEILING_USD, por defecto 2 USD).

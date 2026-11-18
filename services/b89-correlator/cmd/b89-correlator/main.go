@@ -17,6 +17,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -120,7 +121,17 @@ func build(cfg config.Config, log *slog.Logger, dryRun bool) (*engine.Runner, st
 		}
 		return ""
 	}
-	eng := risk.NewEngine(policy, risk.DefaultPatterns(), resolver, criticalityOf, cfg.GroupMinLevel)
+	patterns, err := risk.ConfiguredPatterns(os.Getenv("B89_CORRELATOR_PATTERNS_JSON"))
+	if err != nil {
+		return nil, "", err
+	}
+	eng := risk.NewEngine(policy, patterns, resolver, criticalityOf, cfg.GroupMinLevel)
+
+	if path := os.Getenv("B89_CORRELATOR_MEMBERS_DIR"); !dryRun && path != "" {
+		if err := eng.EnableMemberLedger(path); err != nil {
+			return nil, "", err
+		}
+	}
 
 	fbPolicy := feedback.DefaultPolicy()
 	fbPolicy.MinFalsePositives = cfg.FPMin
@@ -143,6 +154,9 @@ func build(cfg config.Config, log *slog.Logger, dryRun bool) (*engine.Runner, st
 		EmitMaxPerHour: cfg.EmitMaxPerHour, Audit: !dryRun, FeedbackLookback: cfg.FeedbackLookback,
 		Feedback: fbPolicy,
 	}, eng, resolver, gateway, api, log)
+	if dir := os.Getenv("B89_CORRELATOR_MEMBERS_DIR"); !dryRun && dir != "" {
+		runner.Opt.WatermarkPath = filepath.Join(dir, "poll-watermark.v1")
+	}
 	return runner, readToken, nil
 }
 

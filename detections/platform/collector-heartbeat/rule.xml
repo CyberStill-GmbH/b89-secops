@@ -1,0 +1,26 @@
+<!--
+  B89 SOC · detección como código · detections/platform/collector-heartbeat (metadata.yaml).
+  Latido estructurado de cada corrida de los collectors de wazuh/provider-ingestion
+  (b89_collector.heartbeat_event: b89.event_type=source_heartbeat, solo campos de una allowlist).
+  Sin regla, el evento queda en nivel 0 bajo la raíz del proveedor y nunca llega a wazuh-alerts, así
+  que el correlador no puede distinguir «sin actividad» de «colector atrasado» (docs/detection-engineering/15).
+  Nivel 3: entra en wazuh-alerts y supera B89_CORRELATOR_MIN_LEVEL (3). No notifica.
+  - 101980: hijo de cualquier raíz b89_provider (Cloudflare, Bitdefender, Snyk, AWS, M365).
+  - 101981: raíz para latidos sin regla de proveedor (p. ej. SharePoint, vendor=m365 sin integration).
+  Se instala como b89_soc_collector_heartbeat.xml.
+-->
+<group name="b89_source_health,b89_collector_heartbeat,">
+  <rule id="101980" level="3">
+    <if_group>b89_provider</if_group>
+    <field name="b89.event_type">^source_heartbeat$</field>
+    <description>B89 Integración: latido del collector $(b89.heartbeat.source_id) ($(b89.heartbeat.outcome), atraso $(b89.heartbeat.provider_lag_seconds) s).</description>
+    <options>no_full_log</options>
+  </rule>
+
+  <rule id="101981" level="3">
+    <decoded_as>json</decoded_as>
+    <field name="b89.event_type">^source_heartbeat$</field>
+    <description>B89 Integración: latido del collector $(b89.heartbeat.source_id) ($(b89.heartbeat.outcome), atraso $(b89.heartbeat.provider_lag_seconds) s).</description>
+    <options>no_full_log</options>
+  </rule>
+</group>

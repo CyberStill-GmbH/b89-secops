@@ -313,6 +313,16 @@ func TestIntegrationFixtureReplayEmitsAuditsAndServes(t *testing.T) {
 	if code, body := get("/readyz", ""); code != 200 || body["ready"] != true || body["feedbackStatus"] != "ready" || body["lastFeedbackSuccess"] != now.Format(time.RFC3339Nano) {
 		t.Fatalf("readyz must include a fresh successful feedback cycle: %d %v", code, body)
 	}
+	lookup := "/v1/candidates-by-alert/" + created[0].AlertID
+	if code, body := get(lookup, readToken); code != 200 || body["id"] != created[0].ID {
+		t.Fatalf("lookup by emitted alert: %d %v", code, body)
+	}
+	if code, _ := get(lookup, ""); code != 401 {
+		t.Fatalf("unauthorized lookup: %d", code)
+	}
+	if code, _ := get("/v1/candidates-by-alert/missing", readToken); code != 404 {
+		t.Fatalf("unknown alert: %d", code)
+	}
 	if code, _ := get("/v1/entities?top=5", ""); code != 401 {
 		t.Fatalf("unauthenticated /v1: %d", code)
 	}

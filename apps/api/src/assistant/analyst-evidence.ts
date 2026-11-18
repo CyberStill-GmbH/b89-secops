@@ -10,14 +10,16 @@
  * alerta o su incidente. Todo va después en UNA sola llamada al modelo. Reglas:
  *
  * - Toda lectura usa el tenant del runtime; una alerta de otro tenant no existe para el lector.
- * - Lecturas acotadas: relacionadas ≤ 20, historial ≤ el tope del adapter (si el total supera lo
- *   leído se marca `truncated`), una consulta al correlador.
+ * - Se leen las alertas asignadas, sus relaciones explícitas y las páginas del expediente.
+ *   Si el historial de la entidad supera el límite del adaptador, se marca `truncated`.
  * - Completitud honesta: una lectura que falla deja `complete: false` y su vacío; una lectura que
  *   no existe en el servidor (muestra de eventos por entidad) se declara como vacío informativo.
  * - Solo referencias opacas `ent_…` salen del API; nunca claves `user:`/`ip:`.
  */
 
 import { createHash } from 'node:crypto';
+import { entityKeysOf } from '@b89/detection';
+import { findEmittingCandidate, readCandidateMembers } from './candidate-members.js';
 
 import type {
   EvidenceAlert,
@@ -39,6 +41,7 @@ import type {
   EvidenceEventSummary,
   EvidenceIncident,
   EvidenceSubject,
+  EvidenceIpReputation,
   EvidenceNotification,
   EvidenceRule,
 } from '@b89/assistant';
@@ -47,6 +50,7 @@ import { maskText, type AttemptStore } from '@b89/soar';
 import type { SecurityEvent } from '@b89/contracts';
 import type { JsonObject } from '@b89/connectors';
 
+import { AbuseIpdbError, publicIp, type IpReputationLookup } from '../runtime/abuseipdb.js';
 import type { EventsReader } from '../runtime/events-reader.js';
 import { providerOf } from './investigation-tools.js';
 import { subjectFromRaw } from './analyst-subject.js';
@@ -79,6 +83,7 @@ export const EVIDENCE_LIMITS = Object.freeze({
   auditActions: 50,
   /** Eventos sin normalizar tolerados antes de considerar la evidencia incompleta. */
   unparsedTolerance: 5,
+  maxIpReputation: 3,
 });
 
 /** Proveedores que pueden originar una alerta; los no medidos se nombran como vacío. */
@@ -112,6 +117,8 @@ export interface AnalystEvidenceSources {
   readonly correlator?: (pathWithQuery: string) => Promise<{ status: number; body: unknown }>;
   /** Salud de fuentes del tenant; ausente si el despliegue no la mide. */
   readonly sourceHealth?: () => Promise<readonly EvidenceSourceHealth[]>;
+  /** Reputación externa de IP públicas (AbuseIPDB); ausente si no hay clave configurada. */
+  readonly ipReputation?: IpReputationLookup;
   readonly now: () => Date;
 }
 
@@ -197,14 +204,8 @@ export class RuntimeEvidenceReader implements EvidenceReader {
     const relatedIds = [
       ...new Set(alerts.flatMap((alert) => alert.relatedAlertIds).filter((id) => !ownIds.has(id))),
     ];
-    if (relatedIds.length > EVIDENCE_LIMITS.maxRelatedAlerts) {
-      truncated = true;
-      gaps.push(
-        `Se leyeron ${EVIDENCE_LIMITS.maxRelatedAlerts} de ${relatedIds.length} alertas relacionadas`,
-      );
-    }
     const relatedAlerts: Alert[] = [];
-    for (const relatedId of relatedIds.slice(0, EVIDENCE_LIMITS.maxRelatedAlerts)) {
+    for (const relatedId of relatedIds) {
       abortIf(signal);
       const related = await soc.alertById(tenantId, relatedId);
       alertsScanned += 1;
@@ -276,23 +277,13 @@ export class RuntimeEvidenceReader implements EvidenceReader {
     if (primary?.ruleId?.startsWith('b89-correlator:')) {
       abortIf(signal);
       if (!this.sources.correlator) {
+        complete = false;
         gaps.push('Correlador no configurado: sin detalle del candidato');
       } else {
         try {
-          const response = await this.sources.correlator(
-            `/v1/candidates?limit=${EVIDENCE_LIMITS.correlatorCandidates}`,
+          const match = await findEmittingCandidate(
+            this.sources.correlator, primary,
           );
-          if (response.status !== 200) throw new Error('CORRELATOR_UNAVAILABLE');
-          const items = Array.isArray(record(response.body)['items'])
-            ? (record(response.body)['items'] as unknown[])
-            : [];
-          const match = items
-            .map(record)
-            .find(
-              (item) =>
-                item['alertId'] === primary.id ||
-                strings(item['b89AlertIds'], 200).includes(primary.id),
-            );
           if (match) {
             const explanation = record(match['explanation']);
             const label =
@@ -313,7 +304,20 @@ export class RuntimeEvidenceReader implements EvidenceReader {
               // Sin narrativa ni claves de entidad: solo el rótulo del patrón, enmascarado.
               explanation: maskText(label).slice(0, 300),
             };
+            const known = new Set([...ownIds, ...relatedAlerts.map((alert) => alert.id)]);
+            for (const member of await readCandidateMembers(this.sources.correlator, candidate.id, signal)) {
+              if (known.has(member)) continue;
+              abortIf(signal);
+              const related = await soc.alertById(tenantId, member);
+              alertsScanned++;
+              if (related?.tenantId === tenantId) relatedAlerts.push(related);
+              else {
+                complete = false;
+                gaps.push('Miembro correlacionado no disponible en este tenant');
+              }
+            }
           } else {
+            complete = false;
             gaps.push('El correlador no devolvió el candidato de esta alerta');
           }
         } catch {
@@ -377,6 +381,11 @@ export class RuntimeEvidenceReader implements EvidenceReader {
           extra.eventSummary
             ? [extra.eventSummary.window.matching, extra.eventSummary.day?.matching ?? null]
             : null,
+          // Bandas de reputación (no el puntaje exacto): un cambio menor no invalida la huella.
+          (extra.context?.ipReputation ?? []).map((entry) => [
+            entry.entityRef,
+            Math.floor(entry.abuseConfidenceScore / 25),
+          ]),
           complete,
           truncated,
         ]),
@@ -598,10 +607,9 @@ export class RuntimeEvidenceReader implements EvidenceReader {
       return needles.some((needle) => text.includes(needle));
     };
     const refFor = (event: SecurityEvent): string[] => {
-      const text = JSON.stringify(event.entities).toLocaleLowerCase('es');
-      return pairs
-        .filter((pair) => text.includes(pair.needle) && pair.ref && ENTITY_REF.test(pair.ref))
-        .map((pair) => pair.ref!);
+      const matched = new Set(entityKeysOf(event));
+      return primary.entityRefs.filter((ref, index) =>
+        matched.has(primary.entityKeys[index] ?? '') && ENTITY_REF.test(ref));
     };
     // Filtro por entidad que el proveedor compila a su consulta (usuario/IP, valor literal).
     const entityFilters = primary.entityKeys
@@ -822,6 +830,58 @@ export class RuntimeEvidenceReader implements EvidenceReader {
       gaps.push('Auditoría reciente no disponible en este despliegue');
     }
 
+    // Reputación de IP públicas de la alerta (AbuseIPDB). La IP solo viaja al proveedor; hacia el
+    // paquete va la referencia opaca `ent_…` de la misma posición.
+    const ipReputation: EvidenceIpReputation[] = [];
+    const ipTargets = primary.entityKeys
+      .map((key, index) => ({ key, ref: primary.entityRefs[index] }))
+      .filter(
+        (item): item is { key: string; ref: string } =>
+          item.key.startsWith('ip:') && typeof item.ref === 'string' && ENTITY_REF.test(item.ref),
+      )
+      .map((item) => ({ ip: publicIp(item.key.slice(3)), ref: item.ref }))
+      .filter((item): item is { ip: string; ref: string } => item.ip !== null);
+    if (ipTargets.length > 0 && !this.sources.ipReputation) {
+      gaps.push('Reputación de IP (AbuseIPDB) no configurada en este despliegue');
+    } else if (ipTargets.length > 0 && this.sources.ipReputation) {
+      if (ipTargets.length > EVIDENCE_LIMITS.maxIpReputation) {
+        gaps.push(
+          `Reputación consultada para ${EVIDENCE_LIMITS.maxIpReputation} de ${ipTargets.length} IP públicas`,
+        );
+      }
+      for (const target of ipTargets.slice(0, EVIDENCE_LIMITS.maxIpReputation)) {
+        abortIf(signal);
+        try {
+          const report = await this.sources.ipReputation.check(target.ip, signal);
+          if (!report) continue;
+          ipReputation.push({
+            entityRef: target.ref,
+            provider: 'abuseipdb',
+            abuseConfidenceScore: report.abuseConfidenceScore,
+            totalReports: report.totalReports,
+            distinctUsers: report.distinctUsers,
+            lastReportedAt: report.lastReportedAt,
+            countryCode: report.countryCode,
+            usageType: report.usageType,
+            isp: report.isp ? maskText(report.isp).slice(0, 120) : null,
+            isTor: report.isTor,
+            isWhitelisted: report.isWhitelisted,
+            checkedAt: report.checkedAt,
+          });
+        } catch (error) {
+          abortIf(signal);
+          // Fuente externa de enriquecimiento: su falla se declara, pero no vuelve parcial la
+          // evidencia interna del SOC (no debe bloquear el análisis por un límite del proveedor).
+          gaps.push(
+            error instanceof AbuseIpdbError && error.code === 'ABUSEIPDB_RATE_LIMITED'
+              ? 'Reputación de IP no disponible: límite de consultas de AbuseIPDB'
+              : 'Reputación de IP (AbuseIPDB) no disponible',
+          );
+          break;
+        }
+      }
+    }
+
     // Fuentes involucradas sin medición de salud propia.
     const measured = new Set(['wazuh']);
     const unmeasured = [
@@ -836,6 +896,7 @@ export class RuntimeEvidenceReader implements EvidenceReader {
         activity,
         notifications: notifications.slice(0, 25),
         audit: audit.slice(0, 50),
+        ...(this.sources.ipReputation ? { ipReputation } : {}),
       },
       events,
       eventSummary,

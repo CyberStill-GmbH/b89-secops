@@ -39,6 +39,7 @@ import type { AnalystLog } from './runtime/analyst-host.js';
 import type { InjectingServer } from './assistant/internal-client.js';
 import { ApiLifecycle, type ApiEvent } from './lifecycle.js';
 import { resolveApiSecretEnvironment } from './runtime/secret-environment.js';
+import { abuseIpdbFromEnvironment } from './runtime/abuseipdb.js';
 import { DemoAdminLogin } from './access/demo-admin-credentials.js';
 import { entityRefFactory } from './runtime/entity-refs.js';
 import { deriveCsrfKey } from './http/csrf.js';
@@ -458,6 +459,8 @@ export async function buildApi(
   // entorno. Mientras ese provider no esté disponible, el transporte queda sin destino
   // alcanzable y el crítico sale por el fallback de C-20, que es el comportamiento
   // declarado para esta condición.
+  // Reputación de IP (AbuseIPDB) para el Analista IA y Bunny; sin clave queda apagada.
+  const ipReputation = abuseIpdbFromEnvironment(environment);
   const runtime: SecOpsRuntime = new SecOpsRuntime({
     access,
     ...(demoMfaExceptionUntil ? { demoMfaExceptionUntil } : {}),
@@ -482,6 +485,7 @@ export async function buildApi(
     ...(ingestionConfig.source === 'wazuh' && ingestionConfig.pushSecret
       ? { wazuhPushSecret: ingestionConfig.pushSecret.reveal() }
       : {}),
+    ...(ipReputation ? { ipReputation } : {}),
     ...(environment['B89_CORRELATOR_SERVICE_TOKEN']
       ? { correlatorServiceToken: environment['B89_CORRELATOR_SERVICE_TOKEN'] }
       : {}),

@@ -102,7 +102,13 @@ class CommonTests(unittest.TestCase):
                 self.assertEqual(COMMON.run_collector("t", config, boom), 1)
             self.assertIn("HTTP 403", stderr.getvalue())
             self.assertEqual(COMMON.read_state(base / "s.json"), {"cursor": "keep"})
-            self.assertFalse((base / "o.jsonl").exists())
+            # Only the heartbeat is written: failed run, permission refused, no provider text.
+            lines = (base / "o.jsonl").read_text().splitlines()
+            self.assertEqual(len(lines), 1)
+            heartbeat = json.loads(lines[0])["b89"]["heartbeat"]
+            self.assertEqual((heartbeat["outcome"], heartbeat["auth"], heartbeat["error_code"]),
+                             ("failed", "denied", "auth_denied"))
+            self.assertNotIn("provider denied", lines[0])
 
     def test_read_secret_rejects_multiline(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

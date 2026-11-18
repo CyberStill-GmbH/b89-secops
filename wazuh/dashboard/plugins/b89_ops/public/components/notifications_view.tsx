@@ -48,6 +48,7 @@ import {
   useAsync,
   useIsMobile,
 } from './primitives';
+import { AlertReasonsList } from './alert_reasons_list';
 import { VendorLogo } from './vendor_logo';
 import { ChannelsPanel } from './channels_panel';
 import {
@@ -513,17 +514,7 @@ function NotificationFlyout({
                   ))}
                 </p>
               )}
-              {alert.reasons.length === 0 ? (
-                <EmptyLine>El motor de priorización no registró motivos.</EmptyLine>
-              ) : (
-                <ul className="b89List">
-                  {alert.reasons.map((reason) => (
-                    <li key={reason.code}>
-                      <Mono>{reason.code}</Mono> {reason.detail}
-                    </li>
-                  ))}
-                </ul>
-              )}
+              <AlertReasonsList reasons={alert.reasons} />
             </>
           )}
           <EuiSpacer size="l" />

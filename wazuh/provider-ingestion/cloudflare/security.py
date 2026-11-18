@@ -34,6 +34,7 @@ from b89_collector import (  # noqa: E402
     bounded_ids,
     http_json,
     iso,
+    oldest_cursor,
     parse_iso,
     read_secret,
     run_collector,
@@ -298,10 +299,31 @@ def collect(config: dict, state: dict, client: Cloudflare | None = None) -> tupl
     }
 
 
+def probe(config: dict, opener=None) -> None:
+    """Read-only auth check. ``/user/tokens/verify`` reports ``active``/``disabled``/``expired`` for a
+    user token; an account-owned token is verified by listing one visible account instead."""
+    headers = {"Authorization": f"Bearer {read_secret(pathlib.Path(config['token_file']))}"}
+    status, payload = http_json("GET", API + "/user/tokens/verify", dict(headers), opener=opener)
+    if status == 200 and isinstance(payload, dict) and payload.get("success") is True:
+        token_status = str((payload.get("result") or {}).get("status") or "").lower()
+        if token_status == "expired":
+            raise ProviderError("Cloudflare token is expired", 200, auth="expired")
+        if token_status and token_status != "active":
+            raise ProviderError("Cloudflare token is not active", 200, auth="denied")
+        return
+    status, payload = http_json("GET", API + "/accounts?per_page=1", dict(headers), opener=opener)
+    if status in (401, 403):
+        raise ProviderError("Cloudflare refused the token", status, auth="denied")
+    if status != 200 or not isinstance(payload, dict) or payload.get("success") is not True:
+        raise ProviderError("Cloudflare token check failed", status)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True, type=pathlib.Path)
-    return run_collector("b89-cloudflare", parser.parse_args().config, collect)
+    return run_collector("b89-cloudflare", parser.parse_args().config, collect, source_id="cloudflare",
+                         vendor="cloudflare", source="security", probe=probe,
+                         watermark=oldest_cursor("audit_cursors", "firewall_cursors"))
 
 
 if __name__ == "__main__":

@@ -84,7 +84,25 @@ function fakeCorrelator(request: { url?: string; headers: Record<string, unknown
         contributors: [{ ruleId: '101711', points: 20, source: 'aws', observationId: 'x' }],
         timeline: [{ at: 'now', score: 142.5 }],
       },
-      candidates: [candidate],
+      candidates: [
+        candidate,
+        {
+          ...candidate,
+          id: 'rc_shadow',
+          patternId: 'identity-change-new-location-endpoint',
+          status: 'shadow',
+          mode: 'shadow',
+          revision: 2,
+          explanation: {
+            ...candidate.explanation,
+            checks: [{ name: 'fuentes distintas', required: '>= 2', observed: '2', met: true }],
+            contradictions: ['La entidad pivote se normalizó por domain_default.'],
+            missingData: ['Cobertura de windows no verificada.'],
+            lifecycle: 'candidate: agrupación propuesta para investigar',
+            provenance: [{ key: 'user:victima@b89.example', method: 'exact' }],
+          },
+        },
+      ],
     };
   }
   if (url.pathname === '/v1/feedback')
@@ -224,6 +242,23 @@ describe('riesgo por entidad (/api/risk)', () => {
     expect(body.entity.contributors[0].observationId).toBeUndefined();
     expect(body.entity.aliases).toEqual([{ kind: 'user', label: 'iam:061098277310/victima' }]);
     expect(body.candidates[0].entity.ref).toBe(ref);
+    // Los candidatos de reglas en sombra van aparte y nunca como hallazgos emitidos.
+    expect(body.candidates.map((c: { id: string }) => c.id)).toEqual(['rc_1']);
+    expect(body.candidates[0].mode).toBe('active');
+    expect(body.shadowCandidates).toHaveLength(1);
+    expect(body.shadowCandidates[0]).toMatchObject({
+      id: 'rc_shadow',
+      mode: 'shadow',
+      revision: 2,
+    });
+    expect(body.shadowCandidates[0].explanation).toMatchObject({
+      checks: [{ name: 'fuentes distintas', met: true }],
+      contradictions: ['La entidad pivote se normalizó por domain_default.'],
+      missingData: ['Cobertura de windows no verificada.'],
+      lifecycle: 'candidate: agrupación propuesta para investigar',
+    });
+    // La procedencia lleva claves internas: no se proyecta.
+    expect(body.shadowCandidates[0].explanation.provenance).toBeUndefined();
     const unknown = runtime.entityRefOf(runtime.tenantId, 'user:nadie@b89.example');
     expect((await get(cookie, `/api/risk/entities/user/${unknown}`)).statusCode).toBe(404);
   });
@@ -257,6 +292,7 @@ describe('riesgo por entidad (/api/risk)', () => {
     expect(explanation.entities[0].ref).toMatch(/^ent_/u);
     expect(explanation.entities[0].key).toBeUndefined();
     expect((await get(cookie, '/api/risk/candidates?status=open')).statusCode).toBe(422);
+    expect((await get(cookie, '/api/risk/candidates?status=shadow')).statusCode).toBe(200);
   });
 
   it('sin alerts.read responde como recurso inexistente', async () => {

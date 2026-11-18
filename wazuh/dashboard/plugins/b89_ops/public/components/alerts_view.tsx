@@ -60,6 +60,7 @@ import {
   useAsync,
   useIsMobile,
 } from './primitives';
+import { AlertReasonsList } from './alert_reasons_list';
 
 type StatusFilter = 'open' | AlertStatus;
 
@@ -447,17 +448,7 @@ function AlertFlyout({
               <h3>Por qué tiene esta prioridad</h3>
             </EuiTitle>
             <EuiSpacer size="s" />
-            {alert.reasons.length === 0 ? (
-              <EmptyLine>El motor de priorización no registró motivos.</EmptyLine>
-            ) : (
-              <ul className="b89List" data-b89-no-translate="">
-                {alert.reasons.map((reason) => (
-                  <li key={reason.code}>
-                    <Mono>{reason.code}</Mono> <span>{reason.detail}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <AlertReasonsList reasons={alert.reasons} />
             <EuiSpacer size="l" />
             <EuiTitle size="xxs">
               <h3>Entidades correlacionadas</h3>
