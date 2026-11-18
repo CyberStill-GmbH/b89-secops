@@ -19,6 +19,8 @@ import { OVERVIEW_ROUTE } from '../common/integrations';
 import { buildOverview, SearchClient } from './overview';
 import { findEvent, findRelated, findSource } from './investigation';
 import { exportFilename, exportTrafficCsv, searchTraffic } from './cloudflare_traffic';
+import { AnalysisClient, analyzeTraffic } from './cloudflare_analysis';
+import { ANALYSIS_ROUTE, normalizeAnalysisQuery } from '../common/cloudflare_analysis';
 import {
   CURSOR_MAX_LENGTH,
   MAX_PAGE_SIZE,
@@ -295,6 +297,36 @@ export class B89OpsServerPlugin implements Plugin<void, void> {
             'content-disposition': `attachment; filename="${exportFilename(filters.value)}"`,
           },
         });
+      },
+    );
+
+    // «Tráfico de Cloudflare» → «Análisis»: solo rango y zona; el servidor arma las
+    // agregaciones (acotadas) y lee Anomaly Detection con la identidad de quien mira.
+    router.get(
+      {
+        path: ANALYSIS_ROUTE,
+        validate: {
+          query: schema.object({
+            from: trafficQuery.from,
+            to: trafficQuery.to,
+            zone: trafficQuery.zone,
+          }),
+        },
+      },
+      async (context, request, response) => {
+        const analysisRequest = normalizeAnalysisQuery(request.query as RawTrafficQuery);
+        if (!analysisRequest.ok) {
+          return response.badRequest({ body: { message: analysisRequest.error } });
+        }
+        try {
+          const result = await analyzeTraffic(
+            currentUser(context) as AnalysisClient,
+            analysisRequest.value,
+          );
+          return response.ok({ body: result, headers: json });
+        } catch (error) {
+          return indexerError(response as TrafficResponseFactory, error);
+        }
       },
     );
 

@@ -164,3 +164,4 @@ export * from './platform_health';
 export * from './ai_investigations';
 export * from './ai_activity';
 export * from './cloudflare_traffic';
+export * from './cloudflare_analysis';

@@ -213,3 +213,268 @@ $b89TrafficMobile: 767px;
   color: $ouiTextSubduedColor;
   text-align: left;
 }
+
+// ------------------------------------------------------------- «Análisis»
+
+.b89Traffic__views {
+  margin-top: -$ouiSizeS;
+}
+
+.b89Analysis__sampling {
+  margin: 0;
+  padding: $ouiSizeS $ouiSizeM;
+  border-left: 3px solid $ouiColorWarning;
+  border-radius: 4px;
+  background: rgba($ouiColorWarning, 0.08);
+  font-size: 13px;
+}
+
+.b89Analysis__section {
+  display: flex;
+  flex-direction: column;
+  gap: $ouiSizeS;
+}
+
+.b89Analysis__sectionHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: $ouiSizeXS $ouiSize;
+}
+
+.b89Analysis__meta,
+.b89Analysis__sub {
+  color: $ouiTextSubduedColor;
+  font-size: 12px;
+}
+
+.b89Analysis__empty {
+  margin: 0;
+  padding: $ouiSizeM;
+  border: 1px dashed $ouiBorderColor;
+  border-radius: 8px;
+  color: $ouiTextSubduedColor;
+}
+
+.b89Analysis__how {
+  font-size: 12px;
+  color: $ouiTextSubduedColor;
+
+  summary {
+    cursor: pointer;
+    width: fit-content;
+  }
+
+  p {
+    margin: $ouiSizeXS 0 0;
+    max-width: 960px;
+  }
+}
+
+// Hallazgos: tarjetas en rejilla, la gravedad como franja izquierda.
+.b89Analysis__findings {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: $ouiSizeM;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  @media (max-width: $b89TrafficMobile) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.b89Finding {
+  display: flex;
+  flex-direction: column;
+  gap: $ouiSizeS;
+  padding: $ouiSizeM $ouiSize;
+  border: 1px solid $ouiBorderColor;
+  border-left-width: 4px;
+  border-radius: 8px;
+  background: $ouiColorEmptyShade;
+  overflow-wrap: anywhere;
+
+  &[data-severity='critical'] {
+    border-left-color: $ouiColorDanger;
+  }
+
+  &[data-severity='high'] {
+    border-left-color: $ouiColorWarning;
+  }
+
+  &[data-severity='medium'] {
+    border-left-color: $ouiColorAccent;
+  }
+}
+
+.b89Finding__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $ouiSizeS;
+}
+
+.b89Finding__title {
+  font-size: 15px;
+}
+
+.b89Finding__summary {
+  margin: 0;
+  font-size: 14px;
+}
+
+.b89Finding__evidence {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: $ouiSizeXS $ouiSizeM;
+  margin: 0;
+
+  dt {
+    color: $ouiTextSubduedColor;
+    font-size: 11px;
+  }
+
+  dd {
+    margin: 0;
+    font-weight: 600;
+  }
+}
+
+// Tablas de detalle: desplazamiento horizontal propio (la página no se desborda).
+.b89Analysis__tableWrap {
+  overflow-x: auto;
+  border: 1px solid $ouiBorderColor;
+  border-radius: 8px;
+}
+
+.b89Analysis__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+
+  th {
+    position: sticky;
+    top: 0;
+    padding: $ouiSizeS;
+    background: $ouiColorLightestShade;
+    color: $ouiTextSubduedColor;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  td {
+    padding: $ouiSizeS;
+    border-top: 1px solid $ouiBorderColor;
+    vertical-align: top;
+  }
+}
+
+.b89Analysis__num {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.b89Analysis__time {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.b89Analysis__row {
+  &[data-level='critical'] td:first-child {
+    box-shadow: inset 3px 0 0 $ouiColorDanger;
+  }
+
+  &[data-level='high'] td:first-child {
+    box-shadow: inset 3px 0 0 $ouiColorWarning;
+  }
+
+  &[data-new='true'] td:first-child,
+  &[data-abroad='true'] td:first-child {
+    box-shadow: inset 3px 0 0 $ouiColorDanger;
+  }
+}
+
+.b89Analysis__net {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $ouiSizeXS;
+  margin-top: 2px;
+  color: $ouiTextSubduedColor;
+  font-size: 12px;
+}
+
+.b89Analysis__expand {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: $ouiLinkColor;
+  font: inherit;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid $ouiColorPrimary;
+    outline-offset: 2px;
+  }
+}
+
+.b89Analysis__reasons {
+  margin: 0;
+  padding-left: $ouiSize;
+  min-width: 220px;
+}
+
+.b89Analysis__detail > td {
+  background: $ouiColorLightestShade;
+}
+
+.b89Analysis__detailMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $ouiSizeXS $ouiSize;
+  margin-bottom: $ouiSizeS;
+  font-size: 12px;
+}
+
+// Línea de tiempo minuto a minuto.
+.b89Timeline {
+  max-height: 360px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+
+  > li {
+    display: grid;
+    grid-template-columns: 96px minmax(0, 1fr);
+    gap: $ouiSizeS;
+    padding: 4px 0;
+    border-bottom: 1px solid $ouiBorderColor;
+  }
+
+  ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  li[data-money='true'] {
+    font-weight: 700;
+  }
+}
+
+.b89Timeline__minute {
+  color: $ouiTextSubduedColor;
+  font-size: 12px;
+}
+
+.b89Trend__column[data-off-hours='true'] {
+  background: rgba($ouiColorWarning, 0.08);
+}

@@ -41,7 +41,9 @@ import {
   TrafficResponse,
 } from '../../common';
 import { fetchTraffic, trafficExportHref } from '../api/cloudflare_traffic';
+import { CloudflareAnalysisPanel } from './cloudflare_analysis_view';
 import {
+  activeTab,
   applyTop,
   DATASET_COLOR,
   errorMessage,
@@ -59,7 +61,10 @@ import {
   RANGE_LABEL,
   RANGE_PRESETS,
   RangeMode,
+  recordsState,
   statTiles,
+  TRAFFIC_TAB_LABEL,
+  TRAFFIC_TABS,
   targetOf,
   TOP_LISTS,
   TopListId,
@@ -105,9 +110,12 @@ export function CloudflareTrafficView({
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [selected, setSelected] = useState<TrafficEvent | null>(null);
+  const tab = activeTab(state);
 
   const key = filters.ok ? JSON.stringify(filters.value) : '';
   useEffect(() => {
+    // «Registros» solo se consulta cuando está a la vista.
+    if (tab !== 'registros') return undefined;
     if (!filters.ok) {
       setLoading(false);
       return undefined;
@@ -130,7 +138,7 @@ export function CloudflareTrafficView({
       },
     );
     return () => controller.abort();
-  }, [basePath, key, tick]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [basePath, key, tick, tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadMore = async () => {
     if (!filters.ok || !data?.nextCursor) return;
@@ -169,9 +177,9 @@ export function CloudflareTrafficView({
       title="Tráfico de Cloudflare"
       description={
         <>
-          Todo lo que Cloudflare registra de las zonas B89, tal cual: peticiones HTTP, consultas
-          DNS, eventos de firewall/WAF y auditoría de la cuenta, con la hora original de cada
-          evento. Todas las horas están en {LIMA_LABEL}.
+          «Análisis» resume qué pasó en el backoffice y en los pagos (sesiones sospechosas,
+          movimientos de dinero, exportaciones y anomalías); «Registros» muestra cada evento tal
+          cual (HTTP, DNS, firewall/WAF y auditoría). Todas las horas están en {LIMA_LABEL}.
         </>
       }
       actions={
@@ -188,76 +196,108 @@ export function CloudflareTrafficView({
               </EuiButtonEmpty>
             </EuiToolTip>
           </EuiFlexItem>
-          <EuiFlexItem grow={false}>
-            <EuiButton
-              size="s"
-              iconType="exportAction"
-              href={filters.ok ? trafficExportHref(basePath, filters.value) : undefined}
-              isDisabled={!filters.ok}
-            >
-              Exportar CSV
-            </EuiButton>
-          </EuiFlexItem>
+          {tab === 'registros' && (
+            <EuiFlexItem grow={false}>
+              <EuiButton
+                size="s"
+                iconType="exportAction"
+                href={filters.ok ? trafficExportHref(basePath, filters.value) : undefined}
+                isDisabled={!filters.ok}
+              >
+                Exportar CSV
+              </EuiButton>
+            </EuiFlexItem>
+          )}
         </EuiFlexGroup>
       }
     >
+      <EuiTabs className="b89Traffic__views" aria-label="Vistas del tráfico">
+        {TRAFFIC_TABS.map((id) => (
+          <EuiTab
+            key={id}
+            isSelected={tab === id}
+            onClick={() => go({ ...state, tab: id })}
+            data-test-subj={`b89TrafficTab-${id}`}
+          >
+            {TRAFFIC_TAB_LABEL[id]}
+          </EuiTab>
+        ))}
+      </EuiTabs>
+      <EuiSpacer size="m" />
       <RangeBar state={state} filters={filters.ok ? filters.value : null} onChange={go} />
       <EuiSpacer size="m" />
-      <DatasetTabs state={state} aggs={data?.aggregations ?? null} onChange={go} />
-      <EuiSpacer size="m" />
-      <FilterBar state={state} zones={data?.aggregations?.zones ?? []} onChange={go} />
-      <EuiSpacer size="m" />
-      {!filters.ok ? (
-        <EuiCallOut color="warning" iconType="alert" size="s" title={filters.error} />
-      ) : error ? (
-        <EuiCallOut
-          color={errorMessage(error).tone}
-          iconType="alert"
-          size="s"
-          title={errorMessage(error).title}
-        >
-          <EuiButtonEmpty size="xs" flush="left" onClick={() => setTick((v) => v + 1)}>
-            Reintentar
-          </EuiButtonEmpty>
-        </EuiCallOut>
-      ) : loading && !data ? (
-        <EuiLoadingContent lines={8} />
-      ) : data ? (
-        <>
-          {data.partial && (
-            <>
-              <EuiCallOut
-                color="warning"
-                iconType="alert"
-                size="s"
-                title="Respuesta parcial del Indexer: algunos datos pueden faltar. Reintente en unos segundos."
-              />
-              <EuiSpacer size="m" />
-            </>
-          )}
-          {data.aggregations && (
-            <>
-              <StatTiles aggs={data.aggregations} dataset={state.dataset} />
-              <EuiSpacer size="m" />
-              <Histogram aggs={data.aggregations} />
-              <EuiSpacer size="m" />
-              <TopLists
-                aggs={data.aggregations}
-                onPick={(list, value) => go(applyTop(state, list, value))}
-              />
-              <EuiSpacer size="l" />
-            </>
-          )}
-          <ResultsTable
-            data={data}
-            events={events}
-            loading={loading}
-            loadingMore={loadingMore}
-            onLoadMore={loadMore}
-            onSelect={setSelected}
+      {tab === 'analisis' ? (
+        !filters.ok ? (
+          <EuiCallOut color="warning" iconType="alert" size="s" title={filters.error} />
+        ) : (
+          <CloudflareAnalysisPanel
+            basePath={basePath}
+            from={filters.value.from}
+            to={filters.value.to}
+            zone={state.filters.zone}
+            reloadKey={tick}
+            onOpenRecords={(link) => go(recordsState(link, state.filters.zone))}
           />
+        )
+      ) : (
+        <>
+          <DatasetTabs state={state} aggs={data?.aggregations ?? null} onChange={go} />
+          <EuiSpacer size="m" />
+          <FilterBar state={state} zones={data?.aggregations?.zones ?? []} onChange={go} />
+          <EuiSpacer size="m" />
+          {!filters.ok ? (
+            <EuiCallOut color="warning" iconType="alert" size="s" title={filters.error} />
+          ) : error ? (
+            <EuiCallOut
+              color={errorMessage(error).tone}
+              iconType="alert"
+              size="s"
+              title={errorMessage(error).title}
+            >
+              <EuiButtonEmpty size="xs" flush="left" onClick={() => setTick((v) => v + 1)}>
+                Reintentar
+              </EuiButtonEmpty>
+            </EuiCallOut>
+          ) : loading && !data ? (
+            <EuiLoadingContent lines={8} />
+          ) : data ? (
+            <>
+              {data.partial && (
+                <>
+                  <EuiCallOut
+                    color="warning"
+                    iconType="alert"
+                    size="s"
+                    title="Respuesta parcial del Indexer: algunos datos pueden faltar. Reintente en unos segundos."
+                  />
+                  <EuiSpacer size="m" />
+                </>
+              )}
+              {data.aggregations && (
+                <>
+                  <StatTiles aggs={data.aggregations} dataset={state.dataset} />
+                  <EuiSpacer size="m" />
+                  <Histogram aggs={data.aggregations} />
+                  <EuiSpacer size="m" />
+                  <TopLists
+                    aggs={data.aggregations}
+                    onPick={(list, value) => go(applyTop(state, list, value))}
+                  />
+                  <EuiSpacer size="l" />
+                </>
+              )}
+              <ResultsTable
+                data={data}
+                events={events}
+                loading={loading}
+                loadingMore={loadingMore}
+                onLoadMore={loadMore}
+                onSelect={setSelected}
+              />
+            </>
+          ) : null}
         </>
-      ) : null}
+      )}
       {selected && (
         <EventFlyout
           event={selected}

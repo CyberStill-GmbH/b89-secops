@@ -25,6 +25,7 @@ function button(props: Props) {
 
 export const EuiButton = button;
 export const EuiButtonEmpty = button;
+export const EuiBadge = container('span');
 export const EuiCallOut = container('aside');
 export const EuiDescriptionList = container('dl');
 export const EuiFlexGrid = container('div');

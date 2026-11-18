@@ -3,7 +3,9 @@
  */
 
 import {
+  AnomalyRow,
   limaTime,
+  RecordsLink,
   MAX_RANGE_MS,
   normalizeTrafficFilters,
   TRAFFIC_DATASET_LABEL,
@@ -68,7 +70,18 @@ export const FILTER_LABEL: Readonly<Record<FilterKey, string>> = {
   q: 'Texto',
 };
 
+/** Pestañas de la vista: «Análisis» (por defecto) y «Registros» (la tabla de eventos). */
+export const TRAFFIC_TABS = ['analisis', 'registros'] as const;
+export type TrafficTab = (typeof TRAFFIC_TABS)[number];
+
+export const TRAFFIC_TAB_LABEL: Readonly<Record<TrafficTab, string>> = {
+  analisis: 'Análisis',
+  registros: 'Registros',
+};
+
 export interface TrafficViewState {
+  /** Pestaña explícita (`?tab=`); sin ella se deduce con `activeTab`. */
+  readonly tab?: TrafficTab;
   readonly range: RangeMode;
   /** Solo con `range: 'custom'` (ISO UTC). */
   readonly from?: string;
@@ -105,7 +118,9 @@ export function parseViewState(search: string): TrafficViewState {
     const value = params.get(key)?.trim();
     if (value) filters[key] = value.slice(0, UA_MAX);
   }
+  const tab = params.get('tab')?.toLowerCase();
   return {
+    ...((TRAFFIC_TABS as readonly string[]).includes(tab ?? '') ? { tab: tab as TrafficTab } : {}),
     range,
     ...(range === 'custom' && from ? { from } : {}),
     ...(range === 'custom' && to ? { to } : {}),
@@ -114,9 +129,24 @@ export function parseViewState(search: string): TrafficViewState {
   };
 }
 
+/**
+ * Pestaña visible. Sin `?tab=`, los enlaces antiguos que filtran registros (`?ds=http`,
+ * `?ip=…`) siguen abriendo «Registros»; la vista sin filtros abre «Análisis».
+ */
+export function activeTab(state: TrafficViewState): TrafficTab {
+  if (state.tab) return state.tab;
+  const filtersRecords =
+    state.dataset !== 'all' ||
+    FILTER_KEYS.some((key) => key !== 'zone' && state.filters[key] !== undefined);
+  return filtersRecords ? 'registros' : 'analisis';
+}
+
 /** Query string del estado (sin `?`); vacía para el estado por defecto. */
 export function viewStateSearch(state: TrafficViewState): string {
   const params = new URLSearchParams();
+  // `tab` solo cuando difiere de lo que se deduciría sin él: los enlaces quedan cortos.
+  const tab = activeTab(state);
+  if (tab !== activeTab({ ...state, tab: undefined })) params.set('tab', tab);
   if (state.range === 'custom') {
     if (state.from) params.set('from', state.from);
     if (state.to) params.set('to', state.to);
@@ -247,6 +277,43 @@ export function hostSessionState(event: TrafficEvent): TrafficViewState | null {
       ...(event.userAgent && event.userAgent.length <= UA_MAX ? { ua: event.userAgent } : {}),
     },
   };
+}
+
+/** Rango + filtros de un hallazgo o fila de «Análisis» → pestaña «Registros» (HTTP). */
+export function recordsState(link: RecordsLink, zone?: string): TrafficViewState {
+  const filters: Partial<Record<FilterKey, string>> = {};
+  if (zone) filters.zone = zone;
+  if (link.ip) filters.ip = link.ip;
+  if (link.host) filters.host = link.host;
+  if (link.path) filters.path = link.path;
+  if (link.method) filters.method = link.method;
+  if (link.country) filters.country = link.country;
+  return {
+    tab: 'registros',
+    range: 'custom',
+    from: link.from,
+    to: link.to,
+    dataset: 'http',
+    filters,
+  };
+}
+
+export const ANOMALY_WINDOW_MS = 30 * 60 * 1000;
+
+/** Anomalía → «Registros» de su entidad (IP o host) ± 30 min alrededor del intervalo. */
+export function anomalyRecords(row: AnomalyRow): RecordsLink | null {
+  const start = Date.parse(row.start || row.end);
+  const end = Date.parse(row.end || row.start);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
+  const link: { -readonly [K in keyof RecordsLink]: RecordsLink[K] } = {
+    from: new Date(start - ANOMALY_WINDOW_MS).toISOString(),
+    to: new Date(end + ANOMALY_WINDOW_MS).toISOString(),
+  };
+  for (const entity of row.entity) {
+    if (entity.name === 'client.ip') link.ip = entity.value;
+    if (entity.name === 'http.host') link.host = entity.value;
+  }
+  return link;
 }
 
 /* -------------------------------------------------------------- Cifras */
@@ -416,4 +483,48 @@ export function errorMessage(error: unknown): { title: string; tone: 'warning' |
     title: message && status ? message : 'No se pudo consultar el tráfico de Cloudflare.',
     tone: 'danger',
   };
+}
+
+/* ------------------------------------------------------------ Análisis */
+
+export const CHANNEL_COLOR = { backoffice: '#E8794A', integration: '#3B82C4' } as const;
+
+export interface MoneyColumn {
+  readonly at: string;
+  readonly label: string;
+  readonly backoffice: number;
+  readonly integration: number;
+  readonly height: number;
+  readonly offHours: boolean;
+  readonly summary: string;
+}
+
+/** Columnas del histograma de dinero (Lima), con la franja 22:00–06:00 marcada. */
+export function moneyColumns(
+  histogram: ReadonlyArray<{ at: string; backoffice: number; integration: number }>,
+  interval: string,
+): MoneyColumn[] {
+  const max = Math.max(1, ...histogram.map((bucket) => bucket.backoffice + bucket.integration));
+  const daily = /^\d+d$/u.test(interval);
+  return histogram.map((bucket) => {
+    const label = daily ? limaTime(bucket.at, false).slice(0, 10) : limaTime(bucket.at, false);
+    const total = bucket.backoffice + bucket.integration;
+    const hour = Number(limaTime(bucket.at, false).slice(11, 13));
+    return {
+      at: bucket.at,
+      label,
+      backoffice: bucket.backoffice,
+      integration: bucket.integration,
+      height: (total / max) * 100,
+      offHours: !daily && (hour >= 22 || hour < 6),
+      summary: `${label} (Lima): ${NUMBER.format(total)} llamadas de dinero · backoffice ${NUMBER.format(
+        bucket.backoffice,
+      )} · integración ${NUMBER.format(bucket.integration)}`,
+    };
+  });
+}
+
+/** Grado o confianza (0–1) como porcentaje entero. */
+export function percent(value: number): string {
+  return `${Math.round(Math.max(0, Math.min(1, value)) * 100)} %`;
 }
