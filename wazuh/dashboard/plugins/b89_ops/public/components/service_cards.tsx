@@ -2,7 +2,7 @@
  * Copyright B89. SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { attentionQuery, ServiceAttentionList } from './service_attention';
 import { EuiButtonEmpty, EuiText } from '@elastic/eui';
 import {
@@ -175,6 +175,7 @@ function providerMetrics(id: ProviderId, data: PlatformData): Metric[] {
           label: 'Altas y críticas 24 h',
           value: formatNumber(stats.levels24h.high + stats.levels24h.critical),
           drill: { kql: attentionQuery(id, false), from: 'now-24h' },
+          focus: 'critical',
         },
       ];
   }
@@ -213,6 +214,7 @@ function serviceModel(spec: IntegrationSpec, data: PlatformData): ServiceModel {
         label: 'Altas y críticas',
         value: formatNumber(overview.siem.levels24h.high + overview.siem.levels24h.critical),
         drill: { kql: attentionQuery('wazuh', false), from: 'now-24h' },
+        focus: 'critical',
       });
     }
     if (source) {
@@ -328,8 +330,23 @@ export function ServiceCard({
   basePath: string;
   compact?: boolean;
 }) {
+  const [criticalFocus, setCriticalFocus] = useState(0);
+  const attentionRef = useRef<HTMLDivElement>(null);
   if (model.loading) return <SkeletonCard />;
   const { spec, status } = model;
+  const hasAttention = spec.id === 'wazuh' || isProvider(spec.id);
+  // «Altas y críticas» filtra la lista de la propia tarjeta a solo críticas (limpia la búsqueda).
+  const metrics = linkedMetrics(model.metrics, basePath).map((metric) =>
+    metric.focus === 'critical' && hasAttention
+      ? {
+          ...metric,
+          onSelect: () => {
+            setCriticalFocus((n) => n + 1);
+            attentionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          },
+        }
+      : metric,
+  );
   const links = integrationLinks(spec, basePath).slice(0, compact ? 2 : 6);
   return (
     <article className="b89Service" data-tone={status.tone} aria-label={spec.name}>
@@ -348,14 +365,17 @@ export function ServiceCard({
           </EuiText>
         )}
       </div>
-      <MetricList metrics={linkedMetrics(model.metrics, basePath)} />
-      {(spec.id === 'wazuh' || isProvider(spec.id)) && (
-        <ServiceAttentionList
-          service={spec.id}
-          name={spec.name}
-          data={model.attention}
-          basePath={basePath}
-        />
+      <MetricList metrics={metrics} />
+      {hasAttention && (
+        <div ref={attentionRef}>
+          <ServiceAttentionList
+            service={spec.id}
+            name={spec.name}
+            data={model.attention}
+            basePath={basePath}
+            focusCritical={criticalFocus}
+          />
+        </div>
       )}
       <footer className="b89Service__footer">
         {model.lastEventAt !== undefined ? <LastEvent iso={model.lastEventAt} /> : <span />}

@@ -130,6 +130,10 @@ export interface Metric {
   readonly path?: string;
   /** Destino del valor: la lista de alertas contadas, para investigarlas una a una. */
   readonly href?: string;
+  /** `critical`: el valor filtra la lista «Atención prioritaria» de la misma tarjeta (sin salir). */
+  readonly focus?: 'critical';
+  /** Acción en la tarjeta; tiene prioridad sobre `href`. */
+  readonly onSelect?: () => void;
 }
 
 export function MetricList({ metrics }: { metrics: readonly Metric[] }) {
@@ -140,7 +144,16 @@ export function MetricList({ metrics }: { metrics: readonly Metric[] }) {
         <div key={metric.label} className="b89Metrics__item" data-emphasis={metric.emphasis}>
           <dt>{metric.label}</dt>
           <dd className="b89Tabular" title={metric.hint}>
-            {metric.href ? (
+            {metric.onSelect ? (
+              <button
+                type="button"
+                className="b89Metrics__link b89Metrics__button"
+                onClick={metric.onSelect}
+                aria-label={`${metric.label}: mostrar solo las críticas en esta tarjeta`}
+              >
+                {metric.value}
+              </button>
+            ) : metric.href ? (
               <a
                 className="b89Metrics__link"
                 href={metric.href}

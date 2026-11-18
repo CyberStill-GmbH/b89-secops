@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { discoverUrlForQuery, ServiceAttention, ServiceId, TopEvent } from '../../common';
 import { DataZone, Timestamp } from './primitives';
 
@@ -31,14 +31,23 @@ export function ServiceAttentionList({
   name,
   data,
   basePath,
+  focusCritical = 0,
 }: {
   service: ServiceId;
   name: string;
   data?: ServiceAttention;
   basePath: string;
+  /** Cambia cada vez que se pulsa «Altas y críticas»: limpia la búsqueda y deja solo críticas. */
+  focusCritical?: number;
 }) {
   const [criticalOnly, setCriticalOnly] = useState(false);
   const [query, setQuery] = useState('');
+  useEffect(() => {
+    if (focusCritical > 0) {
+      setCriticalOnly(true);
+      setQuery('');
+    }
+  }, [focusCritical]);
   const events = filterAttention(data?.events ?? [], criticalOnly, query);
   const allHref = discoverUrlForQuery(
     basePath,
