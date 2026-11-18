@@ -1,0 +1,125 @@
+{
+  "name": "b89-cf-money-movement",
+  "description": "B89: llamadas que mueven dinero o cambian estado (payouts/quotes accept, ajustes de saldo, MTC, bulk-status, tasas manuales) por IP; detecta IPs nuevas o picos (OpenSearch AD/RCF sobre b89-cloudflare-traffic)",
+  "time_field": "@timestamp",
+  "indices": [
+    "b89-cloudflare-traffic-*"
+  ],
+  "filter_query": {
+    "bool": {
+      "filter": [
+        {
+          "term": {
+            "event.dataset": "http"
+          }
+        },
+        {
+          "terms": {
+            "http.host": [
+              "apipayments.b89.io",
+              "prodv2-apipayments.b89.io",
+              "paymentsv2.b89.io"
+            ]
+          }
+        },
+        {
+          "terms": {
+            "http.method": [
+              "POST",
+              "PUT",
+              "PATCH",
+              "DELETE"
+            ]
+          }
+        }
+      ],
+      "should": [
+        {
+          "wildcard": {
+            "http.path": {
+              "value": "*quotes/accept*",
+              "case_insensitive": true
+            }
+          }
+        },
+        {
+          "wildcard": {
+            "http.path": {
+              "value": "*/balances/transactions*",
+              "case_insensitive": true
+            }
+          }
+        },
+        {
+          "wildcard": {
+            "http.path": {
+              "value": "*/mtc/operation*",
+              "case_insensitive": true
+            }
+          }
+        },
+        {
+          "wildcard": {
+            "http.path": {
+              "value": "*/orders/bulk-status*",
+              "case_insensitive": true
+            }
+          }
+        },
+        {
+          "wildcard": {
+            "http.path": {
+              "value": "*/payin/v1/payment*",
+              "case_insensitive": true
+            }
+          }
+        },
+        {
+          "wildcard": {
+            "http.path": {
+              "value": "*rate/manual*",
+              "case_insensitive": true
+            }
+          }
+        },
+        {
+          "wildcard": {
+            "http.path": {
+              "value": "*/payouts/v1/quotes*",
+              "case_insensitive": true
+            }
+          }
+        }
+      ],
+      "minimum_should_match": 1
+    }
+  },
+  "feature_attributes": [
+    {
+      "feature_name": "calls",
+      "feature_enabled": true,
+      "aggregation_query": {
+        "calls": {
+          "value_count": {
+            "field": "http.method"
+          }
+        }
+      }
+    }
+  ],
+  "detection_interval": {
+    "period": {
+      "interval": 10,
+      "unit": "Minutes"
+    }
+  },
+  "window_delay": {
+    "period": {
+      "interval": 15,
+      "unit": "Minutes"
+    }
+  },
+  "category_field": [
+    "client.ip"
+  ]
+}

@@ -11,7 +11,13 @@ _meta:
   config_version: 2
 
 b89_soc_analyst:
-  cluster_permissions: ['cluster_composite_ops_ro']
+  cluster_permissions:
+    [
+      'cluster_composite_ops_ro',
+      'cluster:admin/opendistro/ad/detector/info',
+      'cluster:admin/opendistro/ad/detectors/get',
+      'cluster:admin/opendistro/ad/detector/search',
+    ]
   index_permissions:
     - index_patterns:
         [
@@ -21,6 +27,7 @@ b89_soc_analyst:
           'wazuh-statistics-*',
           'wazuh-states-*',
           'b89-cloudflare-traffic-*',
+          '.opendistro-anomaly-results*',
         ]
       allowed_actions: ['read', 'indices:admin/mappings/get', 'indices:admin/get']
   tenant_permissions:
@@ -33,6 +40,7 @@ b89_soc_lead:
       'cluster_composite_ops_ro',
       'cluster:admin/opendistro/ad/detector/info',
       'cluster:admin/opendistro/ad/detectors/get',
+      'cluster:admin/opendistro/ad/detector/search',
     ]
   index_permissions:
     - index_patterns:

@@ -1,0 +1,85 @@
+{
+  "name": "b89-cf-backoffice-per-ip",
+  "description": "B89: actividad del backoffice de pagos por IP (peticiones y rutas distintas); sesiones fuera de patrón (OpenSearch AD/RCF)",
+  "time_field": "@timestamp",
+  "indices": [
+    "b89-cloudflare-traffic-*"
+  ],
+  "filter_query": {
+    "bool": {
+      "filter": [
+        {
+          "term": {
+            "event.dataset": "http"
+          }
+        },
+        {
+          "terms": {
+            "http.host": [
+              "prodv2-apipayments.b89.io",
+              "paymentsv2.b89.io"
+            ]
+          }
+        }
+      ],
+      "should": [
+        {
+          "wildcard": {
+            "http.path": {
+              "value": "/backoffice/*",
+              "case_insensitive": true
+            }
+          }
+        },
+        {
+          "wildcard": {
+            "http.path": {
+              "value": "/auth-service/*",
+              "case_insensitive": true
+            }
+          }
+        }
+      ],
+      "minimum_should_match": 1
+    }
+  },
+  "feature_attributes": [
+    {
+      "feature_name": "requests",
+      "feature_enabled": true,
+      "aggregation_query": {
+        "requests": {
+          "value_count": {
+            "field": "http.method"
+          }
+        }
+      }
+    },
+    {
+      "feature_name": "distinct_paths",
+      "feature_enabled": true,
+      "aggregation_query": {
+        "distinct_paths": {
+          "cardinality": {
+            "field": "http.path"
+          }
+        }
+      }
+    }
+  ],
+  "detection_interval": {
+    "period": {
+      "interval": 10,
+      "unit": "Minutes"
+    }
+  },
+  "window_delay": {
+    "period": {
+      "interval": 15,
+      "unit": "Minutes"
+    }
+  },
+  "category_field": [
+    "client.ip"
+  ]
+}

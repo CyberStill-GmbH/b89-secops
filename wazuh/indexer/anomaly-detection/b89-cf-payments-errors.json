@@ -1,0 +1,63 @@
+{
+  "name": "b89-cf-payments-errors",
+  "description": "B89: errores 4xx/5xx en los hosts de pagos (fuerza bruta, enumeración, caída del origen) (OpenSearch AD/RCF)",
+  "time_field": "@timestamp",
+  "indices": [
+    "b89-cloudflare-traffic-*"
+  ],
+  "filter_query": {
+    "bool": {
+      "filter": [
+        {
+          "term": {
+            "event.dataset": "http"
+          }
+        },
+        {
+          "terms": {
+            "http.host": [
+              "apipayments.b89.io",
+              "prodv2-apipayments.b89.io",
+              "paymentsv2.b89.io"
+            ]
+          }
+        },
+        {
+          "range": {
+            "http.status": {
+              "gte": 400
+            }
+          }
+        }
+      ]
+    }
+  },
+  "feature_attributes": [
+    {
+      "feature_name": "errors",
+      "feature_enabled": true,
+      "aggregation_query": {
+        "errors": {
+          "value_count": {
+            "field": "http.status"
+          }
+        }
+      }
+    }
+  ],
+  "detection_interval": {
+    "period": {
+      "interval": 10,
+      "unit": "Minutes"
+    }
+  },
+  "window_delay": {
+    "period": {
+      "interval": 15,
+      "unit": "Minutes"
+    }
+  },
+  "category_field": [
+    "http.host"
+  ]
+}

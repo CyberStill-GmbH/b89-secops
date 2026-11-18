@@ -1,0 +1,63 @@
+{
+  "name": "b89-cf-backoffice-exports",
+  "description": "B89: exportaciones de datos del backoffice por IP (posible exfiltración) (OpenSearch AD/RCF)",
+  "time_field": "@timestamp",
+  "indices": [
+    "b89-cloudflare-traffic-*"
+  ],
+  "filter_query": {
+    "bool": {
+      "filter": [
+        {
+          "term": {
+            "event.dataset": "http"
+          }
+        },
+        {
+          "terms": {
+            "http.host": [
+              "prodv2-apipayments.b89.io",
+              "paymentsv2.b89.io"
+            ]
+          }
+        },
+        {
+          "wildcard": {
+            "http.path": {
+              "value": "*export*",
+              "case_insensitive": true
+            }
+          }
+        }
+      ]
+    }
+  },
+  "feature_attributes": [
+    {
+      "feature_name": "exports",
+      "feature_enabled": true,
+      "aggregation_query": {
+        "exports": {
+          "value_count": {
+            "field": "http.method"
+          }
+        }
+      }
+    }
+  ],
+  "detection_interval": {
+    "period": {
+      "interval": 10,
+      "unit": "Minutes"
+    }
+  },
+  "window_delay": {
+    "period": {
+      "interval": 15,
+      "unit": "Minutes"
+    }
+  },
+  "category_field": [
+    "client.ip"
+  ]
+}
