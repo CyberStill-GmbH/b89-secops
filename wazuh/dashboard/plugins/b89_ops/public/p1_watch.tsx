@@ -15,8 +15,13 @@ import { ALERTS_PATH, Alert, CAPABILITIES, ChangeEvent } from '../common';
 import type { ChangeFeed } from './api/change_feed';
 import type { B89ApiClient } from './api/client';
 
-/** Máximo de alertas nuevas que se consultan por lote (una ráfaga no dispara N peticiones). */
-const MAX_LOOKUPS_PER_BATCH = 10;
+/**
+ * Como mucho una consulta cada 30 s, y solo si llegaron alertas creadas. Antes se leía cada alerta
+ * por su id: una ráfaga (p. ej. una recuperación histórica que crea miles de alertas P3) generaba
+ * cientos de peticiones por minuto desde cada pestaña y el WAF bloqueaba la IP (403, 2026-11-18).
+ */
+export const P1_LOOKUP_INTERVAL_MS = 30_000;
+const P1_LOOKUP_PAGE = 20;
 
 /**
  * Aviso de nuevas alertas P1 en la cabecera de todo el dashboard (también en el SIEM).
@@ -46,27 +51,55 @@ function P1Badge({ core, api, feed }: { core: CoreStart; api: B89ApiClient; feed
   useEffect(() => {
     if (!enabled) return undefined;
     const seen = new Set<string>();
-    return feed.subscribe(['alert'], (changes: readonly ChangeEvent[], resync: boolean) => {
-      if (resync) return; // Un resync no dice qué es nuevo: la cola lo mostrará al abrirla.
-      const created = changes
-        .filter((change) => change.kind === 'created' && !seen.has(change.resource.id))
-        .slice(0, MAX_LOOKUPS_PER_BATCH);
-      for (const change of created) {
-        seen.add(change.resource.id);
-        api.get<{ alert: Alert }>(`/alerts/${encodeURIComponent(change.resource.id)}`).then(
-          ({ alert }) => {
-            if (alert.priority !== 'P1' || alert.status !== 'new') return;
-            setCount((value) => value + 1);
-            core.notifications.toasts.addDanger({
-              title: 'Nueva alerta P1',
-              text: alert.title,
-              'data-test-subj': 'b89P1Toast',
-            });
-          },
-          () => undefined,
+    let primed = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let lastRun = 0;
+    let cancelled = false;
+    const lookup = async () => {
+      timer = null;
+      lastRun = Date.now();
+      try {
+        const page = await api.get<{ items: readonly Alert[] }>(
+          `/alerts?status=open&priority=P1&pageSize=${P1_LOOKUP_PAGE}`,
         );
+        if (cancelled) return;
+        const fresh = page.items.filter((alert) => alert.status === 'new' && !seen.has(alert.id));
+        for (const alert of page.items) seen.add(alert.id);
+        // La primera lectura solo marca lo que ya existía: el contador cuenta desde que se abrió.
+        if (!primed) {
+          primed = true;
+          return;
+        }
+        if (fresh.length === 0) return;
+        setCount((value) => value + fresh.length);
+        core.notifications.toasts.addDanger({
+          title: fresh.length === 1 ? 'Nueva alerta P1' : `${fresh.length} alertas P1 nuevas`,
+          text: fresh[0]?.title,
+          'data-test-subj': 'b89P1Toast',
+        });
+      } catch {
+        // API degradada: sin aviso; se reintenta con la próxima alerta creada.
       }
-    });
+    };
+    const schedule = () => {
+      if (timer || cancelled) return;
+      const wait = Math.max(0, lastRun + P1_LOOKUP_INTERVAL_MS - Date.now());
+      timer = setTimeout(() => void lookup(), wait);
+    };
+    void lookup();
+    const unsubscribe = feed.subscribe(
+      ['alert'],
+      (changes: readonly ChangeEvent[], resync: boolean) => {
+        if (resync) return; // Un resync no dice qué es nuevo: la cola lo mostrará al abrirla.
+        if (!changes.some((change) => change.kind === 'created')) return;
+        schedule();
+      },
+    );
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      unsubscribe();
+    };
   }, [enabled, api, feed, core]);
 
   if (!enabled || count === 0) return null;
