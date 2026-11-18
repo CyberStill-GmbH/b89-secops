@@ -124,7 +124,7 @@ find "$ROOT" -name '*.py' -exec sed -i 's/\r$//' {} +
 read_file() { if [[ -s ${CS}/$1 ]]; then tr -d '\r\n' <"${CS}/$1"; fi; }
 # Crear los JSONL antes de reiniciar el manager: si no existen al arrancar, logcollector los abre
 # más tarde desde el final y se pierde el primer lote.
-for f in bitdefender-gz snyk-issues cloudflare-security cloudflare-logpush sharepoint-audit sharepoint-posture; do
+for f in bitdefender-gz snyk-issues cloudflare-security cloudflare-logpush cloudflare-traffic cloudflare-backfill sharepoint-audit sharepoint-posture; do
   [[ -e $OUT/$f.jsonl ]] || install -m 0640 /dev/null "$OUT/$f.jsonl"
 done
 
@@ -149,6 +149,15 @@ write("snyk.json", snyk)
 write("cloudflare.json", {"token_file": f"{cs}/cloudflare-api-token", "state_file": f"{state}/cloudflare.json",
     "output_file": f"{out}/cloudflare-security.jsonl", "initial_lookback_hours": 1,
     "catchup_cursor_field": "firewall_cursors", "catchup_max_batches": 4, "catchup_delay_seconds": 120})
+# Tráfico HTTP/DNS por GraphQL: recupera 30 días (muestreado) y sigue en vivo hasta que Logpush
+# esté activo; entonces "until" (archivo cloudflare-logpush-active-since) cierra el tramo sin duplicar.
+traffic = {"token_file": f"{cs}/cloudflare-api-token", "state_file": f"{state}/cloudflare-traffic.json",
+    "output_file": f"{out}/cloudflare-traffic.jsonl", "history_days": 30, "lag_minutes": 5,
+    "window_minutes": 60, "max_rows_per_batch": 40000}
+since_file = os.path.join(state, "cloudflare-logpush-active-since")
+if os.path.exists(since_file):
+    traffic["until"] = open(since_file, encoding="utf-8").read().strip()
+write("cloudflare-traffic.json", traffic)
 # Jobs Logpush (destino HTTP del edge); el receptor y el consumidor viven en cloudflare/.
 write("cloudflare-logpush.json", {"credentials_dir": cs,
     "endpoint": "https://" + (os.environ.get("SOC_HOSTNAME") or "dev.security.b89.io") + "/hooks/cloudflare-logpush"})
@@ -175,7 +184,8 @@ python3 - "$stage/ossec.conf" "$BEGIN" "$END" "$BD" "$SN" "$CF" "$SP" <<'PY'
 import re, sys
 path, begin, end, bd, sn, cf, sp = sys.argv[1:8]
 files = [("bitdefender-gz", "bitdefender", bd), ("snyk-issues", "snyk", sn), ("cloudflare-security", "cloudflare", cf),
-         ("cloudflare-logpush", "cloudflare", cf),
+         ("cloudflare-logpush", "cloudflare", cf), ("cloudflare-traffic", "cloudflare", cf),
+         ("cloudflare-backfill", "cloudflare", cf),
          ("sharepoint-audit", "sharepoint", sp), ("sharepoint-posture", "sharepoint", sp)]
 blocks = [
     "<ossec_config>\n  <localfile>\n"
@@ -259,6 +269,7 @@ PI="$ROOT/provider-ingestion"
 unit b89-collector-bitdefender 'B89 Bitdefender GravityZone collector' "/usr/bin/python3 -I $PI/bitdefender/gravityzone.py --config $ETC/bitdefender.json" 10min
 unit b89-collector-snyk 'B89 Snyk issues collector' "/usr/bin/python3 -I $PI/snyk/issues.py --config $ETC/snyk.json" 15min
 unit b89-collector-cloudflare 'B89 Cloudflare security collector' "/usr/bin/python3 -I $PI/cloudflare/security.py --config $ETC/cloudflare.json" 5min
+unit b89-collector-cloudflare-traffic 'B89 Cloudflare traffic collector (GraphQL)' "/usr/bin/python3 -I $PI/cloudflare/traffic.py --config $ETC/cloudflare-traffic.json" 2min
 unit b89-collector-cloudflare-logpush 'B89 Cloudflare Logpush spool consumer' "/usr/bin/python3 -I $PI/cloudflare/logpush_spool.py --spool $ROOT/spool/cloudflare-logpush --output $OUT/cloudflare-logpush.jsonl --ledger $STATE/cloudflare-logpush-ledger.json --heartbeat $STATE/cloudflare-logpush.json" 1min
 unit b89-collector-sharepoint-audit 'B89 SharePoint audit collector' "/usr/bin/python3 -I $PI/sharepoint/sharepoint.py audit --config $ETC/sharepoint-audit.json" 5min
 unit b89-collector-sharepoint-posture 'B89 SharePoint posture collector' "/usr/bin/python3 -I $PI/sharepoint/sharepoint.py posture --config $ETC/sharepoint-posture.json" 60min
@@ -302,17 +313,29 @@ done
 if [[ $CF == true ]]; then
   bash "${HERE}/cloudflare/prepare-logpush-receiver.sh"
   systemctl enable --now b89-collector-cloudflare-logpush.timer >/dev/null
+  systemctl enable --now b89-collector-cloudflare-traffic.timer >/dev/null
   set +e
   prov="$(/usr/bin/python3 -I "$PI/cloudflare/provision_logpush.py" --config "$ETC/cloudflare-logpush.json" 2>&1)"
   rc=$?
   set -e
   case $rc in
-    0) log "Cloudflare Logpush: jobs al día: $(printf '%s' "$prov" | tr '\n' ' ')" ;;
+    0) log "Cloudflare Logpush: jobs al día: $(printf '%s' "$prov" | tr '\n' ' ')"
+       if [[ ! -s $STATE/cloudflare-logpush-active-since ]]; then
+         date -u +%Y-%m-%dT%H:%M:%SZ >"$STATE/cloudflare-logpush-active-since"
+         log 'Cloudflare Logpush activo: el tráfico por GraphQL se cierra en este instante (sin duplicar)'
+         python3 - "$ETC/cloudflare-traffic.json" "$(cat "$STATE/cloudflare-logpush-active-since")" <<'PY'
+import json, sys
+path, until = sys.argv[1:3]
+config = json.load(open(path, encoding="utf-8"))
+config["until"] = until
+json.dump(config, open(path, "w", encoding="utf-8"), indent=1)
+PY
+       fi ;;
     2) log 'Cloudflare Logpush: el token no tiene «Logs: Write» (zona); jobs sin crear, el receptor queda listo' ;;
     *) log "Cloudflare Logpush: no se pudieron conciliar los jobs ($(printf '%s' "$prov" | tail -1))" ;;
   esac
 else
-  systemctl disable --now b89-collector-cloudflare-logpush.timer >/dev/null 2>&1 || true
+  systemctl disable --now b89-collector-cloudflare-logpush.timer b89-collector-cloudflare-traffic.timer >/dev/null 2>&1 || true
 fi
 
 if [[ $SP_OK == true ]]; then

@@ -17,7 +17,7 @@ import security as cf
 from b89_collector import commit_batch, read_state, recover_pending, save_state
 
 
-def recover(config, since, until, output, state_path, client=None):
+def recover(config, since, until, output, state_path, client=None, mark_history=False):
     if since >= until:
         raise cf.ProviderError("Recovery interval must be increasing")
     protected = [pathlib.Path(config[key]).resolve() for key in ("output_file", "state_file", "token_file") if config.get(key)]
@@ -35,6 +35,10 @@ def recover(config, since, until, output, state_path, client=None):
 
     def commit(stream, events, cursor, done=False):
         nonlocal state
+        if mark_history:
+            # Reglas 101508/101509: visibles a nivel 3, sin disparar avisos ni investigaciones de hoy.
+            for event in events:
+                event.setdefault("b89", {})["history"] = True
         next_state = copy.deepcopy(state)
         previous = next_state["streams"].get(stream, {})
         next_state["streams"][stream] = {"cursor": cf.iso(cursor), "done": done,
@@ -97,10 +101,13 @@ def main():
     parser.add_argument("--until", required=True)
     parser.add_argument("--output", required=True, type=pathlib.Path)
     parser.add_argument("--state", required=True, type=pathlib.Path)
+    parser.add_argument("--mark-history", action="store_true",
+                        help="marca b89.history=true (recuperación de días pasados que no debe alertar como actual)")
     args = parser.parse_args()
     try:
         config = json.loads(args.config.read_text(encoding="utf-8-sig"))
-        result = recover(config, cf.parse_iso(args.since), cf.parse_iso(args.until), args.output, args.state)
+        result = recover(config, cf.parse_iso(args.since), cf.parse_iso(args.until), args.output, args.state,
+                         mark_history=args.mark_history)
         print(json.dumps(result["coverage"]))
         return 0 if result["coverage"]["requested_streams_finished"] else 2
     except (cf.ProviderError, OSError, ValueError) as error:

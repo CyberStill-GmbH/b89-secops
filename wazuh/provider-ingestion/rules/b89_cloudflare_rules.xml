@@ -10,6 +10,26 @@
     <options>no_full_log</options>
   </rule>
 
+  <!-- Recuperación histórica (backfill.py --mark-history): antes que las reglas de detalle para que un
+       cambio antiguo quede visible sin avisos ni investigaciones como si fuera de hoy. -->
+  <rule id="101508" level="3">
+    <if_sid>101500</if_sid>
+    <field name="b89.history">^true$</field>
+    <field name="b89.event_type">^audit$</field>
+    <description>B89 Cloudflare (histórico): $(cloudflare.audit.action) sobre $(cloudflare.audit.resource_type) por $(cloudflare.audit.actor_email) el $(cloudflare.audit.when).</description>
+    <options>no_full_log</options>
+    <group>b89_audit,b89_history,</group>
+  </rule>
+
+  <rule id="101509" level="3">
+    <if_sid>101500</if_sid>
+    <field name="b89.history">^true$</field>
+    <field name="b89.event_type">^firewall$</field>
+    <description>B89 Cloudflare (histórico): $(cloudflare.firewall.action) de $(cloudflare.firewall.client_ip) en $(cloudflare.firewall.host) el $(cloudflare.firewall.datetime).</description>
+    <options>no_full_log</options>
+    <group>b89_waf,b89_history,</group>
+  </rule>
+
   <!-- Auditoría de cuenta -->
   <rule id="101501" level="3">
     <if_sid>101500</if_sid>
@@ -124,7 +144,7 @@
     <group>b89_logpush,</group>
   </rule>
 
-  <!-- Logpush HTTP (http_requests): cada petición entra a nivel 0 (sin alerta); alertan los patrones. -->
+  <!-- HTTP (Logpush http_requests o traffic.py): cada petición entra a nivel 0 (sin alerta); alertan los patrones. -->
   <rule id="101515" level="0">
     <if_sid>101500</if_sid>
     <field name="b89.event_type">^http$</field>
@@ -135,6 +155,7 @@
 
   <rule id="101516" level="6">
     <if_sid>101515</if_sid>
+    <field name="b89.source" type="pcre2" negate="yes">^graphql-history$</field>
     <field name="cloudflare.http.path" type="pcre2">(?i)(/\.env|/\.git/|/\.aws/|/\.ssh/|wp-login\.php|xmlrpc\.php|/phpmyadmin|/etc/passwd|\.\./|%2e%2e%2f|/actuator|/server-status|/cgi-bin/|/\.DS_Store|/config\.json|/backup|\.sql$|\.bak$)</field>
     <description>B89 Cloudflare: sondeo de ruta sensible $(cloudflare.http.path) desde $(cloudflare.http.client_ip) en $(cloudflare.http.host) ($(cloudflare.http.status)).</description>
     <options>no_full_log</options>
@@ -145,6 +166,7 @@
   <rule id="101517" level="10" frequency="15" timeframe="120">
     <if_matched_sid>101516</if_matched_sid>
     <same_field>cloudflare.http.client_ip</same_field>
+    <field name="b89.source">^logpush$</field>
     <description>B89 Cloudflare: escaneo de rutas sensibles desde $(cloudflare.http.client_ip): 15+ sondeos en 2 min.</description>
     <options>no_full_log</options>
     <mitre><id>T1595.003</id></mitre>
@@ -153,6 +175,7 @@
 
   <rule id="101518" level="0">
     <if_sid>101515</if_sid>
+    <field name="b89.source">^logpush$</field>
     <field name="cloudflare.http.status" type="pcre2">^4\d\d$</field>
     <description>B89 Cloudflare: respuesta 4xx a $(cloudflare.http.client_ip).</description>
     <options>no_full_log</options>
@@ -170,6 +193,7 @@
 
   <rule id="101520" level="0">
     <if_sid>101515</if_sid>
+    <field name="b89.source">^logpush$</field>
     <field name="cloudflare.http.status" type="pcre2">^5\d\d$</field>
     <description>B89 Cloudflare: error 5xx en $(cloudflare.http.host).</description>
     <options>no_full_log</options>
@@ -194,7 +218,18 @@
     <group>b89_http,b89_web_probe,</group>
   </rule>
 
-  <!-- Logpush DNS (dns_logs, DNS autoritativo de Cloudflare) -->
+  <!-- Recuperación histórica por GraphQL (traffic.py, muestreada): visible sin inflar la cola. -->
+  <rule id="101523" level="3">
+    <if_sid>101515</if_sid>
+    <field name="b89.source">^graphql-history$</field>
+    <field name="cloudflare.http.path" type="pcre2">(?i)(/\.env|/\.git/|/\.aws/|/\.ssh/|wp-login\.php|xmlrpc\.php|/phpmyadmin|/etc/passwd|\.\./|%2e%2e%2f|/actuator|/server-status|/cgi-bin/|/\.DS_Store|/config\.json|/backup|\.sql$|\.bak$)</field>
+    <description>B89 Cloudflare (histórico): sondeo de ruta sensible $(cloudflare.http.path) desde $(cloudflare.http.client_ip) en $(cloudflare.http.host) el $(cloudflare.http.datetime).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1595.003</id></mitre>
+    <group>b89_http,b89_web_probe,b89_history,</group>
+  </rule>
+
+  <!-- DNS (Logpush dns_logs o traffic.py, DNS autoritativo de Cloudflare) -->
   <rule id="101525" level="0">
     <if_sid>101500</if_sid>
     <field name="b89.event_type">^dns$</field>
@@ -214,6 +249,7 @@
 
   <rule id="101527" level="0">
     <if_sid>101525</if_sid>
+    <field name="b89.source">^logpush$</field>
     <field name="cloudflare.dns.response_code" type="pcre2">^(3|NXDOMAIN)$</field>
     <description>B89 Cloudflare: NXDOMAIN para $(cloudflare.dns.query).</description>
     <options>no_full_log</options>

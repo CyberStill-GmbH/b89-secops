@@ -16,6 +16,26 @@ Hasta entonces el receptor queda listo y el instalador lo informa.
 Firewall y auditoría siguen por API para no duplicar eventos. Desde 2026-09-30 Cloudflare ofrece
 Logpush en todos los planes con precio por uso (25 GB/mes incluidos por exportación externa).
 
+## Historia y continuidad sin Logpush
+
+Logpush no recupera el pasado: solo envía lo que ocurre desde que el job existe. Para no perder nada:
+
+- **`traffic.py`** (timer de 2 min) lee `httpRequestsAdaptive` y `dnsAnalyticsAdaptive` de la API
+  GraphQL. En todos los planes conservan **31 días** de registros individuales, **muestreados**.
+  - **Arranque:** empieza 30 días atrás y recupera en lotes de hasta 40 000 registros, sin saturar
+    Wazuh.
+  - **Después:** sigue en vivo con 5 min de retraso.
+  - **Al activarse Logpush:** el instalador escribe `state/cloudflare-logpush-active-since` y el
+    collector termina en ese instante, sin duplicar.
+  - **Marcado:** los eventos llevan `b89.source=graphql-history|graphql-live` y `b89.sampled=true`.
+  - **Reglas:** las de ráfaga (frecuencia) cuentan solo Logpush; el muestreo y la entrega por lotes
+    las falsearían. Un sondeo histórico entra a nivel 3 (101523); uno en vivo, a nivel 6 (101516).
+- **`backfill.py --mark-history`** recupera firewall (31 días) y auditoría (hasta 18 meses) anteriores
+  al arranque del collector de API. Los eventos llevan `b89.history=true` y caen en 101508/101509
+  (nivel 3). Un cambio antiguo queda visible sin avisos ni investigaciones como si fuera de hoy.
+- **Antes de 31 días:** Cloudflare solo conserva totales diarios (`httpRequests1dGroups`), no
+  registros. Eso no se puede recuperar como logs.
+
 ## Circuito
 
 ```
