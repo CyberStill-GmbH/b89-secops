@@ -175,14 +175,16 @@
     <if_sid>101530</if_sid>
     <field name="cloudflare.http.path" type="pcre2">(?i)/export</field>
     <field name="cloudflare.http.status" type="pcre2">^2\d\d$</field>
-    <field name="cloudflare.http.country" type="pcre2" negate="yes">^PE$</field>
-    <description>B89 Cloudflare: exportación de datos del backoffice ($(cloudflare.http.path)) desde $(cloudflare.http.country) IP $(cloudflare.http.client_ip) ($(cloudflare.http.asn_name)) el $(cloudflare.http.datetime) UTC. Posible exfiltración.</description>
+    <field name="cloudflare.http.asn_name" type="pcre2">(?i)(datacamp|amazon|google llc|google cloud|hetzner|\bovh|digitalocean|m247|leaseweb|constant company|vultr|choopa|linode|akamai|contabo|tencent|alibaba|oracle|microsoft|cdn77|packethub|g-core|gcore|ipxo|hostinger|scaleway|zenlayer|tefincom|nord|proton|mullvad|surfshark|express ?vpn|private internet|clouvider|datapacket|hostroyale|colocrossing|psychz|quadranet|buyvm|frantech|servers\.com|ionos|hostpapa|unified layer|bluehost|godaddy)</field>
+    <description>B89 Cloudflare: exportación de datos del backoffice ($(cloudflare.http.path)) desde hosting/VPN en $(cloudflare.http.country), IP $(cloudflare.http.client_ip) ($(cloudflare.http.asn_name)) el $(cloudflare.http.datetime) UTC. Posible exfiltración.</description>
     <options>no_full_log</options>
     <mitre><id>T1567</id><id>T1213</id></mitre>
     <group>b89_http,b89_backoffice,b89_exfiltration,</group>
   </rule>
 
-  <rule id="101533" level="12">
+  <!-- Nivel 2: B89 opera en varios países (PE, UY, CO, EC, BR…): un login fuera de Perú es normal. Queda en el
+       índice de tráfico; el panel de análisis lo pondera con otras señales (hosting/VPN, sesión de personal). -->
+  <rule id="101533" level="2">
     <if_sid>101530</if_sid>
     <field name="cloudflare.http.method">^POST$</field>
     <field name="cloudflare.http.path" type="pcre2">^/auth-service/v1/login$</field>
