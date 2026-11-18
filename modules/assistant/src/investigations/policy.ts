@@ -47,7 +47,9 @@ export const TRIAGE_CONFIG: TriageConfig = Object.freeze({
   ambiguousMinSources: 2,
   ambiguousMinTactics: 2,
   unhealthySourceStates: Object.freeze(['degraded', 'failed', 'unknown']),
-  maxOutputTokens: Object.freeze({ economy: 700, advanced: 1200 }),
+  // 2026-11-18: 700/1200 cortaban el JSON (MALFORMED_JSON) con el expediente ampliado (reputación de IP,
+  // eventos de tráfico). El tope efectivo sigue acotado por el ajuste del administrador (≤ 4000).
+  maxOutputTokens: Object.freeze({ economy: 2000, advanced: 4000 }),
 });
 
 export const TRIAGE_REASON_CODES = [

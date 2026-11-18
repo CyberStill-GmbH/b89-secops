@@ -105,7 +105,7 @@ describe('runner · caminos felices', () => {
     expect(h.advanced.requests).toHaveLength(0);
     const request = h.economy.requests[0]!;
     expect(request).toMatchObject({ system: ANALYST_SYSTEM_PROMPT, tools: [], allowTools: false });
-    expect(request.maxTokens).toBeLessThanOrEqual(700);
+    expect(request.maxTokens).toBeLessThanOrEqual(2000);
     const done = await h.store.byId(TENANT, job.id);
     expect(done).toMatchObject({ status: 'completed', inference: 'economy' });
     expect(done?.result).toMatchObject({ verified: true, verdict: 'likely_true_positive' });
