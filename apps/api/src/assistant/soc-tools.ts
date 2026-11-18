@@ -12,6 +12,8 @@ import type { AssistantTool, Citation, ToolInput, ToolOutcome } from '@b89/assis
 import { INCIDENT_STATUSES } from '@b89/soc';
 
 import { AbuseIpdbError, publicIp, type IpReputationLookup } from '../runtime/abuseipdb.js';
+import type { CloudflareTrafficSearch } from '../runtime/cloudflare-traffic.js';
+import { cloudflareTrafficTool } from './cloudflare-traffic-tool.js';
 import { buildInvestigationTools, limaLabel } from './investigation-tools.js';
 import { buildKnowledgeTools } from './knowledge-tools.js';
 
@@ -205,6 +207,8 @@ export interface SocToolActions {
   readonly startInvestigation?: (alertId: string) => Promise<ToolOutcome>;
   /** Reputación de IP pública (AbuseIPDB); ausente si el despliegue no tiene clave. */
   readonly ipReputation?: IpReputationLookup;
+  /** Tráfico de Cloudflare (índice b89-cloudflare-traffic-*); ausente sin gateway. */
+  readonly cloudflareTraffic?: CloudflareTrafficSearch;
 }
 
 const IP_REPUTATION_ERROR: Readonly<Record<string, string>> = {
@@ -271,7 +275,9 @@ function ipReputationTool(lookup: IpReputationLookup): AssistantTool {
           ok: true,
           data: {
             available: false,
-            note: IP_REPUTATION_ERROR[code] ?? 'AbuseIPDB no respondió: no hay reputación ahora. No la estimes.',
+            note:
+              IP_REPUTATION_ERROR[code] ??
+              'AbuseIPDB no respondió: no hay reputación ahora. No la estimes.',
           },
         };
       }
@@ -547,6 +553,9 @@ export function buildSocTools(
   const tools = [
     ...buildInvestigationTools(get, allowed),
     ...(canReputation && actions.ipReputation ? [ipReputationTool(actions.ipReputation)] : []),
+    ...(actions.cloudflareTraffic && (allowed.has('alerts.read') || allowed.has('events.read'))
+      ? [cloudflareTrafficTool(actions.cloudflareTraffic)]
+      : []),
     ...buildKnowledgeTools(),
     ...specs
       .filter((spec) => spec.anyOf.some((capability) => allowed.has(capability)))

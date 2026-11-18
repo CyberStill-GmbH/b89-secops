@@ -40,6 +40,7 @@ import type { InjectingServer } from './assistant/internal-client.js';
 import { ApiLifecycle, type ApiEvent } from './lifecycle.js';
 import { resolveApiSecretEnvironment } from './runtime/secret-environment.js';
 import { abuseIpdbFromEnvironment } from './runtime/abuseipdb.js';
+import { createCloudflareTrafficSearch } from './runtime/cloudflare-traffic.js';
 import { DemoAdminLogin } from './access/demo-admin-credentials.js';
 import { entityRefFactory } from './runtime/entity-refs.js';
 import { deriveCsrfKey } from './http/csrf.js';
@@ -114,13 +115,16 @@ type PostgresPersistenceConfig = Extract<SocPersistenceConfig, { mode: 'postgres
  * inválida es un error de arranque (no se adivina); una ya vencida o a más de 90 días no
  * relaja nada (la ventana la vuelve a comprobar el runtime en cada inicio de sesión).
  */
-export function mfaRelaxedFrom(
-  environment: Readonly<Record<string, string | undefined>>,
-): { mfaRelaxedUntil?: Date } {
+export function mfaRelaxedFrom(environment: Readonly<Record<string, string | undefined>>): {
+  mfaRelaxedUntil?: Date;
+} {
   const raw = environment['B89_ENTRA_MFA_RELAXED_UNTIL']?.trim();
   if (!raw) return {};
   const until = new Date(raw);
-  if (!/^\d{4}-\d{2}-\d{2}(T[\d:.]+(Z|[+-]\d{2}:\d{2}))?$/u.test(raw) || Number.isNaN(until.getTime())) {
+  if (
+    !/^\d{4}-\d{2}-\d{2}(T[\d:.]+(Z|[+-]\d{2}:\d{2}))?$/u.test(raw) ||
+    Number.isNaN(until.getTime())
+  ) {
     throw new Error('CONFIG_VALUE_INVALID: B89_ENTRA_MFA_RELAXED_UNTIL');
   }
   return { mfaRelaxedUntil: until };
@@ -376,18 +380,21 @@ export async function buildApi(
   // del grupo en vez del ID, se resuelve una vez aquí con tiempo acotado. Si no se puede (sin
   // consentimiento, nombre ambiguo, red), el API arranca igual con el padrón deshabilitado y el
   // código queda en el log: Graph nunca impide servir el SOC.
-  const directoryTokens = directoryConfig.mode === 'graph' && clientSecret
-    ? new EntraClientCredentialsTokenSource({
-        tenantId: access.tenantId,
-        clientId: access.clientId,
-        clientSecret,
-        scope: 'https://graph.microsoft.com/.default',
-      }) : undefined;
+  const directoryTokens =
+    directoryConfig.mode === 'graph' && clientSecret
+      ? new EntraClientCredentialsTokenSource({
+          tenantId: access.tenantId,
+          clientId: access.clientId,
+          clientSecret,
+          scope: 'https://graph.microsoft.com/.default',
+        })
+      : undefined;
   const directoryReader = directoryTokens
     ? new GraphDirectoryReader({
         accessToken: directoryTokens.token,
         refreshRejectedToken: directoryTokens.refreshRejected,
-      }) : undefined;
+      })
+    : undefined;
   // Si el nombre no se resuelve al arrancar (sin consentimiento, red), se reintenta en segundo
   // plano con espera exponencial y el padrón se activa solo al resolverse, sin reiniciar.
   // El ciclo de sincronización existe después; al resolverse el grupo se le pide una pasada.
@@ -461,6 +468,26 @@ export async function buildApi(
   // declarado para esta condición.
   // Reputación de IP (AbuseIPDB) para el Analista IA y Bunny; sin clave queda apagada.
   const ipReputation = abuseIpdbFromEnvironment(environment);
+  // Tráfico de Cloudflare para Bunny/MCP: mismo gateway y token que la ingesta de Wazuh.
+  const cloudflareTraffic =
+    ingestionConfig.source !== 'wazuh'
+      ? undefined
+      : ingestionConfig.gatewayAuth === 'static-token'
+        ? createCloudflareTrafficSearch({
+            gatewayBaseUrl: ingestionConfig.gatewayBaseUrl,
+            accessToken: new StaticGatewayTokenSource(ingestionConfig.gatewayAccessToken).token,
+          })
+        : clientSecret
+          ? createCloudflareTrafficSearch({
+              gatewayBaseUrl: ingestionConfig.gatewayBaseUrl,
+              accessToken: new EntraClientCredentialsTokenSource({
+                tenantId: access.tenantId,
+                clientId: access.clientId,
+                clientSecret,
+                scope: ingestionConfig.gatewayScope,
+              }).token,
+            })
+          : undefined;
   const runtime: SecOpsRuntime = new SecOpsRuntime({
     access,
     ...(demoMfaExceptionUntil ? { demoMfaExceptionUntil } : {}),
@@ -486,6 +513,7 @@ export async function buildApi(
       ? { wazuhPushSecret: ingestionConfig.pushSecret.reveal() }
       : {}),
     ...(ipReputation ? { ipReputation } : {}),
+    ...(cloudflareTraffic ? { cloudflareTraffic } : {}),
     ...(environment['B89_CORRELATOR_SERVICE_TOKEN']
       ? { correlatorServiceToken: environment['B89_CORRELATOR_SERVICE_TOKEN'] }
       : {}),

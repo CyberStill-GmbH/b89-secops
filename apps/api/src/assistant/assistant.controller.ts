@@ -494,13 +494,21 @@ export class AssistantController {
     const server = this.runtime.internalServer;
     if (!server) throw new ApiError('DEPENDENCY_DEGRADED', correlationId);
     const capabilities = [...actor.capabilities].sort();
-    const startInvestigation = startInvestigationAction(this.runtime, actor, correlationId, 'bunny');
+    const startInvestigation = startInvestigationAction(
+      this.runtime,
+      actor,
+      correlationId,
+      'bunny',
+    );
     const handlers = buildSocTools(
       createInternalGet(server, request, signal),
       { roles: actor.roles, capabilities },
       {
         ...(startInvestigation ? { startInvestigation } : {}),
         ...(this.runtime.ipReputation ? { ipReputation: this.runtime.ipReputation } : {}),
+        ...(this.runtime.cloudflareTraffic
+          ? { cloudflareTraffic: this.runtime.cloudflareTraffic }
+          : {}),
       },
     );
     const connected = await connectMcpInProcess(handlers);

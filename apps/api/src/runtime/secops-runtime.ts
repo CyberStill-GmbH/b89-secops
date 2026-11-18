@@ -15,6 +15,7 @@
  * veredictos, incidentes, auditoría ni notificaciones pendientes.
  */
 
+import type { CloudflareTrafficSearch } from './cloudflare-traffic.js';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
 import {
@@ -264,6 +265,8 @@ export interface RuntimeOptions {
   readonly correlatorRead?: { readonly baseUrl: string; readonly token: string };
   /** Reputación externa de IP (AbuseIPDB). Ausente: el enriquecimiento queda apagado. */
   readonly ipReputation?: IpReputationLookup;
+  /** Búsqueda en el tráfico de Cloudflare vía gateway (Bunny/MCP). */
+  readonly cloudflareTraffic?: CloudflareTrafficSearch;
   readonly teamsWorkflowUrl?: string;
   readonly transport?: NotificationTransport;
   readonly clock?: () => Date;
@@ -404,6 +407,7 @@ export class SecOpsRuntime {
   public readonly correlatorServiceToken: string | undefined;
   public readonly correlatorRead: { readonly baseUrl: string; readonly token: string } | undefined;
   public readonly ipReputation: IpReputationLookup | undefined;
+  public readonly cloudflareTraffic: CloudflareTrafficSearch | undefined;
   /** Bandeja de la consola: último eslabón del respaldo, siempre presente. */
   public readonly consoleFallback = new ConsoleFallbackChannel();
 
@@ -450,6 +454,7 @@ export class SecOpsRuntime {
     this.correlatorServiceToken = options.correlatorServiceToken;
     this.correlatorRead = options.correlatorRead;
     this.ipReputation = options.ipReputation;
+    this.cloudflareTraffic = options.cloudflareTraffic;
     this.clock = options.clock ?? (() => new Date());
     this.csrfKey = options.csrfKey ?? randomBytes(32);
     this.soc = options.soc ?? new InMemorySoc();

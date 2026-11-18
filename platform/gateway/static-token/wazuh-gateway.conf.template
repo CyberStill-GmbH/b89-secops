@@ -5,6 +5,7 @@
 # Mismo contrato que KrakenD (platform/gateway/krakend/routes.json): solo
 #   GET  /wazuh/_cluster/health -> /_cluster/health
 #   POST /wazuh/_search         -> /wazuh-alerts-*/_search
+#   POST /wazuh/traffic/_search -> /b89-cloudflare-traffic-*/_search (Bunny: tráfico de Cloudflare)
 # El cliente no elige upstream, índice ni query string; el resto responde 404.
 #
 # Uso con la imagen oficial de nginx: montar este archivo en /etc/nginx/templates/ (el
@@ -51,6 +52,18 @@ server {
     proxy_set_header Content-Type "application/json";
     proxy_read_timeout 15s;
     proxy_pass https://${WAZUH_INDEXER_UPSTREAM}/wazuh-alerts-*/_search;
+  }
+
+  location = /wazuh/traffic/_search {
+    # Tráfico de Cloudflare con la hora real de cada evento (solo lectura, mismo bearer).
+    if ($http_authorization != "Bearer ${B89_WAZUH_GATEWAY_ACCESS_TOKEN}") { return 401; }
+    if ($args != "") { return 400; }
+    limit_except POST { deny all; }
+    proxy_set_header Authorization "Basic ${WAZUH_INDEXER_BASIC_AUTH_B64}";
+    proxy_set_header Cookie "";
+    proxy_set_header Content-Type "application/json";
+    proxy_read_timeout 15s;
+    proxy_pass https://${WAZUH_INDEXER_UPSTREAM}/b89-cloudflare-traffic-*/_search;
   }
 
   location = /wazuh/_cluster/health {

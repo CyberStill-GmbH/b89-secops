@@ -46,6 +46,9 @@ export class AssistantMcpController {
       {
         ...(startInvestigation ? { startInvestigation } : {}),
         ...(this.runtime.ipReputation ? { ipReputation: this.runtime.ipReputation } : {}),
+        ...(this.runtime.cloudflareTraffic
+          ? { cloudflareTraffic: this.runtime.cloudflareTraffic }
+          : {}),
       },
     );
     const result = await dispatchMcpRequest(body, tools);
