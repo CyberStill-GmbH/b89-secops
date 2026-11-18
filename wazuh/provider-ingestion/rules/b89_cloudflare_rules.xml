@@ -194,7 +194,9 @@
     <group>b89_http,b89_backoffice,b89_credential_misuse,</group>
   </rule>
 
-  <rule id="101516" level="6">
+  <!-- Nivel 2: un sondeo suelto de bot (/.env, /.git…) es ruido de Internet; queda en el índice de tráfico y lo
+       cuenta 101517 (escaneo). Con nivel 6 cada uno era una alerta P3: miles por hora (2026-11-18). -->
+  <rule id="101516" level="2">
     <if_sid>101515, 101518, 101520</if_sid>
     <field name="cloudflare.http.path" type="pcre2">(?i)(/\.env|/\.git/|/\.aws/|/\.ssh/|wp-login\.php|xmlrpc\.php|/phpmyadmin|/etc/passwd|\.\./|%2e%2e%2f|/actuator|/server-status|/cgi-bin/|/\.DS_Store|/config\.json|/backup|\.sql$|\.bak$)</field>
     <description>B89 Cloudflare: sondeo de ruta sensible $(cloudflare.http.path) desde $(cloudflare.http.client_ip) en $(cloudflare.http.host) ($(cloudflare.http.status)).</description>
