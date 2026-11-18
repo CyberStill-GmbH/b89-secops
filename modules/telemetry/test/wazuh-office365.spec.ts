@@ -337,3 +337,39 @@ describe('C-12 · data.srcip genérico', () => {
     });
   });
 });
+
+describe('Cloudflare · IP del cliente como entidad', () => {
+  it('declara la IP de una petición HTTP de Cloudflare (sin data.srcip)', () => {
+    const outcome = normalizeWazuhAlert(
+      {
+        record: {
+          sourceRecordId: 'cf-http-01',
+          dataset: 'alerts',
+          collectedAt: '2026-11-18T16:56:47.000Z',
+          raw: {
+            timestamp: '2026-11-18T16:56:46.000Z',
+            rule: {
+              id: 101531,
+              level: 13,
+              description: 'B89 Cloudflare: backoffice desde VPN',
+              groups: ['cloudflare'],
+            },
+            data: {
+              cloudflare: {
+                http: { client_ip: '198.51.100.23', host: 'apipayments.example.test' },
+              },
+            },
+          },
+        },
+        raw: office365Alert({}).raw,
+      },
+      context,
+    );
+    if (outcome.status !== 'normalized') throw new Error('se esperaba normalización');
+    expect(outcome.event.entities.resources).toContainEqual({
+      kind: 'ip',
+      id: '198.51.100.23',
+      type: 'source',
+    });
+  });
+});

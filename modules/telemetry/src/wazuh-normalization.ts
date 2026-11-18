@@ -337,8 +337,22 @@ function mapOutcome(groups: readonly string[]): SecurityEvent['outcome'] {
  * una correlación por IP solo es útil si la IP es real.
  */
 function mapSourceIp(raw: Readonly<Record<string, unknown>>): Resource[] {
-  const ip = normalizeClientIp(readObject(raw['data'])?.['srcip']);
-  return ip === undefined ? [] : [{ kind: 'ip', id: ip, type: 'source' }];
+  const data = readObject(raw['data']);
+  // Proveedores sin `srcip`: la IP del cliente viaja en su propio bloque (Cloudflare HTTP/DNS/WAF y
+  // auditoría). Sin ella la alerta llega sin entidad y el analista no puede acotar la evidencia.
+  const cloudflare = readObject(data?.['cloudflare']);
+  const candidates = [
+    data?.['srcip'],
+    readObject(cloudflare?.['http'])?.['client_ip'],
+    readObject(cloudflare?.['firewall'])?.['client_ip'],
+    readObject(cloudflare?.['dns'])?.['client_ip'],
+    readObject(cloudflare?.['audit'])?.['actor_ip'],
+  ];
+  for (const value of candidates) {
+    const ip = normalizeClientIp(value);
+    if (ip !== undefined) return [{ kind: 'ip', id: ip, type: 'source' }];
+  }
+  return [];
 }
 
 function mapResources(raw: Readonly<Record<string, unknown>>): Resource[] {

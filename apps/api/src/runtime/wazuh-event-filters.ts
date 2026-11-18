@@ -87,7 +87,15 @@ export const WAZUH_ENTITY_FIELDS = Object.freeze({
     'data.win.eventdata.targetUserName',
     'data.win.eventdata.subjectUserName',
   ],
-  ip: ['data.srcip', 'data.dstip', 'data.office365.ClientIP'],
+  ip: [
+    'data.srcip',
+    'data.dstip',
+    'data.office365.ClientIP',
+    'data.cloudflare.http.client_ip',
+    'data.cloudflare.firewall.client_ip',
+    'data.cloudflare.dns.client_ip',
+    'data.cloudflare.audit.actor_ip',
+  ],
 });
 
 const ENTITY_VALUE = /^[^\p{Cc}]+$/u;
