@@ -580,7 +580,9 @@ export class RuntimeEvidenceReader implements EvidenceReader {
           throw new Error('CORRELATOR_UNAVAILABLE');
         }
       } catch {
-        incomplete = true;
+        // Contexto complementario (como la reputación de IP): se declara el vacío, pero no vuelve
+        // parcial la evidencia del SOC. Un reinicio del correlador (cada despliegue) dejaba las P2
+        // sin análisis con modelo (2026-11-18).
         gaps.push('Riesgo de la entidad no disponible (correlador)');
       }
     } else if (!this.sources.correlator) {
