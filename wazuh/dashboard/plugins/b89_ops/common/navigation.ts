@@ -30,7 +30,12 @@ export const NAV_CATEGORIES = {
     icon: 'b89-incidents.svg',
   },
   detection: { id: 'b89-nav-detection', label: 'Detección', order: -970, icon: 'b89-sources.svg' },
-  compliance: { id: 'b89-nav-compliance', label: 'Cumplimiento', order: -960, icon: 'b89-audit.svg' },
+  compliance: {
+    id: 'b89-nav-compliance',
+    label: 'Cumplimiento',
+    order: -960,
+    icon: 'b89-audit.svg',
+  },
   integrations: {
     id: 'b89-nav-integrations',
     label: 'Integraciones',
@@ -71,6 +76,12 @@ export const NAV_PLACEMENT: Readonly<Record<string, NavPlacement>> = {
     order: 15,
     title: 'Analista IA',
     tooltip: 'Investigación automática de alertas, con evidencia y costo estimado',
+  },
+  'b89-cloudflare-traffic': {
+    category: 'investigation',
+    order: 18,
+    title: 'Tráfico de Cloudflare',
+    tooltip: 'Peticiones HTTP, DNS, firewall/WAF y auditoría de Cloudflare, en hora de Lima',
   },
   'threat-hunting': { category: 'investigation', order: 20, title: 'Threat Hunting' },
   'data-explorer': { category: 'investigation', order: 30, title: 'Discover' },

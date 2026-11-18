@@ -5,6 +5,9 @@
 import {
   alertsAggregationQuery,
   buildOverview,
+  cloudflareTrafficQuery,
+  parseCloudflareTraffic,
+  withCloudflareTraffic,
   isoInstant,
   openSnykIssues,
   parseAgents,
@@ -18,7 +21,11 @@ const AUTO = { state: 'auto' as const, missingPermissions: [], note: '' };
 const INTEGRATIONS: IntegrationsConfig = {
   wazuh: AUTO,
   office365: { state: 'blocked', missingPermissions: ['ActivityFeed.Read'], note: '' },
-  sharepoint: { state: 'disabled', missingPermissions: [], note: 'Permisos pendientes de validar.' },
+  sharepoint: {
+    state: 'disabled',
+    missingPermissions: [],
+    note: 'Permisos pendientes de validar.',
+  },
   bitdefender: AUTO,
   snyk: AUTO,
   cloudflare: AUTO,
@@ -55,13 +62,8 @@ const AGGREGATION = {
       trend: { buckets: [{ key: Date.parse('2026-11-04T10:00:00Z'), levels: levels(1, 0, 0, 0) }] },
       providers: {
         buckets: {
-          snyk: { doc_count: 5, levels: levels(1, 2, 2, 0), waf_blocks: { doc_count: 0 } },
-          cloudflare: {
-            doc_count: 9,
-            levels: levels(9, 0, 0, 0),
-            waf_blocks: { doc_count: 4 },
-            audit: { doc_count: 5 },
-          },
+          snyk: { doc_count: 5, levels: levels(1, 2, 2, 0) },
+          cloudflare: { doc_count: 9, levels: levels(9, 0, 0, 0) },
         },
       },
     },
@@ -127,7 +129,7 @@ describe('overview: lectura', () => {
     });
     expect(providers.snyk.metrics.open_high).toBe(1);
     expect(providers.snyk.lastEventAt).toBe('2026-11-04T14:40:00.000Z');
-    expect(providers.cloudflare.metrics).toMatchObject({ waf_blocks: 4, audit: 5, zones: 1 });
+    expect(providers.cloudflare.metrics).toEqual({ zones: 1 });
     expect(providers.bitdefender).toMatchObject({
       events24h: 0,
       lastEventAt: null,
@@ -201,5 +203,84 @@ describe('overview: permisos', () => {
     expect(overview.monitoringAccess).toBe('forbidden');
     expect(overview.agents).toBeNull();
     expect(overview.integrations.office365.missingPermissions).toEqual(['ActivityFeed.Read']);
+  });
+});
+
+const TRAFFIC = {
+  aggregations: {
+    datasets: {
+      buckets: [
+        { key: 'http', doc_count: 1200 },
+        { key: 'dns', doc_count: 300 },
+        { key: 'firewall', doc_count: 7 },
+        { key: 'audit', doc_count: 2 },
+      ],
+    },
+    http_sampled: { doc_count: 1100 },
+    zones: { value: 3 },
+    last: { value: Date.parse('2026-11-04T15:30:00Z') },
+  },
+};
+
+describe('overview: tráfico de Cloudflare (b89-cloudflare-traffic-*)', () => {
+  it('cuenta por la hora del evento de las últimas 24 h, sin traer documentos', () => {
+    const query = cloudflareTrafficQuery() as { size: number; query: unknown };
+    expect(query.size).toBe(0);
+    expect(JSON.stringify(query.query)).toContain('@timestamp');
+    expect(JSON.stringify(query)).not.toContain('waf');
+  });
+
+  it('peticiones HTTP, consultas DNS, eventos de seguridad y zonas con tráfico', () => {
+    expect(parseCloudflareTraffic(TRAFFIC)).toMatchObject({
+      traffic_readable: 1,
+      http_24h: 1200,
+      http_sampled_24h: 1100,
+      dns_24h: 300,
+      security_24h: 7,
+      audit_24h: 2,
+      zones_traffic: 3,
+    });
+  });
+
+  it('el último evento de Cloudflare es el más reciente entre alertas y tráfico', () => {
+    const providers = withCloudflareTraffic(
+      { cloudflare: { metrics: { zones: 1 }, lastEventAt: '2026-11-04T15:00:00.000Z' } },
+      parseCloudflareTraffic(TRAFFIC),
+    );
+    expect(providers.cloudflare.lastEventAt).toBe('2026-11-04T15:30:00.000Z');
+    expect(providers.cloudflare.metrics.zones).toBe(3);
+  });
+
+  it('sin permiso sobre el índice de tráfico: traffic_readable 0 y el resto responde', async () => {
+    const client: SearchClient = {
+      search: async ({ index }) => {
+        if (index === 'b89-cloudflare-traffic-*') {
+          throw Object.assign(new Error('no'), { statusCode: 403 });
+        }
+        return { body: index === 'wazuh-alerts-*' ? AGGREGATION : {} };
+      },
+    };
+    const overview = await buildOverview(client, INTEGRATIONS, new Date('2026-11-04T16:00:00Z'));
+    expect(overview.alertsAccess).toBe('ok');
+    expect(overview.providers?.cloudflare.metrics).toMatchObject({ traffic_readable: 0, zones: 1 });
+  });
+
+  it('con tráfico legible, el resumen trae las cifras de Cloudflare', async () => {
+    const client: SearchClient = {
+      search: async ({ index }) => ({
+        body:
+          index === 'wazuh-alerts-*'
+            ? AGGREGATION
+            : index === 'b89-cloudflare-traffic-*'
+              ? TRAFFIC
+              : {},
+      }),
+    };
+    const overview = await buildOverview(client, INTEGRATIONS, new Date('2026-11-04T16:00:00Z'));
+    expect(overview.providers?.cloudflare.metrics).toMatchObject({
+      http_24h: 1200,
+      dns_24h: 300,
+      security_24h: 7,
+    });
   });
 });

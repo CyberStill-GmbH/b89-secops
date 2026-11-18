@@ -12,6 +12,7 @@
  */
 
 import type { PlatformHealth } from './platform_health';
+import { TRAFFIC_APP_PATH } from './cloudflare_traffic';
 
 export const OVERVIEW_ROUTE = '/api/b89_ops/overview';
 
@@ -207,10 +208,14 @@ export const INTEGRATIONS: readonly IntegrationSpec[] = [
     name: 'Cloudflare',
     vendor: 'Cloudflare',
     monogram: 'CF',
-    summary: 'Bloqueos del WAF por zona y auditoría de la cuenta.',
+    summary:
+      'Todo el tráfico de cada zona (HTTP, DNS, firewall/WAF) y la auditoría de la cuenta, con la hora real del evento.',
     collects: [
-      'Eventos de firewall/WAF (bloqueos, desafíos, solo-log) por zona',
+      'Peticiones HTTP por zona: IP, país, ASN, host, ruta, método, estado, user-agent y acción de seguridad',
+      'Consultas DNS por zona (nombre, tipo, código de respuesta, colo)',
+      'Eventos de firewall/WAF (bloqueos, desafíos, solo-registro) por zona',
       'Audit logs de la cuenta (DNS, reglas de seguridad, credenciales)',
+      'Índices b89-cloudflare-traffic-AAAA.MM.DD por fecha del evento; historial recuperado incluido',
     ],
     interval: 'Cada 5 min (b89-collector-cloudflare.timer)',
     ruleRange: '101500–101513',
@@ -218,8 +223,11 @@ export const INTEGRATIONS: readonly IntegrationSpec[] = [
     policy:
       'Eliminar o deshabilitar un control de seguridad nivel 10; 20+ bloqueos de una IP en 5 min nivel 10.',
     permissions: ['API token con Account Audit Logs:Read y Zone Analytics:Read'],
-    nextSteps: ['Los bloqueos del WAF dependen del tráfico real: 0 eventos puede ser normal.'],
-    links: [],
+    nextSteps: [
+      'Investigue cualquier IP, host o ruta en «Tráfico de Cloudflare» (hora de Lima, exportable a CSV).',
+      'Parte del tráfico HTTP llega muestreado por Cloudflare (marcado «muestreado»): cada registro representa varias peticiones.',
+    ],
+    links: [{ label: 'Ver tráfico', href: TRAFFIC_APP_PATH }],
   },
   {
     id: 'aws',
@@ -430,7 +438,7 @@ export interface ProviderStats {
   readonly events24h: number;
   readonly lastEventAt: string | null;
   readonly levels24h: LevelCounts;
-  /** Métricas propias del proveedor (p. ej. `endpoints`, `waf_blocks`). */
+  /** Métricas propias del proveedor (p. ej. `endpoints`, `http_24h`). */
   readonly metrics: Readonly<Record<string, number>>;
 }
 

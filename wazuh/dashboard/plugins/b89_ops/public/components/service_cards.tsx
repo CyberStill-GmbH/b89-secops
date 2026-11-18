@@ -15,6 +15,7 @@ import {
   SOURCE_STATE_LABEL,
   SOURCE_TONE,
   ServiceAttention,
+  TRAFFIC_APP_PATH,
 } from '../../common';
 import {
   formatNumber,
@@ -60,8 +61,64 @@ export function linkedMetrics(metrics: readonly Metric[], basePath: string): Met
           ...metric,
           href: discoverUrlForQuery(basePath, metric.drill.kql, metric.drill.from, 'now'),
         }
-      : metric,
+      : metric.path
+        ? { ...metric, href: `${basePath}${metric.path}` }
+        : metric,
   );
+}
+
+/** Tráfico de Cloudflare de las últimas 24 h, opcionalmente de un tipo. */
+function trafficPath(dataset?: string): string {
+  return `${TRAFFIC_APP_PATH}?r=24h${dataset ? `&ds=${dataset}` : ''}`;
+}
+
+/**
+ * Cloudflare: todo su tráfico (`b89-cloudflare-traffic-*`), no solo los bloqueos del WAF.
+ * Cada cifra abre «Tráfico de Cloudflare» filtrado por su tipo.
+ */
+export function cloudflareMetrics(m: Readonly<Record<string, number>>): Metric[] {
+  const zones: Metric =
+    m.zones_active !== undefined
+      ? {
+          label: 'Zonas vigiladas',
+          value: `${formatNumber(m.zones ?? 0)} · ${formatNumber(m.zones_active)} con tráfico`,
+        }
+      : { label: 'Zonas vigiladas', value: formatNumber(m.zones ?? 0) };
+  if (m.traffic_readable === 0) {
+    return [
+      {
+        label: 'Tráfico 24 h',
+        value: 'Sin permiso',
+        hint: 'Tu rol no puede leer b89-cloudflare-traffic-*',
+      },
+      zones,
+    ];
+  }
+  if (m.traffic_readable !== 1) {
+    return [
+      { label: 'Tráfico 24 h', value: 'Sin dato', hint: 'No se pudo consultar el tráfico' },
+      zones,
+    ];
+  }
+  const sampled = (m.http_sampled_24h ?? 0) > 0;
+  return [
+    {
+      label: 'Peticiones HTTP 24 h',
+      value: formatNumber(m.http_24h ?? 0),
+      hint: sampled
+        ? 'Incluye registros muestreados de Cloudflare: cada uno representa varias peticiones'
+        : 'Registros de peticiones HTTP en 24 h',
+      path: trafficPath('http'),
+    },
+    { label: 'Consultas DNS 24 h', value: formatNumber(m.dns_24h ?? 0), path: trafficPath('dns') },
+    {
+      label: 'Eventos de seguridad 24 h',
+      value: formatNumber(m.security_24h ?? 0),
+      hint: 'Eventos de firewall/WAF (bloqueos, desafíos y solo-registro)',
+      path: trafficPath('firewall'),
+    },
+    zones,
+  ];
 }
 
 function providerMetrics(id: ProviderId, data: PlatformData): Metric[] {
@@ -110,16 +167,7 @@ function providerMetrics(id: ProviderId, data: PlatformData): Metric[] {
         },
       ];
     case 'cloudflare':
-      return [
-        { label: 'Bloqueos WAF 24 h', value: formatNumber(m.waf_blocks ?? 0) },
-        { label: 'Auditoría 24 h', value: formatNumber(m.audit ?? 0) },
-        m.zones_active !== undefined
-          ? {
-              label: 'Zonas vigiladas',
-              value: `${formatNumber(m.zones ?? 0)} · ${formatNumber(m.zones_active)} con eventos`,
-            }
-          : { label: 'Zonas', value: formatNumber(m.zones ?? 0) },
-      ];
+      return cloudflareMetrics(m);
     default:
       return [
         events,

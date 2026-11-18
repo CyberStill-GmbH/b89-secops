@@ -57,6 +57,7 @@ export interface OpenSearchDashboardsResponseFactory {
   redirected(options: HttpResponseOptions): unknown;
   notFound(options?: HttpResponseOptions): unknown;
   badRequest(options?: HttpResponseOptions): unknown;
+  customError(options: HttpResponseOptions & { statusCode: number }): unknown;
 }
 
 export type RequestHandler = (

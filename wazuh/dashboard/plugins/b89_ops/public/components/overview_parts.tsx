@@ -126,6 +126,8 @@ export interface Metric {
   readonly emphasis?: 'danger' | 'warning';
   /** Consulta KQL de las alertas que cuenta la métrica; la tarjeta la convierte en enlace. */
   readonly drill?: { readonly kql: string; readonly from: string };
+  /** Vista de la consola (ruta `/app/…`, sin basePath) con lo que cuenta la métrica. */
+  readonly path?: string;
   /** Destino del valor: la lista de alertas contadas, para investigarlas una a una. */
   readonly href?: string;
 }
@@ -142,7 +144,7 @@ export function MetricList({ metrics }: { metrics: readonly Metric[] }) {
               <a
                 className="b89Metrics__link"
                 href={metric.href}
-                aria-label={`${metric.label}: investigar estas alertas`}
+                aria-label={`${metric.label}: ${metric.drill ? 'investigar estas alertas' : 'ver el detalle'}`}
               >
                 {metric.value}
               </a>

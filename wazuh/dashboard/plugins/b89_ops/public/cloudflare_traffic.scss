@@ -1,0 +1,215 @@
+// «Tráfico de Cloudflare»: rango, pestañas por tipo, cifras, histograma, listas y detalle.
+
+$b89TrafficMobile: 767px;
+
+.b89Traffic__range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $ouiSizeS $ouiSize;
+}
+
+.b89Traffic__custom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: $ouiSizeS;
+
+  label {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 12px;
+    color: $ouiTextSubduedColor;
+  }
+}
+
+.b89Traffic__rangeText {
+  flex-basis: 100%;
+}
+
+.b89Traffic__swatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 2px;
+  vertical-align: middle;
+}
+
+.b89Traffic__tabCount {
+  margin-left: 4px;
+  color: $ouiTextSubduedColor;
+  font-variant-numeric: tabular-nums;
+}
+
+.b89Traffic__chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $ouiSizeXS;
+  margin-top: $ouiSizeS;
+}
+
+.b89Traffic__tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: $ouiSizeM;
+
+  @media (max-width: $b89TrafficMobile) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: $ouiSizeS;
+  }
+}
+
+.b89Traffic__tile,
+.b89Traffic__panel {
+  padding: $ouiSizeM $ouiSize;
+  border: 1px solid $ouiBorderColor;
+  border-radius: 8px;
+  background: $ouiColorEmptyShade;
+}
+
+.b89Traffic__tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  &[data-tone='warning'] .b89Traffic__tileValue {
+    color: $ouiColorWarning;
+  }
+
+  &[data-tone='danger'] .b89Traffic__tileValue {
+    color: $ouiColorDanger;
+  }
+}
+
+.b89Traffic__tileLabel {
+  font-size: 12px;
+  color: $ouiTextSubduedColor;
+}
+
+.b89Traffic__tileValue {
+  font-size: 24px;
+  line-height: 1.2;
+  color: $ouiTitleColor;
+}
+
+.b89Traffic__tileHint {
+  font-size: 11px;
+  color: $ouiTextSubduedColor;
+}
+
+.b89Traffic__tops {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: $ouiSizeM;
+
+  @media (max-width: 1023px) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  @media (max-width: $b89TrafficMobile) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.b89Traffic__topList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.b89Traffic__topItem {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  gap: $ouiSizeS;
+  width: 100%;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: $ouiTextColor;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover,
+  &:focus {
+    background: $ouiColorLightestShade;
+    text-decoration: underline;
+  }
+}
+
+.b89Traffic__topBar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: 4px;
+  background: rgba(59, 130, 196, 0.14);
+  pointer-events: none;
+}
+
+.b89Traffic__topKey {
+  position: relative;
+  overflow: hidden;
+  font-family: $ouiCodeFontFamily;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.b89Traffic__topCount {
+  position: relative;
+  color: $ouiTextSubduedColor;
+}
+
+.b89Traffic__time {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.b89Traffic__ip {
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+}
+
+.b89Traffic__target {
+  word-break: break-all;
+}
+
+.b89Traffic__row {
+  cursor: pointer;
+}
+
+.b89Traffic__fields {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+
+  th,
+  td {
+    padding: 4px 6px;
+    border-bottom: 1px solid $ouiBorderColor;
+    vertical-align: top;
+    text-align: left;
+    word-break: break-all;
+  }
+
+  th {
+    width: 38%;
+    font-weight: normal;
+    color: $ouiTextSubduedColor;
+  }
+}
+
+.b89Traffic__caption {
+  padding-bottom: $ouiSizeS;
+  font-size: 12px;
+  color: $ouiTextSubduedColor;
+  text-align: left;
+}
