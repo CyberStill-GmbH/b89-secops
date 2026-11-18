@@ -158,6 +158,13 @@ since_file = os.path.join(state, "cloudflare-logpush-active-since")
 if os.path.exists(since_file):
     traffic["until"] = open(since_file, encoding="utf-8").read().strip()
 write("cloudflare-traffic.json", traffic)
+# Índice de tráfico (hora REAL del evento) para verlo todo en el SOC: lee todas las salidas Cloudflare.
+write("cloudflare-index.json", {"url": "https://127.0.0.1:9200", "server_hostname": "wazuh.indexer",
+    "ca_file": "/opt/b89/wazuh-docker/single-node/config/wazuh_indexer_ssl_certs/root-ca.pem",
+    "user": "b89_traffic_writer", "password_file": f"{cs}/indexer-traffic-writer-password",
+    "state_file": f"{state}/cloudflare-index.json",
+    "files": [f"{out}/cloudflare-traffic.jsonl", f"{out}/cloudflare-logpush.jsonl",
+              f"{out}/cloudflare-security.jsonl", f"{out}/cloudflare-backfill.jsonl"]})
 # Jobs Logpush (destino HTTP del edge); el receptor y el consumidor viven en cloudflare/.
 write("cloudflare-logpush.json", {"credentials_dir": cs,
     "endpoint": "https://" + (os.environ.get("SOC_HOSTNAME") or "dev.security.b89.io") + "/hooks/cloudflare-logpush"})
@@ -270,6 +277,7 @@ unit b89-collector-bitdefender 'B89 Bitdefender GravityZone collector' "/usr/bin
 unit b89-collector-snyk 'B89 Snyk issues collector' "/usr/bin/python3 -I $PI/snyk/issues.py --config $ETC/snyk.json" 15min
 unit b89-collector-cloudflare 'B89 Cloudflare security collector' "/usr/bin/python3 -I $PI/cloudflare/security.py --config $ETC/cloudflare.json" 5min
 unit b89-collector-cloudflare-traffic 'B89 Cloudflare traffic collector (GraphQL)' "/usr/bin/python3 -I $PI/cloudflare/traffic.py --config $ETC/cloudflare-traffic.json" 2min
+unit b89-collector-cloudflare-index 'B89 Cloudflare traffic indexer' "/usr/bin/python3 -I $PI/cloudflare/traffic_index.py --config $ETC/cloudflare-index.json" 1min
 unit b89-collector-cloudflare-logpush 'B89 Cloudflare Logpush spool consumer' "/usr/bin/python3 -I $PI/cloudflare/logpush_spool.py --spool $ROOT/spool/cloudflare-logpush --output $OUT/cloudflare-logpush.jsonl --ledger $STATE/cloudflare-logpush-ledger.json --heartbeat $STATE/cloudflare-logpush.json" 1min
 unit b89-collector-sharepoint-audit 'B89 SharePoint audit collector' "/usr/bin/python3 -I $PI/sharepoint/sharepoint.py audit --config $ETC/sharepoint-audit.json" 5min
 unit b89-collector-sharepoint-posture 'B89 SharePoint posture collector' "/usr/bin/python3 -I $PI/sharepoint/sharepoint.py posture --config $ETC/sharepoint-posture.json" 60min
@@ -314,6 +322,11 @@ if [[ $CF == true ]]; then
   bash "${HERE}/cloudflare/prepare-logpush-receiver.sh"
   systemctl enable --now b89-collector-cloudflare-logpush.timer >/dev/null
   systemctl enable --now b89-collector-cloudflare-traffic.timer >/dev/null
+  if bash "${HERE}/cloudflare/setup-traffic-index.sh"; then
+    systemctl enable --now b89-collector-cloudflare-index.timer >/dev/null
+  else
+    log 'Cloudflare: no se pudo preparar el índice de tráfico; el indexador queda apagado'
+  fi
   set +e
   prov="$(/usr/bin/python3 -I "$PI/cloudflare/provision_logpush.py" --config "$ETC/cloudflare-logpush.json" 2>&1)"
   rc=$?
@@ -335,7 +348,8 @@ PY
     *) log "Cloudflare Logpush: no se pudieron conciliar los jobs ($(printf '%s' "$prov" | tail -1))" ;;
   esac
 else
-  systemctl disable --now b89-collector-cloudflare-logpush.timer b89-collector-cloudflare-traffic.timer >/dev/null 2>&1 || true
+  systemctl disable --now b89-collector-cloudflare-logpush.timer b89-collector-cloudflare-traffic.timer \
+    b89-collector-cloudflare-index.timer >/dev/null 2>&1 || true
 fi
 
 if [[ $SP_OK == true ]]; then

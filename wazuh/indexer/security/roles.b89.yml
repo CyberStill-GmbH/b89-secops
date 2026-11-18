@@ -20,6 +20,7 @@ b89_soc_analyst:
           'wazuh-monitoring-*',
           'wazuh-statistics-*',
           'wazuh-states-*',
+          'b89-cloudflare-traffic-*',
         ]
       allowed_actions: ['read', 'indices:admin/mappings/get', 'indices:admin/get']
   tenant_permissions:
@@ -42,6 +43,7 @@ b89_soc_lead:
           'wazuh-monitoring-*',
           'wazuh-statistics-*',
           'wazuh-states-*',
+          'b89-cloudflare-traffic-*',
           '.opendistro-anomaly-results*',
         ]
       allowed_actions: ['read', 'indices:admin/mappings/get', 'indices:admin/get']
@@ -53,7 +55,14 @@ b89_auditor:
   cluster_permissions: ['cluster_composite_ops_ro']
   index_permissions:
     - index_patterns:
-        ['wazuh-alerts-*', 'restored-*', 'wazuh-monitoring-*', 'wazuh-statistics-*', 'wazuh-states-*']
+        [
+          'wazuh-alerts-*',
+          'restored-*',
+          'wazuh-monitoring-*',
+          'wazuh-statistics-*',
+          'wazuh-states-*',
+          'b89-cloudflare-traffic-*',
+        ]
       allowed_actions: ['read', 'indices:admin/mappings/get', 'indices:admin/get']
   tenant_permissions:
     - tenant_patterns: ['global_tenant']
@@ -65,3 +74,11 @@ b89_reader_role:
   index_permissions:
     - index_patterns: ['wazuh-alerts-*', '.opendistro-anomaly-results*']
       allowed_actions: ['read']
+
+# Escritor del índice de tráfico de Cloudflare (traffic_index.py). Solo ese patrón; sin lectura de
+# otros índices. Usuario interno b89_traffic_writer (lo crea setup-traffic-index.sh).
+b89_cloudflare_traffic_writer:
+  cluster_permissions: ['indices:data/write/bulk']
+  index_permissions:
+    - index_patterns: ['b89-cloudflare-traffic-*']
+      allowed_actions: ['crud', 'create_index', 'indices:admin/mapping/put']

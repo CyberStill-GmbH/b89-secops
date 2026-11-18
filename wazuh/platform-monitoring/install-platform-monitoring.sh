@@ -188,6 +188,7 @@ write("monitor.json", {
         "snyk": {"unit": "b89-collector-snyk", "state_file": f"{coll}/snyk.json", "interval_minutes": 15, "fail_after_intervals": 3},
         "cloudflare": {"unit": "b89-collector-cloudflare", "state_file": f"{coll}/cloudflare.json", "interval_minutes": 5, "fail_after_intervals": 4},
         # Consumidor del spool de Logpush: su latido vale aunque no lleguen lotes (jobs aún sin crear).
+        "cloudflare-index": {"unit": "b89-collector-cloudflare-index", "state_file": f"{coll}/cloudflare-index.json", "interval_minutes": 1, "fail_after_intervals": 15, "required": False},
         "cloudflare-traffic": {"unit": "b89-collector-cloudflare-traffic", "state_file": f"{coll}/cloudflare-traffic.json", "interval_minutes": 2, "fail_after_intervals": 10, "required": False},
         "cloudflare-logpush": {"unit": "b89-collector-cloudflare-logpush", "state_file": f"{coll}/cloudflare-logpush.json", "interval_minutes": 1, "fail_after_intervals": 10, "required": False},
         "bitdefender": {"unit": "b89-collector-bitdefender", "state_file": f"{coll}/bitdefender.json", "interval_minutes": 10, "fail_after_intervals": 3},

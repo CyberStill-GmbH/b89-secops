@@ -25,3 +25,6 @@ kibana_user:
 
 b89_reader_role:
   users: ['b89_reader']
+
+b89_cloudflare_traffic_writer:
+  users: ['b89_traffic_writer']

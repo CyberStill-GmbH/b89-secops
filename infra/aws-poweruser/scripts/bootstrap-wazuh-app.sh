@@ -81,6 +81,8 @@ PATTERNS = [
     ("wazuh-states-inventory-groups-*", None, {}),
     ("wazuh-states-inventory-services-*", None, {}),
     ("wazuh-states-inventory-browser-extensions-*", None, {}),
+    # Todo Cloudflare (HTTP, DNS, firewall, auditoría) con la hora REAL del evento (traffic_index.py).
+    ("b89-cloudflare-traffic-*", "@timestamp", {"http.bytes": BYTES}),
 ]
 META = "&".join(f"meta_fields={m}" for m in ("_source", "_id", "_type", "_index", "_score"))
 
