@@ -135,6 +135,20 @@ if [[ "$nodes" == 1 ]]; then
       "https://${B89_INDEXER_TLS_NAME:-wazuh.indexer}:9200/.opendistro-ism-config/_settings" >/dev/null &&
       b89_log 'índice interno de ISM: réplicas → 0 (nodo único; evita el estado amarillo)'
   fi
+  # El historial de ISM (.opendistro-ism-managed-index-history-*) rota a diario con 1 réplica por
+  # defecto: se fija el ajuste del clúster para los futuros y se corrigen los existentes.
+  for req in \
+    "PUT /_cluster/settings {\"persistent\":{\"plugins.index_state_management.history.number_of_replicas\":0}}" \
+    "PUT /.opendistro-ism-managed-index-history-*/_settings {\"index\":{\"number_of_replicas\":0}}" \
+    "PUT /.opendistro-job-scheduler-lock/_settings {\"index\":{\"number_of_replicas\":0}}"; do
+    read -r verb path body <<<"$req"
+    docker exec "$(b89_indexer_container)" curl -sS -o /dev/null -w '%{http_code}' --cacert "$c/root-ca.pem" \
+      --cert "$c/admin.pem" --key "$c/admin-key.pem" \
+      --resolve "${B89_INDEXER_TLS_NAME:-wazuh.indexer}:9200:127.0.0.1" -X "$verb" \
+      -H 'content-type: application/json' -d "$body" \
+      "https://${B89_INDEXER_TLS_NAME:-wazuh.indexer}:9200$path" | grep -q '^200$' &&
+      b89_log "historial de ISM: 0 réplicas ($verb $path)" || b89_log "AVISO: no se pudo ajustar $path"
+  done
 fi
 
 b89_indexer GET /_snapshot

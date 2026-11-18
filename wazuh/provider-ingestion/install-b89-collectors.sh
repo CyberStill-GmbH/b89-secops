@@ -97,6 +97,12 @@ want B89_ENABLE_CLOUDFLARE cloudflare-api-token && CF=true
 want B89_ENABLE_ALERT_MAIL entra-tenant-id entra-client-id entra-client-secret alert-email-to alert-email-from && AM=true
 log "habilitados: bitdefender=$BD snyk=$SN cloudflare=$CF alert-mail=$AM"
 SP=false
+# Sin B89_ENABLE_SHAREPOINT explícito se conserva el estado vigente: re-ejecutar el instalador por
+# otro proveedor no debe apagar SharePoint (incidente 2026-11-16 21:22, auditoría sin recolectar).
+if [[ -z ${B89_ENABLE_SHAREPOINT:-} ]] && systemctl is-enabled --quiet b89-collector-sharepoint-audit.timer 2>/dev/null; then
+  B89_ENABLE_SHAREPOINT=true
+  log 'SharePoint: ya estaba activo; se mantiene (B89_ENABLE_SHAREPOINT=false para apagarlo)'
+fi
 if [[ ${B89_ENABLE_SHAREPOINT:-false} == true ]]; then
   if has entra-tenant-id && has entra-client-id && has entra-client-secret; then SP=true
   else log 'SharePoint: solicitado pero apagado; faltan credenciales M365'; fi
