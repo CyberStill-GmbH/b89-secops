@@ -153,8 +153,26 @@
     <group>b89_http,</group>
   </rule>
 
-  <rule id="101516" level="6">
+  <rule id="101518" level="0">
     <if_sid>101515</if_sid>
+    <field name="b89.source">^logpush$</field>
+    <field name="cloudflare.http.status" type="pcre2">^4\d\d$</field>
+    <description>B89 Cloudflare: respuesta 4xx a $(cloudflare.http.client_ip).</description>
+    <options>no_full_log</options>
+    <group>b89_http,</group>
+  </rule>
+
+  <rule id="101520" level="0">
+    <if_sid>101515</if_sid>
+    <field name="b89.source">^logpush$</field>
+    <field name="cloudflare.http.status" type="pcre2">^5\d\d$</field>
+    <description>B89 Cloudflare: error 5xx en $(cloudflare.http.host).</description>
+    <options>no_full_log</options>
+    <group>b89_http,</group>
+  </rule>
+
+  <rule id="101516" level="6">
+    <if_sid>101515, 101518, 101520</if_sid>
     <field name="b89.source" type="pcre2" negate="yes">^graphql-history$</field>
     <field name="cloudflare.http.path" type="pcre2">(?i)(/\.env|/\.git/|/\.aws/|/\.ssh/|wp-login\.php|xmlrpc\.php|/phpmyadmin|/etc/passwd|\.\./|%2e%2e%2f|/actuator|/server-status|/cgi-bin/|/\.DS_Store|/config\.json|/backup|\.sql$|\.bak$)</field>
     <description>B89 Cloudflare: sondeo de ruta sensible $(cloudflare.http.path) desde $(cloudflare.http.client_ip) en $(cloudflare.http.host) ($(cloudflare.http.status)).</description>
@@ -173,15 +191,6 @@
     <group>b89_http,b89_web_probe,b89_attack,</group>
   </rule>
 
-  <rule id="101518" level="0">
-    <if_sid>101515</if_sid>
-    <field name="b89.source">^logpush$</field>
-    <field name="cloudflare.http.status" type="pcre2">^4\d\d$</field>
-    <description>B89 Cloudflare: respuesta 4xx a $(cloudflare.http.client_ip).</description>
-    <options>no_full_log</options>
-    <group>b89_http,</group>
-  </rule>
-
   <rule id="101519" level="8" frequency="60" timeframe="120">
     <if_matched_sid>101518</if_matched_sid>
     <same_field>cloudflare.http.client_ip</same_field>
@@ -189,15 +198,6 @@
     <options>no_full_log</options>
     <mitre><id>T1595</id></mitre>
     <group>b89_http,b89_attack,</group>
-  </rule>
-
-  <rule id="101520" level="0">
-    <if_sid>101515</if_sid>
-    <field name="b89.source">^logpush$</field>
-    <field name="cloudflare.http.status" type="pcre2">^5\d\d$</field>
-    <description>B89 Cloudflare: error 5xx en $(cloudflare.http.host).</description>
-    <options>no_full_log</options>
-    <group>b89_http,</group>
   </rule>
 
   <rule id="101521" level="9" frequency="50" timeframe="300">
@@ -210,7 +210,7 @@
   </rule>
 
   <rule id="101522" level="7">
-    <if_sid>101515</if_sid>
+    <if_sid>101515, 101518, 101520</if_sid>
     <field name="cloudflare.http.method" type="pcre2">^(TRACE|TRACK|CONNECT|PROPFIND|DEBUG)$</field>
     <description>B89 Cloudflare: método HTTP anómalo $(cloudflare.http.method) desde $(cloudflare.http.client_ip) en $(cloudflare.http.host).</description>
     <options>no_full_log</options>

@@ -106,6 +106,18 @@ class TrafficTests(unittest.TestCase):
         self.assertEqual(state["cursors"]["z1"]["http_requests"], iso(stop))
         self.assertTrue(all(until <= stop for _, until in client.queries))
 
+    def test_field_denied_by_plan_is_dropped_and_remembered(self):
+        class Denying(FakeClient):
+            def graphql(self, query, variables):
+                if "coloCode" in query:
+                    return None
+                return super().graphql(query, variables)
+        with patch.object(TR, "graphql", side_effect=lambda c, q, v: (None, ["zone 'z1' does not have access to the field 'colocode' from the path"]) if "coloCode" in q else (c.graphql(q, v), [])):
+            events, state = run({}, {"cursors": {"z1": {"http_requests": iso(NOW - timedelta(hours=2)),
+                                                        "dns_logs": iso(NOW - timedelta(minutes=5))}}}, Denying())
+        self.assertTrue(events)
+        self.assertEqual(state["denied_fields"], {"z1": ["colocode"]})
+
 
 if __name__ == "__main__":
     unittest.main()

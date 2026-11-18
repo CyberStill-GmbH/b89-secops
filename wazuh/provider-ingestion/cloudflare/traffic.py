@@ -24,12 +24,16 @@ from datetime import datetime, timedelta
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "common"))
 import logpush  # noqa: E402
-from b89_collector import ProviderError, iso, parse_iso, read_secret, run_collector, utc_now  # noqa: E402
-from security import Cloudflare, discover  # noqa: E402
+import re  # noqa: E402
+
+from b89_collector import ProviderError, http_json, iso, parse_iso, read_secret, run_collector, utc_now  # noqa: E402
+from security import API, Cloudflare, discover  # noqa: E402
 
 PAGE_LIMIT = 10_000
 MIN_WINDOW = timedelta(minutes=1)
 RETENTION_MARGIN = timedelta(hours=1)
+# El plan de la zona puede negar campos (p. ej. coloCode en Free): se quitan para esa zona y se reintenta.
+DENIED_RE = re.compile(r"does not have access to the field '([A-Za-z0-9_]+)'")
 
 HTTP_FIELDS = {
     "datetime": "EdgeStartTimestamp", "rayName": "RayID", "clientIP": "ClientIP",
@@ -70,11 +74,36 @@ def to_logpush(row: dict, fields: dict) -> dict:
     return record
 
 
-def fetch(client: Cloudflare, zone_id: str, dataset: str, since: datetime, until: datetime) -> tuple[list[dict], bool]:
+def graphql(client, query: str, variables: dict) -> tuple[dict | None, list[str]]:
+    """``(data, error messages)``; the messages never include the token."""
+    if not hasattr(client, "headers"):  # cliente de prueba
+        return client.graphql(query, variables), []
+    status, payload = http_json("POST", API + "/graphql", dict(client.headers),
+                                {"query": query, "variables": variables}, opener=client.opener)
+    if status in (401, 403):
+        raise ProviderError("Cloudflare GraphQL denied the request", status)
+    if status != 200 or not isinstance(payload, dict):
+        raise ProviderError("Cloudflare GraphQL request failed", status)
+    errors = [str(e.get("message") or "") for e in payload.get("errors") or [] if isinstance(e, dict)]
+    return payload.get("data") if isinstance(payload.get("data"), dict) else None, errors
+
+
+def fetch(client: Cloudflare, zone_id: str, dataset: str, since: datetime, until: datetime,
+          denied: set | None = None) -> tuple[list[dict], bool]:
     """Rows of [since, until) in ascending time. ``True`` when a 1-minute window was still full."""
-    node, fields = DATASETS[dataset]
-    data = client.graphql(query_for(node, fields), {"zone": zone_id, "since": iso(since), "until": iso(until),
-                                                     "limit": PAGE_LIMIT})
+    denied = denied if denied is not None else set()
+    node, all_fields = DATASETS[dataset]
+    variables = {"zone": zone_id, "since": iso(since), "until": iso(until), "limit": PAGE_LIMIT}
+    while True:
+        fields = [name for name in all_fields if name.lower() not in denied]
+        data, errors = graphql(client, query_for(node, fields), variables)
+        blocked = {m.group(1).lower() for m in map(DENIED_RE.search, errors) if m}
+        if errors and blocked and not blocked <= denied and "datetime" not in blocked:
+            denied |= blocked
+            continue
+        if errors or data is None:
+            raise ProviderError(f"Cloudflare GraphQL {node} failed: {errors[0][:160] if errors else 'no data'}")
+        break
     zones = ((data or {}).get("viewer") or {}).get("zones") or []
     rows = zones[0].get(node) if zones else None
     if not isinstance(rows, list):
@@ -84,8 +113,8 @@ def fetch(client: Cloudflare, zone_id: str, dataset: str, since: datetime, until
     if until - since <= MIN_WINDOW:
         return rows, True
     middle = since + (until - since) / 2
-    first, cut_a = fetch(client, zone_id, dataset, since, middle)
-    second, cut_b = fetch(client, zone_id, dataset, middle, until)
+    first, cut_a = fetch(client, zone_id, dataset, since, middle, denied)
+    second, cut_b = fetch(client, zone_id, dataset, middle, until, denied)
     return first + second, cut_a or cut_b
 
 
@@ -114,6 +143,7 @@ def collect(config: dict, state: dict, client: Cloudflare | None = None) -> tupl
              if isinstance(z, dict) and z.get("id")]
     cursors = {key: dict(value) for key, value in (state.get("cursors") or {}).items()}
     truncated = int(state.get("truncated_windows", 0))
+    denied_fields = {zone: set(names) for zone, names in (state.get("denied_fields") or {}).items()}
     events: list[dict] = []
     # Ronda por zona y dataset: cada uno avanza una ventana por vuelta hasta agotar el presupuesto.
     progressing = True
@@ -129,7 +159,8 @@ def collect(config: dict, state: dict, client: Cloudflare | None = None) -> tupl
                 if cursor >= until_edge:
                     continue
                 end = min(cursor + window, until_edge)
-                rows, cut = fetch(client, zone["id"], dataset, cursor, end)
+                denied = denied_fields.setdefault(zone["id"], set())
+                rows, cut = fetch(client, zone["id"], dataset, cursor, end, denied)
                 truncated += int(cut)
                 _, fields = DATASETS[dataset]
                 for row in rows:
@@ -150,6 +181,7 @@ def collect(config: dict, state: dict, client: Cloudflare | None = None) -> tupl
     return events, {
         "cursors": cursors,
         "truncated_windows": truncated,
+        "denied_fields": {zone: sorted(names) for zone, names in denied_fields.items() if names},
         "history_start": iso(start) if not state.get("history_start") else state["history_start"],
         "catching_up": oldest < until_edge - window,
         "oldest_cursor": iso(oldest),
