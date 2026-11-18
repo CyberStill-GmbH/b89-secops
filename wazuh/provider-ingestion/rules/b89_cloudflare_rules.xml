@@ -10,26 +10,6 @@
     <options>no_full_log</options>
   </rule>
 
-  <!-- Recuperación histórica (backfill.py --mark-history): antes que las reglas de detalle para que un
-       cambio antiguo quede visible sin avisos ni investigaciones como si fuera de hoy. -->
-  <rule id="101508" level="3">
-    <if_sid>101500</if_sid>
-    <field name="b89.history">^true$</field>
-    <field name="b89.event_type">^audit$</field>
-    <description>B89 Cloudflare (histórico): $(cloudflare.audit.action) sobre $(cloudflare.audit.resource_type) por $(cloudflare.audit.actor_email) el $(cloudflare.audit.when).</description>
-    <options>no_full_log</options>
-    <group>b89_audit,b89_history,</group>
-  </rule>
-
-  <rule id="101509" level="3">
-    <if_sid>101500</if_sid>
-    <field name="b89.history">^true$</field>
-    <field name="b89.event_type">^firewall$</field>
-    <description>B89 Cloudflare (histórico): $(cloudflare.firewall.action) de $(cloudflare.firewall.client_ip) en $(cloudflare.firewall.host) el $(cloudflare.firewall.datetime).</description>
-    <options>no_full_log</options>
-    <group>b89_waf,b89_history,</group>
-  </rule>
-
   <!-- Auditoría de cuenta -->
   <rule id="101501" level="3">
     <if_sid>101500</if_sid>
@@ -171,9 +151,51 @@
     <group>b89_http,</group>
   </rule>
 
+  <!-- Backoffice de pagos (credenciales de empleados): acceso humano a /backoffice y /auth-service. -->
+  <rule id="101530" level="0">
+    <if_sid>101515, 101518, 101520</if_sid>
+    <field name="cloudflare.http.host" type="pcre2">(?i)^((prodv2|stg|uat)-)?apipayments\.b89\.io$|^(stg|uat)?paymentsv2\.b89\.io$</field>
+    <field name="cloudflare.http.path" type="pcre2">^/(backoffice|auth-service)/</field>
+    <description>B89 Cloudflare: backoffice de pagos $(cloudflare.http.method) $(cloudflare.http.path) desde $(cloudflare.http.client_ip) ($(cloudflare.http.status)).</description>
+    <options>no_full_log</options>
+    <group>b89_http,b89_backoffice,</group>
+  </rule>
+
+  <rule id="101531" level="13">
+    <if_sid>101530</if_sid>
+    <field name="cloudflare.http.status" type="pcre2">^(2\d\d|304)$</field>
+    <field name="cloudflare.http.asn_name" type="pcre2">(?i)(datacamp|amazon|google llc|google cloud|hetzner|\bovh|digitalocean|m247|leaseweb|constant company|vultr|choopa|linode|akamai|contabo|tencent|alibaba|oracle|microsoft|cdn77|packethub|g-core|gcore|ipxo|hostinger|scaleway|zenlayer|tefincom|nord|proton|mullvad|surfshark|express ?vpn|private internet|clouvider|datapacket|hostroyale|colocrossing|psychz|quadranet|buyvm|frantech|servers\.com|ionos|hostpapa|unified layer|bluehost|godaddy)</field>
+    <description>B89 Cloudflare: sesión válida en el backoffice de pagos desde hosting/VPN ($(cloudflare.http.asn_name), $(cloudflare.http.country)) IP $(cloudflare.http.client_ip): $(cloudflare.http.method) $(cloudflare.http.path) el $(cloudflare.http.datetime) UTC. Posible uso de credenciales robadas.</description>
+    <options>no_full_log</options>
+    <mitre><id>T1078</id><id>T1550.001</id></mitre>
+    <group>b89_http,b89_backoffice,b89_credential_misuse,</group>
+  </rule>
+
+  <rule id="101532" level="13">
+    <if_sid>101530</if_sid>
+    <field name="cloudflare.http.path" type="pcre2">(?i)/export</field>
+    <field name="cloudflare.http.status" type="pcre2">^2\d\d$</field>
+    <field name="cloudflare.http.country" type="pcre2" negate="yes">^PE$</field>
+    <description>B89 Cloudflare: exportación de datos del backoffice ($(cloudflare.http.path)) desde $(cloudflare.http.country) IP $(cloudflare.http.client_ip) ($(cloudflare.http.asn_name)) el $(cloudflare.http.datetime) UTC. Posible exfiltración.</description>
+    <options>no_full_log</options>
+    <mitre><id>T1567</id><id>T1213</id></mitre>
+    <group>b89_http,b89_backoffice,b89_exfiltration,</group>
+  </rule>
+
+  <rule id="101533" level="12">
+    <if_sid>101530</if_sid>
+    <field name="cloudflare.http.method">^POST$</field>
+    <field name="cloudflare.http.path" type="pcre2">^/auth-service/v1/login$</field>
+    <field name="cloudflare.http.status" type="pcre2">^2\d\d$</field>
+    <field name="cloudflare.http.country" type="pcre2" negate="yes">^PE$</field>
+    <description>B89 Cloudflare: login correcto al backoffice de pagos desde $(cloudflare.http.country) IP $(cloudflare.http.client_ip) ($(cloudflare.http.asn_name)) el $(cloudflare.http.datetime) UTC.</description>
+    <options>no_full_log</options>
+    <mitre><id>T1078</id></mitre>
+    <group>b89_http,b89_backoffice,b89_credential_misuse,</group>
+  </rule>
+
   <rule id="101516" level="6">
     <if_sid>101515, 101518, 101520</if_sid>
-    <field name="b89.source" type="pcre2" negate="yes">^graphql-history$</field>
     <field name="cloudflare.http.path" type="pcre2">(?i)(/\.env|/\.git/|/\.aws/|/\.ssh/|wp-login\.php|xmlrpc\.php|/phpmyadmin|/etc/passwd|\.\./|%2e%2e%2f|/actuator|/server-status|/cgi-bin/|/\.DS_Store|/config\.json|/backup|\.sql$|\.bak$)</field>
     <description>B89 Cloudflare: sondeo de ruta sensible $(cloudflare.http.path) desde $(cloudflare.http.client_ip) en $(cloudflare.http.host) ($(cloudflare.http.status)).</description>
     <options>no_full_log</options>
@@ -216,17 +238,6 @@
     <options>no_full_log</options>
     <mitre><id>T1595</id></mitre>
     <group>b89_http,b89_web_probe,</group>
-  </rule>
-
-  <!-- Recuperación histórica por GraphQL (traffic.py, muestreada): visible sin inflar la cola. -->
-  <rule id="101523" level="3">
-    <if_sid>101515</if_sid>
-    <field name="b89.source">^graphql-history$</field>
-    <field name="cloudflare.http.path" type="pcre2">(?i)(/\.env|/\.git/|/\.aws/|/\.ssh/|wp-login\.php|xmlrpc\.php|/phpmyadmin|/etc/passwd|\.\./|%2e%2e%2f|/actuator|/server-status|/cgi-bin/|/\.DS_Store|/config\.json|/backup|\.sql$|\.bak$)</field>
-    <description>B89 Cloudflare (histórico): sondeo de ruta sensible $(cloudflare.http.path) desde $(cloudflare.http.client_ip) en $(cloudflare.http.host) el $(cloudflare.http.datetime).</description>
-    <options>no_full_log</options>
-    <mitre><id>T1595.003</id></mitre>
-    <group>b89_http,b89_web_probe,b89_history,</group>
   </rule>
 
   <!-- DNS (Logpush dns_logs o traffic.py, DNS autoritativo de Cloudflare) -->

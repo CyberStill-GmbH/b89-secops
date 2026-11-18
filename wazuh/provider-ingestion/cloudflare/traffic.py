@@ -138,6 +138,8 @@ def collect(config: dict, state: dict, client: Cloudflare | None = None) -> tupl
     budget = int(config.get("max_rows_per_batch", 50_000))
     history_cut = now - timedelta(hours=1)
     datasets = [d for d in config.get("datasets", list(DATASETS)) if d in DATASETS]
+    # Tramos ya entregados a Wazuh por otra vía (p. ej. carga urgente de un incidente): se saltan.
+    skips = [(parse_iso(a), parse_iso(b)) for a, b in config.get("skip_windows", [])]
 
     zones = [{"id": str(z["id"]), "name": str(z.get("name") or "")} for z in discover(client, "zones")
              if isinstance(z, dict) and z.get("id")]
@@ -156,9 +158,16 @@ def collect(config: dict, state: dict, client: Cloudflare | None = None) -> tupl
                 zone_cursors = cursors.setdefault(zone["id"], {})
                 cursor = parse_iso(zone_cursors[dataset]) if zone_cursors.get(dataset) else start
                 cursor = max(cursor, oldest_allowed)
+                for skip_from, skip_to in skips:
+                    if skip_from <= cursor < skip_to:
+                        cursor = skip_to
                 if cursor >= until_edge:
+                    zone_cursors[dataset] = iso(max(cursor, parse_iso(zone_cursors.get(dataset) or iso(cursor))))
                     continue
                 end = min(cursor + window, until_edge)
+                for skip_from, _ in skips:
+                    if cursor < skip_from < end:
+                        end = skip_from
                 denied = denied_fields.setdefault(zone["id"], set())
                 rows, cut = fetch(client, zone["id"], dataset, cursor, end, denied)
                 truncated += int(cut)

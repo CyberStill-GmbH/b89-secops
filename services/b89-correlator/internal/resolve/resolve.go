@@ -643,6 +643,7 @@ func (r *Resolver) Observe(doc Doc) (model.Observation, bool) {
 	for _, field := range []string{
 		"data.srcip", "data.aws.source_ip", "data.aws.sourceIPAddress", "data.office365.ClientIP",
 		"data.office365.ActorIpAddress", "data.cloudflare.firewall.client_ip",
+		"data.cloudflare.http.client_ip", "data.cloudflare.dns.client_ip",
 		"data.cloudflare.audit.actor_ip", "data.win.eventdata.ipAddress", "data.src_ip",
 	} {
 		ip := NormalizeIP(stripPort(str(doc, field)))

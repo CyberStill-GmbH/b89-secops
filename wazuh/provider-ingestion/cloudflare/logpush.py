@@ -28,7 +28,7 @@ MAX_LEDGER = 20_000
 VALIDATION_RECORD = {"content": "tests"}
 
 HTTP_FIELDS = {
-    "ClientIP": "client_ip", "ClientCountry": "country", "ClientASN": "asn",
+    "ClientIP": "client_ip", "ClientCountry": "country", "ClientASN": "asn", "ClientASNDescription": "asn_name",
     "ClientRequestHost": "host", "ClientRequestMethod": "method", "ClientRequestPath": "path",
     "ClientRequestURI": "uri", "ClientRequestProtocol": "protocol", "ClientRequestUserAgent": "user_agent",
     "ClientRequestReferer": "referer", "EdgeResponseStatus": "status", "OriginResponseStatus": "origin_status",

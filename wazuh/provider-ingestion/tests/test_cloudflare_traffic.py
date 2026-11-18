@@ -118,6 +118,14 @@ class TrafficTests(unittest.TestCase):
         self.assertTrue(events)
         self.assertEqual(state["denied_fields"], {"z1": ["colocode"]})
 
+    def test_skip_windows_are_never_requested(self):
+        client = FakeClient()
+        gap_from, gap_to = NOW - timedelta(hours=3), NOW - timedelta(hours=2)
+        state = {"cursors": {"z1": {"http_requests": iso(NOW - timedelta(hours=4)),
+                                    "dns_logs": iso(NOW - timedelta(hours=4))}}}
+        run({"skip_windows": [[iso(gap_from), iso(gap_to)]]}, state, client)
+        self.assertFalse([q for q in client.queries if q[0] < gap_to and q[1] > gap_from])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -30,6 +30,18 @@ import type { Alert } from '@b89/soc';
 
 import type { AnalystBacklog, AnalystHostStatus } from '../runtime/analyst-host.js';
 
+/**
+ * Texto para la consola del SOC: enmascara correos (personas) pero deja las IPs completas. El
+ * analista necesita la IP exacta para investigar y bloquear (decisión del dueño, 2026-11-18); los
+ * avisos a Teams y correo siguen enmascarando con `maskText`.
+ */
+const EMAIL_IN_TEXT = /([A-Za-z0-9._%+-]+)@([A-Za-z0-9.-]+\.[A-Za-z]{2,})/gu;
+export function consoleText(text: string): string {
+  return text.replace(EMAIL_IN_TEXT, (_all, local: string, domain: string) =>
+    `${local.length <= 2 ? `${local[0] ?? ''}***` : `${local.slice(0, 2)}***`}@${domain}`,
+  );
+}
+
 const UUID_LIKE = /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$/iu;
 
 /** Identificador de persona enmascarado para la consola; servicios y sistema se muestran tal cual. */
@@ -127,7 +139,7 @@ export function runSummaryView(job: InvestigationJob, extras: RunExtras) {
     trigger: job.trigger,
     source: job.source,
     initiatedBy: maskActorRef(job.initiatedBy),
-    subject: { kind: job.subject.kind, id: job.subject.id, title: maskText(job.subject.title) },
+    subject: { kind: job.subject.kind, id: job.subject.id, title: consoleText(job.subject.title) },
     alertCount: job.alertIds.length,
     inference: job.inference,
     verdict: job.result?.verdict ?? null,
@@ -240,7 +252,7 @@ export function runDetailView(
           citations: result.citations.map((citation) => ({
             kind: citation.kind,
             id: citation.id,
-            label: maskText(citation.label),
+            label: consoleText(citation.label),
           })),
           verified: result.verified,
           deterministic: { reasons: result.deterministic.reasons },
@@ -393,7 +405,7 @@ export function activityFeed(input: Pick<ActivityInput, 'actions' | 'escalations
   const base = (job: InvestigationJob) => ({
     jobId: job.id,
     priority: job.priority,
-    subjectTitle: maskText(job.subject.title).slice(0, 300),
+    subjectTitle: consoleText(job.subject.title).slice(0, 300),
   });
   for (const job of input.jobs.values()) {
     if (job.startedAt && job.startedAt.getTime() >= since) {

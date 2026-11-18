@@ -157,6 +157,10 @@ traffic = {"token_file": f"{cs}/cloudflare-api-token", "state_file": f"{state}/c
 since_file = os.path.join(state, "cloudflare-logpush-active-since")
 if os.path.exists(since_file):
     traffic["until"] = open(since_file, encoding="utf-8").read().strip()
+try:  # tramos ya entregados a mano (carga urgente de un incidente): se conservan entre reinstalaciones
+    traffic["skip_windows"] = json.load(open(os.path.join(etc, "cloudflare-traffic.json"))).get("skip_windows", [])
+except (OSError, ValueError):
+    pass
 write("cloudflare-traffic.json", traffic)
 # Índice de tráfico (hora REAL del evento) para verlo todo en el SOC: lee todas las salidas Cloudflare.
 write("cloudflare-index.json", {"url": "https://127.0.0.1:9200", "server_hostname": "wazuh.indexer",
