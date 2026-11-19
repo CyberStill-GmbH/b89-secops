@@ -691,6 +691,7 @@ function RoleChangeModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [created, setCreated] = useState<string | null>(null);
+  const [applied, setApplied] = useState(false);
   const length = reason.trim().length;
   const grantRoles = current.data?.grant.roles ?? [];
   const availableRoles = (current.data?.assignableRoles ?? []).filter((value) =>
@@ -703,7 +704,7 @@ function RoleChangeModal({
     setBusy(true);
     setError(null);
     try {
-      const result = await api.post<{ request: RoleRequestView }>(
+      const result = await api.post<{ request: RoleRequestView | null; applied?: boolean }>(
         `/admin/users/${encodeURIComponent(user.oid)}/role-requests`,
         {
           action,
@@ -713,7 +714,12 @@ function RoleChangeModal({
           expectedRevision: current.data.grant.revision,
         },
       );
-      setCreated(result.request.id);
+      if (result.applied) {
+        setApplied(true);
+        current.reload();
+      } else if (result.request) {
+        setCreated(result.request.id);
+      }
     } catch (failure) {
       setError(failure);
     } finally {
@@ -731,7 +737,14 @@ function RoleChangeModal({
       <EuiModalBody>
         {error != null && <ErrorCallout error={error} />}
         {current.error && <ErrorCallout error={current.error} onRetry={current.reload} />}
-        {created ? (
+        {applied ? (
+          <EuiCallOut size="s" color="success" iconType="check" title="Rol aplicado">
+            <p>
+              El cambio ya está vigente. Si la persona tenía una sesión abierta, se cerró: el rol
+              nuevo aplica al volver a iniciar sesión.
+            </p>
+          </EuiCallOut>
+        ) : created ? (
           <EuiCallOut size="s" color="success" iconType="check" title="Solicitud registrada">
             <p>
               La solicitud <Mono>{created}</Mono> quedó pendiente de aprobación. El rol no cambia
@@ -823,11 +836,14 @@ function RoleChangeModal({
       <EuiModalFooter>
         <EuiFlexGroup gutterSize="s" justifyContent="flexEnd" responsive={false} wrap>
           <EuiFlexItem grow={false}>
-            <EuiButtonEmpty onClick={() => (created ? onSubmitted() : onClose())} disabled={busy}>
-              {created ? 'Cerrar' : 'Cancelar'}
+            <EuiButtonEmpty
+              onClick={() => (created || applied ? onSubmitted() : onClose())}
+              disabled={busy}
+            >
+              {created || applied ? 'Cerrar' : 'Cancelar'}
             </EuiButtonEmpty>
           </EuiFlexItem>
-          {!created && (
+          {!created && !applied && (
             <EuiFlexItem grow={false}>
               <EuiButton
                 fill
@@ -837,7 +853,7 @@ function RoleChangeModal({
                 }
                 onClick={submit}
               >
-                Enviar solicitud
+                {current.data?.directGrant ? 'Aplicar rol' : 'Enviar solicitud'}
               </EuiButton>
             </EuiFlexItem>
           )}

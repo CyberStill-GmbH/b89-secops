@@ -77,6 +77,8 @@ export interface RoleAdministrationActor {
   readonly oid: string | undefined;
   readonly capabilities: ReadonlySet<string>;
   readonly amr: readonly string[];
+  /** Roles efectivos de la sesión (la vía directa exige `b89.platform.admin` o ser dueño). */
+  readonly roles?: readonly string[];
 }
 
 export type RoleAdministrationFailure =
@@ -252,6 +254,78 @@ export async function submitRoleRequest(
       metadata: { ...requestMetadata(planned.request), grantRevision: grant.revision },
     });
     return planned.request;
+  });
+}
+
+/* ------------------------------------------------------ Concesión directa del dueño */
+
+/**
+ * Decisión del dueño (2026-11-18): el dueño del grupo de acceso (o un `b89.platform.admin`) concede
+ * o retira roles al instante, sin la cadena de aprobadores; nadie más puede. Mismas guardas de
+ * padrón (fresco, objetivo miembro vigente para conceder), CAS sobre la revisión del grant y
+ * auditoría atómica (`access.role_grant.owner_direct`).
+ */
+export async function isDirectGrantor(
+  deps: RoleAdministrationDependencies,
+  actor: RoleAdministrationActor,
+): Promise<boolean> {
+  if (!actor.capabilities.has('roles.request')) return false;
+  if (actor.roles?.includes('b89.platform.admin')) return true;
+  if (!actor.oid) return false;
+  const owners = await deps.directory.store.owners(deps.tenantId, deps.directory.groupId);
+  const oid = actor.oid.toLowerCase();
+  return owners.some((owner) => owner.oid.toLowerCase() === oid);
+}
+
+export interface DirectGrantOutcome {
+  readonly grant: { readonly roles: readonly string[]; readonly revision: number };
+}
+
+export async function grantRoleDirect(
+  deps: RoleAdministrationDependencies,
+  actor: RoleAdministrationActor,
+  input: RoleRequestInput,
+  correlationId: string,
+): Promise<RoleAdministrationResult<DirectGrantOutcome>> {
+  if (!(await isDirectGrantor(deps, actor))) return fail('UNAVAILABLE');
+  if (!(await rosterFresh(deps))) return fail('UNAVAILABLE');
+  const target = input.targetOid.toLowerCase();
+  // Nadie se concede ni se retira roles a sí mismo, tampoco por la vía directa.
+  if (actor.oid && actor.oid.toLowerCase() === target) return fail('CONFLICT');
+  if (input.action === 'grant' && !(await activeMember(deps, target))) return fail('CONFLICT');
+  return inUnitOfWork(deps, async ({ grants, audit }) => {
+    const at = deps.now();
+    const before = await grants.current(deps.tenantId, target);
+    if (before.revision !== input.expectedRevision) throw new Abort('CONFLICT');
+    const roles = rolesAfter(before.roles, input.action, input.role);
+    if (!roles) throw new Abort('CONFLICT');
+    const after = await grants.replace(deps.tenantId, target, {
+      roles,
+      expectedRevision: before.revision,
+      actorId: actor.subjectId,
+      at,
+    });
+    if (!after) throw new Abort('CONFLICT');
+    await recordAudit(audit, {
+      id: randomUUID(),
+      tenantId: deps.tenantId,
+      occurredAt: at,
+      actor: userActor(actor),
+      action: 'access.role_grant.owner_direct',
+      resource: { type: 'role_grant', id: target },
+      outcome: 'succeeded',
+      correlationId,
+      reason: input.reason,
+      metadata: {
+        targetOid: target,
+        action: input.action,
+        role: input.role,
+        ...(input.ticket ? { ticket: input.ticket } : {}),
+        grantBefore: { roles: [...before.roles], revision: before.revision },
+        grantAfter: { roles: [...after.roles], revision: after.revision },
+      },
+    });
+    return { grant: { roles: after.roles, revision: after.revision } };
   });
 }
 

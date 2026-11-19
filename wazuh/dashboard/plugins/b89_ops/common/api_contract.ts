@@ -265,6 +265,8 @@ export interface RoleGrantView {
   readonly deployRoles: readonly string[];
   readonly groupOwnerRoles: readonly string[];
   readonly assignableRoles: readonly RequestableRole[];
+  /** `true` si quien mira concede directamente (dueño del grupo o admin de plataforma). */
+  readonly directGrant?: boolean;
 }
 
 export interface RoleRequestView {

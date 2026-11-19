@@ -47,7 +47,12 @@ function server() {
 }
 
 /** Sesión abierta en el store, con la cookie y el token CSRF que vería el navegador. */
-async function sessionFor(roles: readonly string[], oid: string, amr: readonly string[] = ['pwd']) {
+async function sessionFor(
+  roles: readonly string[],
+  oid: string,
+  amr: readonly string[] = ['pwd'],
+  extraCapabilities: readonly string[] = [],
+) {
   const { session } = openSession(
     {
       subjectId: `sub-${oid}`,
@@ -55,7 +60,7 @@ async function sessionFor(roles: readonly string[], oid: string, amr: readonly s
       tenantId: runtime.tenantIdForDirectory,
       roles,
       scopes: ['soc.read', 'soc.write'],
-      capabilities: capabilitiesForRoles(roles),
+      capabilities: [...capabilitiesForRoles(roles), ...extraCapabilities] as never,
       amr,
       clientIp: officeIp,
     },
@@ -176,6 +181,14 @@ beforeEach(() => {
   officeIp = `10.20.${100 + Math.floor(officeSequence / 250)}.${(officeSequence % 250) + 1}`;
 });
 
+/**
+ * Solicitante delegado (capability `roles.request` sin ser admin ni dueño): recorre la cadena de
+ * aprobaciones. El admin de plataforma y el dueño del grupo conceden directo (decisión 2026-11-18).
+ */
+function requesterSession() {
+  return sessionFor(['b89.soc.lead'], ADMIN_OID, ['pwd'], ['roles.request', 'users.read']);
+}
+
 describe('administración de roles · solicitudes y aprobación', () => {
   it('no existe reemplazo directo del grant', async () => {
     const admin = await sessionFor(['b89.platform.admin'], ADMIN_OID);
@@ -226,7 +239,7 @@ describe('administración de roles · solicitudes y aprobación', () => {
   });
 
   it('SoD y padrón: ni a sí mismo, ni a deshabilitados, bajas u OID fuera del padrón', async () => {
-    const admin = await sessionFor(['b89.platform.admin'], ADMIN_OID);
+    const admin = await requesterSession();
     const body = { action: 'grant', role: 'b89.soc.lead', reason: REASON, expectedRevision: 0 };
     expect((await submit(admin, ADMIN_OID.toUpperCase(), body)).statusCode).toBe(409);
     for (const oid of [CARLA, DANI, '88888888-8888-4888-8888-888888888888', 'no-es-un-guid']) {
@@ -235,7 +248,7 @@ describe('administración de roles · solicitudes y aprobación', () => {
   });
 
   it('Acceso aprueba un rol ordinario: grant, auditoría y revocación de sesiones del objetivo', async () => {
-    const admin = await sessionFor(['b89.platform.admin'], ADMIN_OID);
+    const admin = await requesterSession();
     // AMR sin MFA: la etapa de Acceso de un rol ordinario no la exige.
     const approver = await sessionFor([ACCESS_APPROVER_ROLE], ACCESS_OID, ['pwd']);
     const target = await sessionFor(['b89.soc.analyst'], ANA);
@@ -307,7 +320,7 @@ describe('administración de roles · solicitudes y aprobación', () => {
   });
 
   it('rechazar cierra la solicitud sin cambiar el grant', async () => {
-    const admin = await sessionFor(['b89.platform.admin'], ADMIN_OID);
+    const admin = await requesterSession();
     const approver = await sessionFor([ACCESS_APPROVER_ROLE], ACCESS_OID);
     const submitted = await submit(admin, BETO, {
       action: 'grant',
@@ -324,7 +337,7 @@ describe('administración de roles · solicitudes y aprobación', () => {
   });
 
   it('platform.admin necesita Acceso y Seguridad; Seguridad falla cerrada sin step-up real', async () => {
-    const admin = await sessionFor(['b89.platform.admin'], ADMIN_OID);
+    const admin = await requesterSession();
     const access = await sessionFor([ACCESS_APPROVER_ROLE], ACCESS_OID);
     const security = await sessionFor([SECURITY_APPROVER_ROLE], SECURITY_OID, ['fido']);
     const submitted = await submit(admin, BETO, {
@@ -371,5 +384,41 @@ describe('administración de roles · solicitudes y aprobación', () => {
     const statuses = items.map((item) => item.status);
     expect(statuses).not.toContain('pending_access');
     expect(statuses).not.toContain('pending_security');
+  });
+});
+
+describe('administración de roles · concesión directa del admin', () => {
+  it('el admin aplica el rol al instante, con auditoría y sin solicitud pendiente', async () => {
+    const admin = await sessionFor(['b89.platform.admin'], ADMIN_OID);
+    const target = await sessionFor(['b89.soc.analyst'], BETO);
+    const before = await grantOf(BETO);
+    const created = await submit(admin, BETO, {
+      action: 'grant',
+      role: 'b89.auditor',
+      reason: REASON,
+      expectedRevision: before.revision,
+    });
+    expect(created.statusCode).toBe(201);
+    const body = JSON.parse(created.body);
+    expect(body).toMatchObject({ applied: true, request: null });
+    expect(body.grant.roles).toContain('b89.auditor');
+    expect((await grantOf(BETO)).roles).toContain('b89.auditor');
+    expect((await runtime.sessions.byId(target.session.id))?.state).toBe('revoked');
+    const pending = await administration.requests.list(runtime.tenantIdForDirectory, [
+      'pending_access',
+      'pending_security',
+    ]);
+    expect(pending.filter((request) => request.targetOid === BETO)).toEqual([]);
+  });
+
+  it('ni el admin se asigna roles a sí mismo', async () => {
+    const admin = await sessionFor(['b89.platform.admin'], ADMIN_OID);
+    const self = await submit(admin, ADMIN_OID, {
+      action: 'grant',
+      role: 'b89.soc.lead',
+      reason: REASON,
+      expectedRevision: (await grantOf(ADMIN_OID)).revision,
+    });
+    expect(self.statusCode).toBe(409);
   });
 });

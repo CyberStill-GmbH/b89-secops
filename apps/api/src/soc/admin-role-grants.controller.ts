@@ -46,6 +46,8 @@ import { ApiError } from '../http/api-error.js';
 import type { IncomingRequest } from '../http/http-contracts.js';
 import {
   decideRoleRequest,
+  grantRoleDirect,
+  isDirectGrantor,
   submitRoleRequest,
   type RoleAdministrationActor,
   type RoleAdministrationDependencies,
@@ -152,6 +154,7 @@ function administrationActor({ actor, session }: ResolvedActor): RoleAdministrat
     oid: session.oid?.toLowerCase(),
     capabilities: actor.capabilities,
     amr: session.amr,
+    roles: [...actor.roles],
   };
 }
 
@@ -199,7 +202,8 @@ export class AdminRoleGrantsController {
 
   @Get('users/:oid/role-grant')
   public async current(@Req() request: IncomingRequest, @Param('oid') oid: string) {
-    const { actor, correlationId } = await readingActor(this.runtime, request);
+    const resolved = await readingActor(this.runtime, request);
+    const { actor, correlationId } = resolved;
     const deps = this.dependencies(actor.tenantId);
     if (!actor.capabilities.has('users.read') || !GUID.test(oid) || !deps) {
       throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
@@ -219,6 +223,8 @@ export class AdminRoleGrantsController {
       grant: grantView(grant),
       ...fixed,
       assignableRoles: ASSIGNABLE_ROLES,
+      // Dueño del grupo o administrador de plataforma: el cambio se aplica sin aprobaciones.
+      directGrant: await isDirectGrantor(deps, administrationActor(resolved)),
     };
   }
 
@@ -252,9 +258,36 @@ export class AdminRoleGrantsController {
     if (invalid.length > 0) throw new ApiError('VALIDATION_FAILED', correlationId, invalid);
     if (!GUID.test(oid)) throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
 
+    const adminActor = administrationActor(resolved);
+    const requested = {
+      targetOid: oid.toLowerCase(),
+      action: input.action as RoleRequestAction,
+      role: input.role as (typeof REQUESTABLE_ROLES)[number],
+      reason: reason!,
+      ticket: ticket ?? null,
+      expectedRevision: input.expectedRevision as number,
+    };
+    // Dueño del grupo o administrador de plataforma: el cambio se aplica al instante.
+    if (await isDirectGrantor(deps, adminActor)) {
+      const direct = await grantRoleDirect(deps, adminActor, requested, correlationId);
+      if (!direct.ok) throw failure(direct.failure, correlationId);
+      // Como en la aprobación final: el rol nuevo entra en la próxima sesión del objetivo.
+      const sessionRevocation = await this.runtime.revokeSessionsForRoleChange(
+        requested.targetOid,
+        { id: actor.subjectId, sessionId: actor.sessionId },
+        correlationId,
+      );
+      return {
+        correlationId,
+        applied: true,
+        request: null,
+        grant: direct.value.grant,
+        sessionRevocation,
+      };
+    }
     const result = await submitRoleRequest(
       deps,
-      administrationActor(resolved),
+      adminActor,
       {
         targetOid: oid.toLowerCase(),
         action: input.action as RoleRequestAction,
