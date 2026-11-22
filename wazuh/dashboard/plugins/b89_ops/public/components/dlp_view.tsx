@@ -120,6 +120,7 @@ function nextVersion(value: string): string {
 
 function endpointState(endpoint: DlpEndpoint): 'applied' | 'pending' | 'unknown' | 'revoked' {
   if (endpoint.status === 'revoked') return 'revoked';
+  if (endpoint.status === 're-enrollment-required') return 'pending';
   if (endpoint.status === 'offline') return 'unknown';
   if (endpoint.status === 'updating') return 'pending';
   return 'applied';
@@ -400,7 +401,7 @@ export function DlpView() {
                     const state = endpointState(endpoint);
                     return <tr key={endpoint.id}>
                       <th scope="row">{endpoint.hostname}{endpoint.agentId && <small>Agente Wazuh {endpoint.agentId}</small>}</th>
-                      <td><EuiBadge color={state === 'applied' ? 'success' : state === 'pending' ? 'warning' : 'hollow'}>{state === 'applied' ? 'Al día' : state === 'pending' ? 'Aplicando' : state === 'revoked' ? 'Revocado' : 'Sin conexión'}</EuiBadge></td>
+                      <td><EuiBadge color={state === 'applied' ? 'success' : state === 'pending' ? 'warning' : 'hollow'}>{state === 'applied' ? 'Al día' : state === 'pending' ? endpoint.status === 're-enrollment-required' ? 'Reinscripción necesaria' : 'Aplicando' : state === 'revoked' ? 'Revocado' : 'Sin conexión'}</EuiBadge></td>
                       <td><Timestamp iso={endpoint.lastSeenAt} /></td>
                       <td>{endpoint.currentRevision === null ? 'Sin confirmar' : `Revisión ${endpoint.currentRevision} · ${endpoint.currentPolicyVersion ?? 'sin versión'}`}</td>
                       <td>{endpoint.status !== 'offline' && endpoint.status !== 'revoked' && <EuiButtonEmpty size="xs" color="danger" onClick={() => setRevokeTarget(endpoint)}>Revocar credencial</EuiButtonEmpty>}{endpoint.status === 'revoked' && endpoint.revokedAt && <span>Revocada <Timestamp iso={endpoint.revokedAt} /></span>}</td>

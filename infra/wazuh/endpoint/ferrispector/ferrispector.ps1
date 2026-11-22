@@ -183,14 +183,14 @@ function Invoke-FerrispectorReconciliation {
 
 if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) { throw 'Ferrispector configuration is missing.' }
 $config = Get-Content -LiteralPath $ConfigPath -Raw | ConvertFrom-Json -ErrorAction Stop
-if ($config.schema_version -ne 1) { throw 'Unsupported Ferrispector configuration schema.' }
+if ($config.schema_version -ne 2) { throw 'Ferrispector config v1 uses a reusable enrollment secret. Re-run the installer with a fresh enrollment token.' }
 $script:YaraPath = Join-Path $PSScriptRoot 'bin\yr.exe'
 $script:RulesPath = [IO.Path]::GetFullPath([string]$config.rules_path)
 $script:EventPath = [IO.Path]::GetFullPath([string]$config.events_path)
 $script:FingerprintCatalogPath = [IO.Path]::GetFullPath([string]$config.fingerprints_path)
 $script:RulesHash = (Get-FileHash -LiteralPath $script:RulesPath -Algorithm SHA256).Hash.ToLowerInvariant()
 $script:ControlPlaneUrl = [string]$config.control_plane_url
-$script:AgentToken = [string]$config.agent_token
+$script:AgentToken = [string]$config.agent_credential
 $script:LastPolicySyncAt = [DateTime]::MinValue
 $script:LastPolicyAttemptAt = [DateTime]::MinValue
 $script:RemotePolicyReady = -not [bool]$script:ControlPlaneUrl

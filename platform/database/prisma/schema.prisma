@@ -988,6 +988,7 @@ model DlpEndpoint {
   lastSeenAt          DateTime? @map("last_seen_at") @db.Timestamptz(3)
   revokedAt           DateTime? @map("revoked_at") @db.Timestamptz(3)
   appliedRevision     Int       @default(0) @map("applied_revision")
+  credentialVersion   Int       @default(0) @map("credential_version")
   policyVersion       String?   @map("policy_version") @db.VarChar(32)
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 

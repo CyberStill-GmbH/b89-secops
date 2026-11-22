@@ -15,6 +15,7 @@ export interface DlpEndpointRecord {
   readonly lastSeenAt: Date | null;
   readonly revokedAt: Date | null;
   readonly appliedRevision: number;
+  readonly credentialVersion: number;
   readonly policyVersion: string | null;
   readonly enrollmentExpiresAt: Date;
 }
@@ -38,6 +39,7 @@ export interface DlpPolicyStore {
   enrollEndpoint(input: {
     tenantId: string;
     tokenHash: string;
+    credentialHash: string;
     hostname: string;
     agentId: string;
     at: Date;

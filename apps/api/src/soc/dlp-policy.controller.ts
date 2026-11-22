@@ -135,6 +135,8 @@ function bearer(request: IncomingRequest): string | undefined {
 function endpointView(endpoint: DlpEndpointRecord, currentRevision: number, now: Date) {
   const status = endpoint.revokedAt
     ? 'revoked'
+    : endpoint.enrolledAt && endpoint.credentialVersion !== 1
+      ? 're-enrollment-required'
     : !endpoint.lastSeenAt || now.getTime() - endpoint.lastSeenAt.getTime() > 2 * 60_000
       ? 'offline'
       : endpoint.appliedRevision < currentRevision
@@ -331,9 +333,11 @@ export class DlpPolicyController {
         typeof agentId !== 'string' || !AGENT_ID.test(agentId)) {
       throw new ApiError('VALIDATION_FAILED', correlationId, ['hostname', 'agentId']);
     }
+    const endpointCredential = randomBytes(32).toString('base64url');
     const endpoint = await this.store(correlationId).enrollEndpoint({
       tenantId: this.runtime.tenantId,
       tokenHash: createHash('sha256').update(token, 'utf8').digest('hex'),
+      credentialHash: createHash('sha256').update(endpointCredential, 'utf8').digest('hex'),
       hostname,
       agentId,
       at: this.runtime.now(),
@@ -350,7 +354,7 @@ export class DlpPolicyController {
       correlationId,
       metadata: { hostname, agentId },
     });
-    return { correlationId, endpointId: endpoint.id, enrolledAt: endpoint.enrolledAt?.toISOString() };
+    return { correlationId, endpointId: endpoint.id, endpointCredential, enrolledAt: endpoint.enrolledAt?.toISOString() };
   }
 
   @Get('agent/policy')

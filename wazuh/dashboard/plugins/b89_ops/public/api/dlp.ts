@@ -16,7 +16,7 @@ export interface DlpEndpoint {
   readonly id: string;
   readonly hostname: string;
   readonly agentId: string | null;
-  readonly status: 'current' | 'offline' | 'updating' | 'revoked';
+  readonly status: 'current' | 'offline' | 'updating' | 're-enrollment-required' | 'revoked';
   readonly lastSeenAt: string | null;
   readonly currentRevision: number | null;
   readonly currentPolicyVersion: string | null;

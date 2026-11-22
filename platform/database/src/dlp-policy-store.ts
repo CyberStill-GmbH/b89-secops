@@ -18,6 +18,7 @@ export interface DlpEndpointRow {
   readonly lastSeenAt: Date | null;
   readonly revokedAt: Date | null;
   readonly appliedRevision: number;
+  readonly credentialVersion: number;
   readonly policyVersion: string | null;
   readonly enrollmentExpiresAt: Date;
 }
@@ -92,21 +93,23 @@ export class PrismaDlpPolicyStore {
   public async enrollEndpoint(input: {
     readonly tenantId: string;
     readonly tokenHash: string;
+    readonly credentialHash: string;
     readonly hostname: string;
     readonly agentId: string;
     readonly at: Date;
   }): Promise<DlpEndpointRow | undefined> {
     const rows = await this.client.$queryRaw<DlpEndpointRow[]>`
       UPDATE "dlp_endpoints"
-         SET "hostname" = ${input.hostname}, "agent_id" = ${input.agentId},
+         SET "token_hash" = ${input.credentialHash}, "credential_version" = 1,
+             "hostname" = ${input.hostname}, "agent_id" = ${input.agentId},
              "enrolled_at" = ${input.at}, "last_seen_at" = ${input.at},
              "enrollment_expires_at" = ${input.at}
        WHERE "tenant_id" = ${input.tenantId} AND "token_hash" = ${input.tokenHash}
-         AND "enrolled_at" IS NULL AND "enrollment_expires_at" > ${input.at}
+         AND "enrolled_at" IS NULL AND "credential_version" = 0 AND "enrollment_expires_at" > ${input.at}
       RETURNING "id", "tenant_id" AS "tenantId", "hostname", "agent_id" AS "agentId",
                  "enrolled_at" AS "enrolledAt", "last_seen_at" AS "lastSeenAt",
                  "revoked_at" AS "revokedAt",
-                 "applied_revision" AS "appliedRevision", "policy_version" AS "policyVersion",
+                 "applied_revision" AS "appliedRevision", "credential_version" AS "credentialVersion", "policy_version" AS "policyVersion",
                  "enrollment_expires_at" AS "enrollmentExpiresAt"`;
     return rows[0];
   }
@@ -119,11 +122,11 @@ export class PrismaDlpPolicyStore {
     const rows = await this.client.$queryRaw<DlpEndpointRow[]>`
       UPDATE "dlp_endpoints" SET "last_seen_at" = ${input.at}
        WHERE "tenant_id" = ${input.tenantId} AND "token_hash" = ${input.tokenHash}
-         AND "enrolled_at" IS NOT NULL AND "revoked_at" IS NULL
+         AND "enrolled_at" IS NOT NULL AND "credential_version" = 1 AND "revoked_at" IS NULL
        RETURNING "id", "tenant_id" AS "tenantId", "hostname", "agent_id" AS "agentId",
                  "enrolled_at" AS "enrolledAt", "last_seen_at" AS "lastSeenAt",
                  "revoked_at" AS "revokedAt",
-                 "applied_revision" AS "appliedRevision", "policy_version" AS "policyVersion",
+                 "applied_revision" AS "appliedRevision", "credential_version" AS "credentialVersion", "policy_version" AS "policyVersion",
                  "enrollment_expires_at" AS "enrollmentExpiresAt"`;
     return rows[0];
   }
@@ -161,7 +164,7 @@ export class PrismaDlpPolicyStore {
       SELECT "id", "tenant_id" AS "tenantId", "hostname", "agent_id" AS "agentId",
              "enrolled_at" AS "enrolledAt", "last_seen_at" AS "lastSeenAt",
              "revoked_at" AS "revokedAt",
-             "applied_revision" AS "appliedRevision", "policy_version" AS "policyVersion",
+             "applied_revision" AS "appliedRevision", "credential_version" AS "credentialVersion", "policy_version" AS "policyVersion",
              "enrollment_expires_at" AS "enrollmentExpiresAt"
         FROM "dlp_endpoints" WHERE "tenant_id" = ${tenantId} AND "enrolled_at" IS NOT NULL
        ORDER BY "hostname" ASC LIMIT 5000`;

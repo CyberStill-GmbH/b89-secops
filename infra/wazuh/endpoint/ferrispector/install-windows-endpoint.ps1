@@ -241,7 +241,7 @@ try {
   if (-not (Test-Path -LiteralPath $eventsPath)) { [IO.File]::WriteAllText($eventsPath, '', [Text.UTF8Encoding]::new($false)) }
   $configPath = Join-Path $dataRoot 'config.json'
   $config = [ordered]@{
-    schema_version = 1
+    schema_version = 2
     rules_path = (Join-Path $releasePath 'policy\dlp-rules.yarc')
     fingerprints_path = (Join-Path $releasePath 'policy\fingerprints.sha256')
     events_path = $eventsPath
@@ -263,9 +263,9 @@ try {
       $enrollmentUri = $controlPlane.AbsoluteUri.TrimEnd('/') + '/api/dlp/agent/enroll'
       $enrollment = Invoke-RestMethod -Method Post -Uri $enrollmentUri -Headers @{ Authorization = "Bearer $enrollmentToken" } `
         -ContentType 'application/json' -Body (@{ hostname = $env:COMPUTERNAME; agentId = $agentId } | ConvertTo-Json -Compress) -TimeoutSec 20
-      if (-not $enrollment.endpointId) { throw 'The DLP control plane did not confirm this endpoint enrollment.' }
+      if (-not $enrollment.endpointId -or $enrollment.endpointCredential -notmatch '^[A-Za-z0-9_-]{40,64}$') { throw 'The DLP control plane did not return a new endpoint credential. Revoke the endpoint and create a fresh enrollment token.' }
       $config.control_plane_url = $controlPlane.AbsoluteUri.TrimEnd('/')
-      $config.agent_token = $enrollmentToken
+      $config.agent_credential = [string]$enrollment.endpointCredential
       $config.agent_id = $agentId
     }
     finally {
@@ -276,6 +276,8 @@ try {
   }
   $config | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $configPath -Encoding utf8
   Set-PrivateAcl -Path $configPath
+  if ($config.agent_credential) { $config.agent_credential = $null }
+  $enrollment = $null
 
   $powerShell = (Get-Process -Id $PID).Path
   $runnerPath = Join-Path $releasePath 'ferrispector.ps1'

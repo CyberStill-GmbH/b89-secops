@@ -37,7 +37,7 @@ El hash exacto detecta copias byte a byte. Cambios dentro del documento producen
 
 El instalador exige `-WatchRoot` con directorios locales explícitos aprobados por privacidad. El agente inspecciona archivos al crearse o cambiar, ejecuta un barrido al arrancar y vuelve a conciliar las rutas cada hora. Tras una pausa de 800 ms, el archivo se inspecciona localmente con YARA-X.
 
-En el instalador, configura `-DlpControlPlaneUrl 'https://dev.security.b89.io'`. Te pedirá un token de inscripción generado en **Políticas → Protección de datos**. El token se usa para inscribir el equipo y se guarda en `C:\ProgramData\B89\Ferrispector\config.json`, ACL solo para SYSTEM y Administrators. Cada consulta usa HTTPS; el servidor aplica permisos y revisión CAS. El endpoint no marca una política como aplicada hasta confirmar la revisión al servidor.
+En el instalador, configura `-DlpControlPlaneUrl 'https://dev.security.b89.io'`. Te pedirá un token de inscripción generado en **Políticas → Protección de datos**. El token de inscripción se usa una vez y no se guarda. El servidor devuelve una credencial exclusiva del endpoint; solo esa credencial se guarda en config.json con ACL para SYSTEM y Administrators. Cada consulta usa HTTPS; el servidor aplica permisos y revisión CAS. El endpoint no marca una política como aplicada hasta confirmar la revisión al servidor.
 
 Sin control plane, el instalador puede operar con el paquete local verificado por SHA-256 externo. Ese modo no recibe cambios del panel.
 
