@@ -7,8 +7,8 @@ destination ``<endpoint>/<dataset>/<zone_id>`` with the shared secret sent by Cl
 zone's plan offers (``/logpush/datasets/<dataset>/fields``). Idempotent: existing jobs with the
 same name are updated in place; foreign jobs are never touched.
 
-Firewall events and account audit logs keep coming from the API collector (security.py), so they
-are not duplicated here. Requires the token permission «Logs: Write» (zone scope).
+Firewall events arrive through Logpush when jobs are active; the API collector keeps a sampled
+GraphQL fallback until then. Account audit logs continue through the API collector. Requires the token permission «Logs: Write» (zone scope).
 Exit codes: 0 all jobs in place; 2 token without Logpush permission; 1 other failure.
 Never prints the token, the shared secret or the destination string.
 """

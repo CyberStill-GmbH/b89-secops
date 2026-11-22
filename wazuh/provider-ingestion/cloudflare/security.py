@@ -259,7 +259,19 @@ def collect(config: dict, state: dict, client: Cloudflare | None = None) -> tupl
 
     fw_cursors = dict(state.get("firewall_cursors") or {})
     fw_seen = list(state.get("firewall_seen") or [])
-    if config.get("firewall", True):
+    firewall_logpush_active = False
+    activation_file = config.get("firewall_logpush_active_file")
+    if activation_file:
+        marker = pathlib.Path(activation_file)
+        if marker.exists():
+            try:
+                parse_iso(marker.read_text(encoding="ascii").strip())
+            except (OSError, UnicodeError, ValueError) as error:
+                raise ProviderError("Cloudflare Logpush activation marker is invalid") from error
+            firewall_logpush_active = True
+    firewall_configured = bool(config.get("firewall", True))
+    firewall_enabled = firewall_configured and not firewall_logpush_active
+    if firewall_configured:
         zones = [
             {"id": str(z.get("id")), "name": str(z.get("name") or "")}
             for z in discover(client, "zones")
@@ -269,6 +281,7 @@ def collect(config: dict, state: dict, client: Cloudflare | None = None) -> tupl
             zones = [z for z in zones if z["id"] in set(config["zone_ids"])]
             if {z["id"] for z in zones} != set(config["zone_ids"]):
                 raise ProviderError("Cloudflare configured zones are missing or inaccessible")
+    if firewall_enabled:
         until = now - INGEST_DELAY
         seen_set = set(fw_seen)
         for zone in zones:
@@ -286,12 +299,15 @@ def collect(config: dict, state: dict, client: Cloudflare | None = None) -> tupl
         "scope": {
             "accounts": len(accounts),
             "zones": [{"id": z["id"], "name": z["name"][:255]} for z in zones][:500],
-            "firewall": bool(config.get("firewall", True)),
+            "firewall": firewall_enabled,
+            "firewall_logpush_active": firewall_logpush_active,
             "audit": bool(config.get("audit", True)),
             "at": now_text,
         },
-        "coverage": {"mode": "audit_and_adaptive_firewall", "exhaustive": False,
-                     "reason": "GraphQL adaptive firewall is not an all-dataset log archive"},
+        "coverage": {"mode": "audit_and_logpush_firewall" if firewall_logpush_active else "audit_and_adaptive_firewall",
+                     "exhaustive": False,
+                     "reason": "firewall_events Logpush active; account audit remains on API" if firewall_logpush_active
+                     else "GraphQL adaptive firewall is a sampled fallback, not an all-dataset log archive"},
         "audit_cursors": audit_cursors,
         "audit_seen": bounded_ids(audit_seen, 20000),
         "firewall_cursors": fw_cursors,

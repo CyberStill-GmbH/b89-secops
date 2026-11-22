@@ -8,12 +8,12 @@ Hasta entonces el receptor queda listo y el instalador lo informa.
 
 | Origen | Cómo llega | Reglas |
 | --- | --- | --- |
-| Eventos de firewall/WAF | Logpush `firewall_events` + API GraphQL de respaldo (`security.py`) | 101510–101513, 101539–101540 |
+| Eventos de firewall/WAF | Logpush `firewall_events` + API GraphQL adaptativa de respaldo (`security.py`) | 101510?101513, 101539?101544 |
 | Auditoría de cuenta | API REST (`security.py`) | 101501–101507 |
 | **Peticiones HTTP** (`http_requests`) | Logpush → HTTPS → receptor | 101515–101522 |
 | **DNS autoritativo** (`dns_logs`) | Logpush → HTTPS → receptor | 101525–101528 |
 
-Firewall y auditoría siguen por API para no duplicar eventos. Desde 2026-09-30 Cloudflare ofrece
+Auditoría de cuenta sigue por API. Mientras Logpush no está activo, el firewall usa GraphQL adaptativo; al activar los jobs se apaga ese respaldo para evitar duplicados. Desde 2026-09-30 Cloudflare ofrece
 Logpush en todos los planes con precio por uso (25 GB/mes incluidos por exportación externa).
 
 ## Historia y continuidad sin Logpush
@@ -63,10 +63,8 @@ Cloudflare jobs (b89-http-requests / b89-firewall-events / b89-dns-logs, por zon
 - **Volumen:** cada petición HTTP y cada consulta DNS entran a nivel 0, sin alerta. Solo alertan los
   patrones: sondeo de rutas sensibles, escaneo, ráfagas de 4xx/5xx, métodos anómalos, AXFR/IXFR y
   enumeración por NXDOMAIN.
-- **WAF e inyección:** el job pide acción, fuente, ID/explicación de regla y, cuando el plan lo ofrece,
-  puntuaciones SQLi/XSS/RCE y firmas. Las reglas 101539/101540 dicen si Cloudflare bloqueó un patrón
-  de inyección web o si solo lo registró y pudo dejarlo llegar a la aplicación. Esa señal no confirma
-  que la aplicación haya sido explotada ni representa toda la lista OWASP Top 10.
+- **WAF y ataques web:** el job pide acción, origen, ID/explicación de regla, categorías y referencias de firmas y, si el plan las ofrece, puntuaciones SQLi/XSS/RCE. Las reglas 101539/101540 detectan nombres de reglas que indican inyección; 101541/101542 detectan también categorías de firma como SQLi, XSS, RCE, SSRF, XXE y traversal.
+  Si la acción fue `log`, la solicitud pudo llegar a la aplicación; un bloqueo o desafío no es evidencia de explotación. Estas señales cubren ataques que Cloudflare WAF reconoce, pero no garantizan detectar las diez categorías OWASP: control de acceso, configuración insegura y fallas fuera del tráfico HTTP requieren otras fuentes.
 - **Límites del proveedor:** Logpush entrega lotes aproximadamente cada minuto, no en un segundo.
   Cloudflare documenta que algunas coincidencias OWASP secundarias del panel no aparecen en su JSON
   exportado; no existe garantía documentada aquí de que Logpush individualice todas las reglas hijas.

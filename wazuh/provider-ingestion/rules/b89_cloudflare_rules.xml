@@ -282,7 +282,7 @@
 
   <rule id="101539" level="8">
     <if_sid>101510</if_sid>
-    <field name="cloudflare.firewall.source" type="pcre2">(?i)^firewallmanaged$</field>
+    <field name="cloudflare.firewall.source" type="pcre2">(?i)^(?:firewallmanaged|waf)$</field>
     <field name="cloudflare.firewall.rule_description" type="pcre2">(?i)(?:sqli|sql.?injection|\bxss\b|cross.?site.?scripting|html injection|command injection|remote code execution|\brce\b|file inclusion|directory traversal|path traversal|log4j|log4shell|\bjndi\b|\bssrf\b|template injection|\bssti\b|\bxxe\b|owasp.*(?:injection|xss)|(?:injection|xss).*owasp)</field>
     <description>Cloudflare bloqueó una solicitud con patrón de posible inyección web en $(cloudflare.firewall.host)$(cloudflare.firewall.path), desde $(cloudflare.firewall.client_ip). Firma: $(cloudflare.firewall.rule_description) (regla $(cloudflare.firewall.rule_id)).</description>
     <options>no_full_log</options>
@@ -292,11 +292,46 @@
 
   <rule id="101540" level="12">
     <if_sid>101511</if_sid>
-    <field name="cloudflare.firewall.source" type="pcre2">(?i)^firewallmanaged$</field>
+    <field name="cloudflare.firewall.source" type="pcre2">(?i)^(?:firewallmanaged|waf)$</field>
     <field name="cloudflare.firewall.rule_description" type="pcre2">(?i)(?:sqli|sql.?injection|\bxss\b|cross.?site.?scripting|html injection|command injection|remote code execution|\brce\b|file inclusion|directory traversal|path traversal|log4j|log4shell|\bjndi\b|\bssrf\b|template injection|\bssti\b|\bxxe\b|owasp.*(?:injection|xss)|(?:injection|xss).*owasp)</field>
     <description>Cloudflare detectó un patrón de posible inyección web y lo dejó en modo registro; la solicitud pudo llegar a la aplicación. Revisar ahora: $(cloudflare.firewall.host)$(cloudflare.firewall.path), origen $(cloudflare.firewall.client_ip). Firma: $(cloudflare.firewall.rule_description) (regla $(cloudflare.firewall.rule_id)).</description>
     <options>no_full_log</options>
     <mitre><id>T1190</id></mitre>
     <group>b89_waf,b89_web_injection,b89_owasp_signal,b89_attack,</group>
+  </rule>
+  <rule id="101541" level="8">
+    <if_sid>101510</if_sid>
+    <field name="cloudflare.firewall.source" type="pcre2">(?i)^(?:firewallmanaged|waf)$</field>
+    <field name="cloudflare.firewall.waf_signature_categories" type="pcre2">(?i)(?:sqli|sql.?injection|xss|cross.?site|rce|remote.?code|command.?injection|ssrf|xxe|lfi|rfi|traversal|ssti|template.?injection|cve-\d{4}-\d+)</field>
+    <description>Cloudflare detuvo una solicitud con firma de ataque web ($(cloudflare.firewall.waf_signature_categories)). No llegó a la aplicación según la acción registrada. Sitio: $(cloudflare.firewall.host)$(cloudflare.firewall.path); origen: $(cloudflare.firewall.client_ip).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1190</id></mitre>
+    <group>b89_waf,b89_web_attack,b89_owasp_signal,b89_attack,</group>
+  </rule>
+  <rule id="101542" level="12">
+    <if_sid>101511</if_sid>
+    <field name="cloudflare.firewall.source" type="pcre2">(?i)^(?:firewallmanaged|waf)$</field>
+    <field name="cloudflare.firewall.waf_signature_categories" type="pcre2">(?i)(?:sqli|sql.?injection|xss|cross.?site|rce|remote.?code|command.?injection|ssrf|xxe|lfi|rfi|traversal|ssti|template.?injection|cve-\d{4}-\d+)</field>
+    <description>Cloudflare registró una firma de ataque web ($(cloudflare.firewall.waf_signature_categories)) sin bloquearla; la solicitud pudo llegar a la aplicación. Revisar ahora: $(cloudflare.firewall.host)$(cloudflare.firewall.path), origen $(cloudflare.firewall.client_ip).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1190</id></mitre>
+    <group>b89_waf,b89_web_attack,b89_owasp_signal,b89_attack,</group>
+  </rule>
+  <rule id="101543" level="10">
+    <if_sid>101512</if_sid>
+    <field name="cloudflare.firewall.source" type="pcre2">(?i)^(?:firewallmanaged|waf)$</field>
+    <field name="cloudflare.firewall.waf_signature_categories" type="pcre2">(?i)(?:sqli|sql.?injection|xss|cross.?site|rce|remote.?code|command.?injection|ssrf|xxe|lfi|rfi|traversal|ssti|template.?injection|cve-\d{4}-\d+)</field>
+    <description>Cloudflare observó una firma de ataque web ($(cloudflare.firewall.waf_signature_categories)); la acción fue $(cloudflare.firewall.action). Confirma si la solicitud alcanzó la aplicación. Sitio: $(cloudflare.firewall.host)$(cloudflare.firewall.path); origen: $(cloudflare.firewall.client_ip).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1190</id></mitre>
+    <group>b89_waf,b89_web_attack,b89_owasp_signal,b89_attack,</group>
+  </rule>
+  <rule id="101544" level="8">
+    <if_sid>101512</if_sid>
+    <field name="cloudflare.firewall.waf_attack_score" type="pcre2">^(?:[1-9]|1[0-9]|20)$</field>
+    <description>Cloudflare clasificó esta solicitud como ataque probable (puntuación WAF $(cloudflare.firewall.waf_attack_score), escala 1–99); revisa $(cloudflare.firewall.host)$(cloudflare.firewall.path), acción $(cloudflare.firewall.action), origen $(cloudflare.firewall.client_ip).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1190</id></mitre>
+    <group>b89_waf,b89_web_attack,b89_attack,</group>
   </rule>
 </group>

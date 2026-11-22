@@ -148,7 +148,8 @@ if org:
 write("snyk.json", snyk)
 write("cloudflare.json", {"token_file": f"{cs}/cloudflare-api-token", "state_file": f"{state}/cloudflare.json",
     "output_file": f"{out}/cloudflare-security.jsonl", "initial_lookback_hours": 1,
-    "catchup_cursor_field": "firewall_cursors", "catchup_max_batches": 4, "catchup_delay_seconds": 120})
+    "catchup_cursor_field": "firewall_cursors", "catchup_max_batches": 4, "catchup_delay_seconds": 120,
+    "firewall_logpush_active_file": f"{state}/cloudflare-logpush-active-since"})
 # Tráfico HTTP/DNS por GraphQL: recupera 30 días (muestreado) y sigue en vivo hasta que Logpush
 # esté activo; entonces "until" (archivo cloudflare-logpush-active-since) cierra el tramo sin duplicar.
 traffic = {"token_file": f"{cs}/cloudflare-api-token", "state_file": f"{state}/cloudflare-traffic.json",
