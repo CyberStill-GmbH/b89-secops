@@ -165,11 +165,11 @@ export class DlpPolicyController {
     return store;
   }
 
-  private async administrator(request: IncomingRequest, mutate = false) {
+  private async authorized(request: IncomingRequest, capability: 'dlp.read' | 'dlp.configure', mutate = false) {
     const resolved = mutate
       ? await mutatingActor(this.runtime, request)
       : await readingActor(this.runtime, request);
-    if (!resolved.actor.capabilities.has('dlp.configure') || resolved.actor.tenantId !== this.runtime.tenantId) {
+    if (!resolved.actor.capabilities.has(capability) || resolved.actor.tenantId !== this.runtime.tenantId) {
       throw new ApiError('RESOURCE_UNAVAILABLE', resolved.correlationId);
     }
     if (mutate && this.runtime.now().getTime() - resolved.session.createdAt.getTime() > RECENT_AUTH_MS) {
@@ -214,7 +214,7 @@ export class DlpPolicyController {
   @Get('policy')
   @Header('Cache-Control', 'no-store')
   public async getPolicy(@Req() request: IncomingRequest) {
-    const { actor, correlationId } = await this.administrator(request);
+    const { actor, correlationId } = await this.authorized(request, 'dlp.read');
     const store = this.store(correlationId);
     const [row, endpoints] = await Promise.all([
       store.policy(actor.tenantId),
@@ -224,14 +224,14 @@ export class DlpPolicyController {
     return {
       correlationId,
       ...policy,
-      canManage: true,
+      canManage: actor.capabilities.has('dlp.configure'),
       endpointCount: endpoints.filter((endpoint) => endpoint.revokedAt === null).length,
     };
   }
 
   @Put('policy')
   public async putPolicy(@Req() request: IncomingRequest, @Body() body: unknown) {
-    const { actor, correlationId } = await this.administrator(request, true);
+    const { actor, correlationId } = await this.authorized(request, 'dlp.configure', true);
     const store = this.store(correlationId);
     let update: ReturnType<typeof parsePolicyUpdate>;
     try {
@@ -263,7 +263,7 @@ export class DlpPolicyController {
   @Get('endpoints')
   @Header('Cache-Control', 'no-store')
   public async listEndpoints(@Req() request: IncomingRequest) {
-    const { actor, correlationId } = await this.administrator(request);
+    const { actor, correlationId } = await this.authorized(request, 'dlp.read');
     const store = this.store(correlationId);
     const [row, endpoints] = await Promise.all([
       store.policy(actor.tenantId),
@@ -293,7 +293,7 @@ export class DlpPolicyController {
   @Post('enrollment-tokens')
   @Header('Cache-Control', 'no-store')
   public async createEnrollmentToken(@Req() request: IncomingRequest) {
-    const { actor, correlationId } = await this.administrator(request, true);
+    const { actor, correlationId } = await this.authorized(request, 'dlp.configure', true);
     const token = randomBytes(32).toString('base64url');
     const id = randomUUID();
     const now = this.runtime.now();
@@ -314,7 +314,7 @@ export class DlpPolicyController {
 
   @Post('endpoints/:id/revoke')
   public async revokeEndpoint(@Req() request: IncomingRequest, @Param('id') id: string) {
-    const { actor, correlationId } = await this.administrator(request, true);
+    const { actor, correlationId } = await this.authorized(request, 'dlp.configure', true);
     if (!/^[0-9a-f-]{36}$/iu.test(id)) throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
     const revoked = await this.store(correlationId).revokeEndpoint({ tenantId: actor.tenantId, id, at: this.runtime.now() });
     if (!revoked) throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);

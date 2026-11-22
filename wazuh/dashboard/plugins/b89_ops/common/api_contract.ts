@@ -726,5 +726,6 @@ export const CAPABILITIES = {
   investigationsRead: 'investigations.read',
   investigationsRun: 'investigations.run',
   investigationsConfigure: 'investigations.configure',
+  dlpRead: 'dlp.read',
   dlpConfigure: 'dlp.configure',
 } as const;

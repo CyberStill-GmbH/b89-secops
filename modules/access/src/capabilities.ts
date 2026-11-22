@@ -67,7 +67,9 @@ export const CAPABILITIES = [
    * cola de alertas: solo administración de plataforma, con sesión reciente (step-up).
    */
   'investigations.configure',
-  /** Administrar reglas Ferrispector y fingerprints; solo administración de plataforma. */
+  /** Consultar la política DLP y el estado de los equipos Ferrispector. */
+  'dlp.read',
+  /** Administrar reglas Ferrispector, fingerprints y equipos; solo administración de plataforma. */
   'dlp.configure',
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
@@ -104,6 +106,7 @@ export const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> 
     'notifications.read',
     'investigations.read',
     'investigations.run',
+    'dlp.read',
   ],
   'b89.soc.lead': [
     'events.read',
@@ -165,6 +168,7 @@ export const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> 
     // Configurar el analista concede autonomía sobre la cola: solo este rol (no aprueba roles,
     // así que no se autoconcede nada por esta vía).
     'investigations.configure',
+    'dlp.read',
     'dlp.configure',
   ],
   // Aprobadores de cambios de rol. No son asignables desde la consola ni por `B89_ROLE_BINDINGS`:
@@ -191,6 +195,7 @@ const SCOPE_CAPABILITIES: Readonly<Record<Scope, readonly Capability[]>> = Objec
     'users.read',
     'sessions.read',
     'investigations.read',
+    'dlp.read',
   ],
   'soc.write': [
     'alerts.triage',
@@ -207,6 +212,7 @@ const SCOPE_CAPABILITIES: Readonly<Record<Scope, readonly Capability[]>> = Objec
     'roles.approve.privileged',
     'investigations.run',
     'investigations.configure',
+    'dlp.configure',
   ],
   'audit.read': ['audit.read', 'audit.read_sensitive', 'audit.verify'],
 });

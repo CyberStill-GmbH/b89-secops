@@ -179,7 +179,8 @@ export function DlpView() {
   }, [loadPolicy, loadEndpoints]);
 
   const parsedFingerprints = useMemo(() => parseFingerprints(draftHashes), [draftHashes]);
-  const canSave = can('dlp.configure');
+  const canRead = can('dlp.read');
+  const canConfigure = can('dlp.configure');
   const activeEndpoints = endpoints.filter((endpoint) => ['current', 'updating'].includes(endpoint.status)).length;
   const pendingEndpoints = policy
     ? endpoints.filter((endpoint) => endpointState(endpoint) === 'pending').length
@@ -282,14 +283,14 @@ export function DlpView() {
     reader.readAsText(file);
   };
 
-  if (!canSave) {
+  if (!canRead) {
     return (
       <B89Page
         title="DLP de endpoints"
         description="Administra reglas de credenciales y fingerprints de archivos sensibles."
       >
-        <EuiCallOut color="warning" title="Esta configuración está limitada a administración de plataforma">
-          Solicita el rol administrador de plataforma para ver o cambiar la política DLP.
+        <EuiCallOut color="warning" title="Tu rol no tiene acceso a DLP">
+          Pide al administrador que te asigne el acceso DLP correspondiente.
         </EuiCallOut>
       </B89Page>
     );
@@ -298,10 +299,13 @@ export function DlpView() {
   return (
     <B89Page
       title="DLP de endpoints"
-      description="Define qué credenciales y huellas SHA-256 detecta Ferrispector en las carpetas aprobadas de cada equipo."
+      description={canConfigure
+        ? "Define qué credenciales y huellas SHA-256 detecta Ferrispector en las carpetas aprobadas de cada equipo."
+        : "Consulta qué protege Ferrispector y si los equipos están aplicando la política vigente."}
       actions={<EuiBadge color={pendingEndpoints > 0 ? 'warning' : 'hollow'}>{pendingEndpoints > 0 ? `${pendingEndpoints} equipos pendientes` : `${activeEndpoints} equipos conectados`}</EuiBadge>}
     >
       {policyError && <ErrorCallout error={policyError} onRetry={() => { void loadPolicy(); void loadEndpoints(); }} />}
+      {!canConfigure && <EuiCallOut color="primary" title="Vista de consulta para investigación"><p>Puedes revisar las reglas activas, las huellas SHA-256 y el estado de los equipos. Para cambiar la política o administrar equipos, contacta al Administrador.</p></EuiCallOut>}
       {stepUpRequired && (
         <EuiCallOut color="warning" title="Confirma tu sesión de nuevo">
           Reautentícate para guardar cambios, crear una clave de instalación o revocar un equipo. Después vuelve a intentar la acción.
@@ -328,6 +332,7 @@ export function DlpView() {
                   <EuiCheckbox
                     id={`dlp-rule-${rule.id}`}
                     checked={draftRules.includes(rule.id)}
+                    disabled={!canConfigure}
                     onChange={(event) => setDraftRules((current) => event.target.checked ? [...current, rule.id] : current.filter((id) => id !== rule.id))}
                     label={rule.title}
                   />
@@ -342,6 +347,7 @@ export function DlpView() {
                   <EuiCheckbox
                     id={`dlp-rule-${rule.id}`}
                     checked={draftRules.includes(rule.id)}
+                    disabled={!canConfigure}
                     onChange={(event) => setDraftRules((current) => event.target.checked ? [...current, rule.id] : current.filter((id) => id !== rule.id))}
                     label={rule.title}
                   />
@@ -359,13 +365,14 @@ export function DlpView() {
             </div>
             <p className="b89Dlp__intro">Agrega un hash SHA-256 por línea. Una coincidencia exacta genera una alerta; el nombre y el contenido del documento no se envían.</p>
             <EuiFormRow label="Importar catálogo .txt" helpText="Solo hashes SHA-256 de 64 caracteres hexadecimales; las líneas que empiezan con # se ignoran.">
-              <input className="b89Dlp__file" type="file" accept=".txt,text/plain" aria-label="Importar catálogo de fingerprints SHA-256" onChange={importFile} />
+              <input className="b89Dlp__file" type="file" accept=".txt,text/plain" aria-label="Importar catálogo de fingerprints SHA-256" onChange={importFile} disabled={!canConfigure} />
             </EuiFormRow>
             <EuiSpacer size="s" />
             <EuiFormRow label="Fingerprints SHA-256" isInvalid={Boolean(hashError)} error={hashError ?? undefined}>
               <EuiTextArea
                 aria-label="Fingerprints SHA-256, uno por línea"
                 value={draftHashes}
+                readOnly={!canConfigure}
                 onChange={(event) => { setDraftHashes(event.target.value); setHashError(null); }}
                 rows={8}
                 resize="vertical"
@@ -376,10 +383,12 @@ export function DlpView() {
           </section>
 
           <div className="b89Dlp__actions">
-            <EuiButton fill onClick={() => void save()} isLoading={saving} disabled={saving || conflict || !policy}>
-              Guardar y distribuir
-            </EuiButton>
-            <EuiButtonEmpty onClick={() => void loadPolicy()} disabled={saving}>Descartar cambios</EuiButtonEmpty>
+            {canConfigure && <>
+              <EuiButton fill onClick={() => void save()} isLoading={saving} disabled={saving || conflict || !policy}>
+                Guardar y distribuir
+              </EuiButton>
+              <EuiButtonEmpty onClick={() => void loadPolicy()} disabled={saving}>Descartar cambios</EuiButtonEmpty>
+            </>}
             <span className="b89Dlp__version">Último cambio: <Timestamp iso={policy.updatedAt} /></span>
           </div>
           <p className="b89Dlp__note">Los equipos aplican la nueva revisión al consultar al servidor. La tabla confirma la revisión cuando cada agente responde; guardar aquí no significa que todos ya la recibieron.</p>
@@ -404,7 +413,7 @@ export function DlpView() {
                       <td><EuiBadge color={state === 'applied' ? 'success' : state === 'pending' ? 'warning' : 'hollow'}>{state === 'applied' ? 'Al día' : state === 'pending' ? endpoint.status === 're-enrollment-required' ? 'Reinscripción necesaria' : 'Aplicando' : state === 'revoked' ? 'Revocado' : 'Sin conexión'}</EuiBadge></td>
                       <td><Timestamp iso={endpoint.lastSeenAt} /></td>
                       <td>{endpoint.currentRevision === null ? 'Sin confirmar' : `Revisión ${endpoint.currentRevision} · ${endpoint.currentPolicyVersion ?? 'sin versión'}`}</td>
-                      <td>{endpoint.status !== 'offline' && endpoint.status !== 'revoked' && <EuiButtonEmpty size="xs" color="danger" onClick={() => setRevokeTarget(endpoint)}>Revocar credencial</EuiButtonEmpty>}{endpoint.status === 'revoked' && endpoint.revokedAt && <span>Revocada <Timestamp iso={endpoint.revokedAt} /></span>}</td>
+                      <td>{canConfigure && endpoint.status !== 'offline' && endpoint.status !== 'revoked' && <EuiButtonEmpty size="xs" color="danger" onClick={() => setRevokeTarget(endpoint)}>Revocar credencial</EuiButtonEmpty>}{endpoint.status === 'revoked' && endpoint.revokedAt && <span>Revocada <Timestamp iso={endpoint.revokedAt} /></span>}{!canConfigure && endpoint.status !== 'revoked' && <span>Administrado por el equipo de plataforma</span>}</td>
                     </tr>;
                   })}</tbody>
                 </table>
@@ -412,7 +421,7 @@ export function DlpView() {
             )}
           </section>
 
-          <section className="b89Panel" aria-labelledby="b89-dlp-install">
+          {canConfigure && <section className="b89Panel" aria-labelledby="b89-dlp-install">
             <div className="b89Panel__header"><h2 id="b89-dlp-install">Agregar un equipo</h2></div>
             <p className="b89Dlp__intro">Crea una clave de instalación para un solo equipo. Copia el valor y entrégalo por el canal de administración de PCs; solo se muestra una vez y vence en 30 minutos.</p>
             {enrollmentToken ? (
@@ -424,7 +433,7 @@ export function DlpView() {
             ) : (
               <EuiButton onClick={() => void createToken()} isLoading={enrollmentBusy}>Crear clave de instalación</EuiButton>
             )}
-          </section>
+          </section>}
         </>
       )}
       {revokeTarget && (
