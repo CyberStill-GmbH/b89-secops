@@ -55,6 +55,7 @@ export default defineConfig({
     environment: 'node',
     globals: true,
     pool: 'threads',
+    isolate: false,
     maxWorkers: 1,
     setupFiles: ['./tools/testing/vitest.setup.ts'],
     restoreMocks: true,

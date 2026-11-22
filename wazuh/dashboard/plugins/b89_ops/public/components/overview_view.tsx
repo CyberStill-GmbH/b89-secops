@@ -31,6 +31,7 @@ import {
 } from './overview_parts';
 import { DataZone, ErrorCallout, PriorityMark, Timestamp, useAsync } from './primitives';
 import { VendorLogo } from './vendor_logo';
+import { indexerUnavailableMessage } from '../../common/indexer_status';
 import { vendorOfProvider } from '../../common';
 import { alertsQueueHref, PRIORITY_NAME } from './alerts_filters';
 import { levelBandHref } from './service_attention';
@@ -151,7 +152,12 @@ export function OverviewView({ basePath }: { basePath: string }) {
         ) : data.overview.loading ? (
           <EuiLoadingContent lines={5} />
         ) : (
-          <p className="b89Panel__empty">Sin datos del Indexer.</p>
+          <p className="b89Panel__empty">
+            {indexerUnavailableMessage({
+              failed: data.overview.error != null,
+              access: overview?.alertsAccess ?? null,
+            })}
+          </p>
         )}
       </section>
 
@@ -223,7 +229,12 @@ export function OverviewView({ basePath }: { basePath: string }) {
             data.overview.loading ? (
               <EuiLoadingContent lines={5} />
             ) : (
-              <p className="b89Panel__empty">Sin datos del Indexer.</p>
+              <p className="b89Panel__empty">
+            {indexerUnavailableMessage({
+              failed: data.overview.error != null,
+              access: overview?.alertsAccess ?? null,
+            })}
+          </p>
             )
           ) : overview.topEvents.length === 0 ? (
             <p className="b89Panel__empty">Ningún evento de severidad alta o crítica en 7 días.</p>
