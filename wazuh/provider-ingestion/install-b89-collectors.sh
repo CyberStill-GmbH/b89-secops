@@ -239,7 +239,8 @@ if [[ -n $HOSTCONF && -f $HOSTCONF ]]; then
 fi
 
 # ------------------------------------------------------------------ 4. systemd
-unit() { # nombre descripción comando intervalo
+unit() { # nombre descripción comando intervalo [retardo_aleatorio] [primer_arranque]
+  local random_delay="${5:-20s}" boot_delay="${6:-90s}"
   cat >"/etc/systemd/system/$1.service" <<EOF
 [Unit]
 Description=$2
@@ -266,9 +267,9 @@ EOF
 Description=Programa $2
 
 [Timer]
-OnBootSec=90s
+OnBootSec=$boot_delay
 OnUnitInactiveSec=$4
-RandomizedDelaySec=20s
+RandomizedDelaySec=$random_delay
 Persistent=true
 Unit=$1.service
 
@@ -283,7 +284,7 @@ unit b89-collector-snyk 'B89 Snyk issues collector' "/usr/bin/python3 -I $PI/sny
 unit b89-collector-cloudflare 'B89 Cloudflare security collector' "/usr/bin/python3 -I $PI/cloudflare/security.py --config $ETC/cloudflare.json" 5min
 unit b89-collector-cloudflare-traffic 'B89 Cloudflare traffic collector (GraphQL)' "/usr/bin/python3 -I $PI/cloudflare/traffic.py --config $ETC/cloudflare-traffic.json" 2min
 unit b89-collector-cloudflare-index 'B89 Cloudflare traffic indexer' "/usr/bin/python3 -I $PI/cloudflare/traffic_index.py --config $ETC/cloudflare-index.json" 1min
-unit b89-collector-cloudflare-logpush 'B89 Cloudflare Logpush spool consumer' "/usr/bin/python3 -I $PI/cloudflare/logpush_spool.py --spool $ROOT/spool/cloudflare-logpush --output $OUT/cloudflare-logpush.jsonl --ledger $STATE/cloudflare-logpush-ledger.json --heartbeat $STATE/cloudflare-logpush.json" 1min
+unit b89-collector-cloudflare-logpush 'B89 Cloudflare Logpush spool consumer' "/usr/bin/python3 -I $PI/cloudflare/logpush_spool.py --spool $ROOT/spool/cloudflare-logpush --output $OUT/cloudflare-logpush.jsonl --ledger $STATE/cloudflare-logpush-ledger.json --heartbeat $STATE/cloudflare-logpush.json" 5s 0s 5s
 unit b89-collector-sharepoint-audit 'B89 SharePoint audit collector' "/usr/bin/python3 -I $PI/sharepoint/sharepoint.py audit --config $ETC/sharepoint-audit.json" 5min
 unit b89-collector-sharepoint-posture 'B89 SharePoint posture collector' "/usr/bin/python3 -I $PI/sharepoint/sharepoint.py posture --config $ETC/sharepoint-posture.json" 60min
 INTERVAL="$(read_file alert-interval-min)"; [[ $INTERVAL =~ ^[0-9]{1,3}$ ]] || INTERVAL=5

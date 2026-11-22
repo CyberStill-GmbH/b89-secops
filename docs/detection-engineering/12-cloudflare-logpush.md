@@ -45,7 +45,7 @@ Cloudflare jobs (b89-http-requests / b89-firewall-events / b89-dns-logs, por zon
   → edge nginx (solo POST, 33 MB, límite de tasa)
   → contenedor cloudflare-logpush (receiver/logpush-receiver.mjs)
        token en tiempo constante · dataset permitido · tmp/ → rename → incoming/ · 503 si el spool está lleno
-  → b89-collector-cloudflare-logpush.timer (cada 1 min, logpush_spool.py)
+  → b89-collector-cloudflare-logpush.timer (cada 5 s desde el arranque, logpush_spool.py)
        logpush.ingest por lote, en orden · done/ (24 h) · failed/ (7 días) · latido en state/cloudflare-logpush.json
   → /var/ossec/logs/b89-collectors/cloudflare-logpush.jsonl (<localfile> json) → reglas 1015xx y alertas legibles
 ```
@@ -65,7 +65,9 @@ Cloudflare jobs (b89-http-requests / b89-firewall-events / b89-dns-logs, por zon
   enumeración por NXDOMAIN.
 - **WAF y ataques web:** el job pide acción, origen, ID/explicación de regla, categorías y referencias de firmas y, si el plan las ofrece, puntuaciones SQLi/XSS/RCE. Las reglas 101539/101540 detectan nombres de reglas que indican inyección; 101541/101542 detectan también categorías de firma como SQLi, XSS, RCE, SSRF, XXE y traversal.
   Si la acción fue `log`, la solicitud pudo llegar a la aplicación; un bloqueo o desafío no es evidencia de explotación. Estas señales cubren ataques que Cloudflare WAF reconoce, pero no garantizan detectar las diez categorías OWASP: control de acceso, configuración insegura y fallas fuera del tráfico HTTP requieren otras fuentes.
-- **Límites del proveedor:** Logpush entrega lotes aproximadamente cada minuto, no en un segundo.
+- **Tiempo de llegada:** el consumidor B89 vacía el spool cada 5 segundos, pero Cloudflare entrega
+  lotes aproximadamente cada minuto; no se puede prometer disponibilidad en un segundo.
+- **Límites del proveedor:**
   Cloudflare documenta que algunas coincidencias OWASP secundarias del panel no aparecen en su JSON
   exportado; no existe garantía documentada aquí de que Logpush individualice todas las reglas hijas.
   Hay que comprobar el ID de la regla con una prueba autorizada en la zona y seguirlo hasta el Indexer.
