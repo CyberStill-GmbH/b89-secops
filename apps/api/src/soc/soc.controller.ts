@@ -37,7 +37,8 @@ export function alertView(alert: Alert, capabilities: ReadonlySet<string>) {
   return projectFields(
     {
       id: alert.id,
-      title: alert.title,
+      // Conserva títulos nuevos y limpia proveedor/ID de registros anteriores.
+      title: alert.title.replace(/\s+\([a-z0-9._-]+\s+\d+\)$/iu, '').trim(),
       priority: alert.priority,
       score: alert.score,
       status: alert.status,
@@ -128,7 +129,7 @@ export class SocController {
     });
     const page = paginate(
       result.items,
-      (alert) => ({ at: alert.occurredAt.getTime(), id: alert.id }),
+      (alert) => ({ sort: alert.priority, at: alert.occurredAt.getTime(), id: alert.id }),
       query,
       `alerts:status=${query.status ?? ''}:q=${search}:priority=${query.priority ?? ''}:entity=${entity ?? ''}`,
       correlationId,
@@ -268,7 +269,7 @@ export class SocController {
     const declared = new Set(incident.alertIds).size;
     const page = paginate(
       linked.items,
-      (alert) => ({ at: alert.occurredAt.getTime(), id: alert.id }),
+      (alert) => ({ sort: alert.priority, at: alert.occurredAt.getTime(), id: alert.id }),
       query,
       `incident-alerts:${incident.id}`,
       correlationId,

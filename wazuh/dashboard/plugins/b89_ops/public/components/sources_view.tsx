@@ -16,10 +16,16 @@ import {
 } from '@elastic/eui';
 import {
   CAPABILITIES,
+  parseVerdicts,
   SOURCE_REASON_LABEL,
   SOURCE_STATE_LABEL,
   SOURCE_TONE,
+  SOURCE_VERDICT_LABEL,
+  SOURCE_VERDICT_TONE,
   SourceHealth,
+  SourceHealthModelInfo,
+  SourceVerdictView,
+  verdictReasonLabel,
 } from '../../common';
 import { B89Page, useChanges, useConsole } from './console_context';
 import { EmptyLine, ErrorCallout, HealthMark, Mono, Timestamp, useAsync } from './primitives';
@@ -62,7 +68,13 @@ export function SourcesView() {
 function SourcesContent() {
   const { api } = useConsole();
   const health = useAsync(
-    () => api.get<{ checkedAt: string; sources: SourceHealth[] }>('/sources/health'),
+    () =>
+      api.get<{
+        checkedAt: string;
+        sources: SourceHealth[];
+        verdicts?: unknown;
+        healthModel?: SourceHealthModelInfo;
+      }>('/sources/health'),
     [api],
   );
   useChanges(['source'], () => health.reload());
@@ -91,17 +103,26 @@ function SourcesContent() {
             </p>
           </EuiText>
           <EuiSpacer size="m" />
-          {health.data.sources.length === 0 ? (
-            <EmptyLine>No hay fuentes configuradas para este tenant.</EmptyLine>
-          ) : (
-            <EuiFlexGrid columns={2} gutterSize="m" responsive>
-              {health.data.sources.map((source) => (
-                <EuiFlexItem key={`${source.sourceId}:${source.dataset}`}>
-                  <SourceCard source={source} />
-                </EuiFlexItem>
-              ))}
-            </EuiFlexGrid>
-          )}
+          <SourceVerdicts
+            verdicts={parseVerdicts(health.data.verdicts)}
+            model={health.data.healthModel ?? null}
+          />
+          <EuiSpacer size="l" />
+          <details>
+            <summary>Ver historial y datos técnicos de cada conexión</summary>
+            <EuiSpacer size="s" />
+            {health.data.sources.length === 0 ? (
+              <EmptyLine>No hay fuentes configuradas para este tenant.</EmptyLine>
+            ) : (
+              <EuiFlexGrid columns={2} gutterSize="m" responsive>
+                {health.data.sources.map((source) => (
+                  <EuiFlexItem key={`${source.sourceId}:${source.dataset}`}>
+                    <SourceCard source={source} />
+                  </EuiFlexItem>
+                ))}
+              </EuiFlexGrid>
+            )}
+          </details>
         </>
       )}
     </B89Page>
@@ -109,6 +130,172 @@ function SourcesContent() {
 }
 
 type SubscriptionItem = NonNullable<SourceHealth['subscriptions']>['items'][number];
+
+function seconds(value: number | null | undefined): string {
+  if (value === null || value === undefined) return 'Sin dato';
+  if (value < 60) return `${Math.round(value)} s`;
+  if (value < 3600) return `${Math.round(value / 60)} min`;
+  return `${(value / 3600).toFixed(1)} h`;
+}
+
+/** Volumen de la ventana actual contra la mediana de la misma hora de semanas anteriores. */
+export function volumeText(volume: SourceVerdictView['volume']): string {
+  if (!volume) return 'Sin dato';
+  const window = `${volume.current} en ${volume.windowHours} h`;
+  if (volume.expected === null) {
+    return `${window} · esperado: Sin dato (${volume.weeksUsed} semana${
+      volume.weeksUsed === 1 ? '' : 's'
+    } con datos)`;
+  }
+  return `${window} · esperado ≈ ${Math.round(volume.expected)} (mediana de ${
+    volume.weeksUsed
+  } semanas)${volume.drop ? ' · por debajo de lo esperado' : ''}`;
+}
+
+export function ingestLagText(lag: SourceVerdictView['ingestLag']): string {
+  if (!lag || lag.maxSeconds === null) return 'Sin dato';
+  return `p50 ${seconds(lag.p50Seconds)} · máx ${seconds(lag.maxSeconds)} · ${lag.samples} muestra${
+    lag.samples === 1 ? '' : 's'
+  }`;
+}
+
+/** Salud por fuente: veredicto, motivos y la línea de tiempo de cada señal. */
+export function SourceVerdicts({
+  verdicts,
+  model,
+}: {
+  verdicts: readonly SourceVerdictView[];
+  model: SourceHealthModelInfo | null;
+}) {
+  return (
+    <section aria-label="Salud por fuente">
+      <EuiTitle size="xs">
+        <h2>Salud por fuente</h2>
+      </EuiTitle>
+      <EuiText size="xs" color="subdued">
+        <p>
+          Aquí puedes saber si los datos están llegando, aunque no haya alertas. «Sin actividad»
+          puede ser normal; «Sin información» significa que B89 no pudo comprobar la fuente.
+          {model?.stale
+            ? ' Estos datos podrían estar desactualizados porque B89 no pudo consultar el indexador.'
+            : ''}
+        </p>
+      </EuiText>
+      {model?.measuredAt && (
+        <EuiText size="xs" color="subdued">
+          <p>
+            Medido <Timestamp iso={model.measuredAt} />
+          </p>
+        </EuiText>
+      )}
+      <EuiSpacer size="s" />
+      {verdicts.length === 0 ? (
+        <EmptyLine>La API no informó la salud por fuente (versión anterior o sin permiso).</EmptyLine>
+      ) : (
+        <EuiFlexGrid columns={3} gutterSize="m" responsive>
+          {verdicts.map((item) => (
+            <EuiFlexItem key={item.id}>
+              <SourceVerdictCard item={item} />
+            </EuiFlexItem>
+          ))}
+        </EuiFlexGrid>
+      )}
+    </section>
+  );
+}
+
+export function SourceVerdictCard({ item }: { item: SourceVerdictView }) {
+  const verdict = SOURCE_VERDICT_LABEL[item.verdict];
+  const firstReason = item.reasons[0] ? verdictReasonLabel(item.reasons[0]) : null;
+  const summary =
+    item.verdict === 'healthy'
+      ? 'La última comprobación confirma que los datos están llegando.'
+      : item.verdict === 'quiet'
+        ? 'La conexión está activa; no se han visto eventos nuevos en el periodo revisado.'
+        : item.verdict === 'degraded'
+          ? `Los datos llegan con una incidencia${firstReason ? `: ${firstReason}` : '.'}`
+          : item.verdict === 'failing'
+            ? `No se pudo confirmar la llegada de datos${firstReason ? `: ${firstReason}` : '.'}`
+            : 'Todavía no hay información suficiente para confirmar si los datos están llegando.';
+  return (
+    <EuiPanel
+      hasBorder
+      paddingSize="m"
+      className="b89SourceCard"
+      data-verdict={item.verdict}
+      aria-label={`${item.label}: ${verdict}`}
+    >
+      <EuiTitle size="xxs">
+        <h3>{item.label}</h3>
+      </EuiTitle>
+      <EuiSpacer size="xs" />
+      <HealthMark tone={SOURCE_VERDICT_TONE[item.verdict]} label={verdict} />
+      <p>{summary}</p>
+      <EuiSpacer size="s" />
+      <details>
+        <summary>Ver comprobaciones y tiempos</summary>
+        <EuiSpacer size="s" />
+        {item.reasons.length > 0 && (
+          <ul className="b89List" aria-label="Motivos detectados">
+            {item.reasons.map((reason) => (
+              <li key={reason}>{verdictReasonLabel(reason)}</li>
+            ))}
+          </ul>
+        )}
+        <EuiDescriptionList
+          type="responsiveColumn"
+          compressed
+          className="b89Facts"
+          listItems={verdictSignalItems(item)}
+        />
+      </details>
+    </EuiPanel>
+  );
+}
+
+/** Línea de tiempo de señales de una fuente; cada señal sin dato dice «Sin dato». */
+export function verdictSignalItems(
+  item: SourceVerdictView,
+): { title: string; description: NonNullable<React.ReactNode> }[] {
+  const run = item.heartbeat;
+  return [
+          {
+            title: 'Último latido del colector',
+            description:
+              item.expectedHeartbeatMs === null && item.id !== 'wazuh-indexer' ? (
+                <span className="b89Muted">No aplica (sin colector propio)</span>
+              ) : (
+                <Timestamp iso={item.lastHeartbeatAt} />
+              ),
+          },
+          { title: 'Última corrida correcta', description: <Timestamp iso={item.lastSuccessfulRunAt} /> },
+          { title: 'Última autenticación correcta', description: <Timestamp iso={item.lastAuthOkAt} /> },
+          { title: 'Último evento', description: <Timestamp iso={item.lastEventAt} /> },
+          { title: 'Volumen vs lo esperado', description: volumeText(item.volume) },
+          { title: 'Retraso de ingesta', description: ingestLagText(item.ingestLag) },
+          { title: 'Atraso del proveedor', description: seconds(item.providerLagSeconds) },
+          { title: 'Canario sintético', description: <Timestamp iso={item.canaryAt} /> },
+          {
+            title: 'Última corrida',
+            description: run ? (
+              <span>
+                <Mono>{`${run.outcome ?? '?'} · auth ${run.auth ?? '?'} · HTTP ${
+                  run.httpStatusClass ?? '?'
+                }`}</Mono>
+                {run.errorCode ? (
+                  <>
+                    {' '}
+                    <Mono>{run.errorCode}</Mono>
+                  </>
+                ) : null}
+                {run.consecutiveFailures > 0 ? ` · ${run.consecutiveFailures} fallo(s) seguidos` : ''}
+              </span>
+            ) : (
+              <span className="b89Muted">Sin dato</span>
+            ),
+          },
+  ];
+}
 
 function SourceCard({ source }: { source: SourceHealth }) {
   return (

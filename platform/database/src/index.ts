@@ -58,6 +58,7 @@ export {
   type SourcePollObservationRow,
 } from './ingestion-stores.js';
 export { PrismaWazuhPushInboxStore } from './wazuh-push-inbox-store.js';
+export { PrismaDlpPolicyStore, type DlpPolicyRow, type DlpEndpointRow } from './dlp-policy-store.js';
 export {
   DIRECTORY_QUERY_LIMIT,
   PrismaDirectoryStore,

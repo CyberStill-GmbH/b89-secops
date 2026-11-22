@@ -96,6 +96,14 @@ export const B89_APPS = [
     category: 'soc',
   },
   {
+    id: 'b89-dlp',
+    view: 'dlp',
+    title: 'DLP de endpoints',
+    icon: 'b89-audit.svg',
+    order: 38,
+    category: 'soc',
+  },
+  {
     id: 'b89-audit',
     view: 'audit',
     title: 'Auditoría e integridad',
@@ -161,6 +169,7 @@ export * from './investigation';
 export * from './bunny_bridge';
 export * from './navigation';
 export * from './platform_health';
+ export * from './source_health';
 export * from './ai_investigations';
 export * from './ai_activity';
 export * from './cloudflare_traffic';

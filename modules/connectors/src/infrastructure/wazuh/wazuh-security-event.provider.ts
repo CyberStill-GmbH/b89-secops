@@ -12,7 +12,10 @@ import {
   type ProviderRecord,
   type SecurityEventProvider,
   type SourceCapabilities,
+  type SourceSignalsQuery,
+  type SourceSignalsReport,
 } from '../../application/security-event-provider.js';
+import { buildSourceSignalsQuery, parseSourceSignals } from './wazuh-source-signals.js';
 
 export interface WazuhSearchHit {
   readonly _id?: unknown;
@@ -230,14 +233,9 @@ function canonicalFilters(filters: EventFilters | undefined): EventFilters | und
   const severity = [...new Set(filters.severity ?? [])].sort();
   const category = [...new Set(filters.category ?? [])].sort();
   const entities = [
-    ...new Map(
-      (filters.entities ?? []).map((entity) => [`${entity.kind}:${entity.value}`, entity]),
-    ).values(),
-  ]
-    .map((entity) => ({ kind: entity.kind, value: entity.value }))
-    .sort((left, right) =>
-      `${left.kind}:${left.value}`.localeCompare(`${right.kind}:${right.value}`),
-    );
+    ...new Map((filters.entities ?? []).map((entity) => [`${entity.kind}:${entity.value}`, entity])).values(),
+  ].map((entity) => ({ kind: entity.kind, value: entity.value }))
+    .sort((left, right) => `${left.kind}:${left.value}`.localeCompare(`${right.kind}:${right.value}`));
   const result: {
     severity?: string[];
     category?: string[];
@@ -785,6 +783,23 @@ export class WazuhSecurityEventProvider implements SecurityEventProvider {
       ...buckets.map((bucket: unknown) => streamActivityOf(bucket, '')),
       ...providerBuckets.map((bucket: unknown) => streamActivityOf(bucket, PROVIDER_STREAM_PREFIX)),
     ];
+  }
+
+  /**
+   * Señales de salud por fuente (ver `wazuh-source-signals.ts`): una búsqueda `size: 0` con
+   * agregaciones de tamaño fijo y la misma ventana máxima que `readPage`.
+   */
+  public async readSourceSignals(query: SourceSignalsQuery): Promise<SourceSignalsReport> {
+    if (query.sourceId !== this.options.sourceId || !this.options.allowedDatasets.includes(query.dataset))
+      throw new SecurityEventProviderError('PROVIDER_QUERY_REJECTED', 'readPage', false);
+    const body = buildSourceSignalsQuery(query, MAX_RANGE_MS);
+    let response: WazuhSearchResponse;
+    try {
+      response = await this.searchWithRetries(body, query.signal);
+    } catch (error) {
+      throw error instanceof SecurityEventProviderError ? error : errorFrom(error, 'readPage');
+    }
+    return parseSourceSignals(query, response, new Date(this.#now()).toISOString());
   }
 
   public async close(): Promise<void> {

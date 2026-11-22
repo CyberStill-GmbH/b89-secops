@@ -17,4 +17,19 @@
     </mitre>
     <group>b89_initial_access,b89_phishing_triage,</group>
   </rule>
+  <rule id="101110" level="5">
+    <decoded_as>json</decoded_as>
+    <field name="integration">^b89_ferrispector$</field>
+    <field name="event_type">^match$</field>
+    <description>B89 Windows: una regla de detección DLP encontró contenido sensible en un archivo (regla YARA: $(yara_rule_id), huella SHA-256: $(file_sha256)).</description>
+    <options>no_full_log</options>
+    <group>b89_dlp,b89_endpoint,</group>
+  </rule>
+  <rule id="101111" level="8">
+    <if_sid>101110</if_sid>
+    <field name="yara_rule_id" type="pcre2">^(B89_CRED_PRIVATE_KEY_PEM|B89_CRED_GITHUB_TOKEN|B89_CRED_SLACK_TOKEN|B89_CRED_GOOGLE_API_KEY|B89_CRED_AZURE_STORAGE_KEY|B89_CRED_OPENAI_API_KEY|B89_CRED_AWS_ACCESS_KEY_PAIR|B89_SECRET_DATABASE_CONNECTION|B89_DLP_EXACT_FILE_FINGERPRINT)$</field>
+    <description>B89 Windows: se encontro una credencial reconocible o un archivo protegido por fingerprint (regla $(yara_rule_id), SHA-256 $(file_sha256)).</description>
+    <options>no_full_log</options>
+    <group>b89_dlp,b89_endpoint,</group>
+  </rule>
 </group>

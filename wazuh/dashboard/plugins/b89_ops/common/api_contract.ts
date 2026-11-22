@@ -132,6 +132,7 @@ export interface SourceHealth {
   readonly displayName: string;
   readonly enabled: boolean;
   readonly state: SourceState;
+  readonly verdict?: string;
   readonly reason: string;
   readonly lastAttemptAt: string | null;
   readonly lastSuccessAt: string | null;
@@ -649,6 +650,15 @@ export interface OperationsHealth {
       readonly databaseLatencyMs: number | null;
       readonly nodeVersion: string | null;
     };
+    readonly sources?: {
+      readonly status: OperationsStatus;
+      readonly degradedReasons: readonly string[];
+      readonly modelVersion: string;
+      readonly measuredAt: string | null;
+      readonly counts: Readonly<Record<string, number>>;
+      readonly issues: readonly { readonly code: string; readonly sourceId: string }[];
+      readonly sources: readonly { readonly id: string; readonly verdict: string; readonly reasons: readonly string[] }[];
+    };
   };
 }
 
@@ -716,4 +726,5 @@ export const CAPABILITIES = {
   investigationsRead: 'investigations.read',
   investigationsRun: 'investigations.run',
   investigationsConfigure: 'investigations.configure',
+  dlpConfigure: 'dlp.configure',
 } as const;

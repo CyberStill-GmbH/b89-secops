@@ -45,6 +45,7 @@ import { DemoAdminLogin } from './access/demo-admin-credentials.js';
 import { entityRefFactory } from './runtime/entity-refs.js';
 import { deriveCsrfKey } from './http/csrf.js';
 import type { ProcessInfo } from './soc/operations-health.js';
+import type { DlpPolicyStore } from './runtime/dlp-policy-store.js';
 import {
   SecOpsRuntime,
   type RuntimeDirectory,
@@ -93,6 +94,7 @@ import {
   recordSourceHealth,
   sourceHealthMonitor,
 } from './runtime/source-health.js';
+ import { SourceSignalsService } from './runtime/source-signals.js';
 
 /** Límite de cierre de C-02: 5 segundos, incluidos el despacho en curso y los pools. */
 export const API_SHUTDOWN_TIMEOUT_MS = 5_000;
@@ -155,6 +157,7 @@ interface DurableStores {
   readonly push: PushSubscriptionStore & { close(): Promise<void> };
   readonly roleAdministration: RoleAdministration & { close(): Promise<void> };
   readonly wazuhPushInbox?: WazuhPushInboxStore & { close(): Promise<void> };
+  readonly dlpPolicy: DlpPolicyStore & { close(): Promise<void> };
 }
 
 /**
@@ -173,7 +176,7 @@ async function durableStoresFor(
   const [
     { PostgresSocPersistence, PostgresWazuhPushInboxStore },
     { PostgresNotificationAttemptStore, PostgresPushSubscriptionStore },
-    { PostgresSessionStore, PostgresDirectoryStore, PostgresRoleAdministration },
+    { PostgresSessionStore, PostgresDirectoryStore, PostgresRoleAdministration, PrismaDlpPolicyStore },
   ] = await Promise.all([
     import('@b89/soc/postgres'),
     import('@b89/soar/postgres'),
@@ -231,10 +234,17 @@ async function durableStoresFor(
         maxConnections: 2,
       })
     : undefined;
+  const dlpPolicy = PrismaDlpPolicyStore.connect({
+    connectionString,
+    connectionTimeoutMs: postgres.connectionTimeoutMs,
+    statementTimeoutMs: postgres.statementTimeoutMs,
+    maxConnections: 2,
+  });
   try {
     // Falla al arrancar, no en la primera alerta: sin base o con esquema viejo no se sirve.
     await soc.ready();
     await wazuhPushInbox?.ready();
+    await dlpPolicy.ready();
   } catch (error) {
     await Promise.allSettled([
       soc.close(),
@@ -243,6 +253,7 @@ async function durableStoresFor(
       directory.close(),
       push.close(),
       roleAdministration.close(),
+      dlpPolicy.close(),
       ...(wazuhPushInbox ? [wazuhPushInbox.close()] : []),
     ]);
     throw error;
@@ -254,6 +265,7 @@ async function durableStoresFor(
     directory,
     push,
     roleAdministration,
+    dlpPolicy,
     ...(wazuhPushInbox ? { wazuhPushInbox } : {}),
   };
 }
@@ -505,6 +517,7 @@ export async function buildApi(
       ? { soc: durable.soc, notifications: durable.notifications, sessions: durable.sessions }
       : {}),
     ...(durable?.wazuhPushInbox ? { wazuhPushInbox: durable.wazuhPushInbox } : {}),
+    ...(durable ? { dlpPolicyStore: durable.dlpPolicy } : {}),
     ...(onDispatchError ? { onDispatchError } : {}),
     ...(onSignInDenied ? { onSignInDenied } : {}),
     ...(processInfo ? { processInfo } : {}),
@@ -607,6 +620,13 @@ export async function buildApi(
           }
         : { mode: 'disabled' },
     sourceHealth: monitor,
+    sourceSignals: new SourceSignalsService({
+      sourceId: monitor.key.sourceId,
+      dataset: WAZUH_DATASET,
+      ...(eventProvider?.readSourceSignals && ingestionConfig.source === 'wazuh'
+        ? { read: eventProvider.readSourceSignals.bind(eventProvider) }
+        : {}),
+    }),
     ...(vapidKey
       ? {
           push: {
@@ -793,6 +813,7 @@ export async function buildApi(
       await durable?.directory.close();
       await durable?.push.close();
       await durable?.roleAdministration.close();
+      await durable?.dlpPolicy.close();
       await durable?.wazuhPushInbox?.close();
       stopArtifactPurge?.();
       await assistantConversations?.close();

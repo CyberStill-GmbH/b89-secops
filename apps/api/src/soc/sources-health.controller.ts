@@ -9,6 +9,11 @@
  * `subscriptions` es la actividad medida por suscripción de Office 365 en las últimas 24 h
  * (cuándo fue el último evento y cuántos hubo). Es informativa: un stream callado puede ser
  * normal y no decide el estado. `null` si todavía no hubo medición.
+ *
+ * Aditivo (docs/20 «Salud por fuente»): `verdicts` trae el veredicto multiseñal de cada fuente
+ * (`healthy | quiet | degraded | failing | unknown`, motivos y última señal de cada tipo), con la
+ * ingesta Wazuh → B89 primero; `healthModel` la versión de umbrales. La entrada de `sources`
+ * conserva su forma y suma `verdict`.
  */
 
 import { Controller, Get, Inject, Req } from '@nestjs/common';
@@ -16,6 +21,7 @@ import { Controller, Get, Inject, Req } from '@nestjs/common';
 import { ApiError } from '../http/api-error.js';
 import type { IncomingRequest } from '../http/http-contracts.js';
 import { evaluateMonitor, sourceEventLagSummary } from '../runtime/source-health.js';
+import { ingestionVerdict, SOURCE_HEALTH_MODEL } from '../runtime/source-signals.js';
 import { readingActor } from './session-actor.js';
 import { SECOPS_RUNTIME } from './tokens.js';
 import type { SecOpsRuntime } from '../runtime/secops-runtime.js';
@@ -38,16 +44,24 @@ export class SourcesHealthController {
     const monitor = this.runtime.sourceHealth;
     // Una fuente de otro tenant no existe para este lector.
     if (!monitor || monitor.key.tenantId !== actor.tenantId) {
-      return { correlationId, checkedAt: this.runtime.now().toISOString(), sources: [] };
+      return {
+        correlationId,
+        checkedAt: this.runtime.now().toISOString(),
+        sources: [],
+        healthModel: { version: SOURCE_HEALTH_MODEL.version, status: 'not_configured', measuredAt: null, stale: false },
+        verdicts: [],
+      };
     }
     const now = this.runtime.now();
     const state = this.runtime.soc.ingestion;
-    const [evaluation, transitions, activity, observations] = await Promise.all([
+    const [evaluation, transitions, activity, observations, signals] = await Promise.all([
       evaluateMonitor(monitor, state, now),
       state.recentTransitions(monitor.key, TRANSITIONS_SHOWN),
       monitor.enabled ? state.activity(monitor.key) : Promise.resolve([]),
       state.recentObservations(monitor.key, 50),
+      this.runtime.sourceSignals?.snapshot(now),
     ]);
+    const ingestion = ingestionVerdict(evaluation, monitor.displayName);
     const eventLag = sourceEventLagSummary(observations);
     const latestPoll = observations[0] ?? null;
     const measuredAt = activity.reduce<Date | null>(
@@ -65,6 +79,7 @@ export class SourcesHealthController {
           enabled: monitor.enabled,
           state: evaluation.state,
           reason: evaluation.reason,
+          verdict: ingestion.verdict,
           lastAttemptAt: iso(evaluation.lastAttemptAt),
           lastSuccessAt: iso(evaluation.lastSuccessAt),
           lastEventAt: iso(evaluation.lastEventAt),
@@ -120,6 +135,13 @@ export class SourcesHealthController {
           })),
         },
       ],
+      healthModel: {
+        version: signals?.modelVersion ?? SOURCE_HEALTH_MODEL.version,
+        status: signals?.status ?? 'not_configured',
+        measuredAt: signals?.measuredAt ?? null,
+        stale: signals?.stale ?? false,
+      },
+      verdicts: [ingestion, ...(signals?.verdicts ?? [])],
     };
   }
 }

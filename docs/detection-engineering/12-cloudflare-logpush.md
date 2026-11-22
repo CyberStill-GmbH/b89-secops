@@ -8,7 +8,7 @@ Hasta entonces el receptor queda listo y el instalador lo informa.
 
 | Origen | Cómo llega | Reglas |
 | --- | --- | --- |
-| Eventos de firewall/WAF | API GraphQL (`security.py`) | 101510–101513 |
+| Eventos de firewall/WAF | Logpush `firewall_events` + API GraphQL de respaldo (`security.py`) | 101510–101513, 101539–101540 |
 | Auditoría de cuenta | API REST (`security.py`) | 101501–101507 |
 | **Peticiones HTTP** (`http_requests`) | Logpush → HTTPS → receptor | 101515–101522 |
 | **DNS autoritativo** (`dns_logs`) | Logpush → HTTPS → receptor | 101525–101528 |
@@ -39,7 +39,7 @@ Logpush no recupera el pasado: solo envía lo que ocurre desde que el job existe
 ## Circuito
 
 ```
-Cloudflare job (b89-http-requests / b89-dns-logs, por zona)
+Cloudflare jobs (b89-http-requests / b89-firewall-events / b89-dns-logs, por zona)
   → POST https://<SOC_HOSTNAME>/hooks/cloudflare-logpush/<dataset>/<zone_id>
      cabecera X-B89-Logpush-Token (header_… en destination_conf)
   → edge nginx (solo POST, 33 MB, límite de tasa)
@@ -47,7 +47,7 @@ Cloudflare job (b89-http-requests / b89-dns-logs, por zona)
        token en tiempo constante · dataset permitido · tmp/ → rename → incoming/ · 503 si el spool está lleno
   → b89-collector-cloudflare-logpush.timer (cada 1 min, logpush_spool.py)
        logpush.ingest por lote, en orden · done/ (24 h) · failed/ (7 días) · latido en state/cloudflare-logpush.json
-  → /var/ossec/logs/b89-collectors/cloudflare-logpush.jsonl (<localfile> json) → reglas 1015xx
+  → /var/ossec/logs/b89-collectors/cloudflare-logpush.jsonl (<localfile> json) → reglas 1015xx y alertas legibles
 ```
 
 - **Secreto compartido:** `/opt/b89/secrets/collectors/cloudflare-logpush-token` (48 hex, 0600).
@@ -63,6 +63,14 @@ Cloudflare job (b89-http-requests / b89-dns-logs, por zona)
 - **Volumen:** cada petición HTTP y cada consulta DNS entran a nivel 0, sin alerta. Solo alertan los
   patrones: sondeo de rutas sensibles, escaneo, ráfagas de 4xx/5xx, métodos anómalos, AXFR/IXFR y
   enumeración por NXDOMAIN.
+- **WAF e inyección:** el job pide acción, fuente, ID/explicación de regla y, cuando el plan lo ofrece,
+  puntuaciones SQLi/XSS/RCE y firmas. Las reglas 101539/101540 dicen si Cloudflare bloqueó un patrón
+  de inyección web o si solo lo registró y pudo dejarlo llegar a la aplicación. Esa señal no confirma
+  que la aplicación haya sido explotada ni representa toda la lista OWASP Top 10.
+- **Límites del proveedor:** Logpush entrega lotes aproximadamente cada minuto, no en un segundo.
+  Cloudflare documenta que algunas coincidencias OWASP secundarias del panel no aparecen en su JSON
+  exportado; no existe garantía documentada aquí de que Logpush individualice todas las reglas hijas.
+  Hay que comprobar el ID de la regla con una prueba autorizada en la zona y seguirlo hasta el Indexer.
 
 ## Operación
 

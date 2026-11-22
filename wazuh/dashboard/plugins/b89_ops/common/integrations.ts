@@ -67,6 +67,10 @@ export interface IntegrationSpec {
   readonly permissions: readonly string[];
   /** Qué hacer si está bloqueada o sin datos. */
   readonly nextSteps: readonly string[];
+  readonly flow?: {
+    readonly steps: readonly string[];
+    readonly coverageNote: string;
+  };
   readonly links: readonly IntegrationLink[];
 }
 
@@ -227,6 +231,15 @@ export const INTEGRATIONS: readonly IntegrationSpec[] = [
       'Investigue cualquier IP, host o ruta en «Tráfico de Cloudflare» (hora de Lima, exportable a CSV).',
       'Parte del tráfico HTTP llega muestreado por Cloudflare (marcado «muestreado»): cada registro representa varias peticiones.',
     ],
+    flow: {
+      steps: [
+        'Cloudflare registra actividad del WAF, consultas DNS y cambios de la cuenta.',
+        'El colector consulta los registros disponibles cada 5 minutos y los entrega a Wazuh.',
+        'Wazuh aplica sus reglas y envía los eventos al Indexador del SIEM.',
+        'B89 consulta el Indexador y muestra las alertas y el tráfico disponibles.',
+      ],
+      coverageNote: 'La hora del evento puede ser anterior a la hora de llegada: Cloudflare publica algunos registros con retraso y parte del tráfico HTTP es muestreado. El sondeo de 5 minutos no elimina esa demora del proveedor.',
+    },
     links: [{ label: 'Ver tráfico', href: TRAFFIC_APP_PATH }],
   },
   {

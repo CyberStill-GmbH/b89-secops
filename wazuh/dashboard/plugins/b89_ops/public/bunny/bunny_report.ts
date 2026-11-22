@@ -20,6 +20,159 @@ export interface BunnyNumericTable {
   readonly rows: readonly (readonly (string | number)[])[];
 }
 
+const MAX_REPORT_IPS = 50;
+const MAX_CLOUDFLARE_DETAILS = 30;
+const CLOUDFLARE_DETAIL_CONCURRENCY = 4;
+
+type BunnyIpObservation = NonNullable<InvestigationReportData['ipObservations']>[number];
+type BunnyCloudflareSignal = NonNullable<InvestigationReportData['cloudflareSignals']>[number];
+
+function object(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function safeField(value: unknown, max = 180): string | null {
+  if (typeof value !== 'string') return null;
+  const text = value.replace(/[\u0000-\u001f\u007f]/gu, ' ').replace(/\s+/gu, ' ').trim();
+  return text ? text.slice(0, max) : null;
+}
+
+function cloudflareSignal(event: InvestigationEvent): BunnyCloudflareSignal | null {
+  if (event.vendor !== 'cloudflare') return null;
+  const raw = object(event.raw);
+  const data = object(raw.data);
+  const cloudflare = object(data.cloudflare);
+  const firewall = object(cloudflare.firewall);
+  const audit = object(cloudflare.audit);
+  const b89 = object(data.b89);
+  const eventType = safeField(b89.event_type, 32)?.toLowerCase();
+  const kind: BunnyCloudflareSignal['kind'] =
+    eventType === 'firewall'
+      ? 'firewall'
+      : eventType === 'audit'
+        ? 'audit'
+        : eventType === 'logpush'
+          ? 'logpush'
+          : 'other';
+  const hasDetails = Object.keys(firewall).length > 0 || Object.keys(audit).length > 0;
+  if (!hasDetails) return null;
+  return {
+    eventId: event.id,
+    at: event.at,
+    kind,
+    action: safeField(firewall.action ?? audit.action, 80),
+    source: safeField(firewall.source ?? b89.source, 80),
+    zone: safeField(cloudflare.zone_name ?? audit.zone_name, 180),
+    host: safeField(firewall.host, 180),
+    path: safeField(firewall.path, 180),
+    clientIp: safeField(firewall.client_ip ?? audit.actor_ip, 45),
+    status: safeField(firewall.status, 24),
+    ruleId: safeField(firewall.rule_id, 80),
+    rule: safeField(firewall.rule_description, 180),
+    ray: safeField(firewall.ray, 64),
+    actorType: safeField(audit.actor_type, 48),
+    result: safeField(audit.result, 24),
+    resourceType: safeField(audit.resource_type, 80),
+    resourceId: safeField(audit.resource_id, 100),
+  };
+}
+
+function ipObservations(
+  events: readonly ReportEventSummary[],
+  sourceEvent: InvestigationEvent | null,
+): { items: BunnyIpObservation[]; truncated: boolean } {
+  const byIp = new Map<string, { events: Map<string, { source: string; at: string }>; sources: Set<string> }>();
+  const add = (value: string, eventId: string, source: string, at: string) => {
+    const ip = value.trim();
+    if (!ip || ip.length > 45 || /[\u0000-\u001f\u007f\s]/u.test(ip)) return;
+    const item = byIp.get(ip) ?? { events: new Map<string, { source: string; at: string }>(), sources: new Set<string>() };
+    item.events.set(eventId, { source, at });
+    item.sources.add(source);
+    byIp.set(ip, item);
+  };
+  for (const event of events) {
+    for (const matched of event.matched) {
+      if (matched.startsWith('ip:')) add(matched.slice(3), event.id, event.vendor, event.at);
+    }
+  }
+  if (sourceEvent) {
+    for (const entity of sourceEvent.entities) {
+      if (entity.kind === 'ip') add(entity.value, sourceEvent.id, sourceEvent.vendor, sourceEvent.at);
+    }
+  }
+  const sorted = [...byIp.entries()].sort((left, right) =>
+    left[0].localeCompare(right[0], 'en'),
+  );
+  return {
+    items: sorted.slice(0, MAX_REPORT_IPS).map(([ip, item]) => {
+      const times = [...item.events.values()].map((event) => event.at).sort();
+      return {
+        ip,
+        eventCount: item.events.size,
+        firstAt: times[0] ?? '',
+        lastAt: times[times.length - 1] ?? '',
+        sources: [...item.sources].sort((left, right) => left.localeCompare(right, 'es')),
+      };
+    }),
+    truncated: sorted.length > MAX_REPORT_IPS,
+  };
+}
+
+async function collectCloudflareSignals(input: {
+  events: readonly ReportEventSummary[];
+  sourceEvent: InvestigationEvent | null;
+  loadEvent: (id: string) => Promise<EventResponse>;
+  signal: AbortSignal;
+  onProgress?: (progress: ReportProgress) => void;
+}): Promise<{ items: BunnyCloudflareSignal[]; note?: string }> {
+  const summaries = input.events.filter((event) => event.vendor === 'cloudflare');
+  const byId = new Map<string, BunnyCloudflareSignal>();
+  if (input.sourceEvent) {
+    const source = cloudflareSignal(input.sourceEvent);
+    if (source) byId.set(source.eventId, source);
+  }
+  const details = summaries
+    .filter((event) => event.id !== input.sourceEvent?.id)
+    .slice(0, MAX_CLOUDFLARE_DETAILS);
+  let unavailable = 0;
+  for (let offset = 0; offset < details.length; offset += CLOUDFLARE_DETAIL_CONCURRENCY) {
+    if (input.signal.aborted) throw new DOMException('Informe cancelado', 'AbortError');
+    const page = details.slice(offset, offset + CLOUDFLARE_DETAIL_CONCURRENCY);
+    const results = await Promise.all(
+      page.map(async (event) => {
+        try {
+          const response = await readEvidence(() => input.loadEvent(event.id), input.signal);
+          const full = requireSourceEvent(response);
+          return cloudflareSignal(full);
+        } catch (error) {
+          if (input.signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
+            throw new DOMException('Informe cancelado', 'AbortError');
+          }
+          unavailable += 1;
+          return null;
+        }
+      }),
+    );
+    for (const result of results) if (result) byId.set(result.eventId, result);
+    input.onProgress?.({
+      phase: 'query',
+      completed: Math.min(offset + page.length, details.length),
+      total: details.length,
+      message: `Revisando seÃ±ales Cloudflare: ${Math.min(offset + page.length, details.length)} de ${details.length}`,
+    });
+  }
+  const items = [...byId.values()]
+    .sort((left, right) => left.at.localeCompare(right.at) || left.eventId.localeCompare(right.eventId))
+    .slice(-MAX_CLOUDFLARE_DETAILS - 1);
+  const omitted = summaries.length - details.length - (input.sourceEvent && byId.has(input.sourceEvent.id) ? 1 : 0);
+  const notes: string[] = [];
+  if (unavailable > 0) notes.push(`${unavailable} detalle(s) no disponibles`);
+  if (omitted > 0) notes.push(`lÃ­mite de consulta: ${MAX_CLOUDFLARE_DETAILS} de ${summaries.length} eventos relacionados`);
+  return { items, ...(notes.length ? { note: notes.join('; ') } : {}) };
+}
+
 function cells(line: string): string[] {
   return line
     .trim()
@@ -298,10 +451,25 @@ export async function collectBunnyInvestigationReport(input: {
     onProgress: input.onProgress,
     now: input.now,
   });
+  const ips = ipObservations(report.events, sourceEvent);
+  const cloudflare = await collectCloudflareSignals({
+    events: report.events,
+    sourceEvent,
+    loadEvent: input.loadEvent,
+    signal: input.signal,
+    onProgress: input.onProgress,
+  });
+  const observationNotes = [
+    ...(ips.truncated ? [`se muestran ${MAX_REPORT_IPS} de mÃ¡s IP observadas`] : []),
+    ...(cloudflare.note ? [cloudflare.note] : []),
+  ];
   return {
     ...report,
     assistantAnalysis: input.analysis,
     assistantCitations: input.citations,
+    ipObservations: ips.items,
+    cloudflareSignals: cloudflare.items,
+    ...(observationNotes.length ? { observationsNote: observationNotes.join('; ') } : {}),
     ...reportChart(input.analysis, input.includeChart, input.chartColumn),
   };
 }

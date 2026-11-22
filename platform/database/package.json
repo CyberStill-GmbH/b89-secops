@@ -48,6 +48,11 @@
       "types": "./src/ai-investigation-store.ts",
       "development": "./src/ai-investigation-store.ts",
       "default": "./dist/src/ai-investigation-store.js"
+    },
+    "./dlp-policy-store": {
+      "types": "./src/dlp-policy-store.ts",
+      "development": "./src/dlp-policy-store.ts",
+      "default": "./dist/src/dlp-policy-store.js"
     }
   },
   "scripts": {

@@ -17,7 +17,7 @@ import {
 import { STATUS_LABEL } from './service_status';
 import { ServiceMark } from './vendor_logo';
 import { ErrorCallout } from './primitives';
-import { ProviderSeverity, ServiceModel, serviceModels } from './service_cards';
+import { linkedMetrics, ProviderSeverity, ServiceModel, serviceModels } from './service_cards';
 
 /**
  * «Integraciones»: cada servicio con su estado, qué recoge, cada cuánto, con qué reglas, la
@@ -124,7 +124,7 @@ function IntegrationRow({
           </div>
         )}
         {severity}
-        <MetricList metrics={model.metrics} />
+        <MetricList metrics={linkedMetrics(model.metrics, basePath)} />
         {model.lastEventAt !== undefined && <LastEvent iso={model.lastEventAt} />}
       </div>
       <dl className="b89Integration__facts">
@@ -152,21 +152,6 @@ function IntegrationRow({
           <dt>Política aplicada</dt>
           <dd>{spec.policy}</dd>
         </div>
-        <div>
-          <dt>Permisos</dt>
-          <dd>
-            <ul>
-              {spec.permissions.map((permission) => (
-                <li key={permission}>{permission}</li>
-              ))}
-              {missing.map((permission) => (
-                <li key={`missing-${permission}`} className="b89Integration__missing">
-                  Falta: {permission}
-                </li>
-              ))}
-            </ul>
-          </dd>
-        </div>
         {(status.tone !== 'ok' || missing.length > 0) && spec.nextSteps.length > 0 && (
           <div>
             <dt>Siguiente paso</dt>
@@ -180,6 +165,43 @@ function IntegrationRow({
           </div>
         )}
       </dl>
+      {spec.flow && (
+        <section className="b89Integration__flow" aria-label={`Recorrido de ${spec.name}`}>
+          <h3>Cómo llegan los eventos a B89</h3>
+          <ol>
+            {spec.flow.steps.map((step) => (
+              <li key={step}>{step}</li>
+            ))}
+          </ol>
+          <p>{spec.flow.coverageNote}</p>
+        </section>
+      )}
+      <details className="b89Integration__technical">
+        <summary>Detalles técnicos para soporte</summary>
+        <dl className="b89Integration__facts">
+          {spec.ruleRange && (
+            <div>
+              <dt>Reglas Wazuh</dt>
+              <dd className="b89Tabular">{spec.ruleRange}</dd>
+            </div>
+          )}
+          <div>
+            <dt>Permisos requeridos</dt>
+            <dd>
+              <ul>
+                {spec.permissions.map((permission) => (
+                  <li key={permission}>{permission}</li>
+                ))}
+                {missing.map((permission) => (
+                  <li key={`missing-${permission}`} className="b89Integration__missing">
+                    Falta: {permission}
+                  </li>
+                ))}
+              </ul>
+            </dd>
+          </div>
+        </dl>
+      </details>
       <footer className="b89Integration__links">
         {integrationLinks(spec, basePath).map((link) => (
           <EuiButtonEmpty key={link.href} size="xs" href={link.href} flush="left">

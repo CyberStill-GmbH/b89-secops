@@ -983,6 +983,141 @@ a.b89Kpi__chip {
   }
 }
 
+// ---------------------------------------------------------------- DLP de endpoints
+.b89Dlp__intro,
+.b89Dlp__note {
+  max-width: 76ch;
+  color: $ouiTextSubduedColor;
+  line-height: 1.5;
+}
+
+.b89Dlp__rules {
+  display: grid;
+  gap: $ouiSizeS;
+  margin-top: $ouiSize;
+
+  h3 {
+    margin: $ouiSizeS 0 0;
+    font-size: 15px;
+  }
+}
+
+.b89Dlp__rule {
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) minmax(220px, 1.4fr) auto;
+  align-items: center;
+  gap: $ouiSize;
+  padding: $ouiSizeS $ouiSize;
+  border: 1px solid $ouiBorderColor;
+  border-radius: $b89OvRadius;
+  background: $ouiColorEmptyShade;
+
+  &:focus-within {
+    outline: 2px solid $ouiColorPrimary;
+    outline-offset: 2px;
+  }
+
+  &--advanced {
+    border-left: 3px solid $ouiColorWarning;
+  }
+
+  .euiCheckbox__label {
+    font-weight: $ouiFontWeightMedium;
+  }
+
+  .b89Mono {
+    overflow-wrap: anywhere;
+    text-align: right;
+  }
+}
+
+.b89Dlp__ruleDetail {
+  color: $ouiTextSubduedColor;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.b89Dlp__file {
+  max-width: 100%;
+  padding: $ouiSizeXS 0;
+}
+
+.b89Dlp__validation {
+  margin: $ouiSizeS 0 0;
+  color: $ouiColorDanger;
+}
+
+.b89Dlp__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $ouiSize;
+  margin: $ouiSizeL 0;
+}
+
+.b89Dlp__version {
+  color: $ouiTextSubduedColor;
+  font-size: 12px;
+}
+
+.b89Dlp__token {
+  display: grid;
+  gap: $ouiSizeS;
+  max-width: 760px;
+  padding: $ouiSize;
+  border: 1px solid $ouiBorderColor;
+  border-radius: $b89OvRadius;
+  background: $ouiColorLightestShade;
+
+  > div {
+    display: flex;
+    align-items: center;
+    gap: $ouiSize;
+    overflow-wrap: anywhere;
+  }
+
+  p {
+    margin: 0;
+    color: $ouiTextSubduedColor;
+    font-size: 12px;
+  }
+}
+
+.b89Dlp__table {
+  width: 100%;
+  border-collapse: collapse;
+
+  th,
+  td {
+    padding: $ouiSizeS $ouiSize;
+    border-bottom: 1px solid $ouiBorderColor;
+    text-align: left;
+    vertical-align: middle;
+  }
+
+  th[scope='row'] {
+    font-weight: $ouiFontWeightMedium;
+  }
+
+  small {
+    display: block;
+    margin-top: 3px;
+    color: $ouiTextSubduedColor;
+    font-weight: normal;
+  }
+}
+
+@media (max-width: $b89OvMobile) {
+  .b89Dlp__rule {
+    grid-template-columns: 1fr;
+    gap: $ouiSizeXS;
+
+    .b89Mono {
+      text-align: left;
+    }
+  }
+}
+
 .b89Attention {
   margin-top: 16px;
   border-top: 1px solid rgba(255, 255, 255, 0.12);

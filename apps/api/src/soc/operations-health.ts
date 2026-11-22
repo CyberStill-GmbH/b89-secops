@@ -387,6 +387,52 @@ function ageSeconds(value: Date | null, at: Date): number | null {
   return value ? Math.max(0, Math.round((at.getTime() - value.getTime()) / 1_000)) : null;
 }
 
+export interface SourcesSectionInput {
+  readonly modelVersion: string;
+  readonly measuredAt: string | null;
+  readonly stale: boolean;
+  readonly status: 'measured' | 'not_configured' | 'unavailable';
+  readonly verdicts: readonly {
+    readonly id: string;
+    readonly verdict: string;
+    readonly reasons: readonly string[];
+  }[];
+  readonly issues: readonly { readonly code: string; readonly sourceId: string }[];
+}
+
+/**
+ * Salud multiseñal por fuente (docs/20). `SOURCE_*` en `degradedReasons` solo sale de una señal
+ * medida: una fuente `unknown` se cuenta aparte y nunca se reporta como sana ni como caída.
+ */
+export function sourcesSection(input: SourcesSectionInput, at: Date) {
+  const degradedReasons = [
+    ...(input.status === 'unavailable' ? ['SOURCE_SIGNALS_UNAVAILABLE'] : []),
+    ...(input.stale ? ['SOURCE_SIGNALS_STALE'] : []),
+    ...new Set(input.issues.map((issue) => issue.code)),
+  ];
+  const counts: Record<string, number> = { healthy: 0, quiet: 0, degraded: 0, failing: 0, unknown: 0 };
+  for (const item of input.verdicts) counts[item.verdict] = (counts[item.verdict] ?? 0) + 1;
+  const measured = input.verdicts.length - (counts['unknown'] ?? 0);
+  return {
+    status: (degradedReasons.length > 0
+      ? 'DEGRADED'
+      : measured === 0
+        ? 'NO_DATA'
+        : 'OK') as HealthStatus,
+    checkedAt: at.toISOString(),
+    degradedReasons,
+    modelVersion: input.modelVersion,
+    measuredAt: input.measuredAt,
+    counts,
+    issues: input.issues,
+    sources: input.verdicts.map((item) => ({
+      id: item.id,
+      verdict: item.verdict,
+      reasons: item.reasons,
+    })),
+  };
+}
+
 /**
  * Métricas del proceso. Solo el entrypoint puede leer `process` (regla de C-02), así que
  * llegan inyectadas; sin proveedor, la sección las reporta como `null`.

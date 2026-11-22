@@ -47,6 +47,10 @@ FIREWALL_FIELDS = {
     "ClientRequestMethod": "method", "RayID": "ray", "RuleID": "rule_id",
     "Description": "rule_description", "UserAgent": "user_agent",
     "EdgeResponseStatus": "status",
+    "WAFAttackScore": "waf_attack_score", "WAFSQLiAttackScore": "waf_sqli_score",
+    "WAFXSSAttackScore": "waf_xss_score", "WAFRCEAttackScore": "waf_rce_score",
+    "WAFRequestSignatureCategories": "waf_signature_categories",
+    "WAFRequestSignatureRefs": "waf_signature_refs",
 }
 # dataset → (event_type, sección normalizada, campos)
 DATASETS = {

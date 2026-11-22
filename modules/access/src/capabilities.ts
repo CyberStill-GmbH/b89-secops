@@ -67,6 +67,8 @@ export const CAPABILITIES = [
    * cola de alertas: solo administración de plataforma, con sesión reciente (step-up).
    */
   'investigations.configure',
+  /** Administrar reglas Ferrispector y fingerprints; solo administración de plataforma. */
+  'dlp.configure',
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
@@ -163,6 +165,7 @@ export const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> 
     // Configurar el analista concede autonomía sobre la cola: solo este rol (no aprueba roles,
     // así que no se autoconcede nada por esta vía).
     'investigations.configure',
+    'dlp.configure',
   ],
   // Aprobadores de cambios de rol. No son asignables desde la consola ni por `B89_ROLE_BINDINGS`:
   // solo los reciben los OID declarados en `B89_ACCESS_APPROVER_OIDS` y

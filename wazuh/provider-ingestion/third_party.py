@@ -346,40 +346,177 @@ def bitdefender() -> int:
         return failed(vendor, state, error)
 
 
+# Management Activity API content types that the Wazuh office365 wodle collects, by heartbeat key.
+M365_CONTENT_TYPES = {
+    "aad": "Audit.AzureActiveDirectory",
+    "exchange": "Audit.Exchange",
+    "sharepoint": "Audit.SharePoint",
+    "general": "Audit.General",
+}
+# Entra (AADSTS) codes for an expired client secret/certificate: reported as ``expired``.
+EXPIRED_CREDENTIAL_CODES = frozenset({7000222, 700027})
+M365_BLOB_WINDOW = dt.timedelta(hours=3)
+M365_BLOB_PAGES = 3
+COLLECTOR_VERSION = "2026.11.17"
+
+
+def http_status_class(status: int | None) -> str:
+    return f"{status // 100}xx" if isinstance(status, int) and 100 <= status <= 599 else "none"
+
+
+def request_any(url: str, headers: dict[str, str]) -> tuple[object, str | None]:
+    """GET JSON (object or list) and the ``NextPageUri`` header. Errors carry only the status."""
+    request = urllib.request.Request(url, headers=headers, method="GET")
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            payload = json.loads(response.read(16 * 1024 * 1024))
+            next_page = response.headers.get("NextPageUri")
+    except urllib.error.HTTPError as error:
+        raise ProviderError(error.code, "http_error") from None
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError):
+        raise ProviderError(None, "connection_or_response_error") from None
+    return payload, next_page
+
+
+def m365_token(tenant: str, client_id: str, client_secret: str) -> str:
+    form = urllib.parse.urlencode({
+        "grant_type": "client_credentials",
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "scope": "https://manage.office.com/.default",
+    }).encode()
+    token_req = urllib.request.Request(
+        f"https://login.microsoftonline.com/{urllib.parse.quote(tenant, safe='')}/oauth2/v2.0/token",
+        data=form,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(token_req, timeout=30) as response:
+            token_data = json.loads(response.read(1024 * 1024))
+    except urllib.error.HTTPError as error:
+        raise ProviderError(error.code, "oauth_expired" if token_expired(error) else "oauth_failed") from None
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError):
+        raise ProviderError(None, "oauth_connection_error") from None
+    access_token = token_data.get("access_token") if isinstance(token_data, dict) else None
+    if not access_token:
+        raise ProviderError(None, "oauth_token_missing")
+    return access_token
+
+
+def token_expired(error) -> bool:
+    """True when the Entra error lists an expired-credential code. Reads only ``error_codes``."""
+    try:
+        body = json.loads(error.read(64 * 1024) or b"{}")
+    except (OSError, ValueError, AttributeError):
+        return False
+    codes = body.get("error_codes") if isinstance(body, dict) else None
+    return any(type(code) is int and code in EXPIRED_CREDENTIAL_CODES for code in codes or [])
+
+
+def m365_coverage(tenant: str, access_token: str, now: dt.datetime, fetch=request_any) -> dict:
+    """Read-only probe of the Management Activity API: which content types are enabled and the
+    newest content blob of each in the last ``M365_BLOB_WINDOW`` (listing never consumes blobs)."""
+    base = f"{M365_API}/{urllib.parse.quote(tenant, safe='')}/activity/feed"
+    headers = {"Authorization": "Bearer " + access_token}
+    subscriptions, _ = fetch(base + "/subscriptions/list", headers)
+    if not isinstance(subscriptions, list):
+        raise ProviderError(None, "invalid_response")
+    enabled = {str(item.get("contentType")) for item in subscriptions
+               if isinstance(item, dict) and str(item.get("status") or "").lower() == "enabled"}
+    content: dict = {}
+    for key, content_type in M365_CONTENT_TYPES.items():
+        entry: dict = {"enabled": content_type in enabled}
+        if entry["enabled"]:
+            params = urllib.parse.urlencode({"contentType": content_type, "startTime": iso(now - M365_BLOB_WINDOW),
+                                             "endTime": iso(now)})
+            url = base + "/subscriptions/content?" + params
+            newest = None
+            for _ in range(M365_BLOB_PAGES):
+                if not url:
+                    break
+                if urllib.parse.urlparse(url).hostname != "manage.office.com":
+                    raise ProviderError(None, "unsafe_pagination_url")
+                blobs, url = fetch(url, headers)
+                for blob in blobs if isinstance(blobs, list) else []:
+                    try:
+                        created = dt.datetime.fromisoformat(str(blob.get("contentCreated")).replace("Z", "+00:00"))
+                    except (AttributeError, ValueError):
+                        continue
+                    if created.tzinfo is None:
+                        created = created.replace(tzinfo=dt.timezone.utc)
+                    newest = created if newest is None or created > newest else newest
+            if newest is not None:
+                entry["last_blob_at"] = iso(newest)
+        content[key] = entry
+    return content
+
+
+def m365_heartbeat(started: dt.datetime, finished: dt.datetime, outcome: str, auth: str,
+                   status: int | None, content: dict | None, error_code: str | None) -> dict:
+    """Same schema as ``common/b89_collector.heartbeat_event`` plus ``content`` coverage."""
+    heartbeat = {
+        "schema": 1,
+        "source_id": "m365",
+        "run_id": f"m365-{finished.strftime('%Y%m%dT%H%M%SZ')}-{os.urandom(3).hex()}",
+        "started_at": iso(started),
+        "finished_at": iso(finished),
+        "outcome": outcome,
+        "auth": auth,
+        "http_status_class": http_status_class(status),
+        "items_fetched": 0,
+        "cursor_advanced": False,
+        "collector_version": COLLECTOR_VERSION,
+    }
+    if content is not None:
+        heartbeat["content"] = content
+        blobs = [dt.datetime.fromisoformat(item["last_blob_at"].replace("Z", "+00:00"))
+                 for item in content.values() if item.get("last_blob_at")]
+        if blobs:
+            heartbeat["provider_lag_seconds"] = max(0, int((finished - max(blobs)).total_seconds()))
+    if error_code:
+        heartbeat["error_code"] = error_code
+    return {"b89": {"vendor": "m365", "source": "management_activity", "event_type": "source_heartbeat",
+                    "collected_at": iso(finished), "heartbeat": heartbeat}}
+
+
+def m365_error_code(error: ProviderError) -> tuple[str, str]:
+    """``(auth, error_code)`` without provider text."""
+    if error.code == "oauth_expired":
+        return "expired", "auth_expired"
+    if error.status in (400, 401, 403) and error.code in ("oauth_failed", "http_error"):
+        return "denied", "auth_denied"
+    if error.status == 429:
+        return "unknown", "rate_limited"
+    if isinstance(error.status, int) and error.status >= 500:
+        return "unknown", "provider_server_error"
+    if error.code in ("oauth_connection_error", "connection_or_response_error"):
+        return "unknown", "network"
+    if error.code == "secret_missing_or_malformed":
+        return "unknown", "secret_unavailable"
+    if error.code in ("invalid_response", "oauth_token_missing"):
+        return "unknown", "invalid_response"
+    return "unknown", "unknown"
+
+
 def m365_health() -> int:
+    """Read-only M365 probe run by ``b89-provider-m365-health.timer``. The Wazuh office365 wodle
+    collects the data; this run proves the credential, the subscriptions and blob freshness, and
+    emits one heartbeat into ``health.jsonl`` (rules 101980/101981)."""
     vendor = "m365"
     state = begin(vendor)
+    started = now_utc()
     try:
         tenant = secret("TENANT_ID")
-        client_id = secret("CLIENT_ID")
-        client_secret = secret("CLIENT_SECRET")
-        form = urllib.parse.urlencode({
-            "grant_type": "client_credentials",
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "scope": "https://manage.office.com/.default",
-        }).encode()
-        token_req = urllib.request.Request(
-            f"https://login.microsoftonline.com/{urllib.parse.quote(tenant, safe='')}/oauth2/v2.0/token",
-            data=form,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(token_req, timeout=30) as response:
-                token_data = json.loads(response.read(1024 * 1024))
-        except urllib.error.HTTPError as error:
-            raise ProviderError(error.code, "oauth_failed") from None
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError):
-            raise ProviderError(None, "oauth_connection_error") from None
-        access_token = token_data.get("access_token")
-        if not access_token:
-            raise ProviderError(None, "oauth_token_missing")
-        url = f"{M365_API}/{urllib.parse.quote(tenant, safe='')}/activity/feed/subscriptions/list"
-        request_json(url, {"Authorization": "Bearer " + access_token})
+        access_token = m365_token(tenant, secret("CLIENT_ID"), secret("CLIENT_SECRET"))
+        content = m365_coverage(tenant, access_token, now_utc())
+        append_json(OUTPUT / "health.jsonl", m365_heartbeat(started, now_utc(), "ok", "ok", 200, content, None))
         succeeded(vendor, state)
         return 0
     except ProviderError as error:
+        auth, code = m365_error_code(error)
+        append_json(OUTPUT / "health.jsonl",
+                    m365_heartbeat(started, now_utc(), "failed", auth, error.status, None, code))
         return failed(vendor, state, error)
 
 

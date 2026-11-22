@@ -1,5 +1,11 @@
 export type {
   ActivityQuery,
+  HeartbeatSample,
+  SourceDataSelector,
+  SourceSignalReading,
+  SourceSignalSpec,
+  SourceSignalsQuery,
+  SourceSignalsReport,
   StreamActivity,
   EventPage,
   EventEntityFilter,

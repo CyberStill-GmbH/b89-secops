@@ -44,6 +44,36 @@ export interface InvestigationReportData {
     readonly id: string;
     readonly label: string;
   }[];
+  /** XDR IPs repeated in the authorized report window; not an external reputation verdict. */
+  readonly ipObservations?: readonly {
+    readonly ip: string;
+    readonly eventCount: number;
+    readonly firstAt: string;
+    readonly lastAt: string;
+    readonly sources: readonly string[];
+  }[];
+  /** Narrow, allowlisted Cloudflare fields recovered from source events through the XDR API. */
+  readonly cloudflareSignals?: readonly {
+    readonly eventId: string;
+    readonly at: string;
+    readonly kind: 'firewall' | 'audit' | 'logpush' | 'other';
+    readonly action: string | null;
+    readonly source: string | null;
+    readonly zone: string | null;
+    readonly host: string | null;
+    readonly path: string | null;
+    readonly clientIp: string | null;
+    readonly status: string | null;
+    readonly ruleId: string | null;
+    readonly rule: string | null;
+    readonly ray: string | null;
+    readonly actorType: string | null;
+    readonly result: string | null;
+    readonly resourceType: string | null;
+    readonly resourceId: string | null;
+  }[];
+  /** Detail retrieval can be bounded or unavailable while summary evidence remains usable. */
+  readonly observationsNote?: string;
   /** Optional SVG created only from numeric values explicitly present in the answer. */
   readonly assistantChartSvg?: string;
   readonly assistantChartData?: {
@@ -487,6 +517,8 @@ async function buildInvestigationSheets(
     })();
   const groups = groupInvestigationActivity(input.events);
   const exactEmailGroups = groupExactEmailMessages(input.events);
+  const ipObservations = input.ipObservations ?? [];
+  const cloudflareSignals = input.cloudflareSignals ?? [];
   const investigationSheets: Sheet[] = [
     {
       name: 'Resumen',
@@ -496,6 +528,9 @@ async function buildInvestigationSheets(
         ['Generado (UTC)', input.generatedAt.toISOString()],
         ['Eventos exportados', input.events.length],
         ['Eventos encontrados', input.totalEvents],
+        ['Direcciones IP observadas', ipObservations.length],
+        ['SeÃ±ales Cloudflare detalladas', cloudflareSignals.length],
+        ...(input.observationsNote ? [['Cobertura adicional', input.observationsNote] as const] : []),
         ['Grupos con identificador de mensaje exacto', exactEmailGroups.length],
         [
           'Informe truncado por límite',
@@ -591,6 +626,50 @@ async function buildInvestigationSheets(
       columnCount: 11,
     },
   ];
+  if (ipObservations.length > 0) {
+    investigationSheets.push({
+      name: 'IPs observadas',
+      autoFilter: true,
+      rows: [
+        ['DirecciÃ³n IP', 'Eventos en la ventana', 'Primera observaciÃ³n UTC', 'Ãšltima observaciÃ³n UTC', 'OrÃ­genes XDR'],
+        ...ipObservations.map((item) => [
+          item.ip,
+          item.eventCount,
+          item.firstAt,
+          item.lastAt,
+          item.sources.join(' | '),
+        ]),
+      ],
+    });
+  }
+  if (cloudflareSignals.length > 0) {
+    investigationSheets.push({
+      name: 'Cloudflare',
+      autoFilter: true,
+      rows: [
+        ['Tipo', 'Fecha UTC', 'AcciÃ³n', 'Origen', 'Zona', 'IP', 'Host', 'Ruta', 'Estado HTTP', 'ID de regla', 'Regla', 'Ray ID', 'Tipo de actor', 'Resultado', 'Tipo de recurso', 'ID de recurso', 'ID de evento'],
+        ...cloudflareSignals.map((item) => [
+          item.kind,
+          item.at,
+          item.action ?? '',
+          item.source ?? '',
+          item.zone ?? '',
+          item.clientIp ?? '',
+          item.host ?? '',
+          item.path ?? '',
+          item.status ?? '',
+          item.ruleId ?? '',
+          item.rule ?? '',
+          item.ray ?? '',
+          item.actorType ?? '',
+          item.result ?? '',
+          item.resourceType ?? '',
+          item.resourceId ?? '',
+          item.eventId,
+        ]),
+      ],
+    });
+  }
   const sheets: Sheet[] =
     input.assistantAnalysis === undefined || input.events.length > 0 || input.alert !== null
       ? investigationSheets
@@ -801,6 +880,44 @@ function exactEmailPrintRow(group: ReturnType<typeof groupExactEmailMessages>[nu
   return `<tr><td>${html(group.idType)}</td><td class="mono">${html(group.id)}</td><td>${html(evidence.direction)}</td><td>${group.events.length}</td><td>${html(evidence.auditedMailboxes.join(', ') || 'No provisto')}</td><td>${html(recipients)}<br/><small>Lista truncada: ${html(truncation)}</small></td><td>${html(evidence.operations.join(', ') || 'No provista')}</td><td>${html(group.events.map((event) => event.id).join(' · '))}</td></tr>`;
 }
 
+function reportObservationsHtml(input: InvestigationReportData): string {
+  const ips = input.ipObservations ?? [];
+  const cloudflare = input.cloudflareSignals ?? [];
+  const ipRows = ips.length
+    ? ips
+        .map(
+          (item) =>
+            `<tr><td class="mono">${html(item.ip)}</td><td>${item.eventCount}</td><td>${html(item.firstAt)}</td><td>${html(item.lastAt)}</td><td>${html(item.sources.join(' · '))}</td></tr>`,
+        )
+        .join('')
+    : '<tr><td colspan="5">No se identificaron IP en los eventos incluidos.</td></tr>';
+  const cloudflareRows = cloudflare.length
+    ? cloudflare
+        .map((item) => {
+          const action = [item.action, item.result].filter(Boolean).join(' · ') || 'Sin acción informada';
+          const resource = [item.zone, item.resourceType, item.resourceId].filter(Boolean).join(' · ');
+          const destination = [item.host, item.path, item.status ? `HTTP ${item.status}` : '']
+            .filter(Boolean)
+            .join(' · ');
+          const signal = [item.kind, item.source].filter(Boolean).join(' · ');
+          const rule = [item.ruleId, item.rule].filter(Boolean).join(' · ');
+          return `<tr><td>${html(signal)}</td><td>${html(item.at)}</td><td>${html(action)}</td><td>${html(resource || 'Sin recurso informado')}</td><td class="mono">${html(item.clientIp ?? '—')}</td><td>${html(destination || '—')}</td><td>${html(rule || '—')}</td><td class="mono">${html(item.ray ?? item.eventId)}</td></tr>`;
+        })
+        .join('')
+    : '<tr><td colspan="8">No se encontraron señales Cloudflare relacionadas en la ventana consultada.</td></tr>';
+  const note = input.observationsNote
+    ? `<p class="notice">Cobertura adicional: ${html(input.observationsNote)}.</p>`
+    : '';
+  return `<h3>IP observadas en el XDR</h3><p class="notice">Resumen de direcciones presentes en los eventos autorizados. No es una consulta de reputación externa; una valoración de AbuseIPDB solo aparece si Bunny la cita expresamente en su análisis.</p><table><thead><tr><th>IP</th><th>Eventos</th><th>Primera vez UTC</th><th>Última vez UTC</th><th>Orígenes</th></tr></thead><tbody>${ipRows}</tbody></table><h3>Señales de Cloudflare</h3><p class="notice">Campos normalizados del XDR; la acción del proveedor no determina por sí sola que haya ocurrido un impacto en el sistema.</p><table><thead><tr><th>Tipo / origen</th><th>Fecha UTC</th><th>Acción</th><th>Zona o recurso</th><th>IP</th><th>Destino / estado</th><th>Regla</th><th>Ray o ID del evento</th></tr></thead><tbody>${cloudflareRows}</tbody></table>${note}`;
+}
+
+function includeBunnyObservations(markup: string, input: InvestigationReportData): string {
+  if (input.assistantAnalysis === undefined) return markup;
+  const hasInvestigation = Boolean(input.alert || input.sourceEvent || input.events.length > 0);
+  if (!hasInvestigation) return markup;
+  return markup.replace('<footer class="foot">', `${reportObservationsHtml(input)}<footer class="foot">`);
+}
+
 interface InvestigationPrintRows {
   readonly events: string;
   readonly activity: string;
@@ -843,11 +960,11 @@ function investigationPrintHtmlWithRows(
 }
 
 export function investigationPrintHtml(input: InvestigationReportData): string {
-  return investigationPrintHtmlWithRows(
+  return includeBunnyObservations(investigationPrintHtmlWithRows(
     input,
     groupInvestigationActivity(input.events),
     groupExactEmailMessages(input.events),
-  );
+  ), input);
 }
 
 /** Chunked print rendering supports progress updates and cancellation before opening print UI. */
@@ -886,7 +1003,10 @@ export async function investigationPrintHtmlWithProgress(
     exactEmail: await render(exactEmailGroups, exactEmailPrintRow),
   };
   abortIfNeeded(signal);
-  return investigationPrintHtmlWithRows(input, groups, exactEmailGroups, rows);
+  return includeBunnyObservations(
+    investigationPrintHtmlWithRows(input, groups, exactEmailGroups, rows),
+    input,
+  );
 }
 
 export function writeInvestigationPrintWindow(
@@ -907,7 +1027,10 @@ export async function writeInvestigationPrintWindowWithProgress(
   const groups = groupInvestigationActivity(input.events);
   const exactEmailGroups = groupExactEmailMessages(input.events);
   const emptyRows: InvestigationPrintRows = { events: '', activity: '', exactEmail: '' };
-  const shell = investigationPrintHtmlWithRows(input, [], [], emptyRows).replace(
+  const shell = includeBunnyObservations(
+    investigationPrintHtmlWithRows(input, [], [], emptyRows),
+    input,
+  ).replace(
     /<script>window\.addEventListener\('load',\(\)=>window\.print\(\)\);<\/script>/u,
     '',
   );

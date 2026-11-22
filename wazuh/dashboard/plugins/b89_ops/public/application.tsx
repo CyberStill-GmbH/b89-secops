@@ -17,6 +17,7 @@ import { AuditView } from './components/audit_view';
 import { CloudflareTrafficView } from './components/cloudflare_traffic_view';
 import { ConsoleProvider } from './components/console_context';
 import { IncidentsView } from './components/incidents_view';
+import { DlpView } from './components/dlp_view';
 import { IntegrationsView } from './components/integrations_view';
 import { InvestigationView } from './components/investigation_view';
 import { OverviewView } from './components/overview_view';
@@ -77,6 +78,8 @@ function Console({
       );
     case 'policies':
       return <PoliciesView basePath={basePath} />;
+    case 'dlp':
+      return <DlpView />;
     case 'alerts':
       // `?investigate=1` abre la investigación (alerta `id` o entidad `entity` + `at`).
       if (params.get('investigate') === '1') {

@@ -132,6 +132,7 @@ export const NAV_PLACEMENT: Readonly<Record<string, NavPlacement>> = {
   // Administración
   'b89-access': { category: 'admin', order: 10, title: 'Usuarios y sesiones' },
   'b89-session': { category: 'admin', order: 20, title: 'Mi sesión' },
+  'b89-dlp': { category: 'admin', order: 25, title: 'DLP de endpoints' },
   'endpoint-groups': { category: 'admin', order: 30, title: 'Grupos de agentes' },
   'server-status': { category: 'admin', order: 40, title: 'Estado del manager' },
   statistics: { category: 'admin', order: 50, title: 'Estadísticas del manager' },

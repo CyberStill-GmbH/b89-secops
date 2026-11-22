@@ -85,7 +85,7 @@
     <if_sid>101500</if_sid>
     <field name="b89.event_type">^firewall$</field>
     <field name="cloudflare.firewall.action" type="pcre2">(?i)^(block|drop|challenge|managed_challenge|jschallenge|js_challenge|challenge_failed|connection_close)$</field>
-    <description>B89 Cloudflare: $(cloudflare.firewall.action) de $(cloudflare.firewall.client_ip) en $(cloudflare.firewall.host) ($(cloudflare.firewall.source)).</description>
+    <description>Cloudflare $(cloudflare.firewall.action): solicitud a $(cloudflare.firewall.host)$(cloudflare.firewall.path) desde $(cloudflare.firewall.client_ip). Causa registrada: $(cloudflare.firewall.rule_description) ($(cloudflare.firewall.source), regla $(cloudflare.firewall.rule_id)).</description>
     <options>no_full_log</options>
     <group>b89_waf,</group>
   </rule>
@@ -94,7 +94,7 @@
     <if_sid>101500</if_sid>
     <field name="b89.event_type">^firewall$</field>
     <field name="cloudflare.firewall.action">^log$</field>
-    <description>B89 Cloudflare: regla $(cloudflare.firewall.rule_id) coincidió solo en modo log para $(cloudflare.firewall.client_ip) en $(cloudflare.firewall.host).</description>
+    <description>Cloudflare detectó una solicitud sospechosa pero solo la registró; pudo llegar a la aplicación: $(cloudflare.firewall.host)$(cloudflare.firewall.path), origen $(cloudflare.firewall.client_ip). Motivo: $(cloudflare.firewall.rule_description) (regla $(cloudflare.firewall.rule_id)).</description>
     <options>no_full_log</options>
     <group>b89_waf,</group>
   </rule>
@@ -278,5 +278,25 @@
     <options>no_full_log</options>
     <mitre><id>T1590.002</id></mitre>
     <group>b89_dns,b89_recon,</group>
+  </rule>
+
+  <rule id="101539" level="8">
+    <if_sid>101510</if_sid>
+    <field name="cloudflare.firewall.source" type="pcre2">(?i)^firewallmanaged$</field>
+    <field name="cloudflare.firewall.rule_description" type="pcre2">(?i)(?:sqli|sql.?injection|\bxss\b|cross.?site.?scripting|html injection|command injection|remote code execution|\brce\b|file inclusion|directory traversal|path traversal|log4j|log4shell|\bjndi\b|\bssrf\b|template injection|\bssti\b|\bxxe\b|owasp.*(?:injection|xss)|(?:injection|xss).*owasp)</field>
+    <description>Cloudflare bloqueó una solicitud con patrón de posible inyección web en $(cloudflare.firewall.host)$(cloudflare.firewall.path), desde $(cloudflare.firewall.client_ip). Firma: $(cloudflare.firewall.rule_description) (regla $(cloudflare.firewall.rule_id)).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1190</id></mitre>
+    <group>b89_waf,b89_web_injection,b89_owasp_signal,b89_attack,</group>
+  </rule>
+
+  <rule id="101540" level="12">
+    <if_sid>101511</if_sid>
+    <field name="cloudflare.firewall.source" type="pcre2">(?i)^firewallmanaged$</field>
+    <field name="cloudflare.firewall.rule_description" type="pcre2">(?i)(?:sqli|sql.?injection|\bxss\b|cross.?site.?scripting|html injection|command injection|remote code execution|\brce\b|file inclusion|directory traversal|path traversal|log4j|log4shell|\bjndi\b|\bssrf\b|template injection|\bssti\b|\bxxe\b|owasp.*(?:injection|xss)|(?:injection|xss).*owasp)</field>
+    <description>Cloudflare detectó un patrón de posible inyección web y lo dejó en modo registro; la solicitud pudo llegar a la aplicación. Revisar ahora: $(cloudflare.firewall.host)$(cloudflare.firewall.path), origen $(cloudflare.firewall.client_ip). Firma: $(cloudflare.firewall.rule_description) (regla $(cloudflare.firewall.rule_id)).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1190</id></mitre>
+    <group>b89_waf,b89_web_injection,b89_owasp_signal,b89_attack,</group>
   </rule>
 </group>

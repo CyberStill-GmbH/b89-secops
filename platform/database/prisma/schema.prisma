@@ -965,3 +965,32 @@ model AiAnalystSettings {
 
   @@map("ai_analyst_settings")
 }
+
+// Política Ferrispector por tenant y credenciales por endpoint para sincronización autenticada.
+model DlpPolicy {
+  tenantId  String   @id @map("tenant_id") @db.Text
+  document  Json     @db.JsonB
+  revision  Int      @default(1)
+  updatedAt DateTime @map("updated_at") @db.Timestamptz(3)
+  updatedBy String   @map("updated_by") @db.Text
+
+  @@map("dlp_policies")
+}
+
+model DlpEndpoint {
+  id                  String    @id @db.Text
+  tenantId            String    @map("tenant_id") @db.Text
+  tokenHash           String    @unique @map("token_hash") @db.Text
+  enrollmentExpiresAt DateTime  @map("enrollment_expires_at") @db.Timestamptz(3)
+  hostname            String?   @db.VarChar(128)
+  agentId             String?   @map("agent_id") @db.VarChar(16)
+  enrolledAt          DateTime? @map("enrolled_at") @db.Timestamptz(3)
+  lastSeenAt          DateTime? @map("last_seen_at") @db.Timestamptz(3)
+  revokedAt           DateTime? @map("revoked_at") @db.Timestamptz(3)
+  appliedRevision     Int       @default(0) @map("applied_revision")
+  policyVersion       String?   @map("policy_version") @db.VarChar(32)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([tenantId, lastSeenAt(sort: Desc)], map: "dlp_endpoints_tenant_seen_idx")
+  @@map("dlp_endpoints")
+}

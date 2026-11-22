@@ -180,3 +180,4 @@ export {
   PostgresRoleAdministration,
   RoleGrantIntegrityError,
 } from './postgres-role-grant-store.js';
+export { PrismaDlpPolicyStore } from '@b89/database/dlp-policy-store';

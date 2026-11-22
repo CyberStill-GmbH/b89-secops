@@ -31,6 +31,7 @@ import {
   correlatorHealth,
   platformSection,
   socSection,
+  sourcesSection,
   summarySection,
   worstStatus,
   type HealthStatus,
@@ -42,6 +43,7 @@ import { mutatingActor, readingActor } from './session-actor.js';
 import { SECOPS_RUNTIME } from './tokens.js';
 import type { SecOpsRuntime } from '../runtime/secops-runtime.js';
 import { evaluateMonitor } from '../runtime/source-health.js';
+import { sourceIssues } from '../runtime/source-signals.js';
 
 /** Mensajes por pasada manual del despacho. */
 const MANUAL_DRAIN_BATCH = 1;
@@ -293,6 +295,20 @@ export class OperationsController {
       at,
     );
     const sections: Record<string, { readonly status: HealthStatus }> = { summary };
+
+    if (actor.capabilities.has('sources.health.read') && monitor?.key.tenantId === actor.tenantId && this.runtime.sourceSignals) {
+      const signals = await this.runtime.sourceSignals.snapshot(at);
+      if (signals.status !== 'not_configured') {
+        sections['sources'] = sourcesSection({
+          modelVersion: signals.modelVersion,
+          measuredAt: signals.measuredAt,
+          stale: signals.stale,
+          status: signals.status,
+          verdicts: signals.verdicts,
+          issues: sourceIssues(signals.verdicts).items,
+        }, at);
+      }
+    }
 
     if (actor.capabilities.has('observability.read_soc')) {
       // Ventana fija agregada en el store: conteos estables, no "las últimas N filas".

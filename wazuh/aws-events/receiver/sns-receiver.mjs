@@ -362,7 +362,17 @@ export function createHandler({
   maxAgeMs = 60 * 60 * 1000,
   now = () => Date.now(),
 }) {
-  const stats = { notifications: 0, records: 0, duplicates: 0, rejected: 0, confirmed: 0 };
+  const stats = {
+    notifications: 0,
+    records: 0,
+    duplicates: 0,
+    rejected: 0,
+    confirmed: 0,
+    // Latido de salud (heartbeatRecord): solo contadores y horas, nunca temas ni cuerpos.
+    signatureFailures: 0,
+    lastNotificationAt: null,
+    lastVerifiedAt: null,
+  };
   async function handle(req, res) {
     const reply = (code, body = '') => {
       res.writeHead(code, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' });
@@ -408,7 +418,11 @@ export function createHandler({
       log('error', 'no se pudo validar el certificado SNS', { error: err.message });
       return reply(503, 'certificado no disponible\n');
     }
-    if (!verifySignature(msg, publicKey)) return reject(403, 'firma inválida');
+    if (!verifySignature(msg, publicKey)) {
+      stats.signatureFailures += 1;
+      return reject(403, 'firma inválida');
+    }
+    stats.lastVerifiedAt = new Date(now()).toISOString();
     const ts = Date.parse(msg.Timestamp);
     if (!Number.isFinite(ts) || now() - ts > maxAgeMs || ts - now() > 5 * 60 * 1000) {
       return reject(403, 'Timestamp fuera de ventana');
@@ -466,6 +480,7 @@ export function createHandler({
     if (eventKey) dedupe.add(eventKey);
     stats.notifications += 1;
     stats.records += records.length;
+    stats.lastNotificationAt = new Date(now()).toISOString();
     log('info', 'evento', {
       topic_region: topicRegion(msg.TopicArn),
       detail_type: typeof event === 'object' ? event?.['detail-type'] : undefined,
@@ -475,6 +490,47 @@ export function createHandler({
     return reply(200, 'ok\n');
   }
   return { handle, stats };
+}
+
+// ------------------------------------------------------------------ latido de salud
+
+export const HEARTBEAT_VERSION = '2026.11.17';
+
+/**
+ * Latido periódico del receptor (docs/20 «Salud por fuente»): mismo esquema que
+ * `wazuh/provider-ingestion/common/b89_collector.heartbeat_event`, en el mismo JSONL que los
+ * eventos, así su llegada prueba receptor → logcollector → analysisd → indexer aunque AWS no
+ * haya enviado nada. `auth` es `ok` solo si alguna firma SNS se verificó desde el arranque; las
+ * suscripciones confirmadas antes del arranque no son visibles aquí (`subscriptions_confirmed`
+ * cuenta solo las de este proceso). Sin temas, URLs ni cuerpos.
+ */
+export function heartbeatRecord(stats, previous, { startedAt, now, topics, runId }) {
+  const items = stats.records - (previous?.records ?? 0);
+  return {
+    b89: {
+      vendor: 'aws',
+      source: 'eventbridge',
+      event_type: 'source_heartbeat',
+      collected_at: now,
+      heartbeat: {
+        schema: 1,
+        source_id: 'aws',
+        run_id: runId,
+        started_at: startedAt,
+        finished_at: now,
+        outcome: 'ok',
+        auth: stats.lastVerifiedAt ? 'ok' : 'unknown',
+        http_status_class: 'none',
+        items_fetched: Math.max(0, items),
+        cursor_advanced: items > 0,
+        collector_version: HEARTBEAT_VERSION,
+        topics_configured: topics,
+        subscriptions_confirmed: stats.confirmed,
+        signature_failures: stats.signatureFailures - (previous?.signatureFailures ?? 0),
+        ...(stats.lastNotificationAt ? { last_message_at: stats.lastNotificationAt } : {}),
+      },
+    },
+  };
 }
 
 // ------------------------------------------------------------------ arranque
@@ -495,7 +551,7 @@ function main() {
     process.env.B89_AWS_EVENTS_FILE ?? '/out/aws-events.jsonl',
     Number(process.env.B89_AWS_EVENTS_MAX_BYTES ?? 100 * 1024 * 1024),
   );
-  const { handle } = createHandler({
+  const { handle, stats } = createHandler({
     topics,
     sink,
     loadCert: makeCertLoader(),
@@ -513,6 +569,25 @@ function main() {
   server.maxHeadersCount = 50;
   const port = Number(process.env.PORT ?? 8080);
   server.listen(port, '0.0.0.0', () => log('info', 'escuchando', { port, topics: topics.size }));
+  const heartbeatMs = Math.max(60, Number(process.env.B89_AWS_HEARTBEAT_SECONDS ?? 300)) * 1000;
+  let previous = { ...stats };
+  let startedAt = new Date().toISOString();
+  const beat = setInterval(() => {
+    const now = new Date().toISOString();
+    try {
+      sink.write([heartbeatRecord(stats, previous, {
+        startedAt,
+        now,
+        topics: topics.size,
+        runId: `aws-${now.replace(/[-:]/g, '').slice(0, 15)}Z-${crypto.randomBytes(3).toString('hex')}`,
+      })]);
+      previous = { ...stats };
+      startedAt = now;
+    } catch (err) {
+      log('error', 'no se pudo escribir el latido', { error: err.message });
+    }
+  }, heartbeatMs);
+  beat.unref();
   for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => server.close(() => process.exit(0)));
 }
 

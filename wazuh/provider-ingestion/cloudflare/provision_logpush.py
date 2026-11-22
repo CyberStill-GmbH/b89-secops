@@ -25,7 +25,7 @@ from b89_collector import ProviderError, http_json, load_config, read_secret  # 
 
 API = "https://api.cloudflare.com/client/v4"
 HEADER = "X-B89-Logpush-Token"
-DATASETS = ("http_requests", "dns_logs")
+DATASETS = ("http_requests", "firewall_events", "dns_logs")
 WANTED_FIELDS = {
     "http_requests": [
         "EdgeStartTimestamp", "RayID", "ClientIP", "ClientCountry", "ClientASN", "ClientRequestHost",
@@ -33,6 +33,15 @@ WANTED_FIELDS = {
         "ClientRequestUserAgent", "ClientRequestReferer", "ClientSSLProtocol", "EdgeResponseStatus",
         "OriginResponseStatus", "EdgeResponseBytes", "CacheCacheStatus", "SecurityAction",
         "SecuritySource", "BotScore", "WAFAttackScore",
+        "WAFSQLiAttackScore", "WAFXSSAttackScore", "WAFRCEAttackScore",
+        "WAFRequestSignatureCategories", "WAFRequestSignatureRefs",
+        "SecurityRuleID", "SecurityRuleDescription",
+    ],
+    "firewall_events": [
+        "Action", "Source", "Datetime", "ClientIP", "ClientCountry", "ClientASN", "ClientRequestHost",
+        "ClientRequestPath", "ClientRequestMethod", "RayID", "RuleID", "Description", "UserAgent",
+        "EdgeResponseStatus", "WAFAttackScore", "WAFSQLiAttackScore", "WAFXSSAttackScore", "WAFRCEAttackScore",
+        "WAFRequestSignatureCategories", "WAFRequestSignatureRefs",
     ],
     "dns_logs": [
         "Timestamp", "QueryName", "QueryType", "ResponseCode", "SourceIP", "ColoCode", "EDNSSubnet",

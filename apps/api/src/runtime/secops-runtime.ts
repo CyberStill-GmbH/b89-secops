@@ -113,6 +113,8 @@ import { DEFAULT_RETURN_TO } from '../http/return-to.js';
 import type { ProcessInfo } from '../soc/operations-health.js';
 import type { EventsReader } from './events-reader.js';
 import type { SourceHealthMonitor } from './source-health.js';
+import type { DlpPolicyStore } from './dlp-policy-store.js';
+import type { SourceSignalsService } from './source-signals.js';
 import type { RoleGrantsConfig } from '@b89/configuration';
 import type { DirectoryDiagnostic, DirectoryStore, RoleAdministration } from '@b89/access';
 import {
@@ -307,6 +309,9 @@ export interface RuntimeOptions {
   readonly wazuhPushInbox?: WazuhPushInboxStore;
   /** Fuente vigilada por la salud por fuente (fase 2); existe aunque esté deshabilitada. */
   readonly sourceHealth?: SourceHealthMonitor;
+  /** Salud multiseñal por fuente (latido, autenticación, volumen y retraso). */
+  readonly sourceSignals?: SourceSignalsService;
+  readonly dlpPolicyStore?: DlpPolicyStore;
   /** Padrón del grupo de admisión (fase 3); sin él, la sincronización está deshabilitada. */
   /** Una función si el padrón puede activarse después del arranque (grupo resuelto tarde). */
   readonly directory?: RuntimeDirectory | (() => RuntimeDirectory);
@@ -608,12 +613,19 @@ export class SecOpsRuntime {
     return this.options.sourceHealth;
   }
 
+  public get sourceSignals(): SourceSignalsService | undefined {
+    return this.options.sourceSignals;
+  }
+
   public wazuhPushInboxMetrics(at = this.now()) {
     return this.wazuhPushInbox?.metrics(at) ?? Promise.resolve(null);
   }
 
   public get push(): RuntimeOptions['push'] {
     return this.options.push;
+  }
+  public get dlpPolicyStore(): DlpPolicyStore | undefined {
+    return this.options.dlpPolicyStore;
   }
 
   public get access(): AccessConfig {

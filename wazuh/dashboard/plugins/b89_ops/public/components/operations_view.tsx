@@ -28,6 +28,11 @@ import {
   OperationsHealth,
   OperationsStatus,
   SOURCE_COVERAGE_REASON_LABEL,
+  SOURCE_ISSUE_LABEL,
+  SOURCE_VERDICT_LABEL,
+  SOURCE_VERDICT_TONE,
+  SourceVerdict,
+  verdictReasonLabel,
 } from '../../common';
 import { B89Page, B89Section, useChanges, useConsole } from './console_context';
 import { ErrorCallout, HealthMark, Timestamp, useAsync } from './primitives';
@@ -153,13 +158,61 @@ function SectionPanel({
       {reasons && reasons.length > 0 && (
         <ul className="b89List">
           {reasons.map((reason) => (
-            <li key={reason}>{DEGRADED_REASON_LABEL[reason] ?? reason}</li>
+            <li key={reason}>
+              {DEGRADED_REASON_LABEL[reason] ?? SOURCE_ISSUE_LABEL[reason] ?? reason}
+            </li>
           ))}
         </ul>
       )}
       <EuiSpacer size="m" />
       {children}
     </EuiPanel>
+  );
+}
+
+const VERDICT_ORDER: readonly SourceVerdict[] = ['failing', 'degraded', 'quiet', 'healthy', 'unknown'];
+
+/** Sección `sources` (docs/20): conteo por veredicto y los problemas abiertos por fuente. */
+export function SourcesHealthPanel({
+  section,
+}: {
+  section: NonNullable<OperationsHealth['sections']['sources']>;
+}) {
+  const problems = section.sources.filter(
+    (item) => item.verdict === 'failing' || item.verdict === 'degraded',
+  );
+  return (
+    <SectionPanel title="Salud por fuente" status={section.status} reasons={section.degradedReasons}>
+      <p className="b89Health__counts">
+        {VERDICT_ORDER.map((verdict) => (
+          <span key={verdict} className="b89Health__count">
+            <HealthMark
+              tone={SOURCE_VERDICT_TONE[verdict]}
+              label={`${SOURCE_VERDICT_LABEL[verdict]}: ${section.counts[verdict] ?? 0}`}
+            />{' '}
+          </span>
+        ))}
+      </p>
+      {problems.length > 0 ? (
+        <ul className="b89List" aria-label="Fuentes con problemas">
+          {problems.map((item) => (
+            <li key={item.id}>
+              <strong>{item.id}</strong> · {SOURCE_VERDICT_LABEL[item.verdict as SourceVerdict] ?? item.verdict}
+              {item.reasons.length > 0 ? ` · ${item.reasons.map(verdictReasonLabel).join('; ')}` : ''}
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <EuiText size="xs" color="subdued">
+          <p>Ninguna fuente medida está degradada ni fallando.</p>
+        </EuiText>
+      )}
+      <EuiText size="xs" color="subdued">
+        <p>
+          Medido <Timestamp iso={section.measuredAt} /> · modelo {section.modelVersion}
+        </p>
+      </EuiText>
+    </SectionPanel>
   );
 }
 
@@ -405,6 +458,11 @@ function OperationsContent({ embedded }: { embedded: boolean }) {
                     ]}
                   />
                 </SectionPanel>
+              </EuiFlexItem>
+            )}
+            {data.sections.sources && (
+              <EuiFlexItem>
+                <SourcesHealthPanel section={data.sections.sources} />
               </EuiFlexItem>
             )}
             {data.sections.platform && (

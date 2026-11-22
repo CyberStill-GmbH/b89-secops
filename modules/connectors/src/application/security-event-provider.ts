@@ -22,20 +22,15 @@ export interface EventFilters {
   readonly severity?: readonly string[];
   readonly category?: readonly string[];
   readonly outcome?: string;
-  /**
-   * Eventos que mencionan alguna de estas entidades (OR). Uso interno del API (Analista IA):
-   * acota la lectura a la entidad en vez de recorrer todo el tenant. Valor literal, nunca consulta.
-   */
+  /** Entidades para consultas del analista; el proveedor valida y acota el filtro. */
   readonly entities?: readonly EventEntityFilter[];
 }
 
 export interface EventEntityFilter {
   readonly kind: 'user' | 'ip';
-  /** 3–256 caracteres, sin caracteres de control. */
   readonly value: string;
 }
 
-/** Límites del filtro por entidad (validados por el proveedor). */
 export const EVENT_ENTITY_FILTER_LIMITS = Object.freeze({ maxEntities: 10, minChars: 3, maxChars: 256 });
 
 export interface EventQuery {
@@ -71,6 +66,85 @@ export interface StreamActivity {
   readonly stream: string;
   readonly count: number;
   readonly lastEventAt: string | null;
+}
+
+/**
+ * Señales de salud por fuente (docs/20 «Salud por fuente»). El llamador elige cada fuente con un
+ * selector de una allowlist; el proveedor lo compila a su consulta (nunca recibe DSL).
+ */
+export type SourceDataSelector =
+  | { readonly kind: 'rule_group'; readonly value: string }
+  | {
+      readonly kind: 'field';
+      readonly field: 'office365.subscription' | 'b89.source';
+      readonly values: readonly string[];
+    }
+  | { readonly kind: 'agents' };
+
+export interface SourceSignalSpec {
+  /** Id B89 de la fuente. */
+  readonly id: string;
+  /** `source_id` de los latidos de su collector (vacío: la fuente no tiene latido). */
+  readonly heartbeatIds: readonly string[];
+  readonly data: SourceDataSelector;
+  /** Reglas del canario sintético de la fuente (si tiene). */
+  readonly canaryRuleIds: readonly string[];
+}
+
+export interface SourceSignalsQuery {
+  readonly sourceId: string;
+  readonly dataset: string;
+  /** ISO 8601: fin de todas las ventanas. */
+  readonly now: string;
+  readonly sources: readonly SourceSignalSpec[];
+  readonly heartbeatLookbackMs: number;
+  /** Latidos recientes por collector (1–10). */
+  readonly heartbeatSamples: number;
+  readonly volumeWindowMs: number;
+  /** Semanas de línea base a la misma hora de la semana (1–4). */
+  readonly baselineWeeks: number;
+  readonly signal?: AbortSignal;
+}
+
+export interface HeartbeatSample {
+  /** Hora del documento indexado (la del análisis en el manager). */
+  readonly indexedAt: string;
+  readonly sourceId: string;
+  readonly finishedAt: string | null;
+  readonly outcome: string | null;
+  readonly auth: string | null;
+  readonly httpStatusClass: string | null;
+  readonly itemsFetched: number | null;
+  readonly cursorAdvanced: boolean | null;
+  readonly cursorPosition: string | null;
+  readonly providerLagSeconds: number | null;
+  readonly errorCode: string | null;
+  readonly collectorVersion: string | null;
+  /** Cobertura por tipo de contenido (latido de M365): habilitado y último blob. */
+  readonly content: Readonly<
+    Record<string, { readonly enabled: boolean | null; readonly lastBlobAt: string | null }>
+  > | null;
+}
+
+export interface SourceSignalReading {
+  readonly id: string;
+  /** Latidos más recientes primero, de todos los `heartbeatIds` de la fuente. */
+  readonly heartbeats: readonly HeartbeatSample[];
+  readonly lastAuthOkAt: string | null;
+  readonly lastEventAt: string | null;
+  /** Eventos de datos en la ventana actual. */
+  readonly currentCount: number;
+  /**
+   * Misma ventana 1..N semanas atrás. `null`: el Indexer no tiene ningún documento en esa
+   * ventana (retención o despliegue posterior): no cuenta como cero.
+   */
+  readonly baselineCounts: readonly (number | null)[];
+  readonly canaryAt: string | null;
+}
+
+export interface SourceSignalsReport {
+  readonly measuredAt: string;
+  readonly sources: readonly SourceSignalReading[];
 }
 
 export interface ProviderRecord {
@@ -140,4 +214,6 @@ export interface SecurityEventProvider {
   readPage(query: EventQuery): Promise<EventPage>;
   /** Actividad por stream (opcional: no todo proveedor la ofrece). */
   readActivity?(query: ActivityQuery): Promise<readonly StreamActivity[]>;
+  /** Señales de salud por fuente en una consulta acotada (opcional). */
+  readSourceSignals?(query: SourceSignalsQuery): Promise<SourceSignalsReport>;
 }
