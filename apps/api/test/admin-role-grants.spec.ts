@@ -9,7 +9,7 @@
  * validación, SoD, padrón, step-up, auditoría y revocación de sesiones tras el cambio.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import {
@@ -26,27 +26,11 @@ import { buildApi } from '../src/bootstrap.js';
 /**
  * Hoy solo `b89.platform.admin` tiene `roles.request`, y ese rol concede directo: ningún rol de
  * producción recorre la cadena de aprobación. Para probarla, este rol de prueba recibe
- * `roles.request` en el mapeo rol → capability. Va en el mapeo y no inyectado en la sesión porque
- * el runtime recalcula las capabilities desde los roles en cada petición (9e3b05a).
+ * `roles.request` en la resolución del actor de ESTE runtime (ver `beforeAll`). No va inyectado en
+ * la sesión porque el runtime recalcula las capabilities desde los roles en cada petición (9e3b05a),
+ * ni con `vi.mock` del módulo: la suite raíz corre sin aislamiento y el módulo ya puede estar cargado.
  */
 const DELEGATED_REQUESTER_ROLE = 'b89.test.delegated-requester';
-vi.mock('@b89/access', async (importOriginal) => {
-  const original = await importOriginal<typeof import('@b89/access')>();
-  const extra = (roles: readonly string[]) =>
-    roles.includes(DELEGATED_REQUESTER_ROLE) ? (['roles.request', 'users.read'] as const) : [];
-  return {
-    ...original,
-    capabilitiesForRoles: (roles: readonly string[]) =>
-      new Set([...original.capabilitiesForRoles(roles), ...extra(roles)]),
-    effectiveCapabilities: (roles: readonly string[], scopes: readonly string[]) => {
-      const byScope = original.capabilitiesForScopes(scopes);
-      return new Set([
-        ...original.effectiveCapabilities(roles, scopes),
-        ...extra(roles).filter((capability) => byScope.has(capability)),
-      ]);
-    },
-  };
-});
 import type { RuntimeDirectory, SecOpsRuntime } from '../src/runtime/secops-runtime.js';
 
 const GROUP = '99999999-9999-4999-8999-999999999999';
@@ -146,6 +130,14 @@ beforeAll(async () => {
   application = built.application;
   runtime = built.runtime;
   stop = built.stop;
+
+  const resolveActor = runtime.resolveActor.bind(runtime);
+  (runtime as { resolveActor: typeof resolveActor }).resolveActor = async (...args) => {
+    const resolved = await resolveActor(...args);
+    if (!resolved.ok || !resolved.actor.roles.includes(DELEGATED_REQUESTER_ROLE)) return resolved;
+    const capabilities = new Set([...resolved.actor.capabilities, 'roles.request', 'users.read']);
+    return { ...resolved, actor: { ...resolved.actor, capabilities: capabilities as typeof resolved.actor.capabilities } };
+  };
 
   // Padrón: Ana, Beto, admin y aprobadores vigentes; Carla deshabilitada; Dani salió.
   const tenantId = runtime.tenantIdForDirectory;
