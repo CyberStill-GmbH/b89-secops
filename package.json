@@ -31,7 +31,7 @@
     "test:entrypoints": "vitest run --config vitest.config.ts apps tests/architecture platform/configuration/test/entrypoint-config.spec.ts"
   },
   "devDependencies": {
-    "@types/node": "24.13.6",
+    "@types/node": "26.6.6",
     "dependency-cruiser": "18.4.0",
     "oxlint": "1.84.0",
     "prettier": "3.9.8",
