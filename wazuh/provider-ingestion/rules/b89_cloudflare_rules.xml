@@ -2,6 +2,9 @@
   B89 · Cloudflare (wazuh/provider-ingestion/cloudflare/security.py). IDs reservados: 101500-101549.
   Auditoría de cuenta (b89.event_type=audit) y eventos de seguridad de zona (firewall). Monitor-only.
 -->
+<!-- ASN de hosting/nube/VPN comercial: una sesión humana del backoffice no debería salir de ellos. -->
+<var name="B89_CF_HOSTING_ASN">(?i)(datacamp|amazon|\baws\b|google[- ]cloud|hetzner|\bovh|digitalocean|m247|leaseweb|constant company|vultr|choopa|linode|contabo|tencent|alibaba|oracle|microsoft|cdn77|packethub|g-core|gcore|ipxo|hostinger|scaleway|zenlayer|tefincom|nord|proton|mullvad|surfshark|express ?vpn|private internet|clouvider|datapacket|hostroyale|colocrossing|psychz|quadranet|buyvm|frantech|servers\.com|ionos|hostpapa|unified layer|bluehost|godaddy)</var>
+
 <group name="b89_provider,cloudflare,">
   <rule id="101500" level="0">
     <decoded_as>json</decoded_as>
@@ -151,21 +154,51 @@
     <group>b89_http,</group>
   </rule>
 
-  <!-- Backoffice de pagos (credenciales de empleados): acceso humano a /backoffice y /auth-service. -->
+  <!-- Backoffice de pagos (credenciales de empleados): acceso humano a /backoffice y /auth-service.
+       Ajuste de falsos positivos 2026-11-22 (docs/detection-engineering/16):
+       - Solo hosts del backoffice humano (prodv2-/stg-/uat-apipayments, *paymentsv2). apipayments.b89.io es la API de
+         integración de comercios (máquina a máquina, normalmente desde AWS/GCP) y ya no entra aquí.
+       - Ya no hay una alerta nivel 13 por cada petición: una sesión de 40 peticiones eran 40 alertas P1.
+         Alerta inmediata solo para lo que usa la credencial (login, refresh-token), escribe o exporta; el resto
+         se agrega por IP (101545).
+       - Preflight (OPTIONS/HEAD) no es uso de credencial. Staging/UAT desde nube es QA/CI: queda visible a nivel 3.
+       - Fuera de la lista de hosting: Akamai (iCloud Private Relay) y Google LLC (Google One VPN, Chrome IP
+         Protection): son relés de privacidad de dispositivos personales, no infraestructura del atacante.
+       Caso de referencia 17/11 (token robado SIN login: refresh + llamadas de staff desde Datacamp y AWS): lo
+       detectan 101531 (refresh) y 101545 (sesión sostenida); las escrituras de dinero, 101537. -->
   <rule id="101530" level="0">
     <if_sid>101515, 101518, 101520</if_sid>
-    <field name="cloudflare.http.host" type="pcre2">(?i)^((prodv2|stg|uat)-)?apipayments\.b89\.io$|^(stg|uat)?paymentsv2\.b89\.io$</field>
+    <field name="cloudflare.http.host" type="pcre2">(?i)^(prodv2|stg|uat)-apipayments\.b89\.io$|^(stg|uat)?paymentsv2\.b89\.io$</field>
     <field name="cloudflare.http.path" type="pcre2">^/(backoffice|auth-service)/</field>
     <description>B89 Cloudflare: backoffice de pagos $(cloudflare.http.method) $(cloudflare.http.path) desde $(cloudflare.http.client_ip) ($(cloudflare.http.status)).</description>
     <options>no_full_log</options>
     <group>b89_http,b89_backoffice,</group>
   </rule>
 
-  <rule id="101531" level="13">
+  <rule id="101534" level="0">
     <if_sid>101530</if_sid>
+    <field name="cloudflare.http.method" type="pcre2">^(OPTIONS|HEAD)$</field>
+    <description>B89 Cloudflare: verificación previa del navegador ($(cloudflare.http.method)) al backoffice; no usa credenciales.</description>
+    <options>no_full_log</options>
+    <group>b89_http,b89_backoffice,</group>
+  </rule>
+
+  <rule id="101536" level="3">
+    <if_sid>101530</if_sid>
+    <field name="cloudflare.http.host" type="pcre2">(?i)^(stg|uat)</field>
     <field name="cloudflare.http.status" type="pcre2">^(2\d\d|304)$</field>
-    <field name="cloudflare.http.asn_name" type="pcre2">(?i)(datacamp|amazon|google llc|google cloud|hetzner|\bovh|digitalocean|m247|leaseweb|constant company|vultr|choopa|linode|akamai|contabo|tencent|alibaba|oracle|microsoft|cdn77|packethub|g-core|gcore|ipxo|hostinger|scaleway|zenlayer|tefincom|nord|proton|mullvad|surfshark|express ?vpn|private internet|clouvider|datapacket|hostroyale|colocrossing|psychz|quadranet|buyvm|frantech|servers\.com|ionos|hostpapa|unified layer|bluehost|godaddy)</field>
-    <description>B89 Cloudflare: sesión válida en el backoffice de pagos desde hosting/VPN ($(cloudflare.http.asn_name), $(cloudflare.http.country)) IP $(cloudflare.http.client_ip): $(cloudflare.http.method) $(cloudflare.http.path) el $(cloudflare.http.datetime) UTC. Posible uso de credenciales robadas.</description>
+    <field name="cloudflare.http.asn_name" type="pcre2">$B89_CF_HOSTING_ASN</field>
+    <description>B89 Cloudflare: backoffice de pruebas ($(cloudflare.http.host)) usado desde nube/VPN ($(cloudflare.http.asn_name)) IP $(cloudflare.http.client_ip). Habitual en QA/CI; sin alerta.</description>
+    <options>no_full_log</options>
+    <group>b89_http,b89_backoffice,</group>
+  </rule>
+
+  <rule id="101531" level="12">
+    <if_sid>101530</if_sid>
+    <field name="cloudflare.http.path" type="pcre2">^/auth-service/v1/(login|refresh-token)</field>
+    <field name="cloudflare.http.status" type="pcre2">^2\d\d$</field>
+    <field name="cloudflare.http.asn_name" type="pcre2">$B89_CF_HOSTING_ASN</field>
+    <description>B89 Cloudflare: credencial del backoffice de pagos usada desde hosting/VPN ($(cloudflare.http.asn_name), $(cloudflare.http.country)) IP $(cloudflare.http.client_ip): $(cloudflare.http.path) correcto el $(cloudflare.http.datetime) UTC. Posible credencial o token robado.</description>
     <options>no_full_log</options>
     <mitre><id>T1078</id><id>T1550.001</id></mitre>
     <group>b89_http,b89_backoffice,b89_credential_misuse,</group>
@@ -175,11 +208,42 @@
     <if_sid>101530</if_sid>
     <field name="cloudflare.http.path" type="pcre2">(?i)/export</field>
     <field name="cloudflare.http.status" type="pcre2">^2\d\d$</field>
-    <field name="cloudflare.http.asn_name" type="pcre2">(?i)(datacamp|amazon|google llc|google cloud|hetzner|\bovh|digitalocean|m247|leaseweb|constant company|vultr|choopa|linode|akamai|contabo|tencent|alibaba|oracle|microsoft|cdn77|packethub|g-core|gcore|ipxo|hostinger|scaleway|zenlayer|tefincom|nord|proton|mullvad|surfshark|express ?vpn|private internet|clouvider|datapacket|hostroyale|colocrossing|psychz|quadranet|buyvm|frantech|servers\.com|ionos|hostpapa|unified layer|bluehost|godaddy)</field>
+    <field name="cloudflare.http.asn_name" type="pcre2">$B89_CF_HOSTING_ASN</field>
     <description>B89 Cloudflare: exportación de datos del backoffice ($(cloudflare.http.path)) desde hosting/VPN en $(cloudflare.http.country), IP $(cloudflare.http.client_ip) ($(cloudflare.http.asn_name)) el $(cloudflare.http.datetime) UTC. Posible exfiltración.</description>
     <options>no_full_log</options>
     <mitre><id>T1567</id><id>T1213</id></mitre>
     <group>b89_http,b89_backoffice,b89_exfiltration,</group>
+  </rule>
+
+  <rule id="101537" level="13">
+    <if_sid>101530</if_sid>
+    <field name="cloudflare.http.method" type="pcre2">^(POST|PUT|PATCH|DELETE)$</field>
+    <field name="cloudflare.http.path" type="pcre2">^/backoffice/</field>
+    <field name="cloudflare.http.status" type="pcre2">^2\d\d$</field>
+    <field name="cloudflare.http.asn_name" type="pcre2">$B89_CF_HOSTING_ASN</field>
+    <description>B89 Cloudflare: cambio en el backoffice de pagos ($(cloudflare.http.method) $(cloudflare.http.path)) desde hosting/VPN ($(cloudflare.http.asn_name), $(cloudflare.http.country)) IP $(cloudflare.http.client_ip) el $(cloudflare.http.datetime) UTC. Posible movimiento de dinero con credencial robada.</description>
+    <options>no_full_log</options>
+    <mitre><id>T1078</id><id>T1565.001</id></mitre>
+    <group>b89_http,b89_backoffice,b89_credential_misuse,</group>
+  </rule>
+
+  <rule id="101538" level="3">
+    <if_sid>101530</if_sid>
+    <field name="cloudflare.http.status" type="pcre2">^(2\d\d|304)$</field>
+    <field name="cloudflare.http.asn_name" type="pcre2">$B89_CF_HOSTING_ASN</field>
+    <description>B89 Cloudflare: petición de backoffice desde hosting/VPN ($(cloudflare.http.asn_name)) IP $(cloudflare.http.client_ip): $(cloudflare.http.method) $(cloudflare.http.path). Señal; alerta si se sostiene (101545).</description>
+    <options>no_full_log</options>
+    <group>b89_http,b89_backoffice,</group>
+  </rule>
+
+  <!-- Datos HTTP de GraphQL muestreados (~1 de cada 11): 5 registros en 30 min ≈ 50 peticiones reales. -->
+  <rule id="101545" level="12" frequency="5" timeframe="1800" ignore="900">
+    <if_matched_sid>101538</if_matched_sid>
+    <same_field>cloudflare.http.client_ip</same_field>
+    <description>B89 Cloudflare: sesión sostenida en el backoffice de pagos desde hosting/VPN ($(cloudflare.http.asn_name), $(cloudflare.http.country)) IP $(cloudflare.http.client_ip): 5+ registros en 30 min. Posible token de sesión robado.</description>
+    <options>no_full_log</options>
+    <mitre><id>T1550.001</id><id>T1078</id></mitre>
+    <group>b89_http,b89_backoffice,b89_credential_misuse,</group>
   </rule>
 
   <!-- Nivel 2: B89 opera en varios países (PE, UY, CO, EC, BR…): un login fuera de Perú es normal. Queda en el

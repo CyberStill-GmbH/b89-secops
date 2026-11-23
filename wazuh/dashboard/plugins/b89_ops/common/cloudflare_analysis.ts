@@ -806,3 +806,27 @@ export function moneyInterval(from: string, to: string): string {
   const span = Math.max(0, Date.parse(to) - Date.parse(from));
   return (INTERVALS.find(([, ms]) => span / ms <= 48) ?? INTERVALS[INTERVALS.length - 1])[0];
 }
+
+/* ------------------------------------------------------------ Qué hacer */
+
+const FINDING_NEXT_STEP: Readonly<Record<string, string>> = {
+  'hosting-session':
+    'Pregunta a la persona dueña de la cuenta si usaba una VPN o un servidor. Si no lo reconoce: cierra sus sesiones, cambia su contraseña y su segundo factor, y bloquea la IP en Cloudflare.',
+  'refresh-abroad':
+    'Renovar el token sin iniciar sesión suele indicar un token copiado. Si la persona no lo reconoce: cierra sus sesiones y bloquea la IP.',
+  'new-country':
+    'Confirma con la persona si estaba de viaje. Si no, cambia su contraseña y revisa qué hizo la sesión.',
+  'staff-denied':
+    'Alguien intentó usar funciones de personal sin permiso. Revisa qué cuenta fue y bloquea la IP si no es interna.',
+  'sensitive-read':
+    'Confirma quién exportó y si estaba autorizado. Si no, trátalo como posible fuga de datos y abre un incidente.',
+  'money-new':
+    'Confirma con el equipo de pagos que ese origen es legítimo antes de liquidar las operaciones.',
+  'money-off-hours':
+    'Verifica con el equipo de pagos que esas operaciones fuera de horario estaban previstas.',
+};
+
+/** Siguiente paso en lenguaje llano de un hallazgo (por su tipo, el prefijo del id) o `null`. */
+export function findingNextStep(findingId: string): string | null {
+  return FINDING_NEXT_STEP[findingId.split(':')[0] ?? ''] ?? null;
+}

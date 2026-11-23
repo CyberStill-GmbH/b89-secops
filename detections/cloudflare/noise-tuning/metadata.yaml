@@ -10,7 +10,7 @@ owner: soc-detection-engineering
 reviewers:
 - b89.soc.lead
 created: '2026-11-08'
-updated: '2026-11-08'
+updated: '2026-11-22'
 hypothesis: El WAF que ya bloqueó una IP en una zona no crítica no es un incidente; un ataque sostenido a la zona
   productiva sí. La automatización aprobada no es un cambio humano.
 data_sources:
@@ -22,6 +22,7 @@ rules:
   - 101742
   - 101743
   - 101744
+  - 101745
   installed_as: etc/rules/b89_soc_cloudflare_noise_tuning.xml
 mitre:
 - technique: T1190
@@ -50,6 +51,7 @@ lists:
 - detections/lists/b89-authorized-scanners
 - detections/lists/b89-critical-zones
 - detections/lists/b89-service-accounts
+- detections/lists/b89-backoffice-trusted-egress
 tests:
   runner: logtest
   fixtures: detections/cloudflare/noise-tuning/fixtures.jsonl

@@ -488,6 +488,30 @@ Lo pidió el dueño. Local, sin commit ni despliegue. Doc: [18](docs/18-integrac
   (3) correr el typecheck TS 4.0.2 del plugin.
 
 
+### Claude · 2026-11-22 · Cloudflare: precisión en credenciales robadas, OWASP sobre log HTTP y UI en lenguaje llano
+
+Lo pidió el dueño. Local, sin commit ni despliegue. Doc: `docs/detection-engineering/16-cloudflare-precision-owasp.md`.
+
+- **Reglas**: 101530 ya no incluye `apipayments.b89.io` (API de comercios). 101531 pasa de nivel 13 por petición a
+  nivel 12 solo en login/refresh-token desde hosting; nuevas 101534 (preflight), 101536 (stg/uat), 101537 (escritura
+  desde hosting, 13), 101538 (señal) y 101545 (sesión sostenida, 5 en 30 min). Var `B89_CF_HOSTING_ASN` sin
+  Akamai/Google LLC (relés de privacidad). Tuning 101745 + lista `b89-backoffice-trusted-egress` (hoy solo sintética:
+  **el dueño debe cargar IPs de oficina/VPN**). Paquete nuevo `detections/cloudflare/web-attacks-owasp` 102000–102019.
+- **Collector**: `logpush.py` añade `query`, puntuaciones WAF SQLi/XSS/RCE, `security_rule_*`, `verified_bot_category`
+  y `request_target` (ruta+consulta decodificada, minúsculas, ≤2048).
+- **Suite collectors**: caso 69 esperaba 101523 (eliminada el 18/11) → 101516; +14 casos de backoffice.
+- **UI (archivos tocados)**: `common/alert_guide.ts` (guía por regla), `public/components/alert_guide_panel.tsx`
+  (Qué pasó / ¿Es real? / Qué hacer, detalle técnico plegado) en `alerts_view.tsx` e `investigation_view.tsx`
+  (sustituye la tarjeta lateral «Por qué tiene esta prioridad»; actividad agrupada plegada);
+  `cloudflare_analysis_view.tsx` (hallazgos primero con «Qué hacer», resto plegado);
+  `cloudflare_traffic_view.tsx` (gráfico y rankings plegados); estilos `.b89Guide__*`, `.b89Finding__next`.
+- Validación: pytest Cloudflare 18/18; plugin 473/474 (falla previa `investigation_report.test.ts`, archivo no tocado);
+  typecheck TS 4.0.2 OK tras corregir `dlp_view.tsx` (`import { type X }` de f4701df) y `overview_view.tsx:235` (`overview?.alertsAccess` sobre `never`, de 15f7981); ambos **rompían el
+  build de OSD**); lint de detecciones 0 errores. **No corrido**: `test-in-container.sh` (Docker no arrancó en esta
+  máquina) — pendiente antes de desplegar.
+- Revisión pedida a Codex: (1) copy de las guías; (2) `HOSTING_PROVIDERS` de `cloudflare_analysis.ts` aún cuenta
+  Akamai/GOOGLE como hosting (alinear o justificar).
+
 ### Claude · 2026-11-22 · DLP de endpoints: rediseño de pantalla y flujo de conexión de Ferrispector
 
 Lo pidió el dueño: **frontend hecho por Claude** (normalmente de Codex). Local, sin commit ni despliegue.

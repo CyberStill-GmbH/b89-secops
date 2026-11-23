@@ -1,0 +1,217 @@
+<!--
+  B89 SOC · detección como código · detections/cloudflare/web-attacks-owasp (metadata.yaml, docs/detection-engineering/16).
+  Ataques web (OWASP Top 10) y escaneos vistos en el LOG HTTP de Cloudflare, no solo en eventos del WAF: así se
+  detectan también las peticiones que Cloudflare dejó pasar (modo registro, regla ausente o plan sin WAF gestionado).
+
+  Entrada: cloudflare.http.request_target (logpush.py: ruta + consulta, decodificada dos veces y en minúsculas) y
+  cloudflare.http.user_agent. Datos de dos orígenes:
+    - b89.source=logpush: cada petición (frecuencias normales).
+    - b89.source=graphql-*: muestreo ~1 de cada 11 (frecuencias bajas; 2 registros ≈ 20 peticiones reales).
+
+  Precisión antes que volumen (2026-11-22): una petición aislada nunca abre un caso salvo que la aplicación
+  responda 500 ante una carga inequívoca. Los patrones excluyen lo que choca con tráfico legítimo de B89
+  (callbacks OAuth a localhost en staging, plantillas {{config}} sin renderizar, ${date}); 502/503/52x son
+  caídas de origen (101521), no explotación. Niveles:
+    2  señal por petición (no alerta; alimenta las agregaciones)
+    5  el ataque llegó a la app y respondió 2xx/3xx (indexado, fuera de la cola: casi siempre la app lo ignoró)
+    7-8 escaneo, enumeración o campaña de una IP (cola, sin correo: Internet escanea todo el tiempo)
+    10 la app respondió 500 ante una carga de ataque · fuerza bruta de login de una IP
+    12 relleno de credenciales distribuido
+  Los patrones (no la frase) están en metadata.yaml → owasp. Los `<` y `&` van como \x3c y \x26 (XML de Wazuh).
+  Rango B89: 102000–102029. Se instala como b89_soc_cloudflare_web_attacks_owasp.xml (después de b89_cloudflare_rules).
+-->
+<group name="b89_provider,cloudflare,b89_http,">
+
+  <!-- Base: 4xx en datos muestreados (101518 solo cubre Logpush). -->
+  <rule id="102000" level="0">
+    <if_sid>101515</if_sid>
+    <field name="b89.source" type="pcre2">^graphql-</field>
+    <field name="cloudflare.http.status" type="pcre2">^4\d\d$</field>
+    <description>B89 Cloudflare: respuesta 4xx a $(cloudflare.http.client_ip) (datos muestreados).</description>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- ===== Señales por petición (nivel 2) ===== -->
+  <rule id="102001" level="2">
+    <if_sid>101515, 101518, 101520, 101516, 101530, 102000</if_sid>
+    <field name="cloudflare.http.request_target" type="pcre2">(?:\bunion\b[\s/*+()]+(?:all[\s/*+]+)?select\b|\bselect\b.{1,80}\bfrom\b.{1,80}\b(?:information_schema|pg_catalog|sysobjects|mysql\.user|dual)\b|'\s*(?:or|and)\s+'?\d+'?\s*=\s*'?\d+|'\s*(?:or|and)\s+'[^']*'\s*=\s*'|\b(?:sleep|pg_sleep|benchmark)\s*\(\s*\d|\bwaitfor\s+delay\b|\bxp_cmdshell\b|;\s*(?:drop|truncate|alter)\s+table\b|'\s*\)?\s*(?:--|#)\s*$|\border\s+by\s+\d+\s*(?:--|#)|\bextractvalue\s*\(|\bupdatexml\s*\()</field>
+    <description>B89 Cloudflare: intento de inyección SQL (OWASP A03) desde $(cloudflare.http.client_ip) en $(cloudflare.http.host)$(cloudflare.http.path) ($(cloudflare.http.status)).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1190</id></mitre>
+    <group>b89_cf_http_attack,owasp_a03_injection,</group>
+  </rule>
+
+  <rule id="102002" level="2">
+    <if_sid>101515, 101518, 101520, 101516, 101530, 102000</if_sid>
+    <field name="cloudflare.http.request_target" type="pcre2">(?:\x3c\s*/?\s*script\b|\x3c\s*(?:img|svg|iframe|body|details|video|audio|object|embed|math)\b[^\x3e]*\bon[a-z]+\s*=|\x3c\s*svg\b|javascript\s*:|\bon(?:error|load|mouseover|focus|toggle|animationstart)\s*=|document\.(?:cookie|domain|location)|\b(?:alert|prompt|confirm)\s*\(|\bstring\.fromcharcode\s*\()</field>
+    <description>B89 Cloudflare: intento de cross-site scripting (OWASP A03) desde $(cloudflare.http.client_ip) en $(cloudflare.http.host)$(cloudflare.http.path) ($(cloudflare.http.status)).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1190</id></mitre>
+    <group>b89_cf_http_attack,owasp_a03_injection,</group>
+  </rule>
+
+  <rule id="102003" level="2">
+    <if_sid>101515, 101518, 101520, 101516, 101530, 102000</if_sid>
+    <field name="cloudflare.http.request_target" type="pcre2">(?:\.\./|\.\.\\|/etc/(?:passwd|shadow|hosts|group)\b|\bwin\.ini\b|\bboot\.ini\b|\b(?:php|file|expect|zip|phar|data|glob)://|/proc/self/|\bweb-inf/web\.xml\b)</field>
+    <description>B89 Cloudflare: intento de recorrido de rutas o inclusión de archivos (OWASP A01) desde $(cloudflare.http.client_ip) en $(cloudflare.http.host)$(cloudflare.http.path) ($(cloudflare.http.status)).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1190</id></mitre>
+    <group>b89_cf_http_attack,owasp_a01_access_control,</group>
+  </rule>
+
+  <rule id="102004" level="2">
+    <if_sid>101515, 101518, 101520, 101516, 101530, 102000</if_sid>
+    <field name="cloudflare.http.request_target" type="pcre2">(?:[;|`]\s*(?:cat|id|whoami|uname|wget|curl|nc|ncat|bash|sh|ping|nslookup|powershell|python|perl)\b(?!\s*=)|\$\(\s*(?:cat|id|whoami|wget|curl|sleep|uname)\b|\x26\x26\s*(?:id|whoami|cat|wget|curl|uname)\b|\bcmd(?:\.exe)?\s+/c\b|/bin/(?:ba)?sh\b)</field>
+    <description>B89 Cloudflare: intento de inyección de comandos (OWASP A03) desde $(cloudflare.http.client_ip) en $(cloudflare.http.host)$(cloudflare.http.path) ($(cloudflare.http.status)).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1190</id></mitre>
+    <group>b89_cf_http_attack,owasp_a03_injection,</group>
+  </rule>
+
+  <rule id="102005" level="2">
+    <if_sid>101515, 101518, 101520, 101516, 101530, 102000</if_sid>
+    <field name="cloudflare.http.request_target" type="pcre2">(?:169\.254\.169\.254|metadata\.google\.internal|100\.100\.100\.200|/latest/meta-data/|/computemetadata/v1|=\s*(?:gopher|dict|ldap|tftp)://|=\s*file:///)</field>
+    <description>B89 Cloudflare: intento de falsificación de peticiones del servidor, SSRF (OWASP A10) desde $(cloudflare.http.client_ip) en $(cloudflare.http.host)$(cloudflare.http.path) ($(cloudflare.http.status)).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1190</id></mitre>
+    <group>b89_cf_http_attack,owasp_a10_ssrf,</group>
+  </rule>
+
+  <rule id="102006" level="2">
+    <if_sid>101515, 101518, 101520, 101516, 101530, 102000</if_sid>
+    <field name="cloudflare.http.request_target" type="pcre2">(?:\$\{\s*(?:jndi\s*:|::-|(?:lower|upper|env|sys)\s*:)|\{\{\s*\d+\s*\*\s*\d+\s*\}\}|\$\{\s*\d+\s*\*\s*\d+\s*\}|#\{\s*\d+\s*\*\s*\d+\s*\}|__class__|__globals__|__builtins__|__subclasses__)</field>
+    <description>B89 Cloudflare: intento de Log4Shell o inyección de plantillas (OWASP A03/A06) desde $(cloudflare.http.client_ip) en $(cloudflare.http.host)$(cloudflare.http.path) ($(cloudflare.http.status)).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1190</id></mitre>
+    <group>b89_cf_http_attack,owasp_a06_vulnerable_components,</group>
+  </rule>
+
+  <rule id="102007" level="2">
+    <if_sid>101515, 101518, 101520, 101516, 101530, 102000</if_sid>
+    <field name="cloudflare.http.user_agent" type="pcre2">(?i)(?:\$\{\s*jndi|sqlmap|nikto|nuclei|acunetix|nessus|openvas|wpscan|dirbuster|gobuster|\bffuf\b|feroxbuster|masscan|zgrab|\bnmap\b|w3af|arachni|whatweb|joomscan|wfuzz|appscan|netsparker|commix|dirsearch|\bhydra\b)</field>
+    <description>B89 Cloudflare: herramienta de ataque o escaneo ($(cloudflare.http.user_agent)) desde $(cloudflare.http.client_ip) en $(cloudflare.http.host)$(cloudflare.http.path).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1595.002</id></mitre>
+    <group>b89_cf_http_attack,b89_web_probe,owasp_a05_misconfiguration,</group>
+  </rule>
+
+  <!-- ===== Resultado de la petición (hijas de las señales de inyección) ===== -->
+  <rule id="102008" level="2">
+    <if_sid>102001, 102002, 102003, 102004, 102005, 102006, 102007</if_sid>
+    <list field="cloudflare.http.client_ip" lookup="address_match_key">etc/lists/b89-authorized-scanners</list>
+    <description>B89 Cloudflare: prueba de ataque web desde el escáner autorizado $(cloudflare.http.client_ip) en $(cloudflare.http.host)$(cloudflare.http.path).</description>
+    <options>no_full_log</options>
+    <group>b89_trusted_principal,</group>
+  </rule>
+
+  <rule id="102009" level="10">
+    <if_sid>102001, 102002, 102003, 102004, 102005, 102006</if_sid>
+    <field name="cloudflare.http.status">^500$</field>
+    <description>B89 Cloudflare: la aplicación falló (error $(cloudflare.http.status)) ante un ataque web desde $(cloudflare.http.client_ip): $(cloudflare.http.method) $(cloudflare.http.host)$(cloudflare.http.path). Posible vulnerabilidad explotable; revisar el origen.</description>
+    <options>no_full_log</options>
+    <mitre><id>T1190</id></mitre>
+    <group>b89_cf_http_attack,b89_attack,b89_owasp_signal,</group>
+  </rule>
+
+  <rule id="102010" level="5">
+    <if_sid>102001, 102002, 102003, 102004, 102005, 102006</if_sid>
+    <field name="cloudflare.http.status" type="pcre2">^[23]\d\d$</field>
+    <description>B89 Cloudflare: un ataque web desde $(cloudflare.http.client_ip) llegó a la aplicación y recibió $(cloudflare.http.status): $(cloudflare.http.method) $(cloudflare.http.host)$(cloudflare.http.path). Cloudflare no lo bloqueó; confirmar si la respuesta expuso datos.</description>
+    <options>no_full_log</options>
+    <mitre><id>T1190</id></mitre>
+    <group>b89_cf_http_attack,b89_owasp_signal,</group>
+  </rule>
+
+  <!-- ===== Agregaciones por IP ===== -->
+  <rule id="102011" level="8" frequency="5" timeframe="600">
+    <if_matched_group>b89_cf_http_attack</if_matched_group>
+    <same_field>cloudflare.http.client_ip</same_field>
+    <field name="b89.source">^logpush$</field>
+    <description>B89 Cloudflare: campaña de ataques web (OWASP) desde $(cloudflare.http.client_ip) contra $(cloudflare.http.host): 5+ intentos en 10 min.</description>
+    <options>no_full_log</options>
+    <mitre><id>T1190</id><id>T1595.002</id></mitre>
+    <group>b89_attack,b89_owasp_signal,</group>
+  </rule>
+
+  <rule id="102012" level="8" frequency="2" timeframe="1800">
+    <if_matched_group>b89_cf_http_attack</if_matched_group>
+    <same_field>cloudflare.http.client_ip</same_field>
+    <field name="b89.source" type="pcre2">^graphql-</field>
+    <description>B89 Cloudflare: campaña de ataques web (OWASP) desde $(cloudflare.http.client_ip) contra $(cloudflare.http.host): 2+ intentos muestreados en 30 min (≈ 20+ reales).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1190</id><id>T1595.002</id></mitre>
+    <group>b89_attack,b89_owasp_signal,</group>
+  </rule>
+
+  <rule id="102013" level="8" frequency="3" timeframe="900">
+    <if_matched_sid>101516</if_matched_sid>
+    <same_field>cloudflare.http.client_ip</same_field>
+    <field name="b89.source" type="pcre2">^graphql-</field>
+    <description>B89 Cloudflare: escaneo de rutas sensibles (/.env, /.git, wp-login…) desde $(cloudflare.http.client_ip): 3+ sondeos muestreados en 15 min (≈ 30+ reales).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1595.003</id></mitre>
+    <group>b89_web_probe,b89_attack,</group>
+  </rule>
+
+  <rule id="102014" level="7" frequency="6" timeframe="300">
+    <if_matched_sid>102000</if_matched_sid>
+    <same_field>cloudflare.http.client_ip</same_field>
+    <description>B89 Cloudflare: 6+ respuestas 4xx muestreadas para $(cloudflare.http.client_ip) en 5 min (≈ 60+ reales); enumeración de rutas o fuerza bruta.</description>
+    <options>no_full_log</options>
+    <mitre><id>T1595.003</id></mitre>
+    <group>b89_web_probe,b89_attack,</group>
+  </rule>
+
+  <!-- ===== Autenticación (OWASP A07) ===== -->
+  <rule id="102015" level="2">
+    <if_sid>101518, 101530, 102000</if_sid>
+    <field name="cloudflare.http.method">^POST$</field>
+    <field name="cloudflare.http.path" type="pcre2">(?i)/(?:auth-service/v\d+/login|login|signin|sign-in|oauth2?/token|api/v\d+/auth(?:/login)?)/?$</field>
+    <field name="cloudflare.http.status" type="pcre2">^(?:401|403)$</field>
+    <description>B89 Cloudflare: login rechazado ($(cloudflare.http.status)) para $(cloudflare.http.client_ip) en $(cloudflare.http.host)$(cloudflare.http.path).</description>
+    <options>no_full_log</options>
+    <group>b89_cf_login_failed,owasp_a07_auth,</group>
+  </rule>
+
+  <rule id="102016" level="10" frequency="10" timeframe="300">
+    <if_matched_sid>102015</if_matched_sid>
+    <same_field>cloudflare.http.client_ip</same_field>
+    <field name="b89.source">^logpush$</field>
+    <description>B89 Cloudflare: fuerza bruta de login (OWASP A07) desde $(cloudflare.http.client_ip) contra $(cloudflare.http.host): 10+ logins rechazados en 5 min.</description>
+    <options>no_full_log</options>
+    <mitre><id>T1110.001</id></mitre>
+    <group>b89_attack,b89_credential_attack,</group>
+  </rule>
+
+  <rule id="102017" level="10" frequency="3" timeframe="900">
+    <if_matched_sid>102015</if_matched_sid>
+    <same_field>cloudflare.http.client_ip</same_field>
+    <field name="b89.source" type="pcre2">^graphql-</field>
+    <description>B89 Cloudflare: fuerza bruta de login (OWASP A07) desde $(cloudflare.http.client_ip) contra $(cloudflare.http.host): 3+ rechazos muestreados en 15 min (≈ 30+ reales).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1110.001</id></mitre>
+    <group>b89_attack,b89_credential_attack,</group>
+  </rule>
+
+  <rule id="102018" level="12" frequency="30" timeframe="600" ignore="600">
+    <if_matched_sid>102015</if_matched_sid>
+    <field name="b89.source">^logpush$</field>
+    <same_field>cloudflare.http.host</same_field>
+    <different_field>cloudflare.http.client_ip</different_field>
+    <description>B89 Cloudflare: relleno de credenciales distribuido (OWASP A07) contra $(cloudflare.http.host): 30+ logins rechazados desde IPs distintas en 10 min.</description>
+    <options>no_full_log</options>
+    <mitre><id>T1110.004</id></mitre>
+    <group>b89_attack,b89_credential_attack,</group>
+  </rule>
+
+  <rule id="102019" level="12" frequency="8" timeframe="900" ignore="900">
+    <if_matched_sid>102015</if_matched_sid>
+    <same_field>cloudflare.http.host</same_field>
+    <different_field>cloudflare.http.client_ip</different_field>
+    <field name="b89.source" type="pcre2">^graphql-</field>
+    <description>B89 Cloudflare: relleno de credenciales distribuido (OWASP A07) contra $(cloudflare.http.host): 8+ rechazos muestreados desde IPs distintas en 15 min (≈ 90+ reales).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1110.004</id></mitre>
+    <group>b89_attack,b89_credential_attack,</group>
+  </rule>
+</group>

@@ -1,0 +1,68 @@
+# B89 SOC · metadatos de detección (estándar: docs/detection-engineering/01-ciclo-de-vida.md#metadatos)
+# Reglas nuevas del programa en rule.xml de esta carpeta.
+id: B89-DET-CF-003
+title: Ataques web (OWASP Top 10), escaneos y fuerza bruta en el log HTTP de Cloudflare
+source: cloudflare
+use_case: web-attacks-owasp
+status: testing
+version: 1.0.0
+owner: soc-detection-engineering
+reviewers:
+- b89.soc.lead
+created: '2026-11-22'
+updated: '2026-11-22'
+hypothesis: Las reglas del WAF solo ven lo que Cloudflare clasificó. Una carga de ataque que Cloudflare dejó pasar
+  (modo registro, sin WAF gestionado en el plan, regla ausente) solo aparece en el log HTTP; y los escaneos y la
+  fuerza bruta solo se ven agregando peticiones por IP.
+data_sources:
+- Cloudflare http_requests por Logpush (cada petición; requiere Logs Write en el token)
+- Cloudflare httpRequestsAdaptive por GraphQL (todos los planes; muestreado ~1 de cada 11)
+rules:
+  file: detections/cloudflare/web-attacks-owasp/rule.xml
+  ids: [102000, 102001, 102002, 102003, 102004, 102005, 102006, 102007, 102008, 102009, 102010, 102011, 102012,
+        102013, 102014, 102015, 102016, 102017, 102018, 102019]
+  installed_as: etc/rules/b89_soc_cloudflare_web_attacks_owasp.xml
+owasp:
+  A01 control de acceso: 102003 (recorrido de rutas, inclusión de archivos)
+  A03 inyección: 102001 (SQL), 102002 (XSS), 102004 (comandos), 102006 (plantillas)
+  A05 configuración: 102007 (herramientas de escaneo), 101516/101517/102013 (rutas sensibles)
+  A06 componentes vulnerables: 102006 (Log4Shell)
+  A07 autenticación: 102015-102019 (fuerza bruta y relleno de credenciales)
+  A10 SSRF: 102005 (metadatos de nube, esquemas gopher/dict/ldap/file)
+  fuera de alcance del log: A02, A04, A08 y A09 (no dejan huella en la URL; requieren la aplicación)
+mitre:
+- technique: T1190
+  tactic: initial-access
+- technique: T1595.002
+  tactic: reconnaissance
+- technique: T1595.003
+  tactic: reconnaissance
+- technique: T1110.001
+  tactic: credential-access
+- technique: T1110.004
+  tactic: credential-access
+severity:
+  levels: 2 señal · 5 llegó a la app (2xx/3xx) · 7-8 escaneo, enumeración o campaña · 10 la app respondió 500 o
+    fuerza bruta de una IP · 12 relleno de credenciales distribuido
+  priority_hint: P2 solo con evidencia de impacto (500) o ataque a credenciales; el resto, cola sin correo
+  rationale: Internet escanea todo el tiempo. Lo accionable es que la aplicación reaccione (500) o que se ataquen
+    credenciales; un intento aislado y bloqueado no abre caso.
+false_positives:
+- 'Búsquedas o documentación con «../» o «select … from»: el patrón SQL exige un catálogo de sistema
+  (information_schema, pg_catalog…) y el recorrido de rutas a 2xx queda en 5 (fuera de la cola).'
+- 'Callbacks OAuth a localhost en staging y plantillas {{config}} sin renderizar: excluidos del patrón (fixtures FP).'
+- 'Pentest autorizado: IPs en b89-authorized-scanners bajan a 102008 (nivel 2) y no cuentan para campañas.'
+- 'Comercios con credenciales caducadas reintentando: 102018 exige 30 IPs distintas en 10 min.'
+tuning:
+- Datos muestreados (GraphQL) usan umbrales menores (2-8 registros) que Logpush (5-30 peticiones).
+- 502/503/52x no son explotación (origen caído, 101521); solo 500 eleva a 10.
+tests:
+  runner: logtest
+  fixtures: detections/cloudflare/web-attacks-owasp/fixtures.jsonl
+  expected: detections/cloudflare/web-attacks-owasp/expected.txt
+runbook: docs/detection-engineering/16-cloudflare-precision-owasp.md
+lists:
+- detections/lists/b89-authorized-scanners
+depends_on:
+- wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml (101515, 101516, 101518, 101520, 101530)
+- wazuh/provider-ingestion/cloudflare/logpush.py (cloudflare.http.request_target)

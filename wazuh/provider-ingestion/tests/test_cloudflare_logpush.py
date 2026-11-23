@@ -37,6 +37,19 @@ class LogpushTests(unittest.TestCase):
         self.assertEqual(self.ingest(), 0)
         self.assertEqual(len(self.output.read_text().splitlines()), 1)
 
+    def test_http_request_target_is_decoded_for_owasp_rules(self):
+        logpush = LP.normalize({"ClientRequestPath": "/p", "ClientRequestURI": "/p?id=%2527%2520OR%25201%253D1--%0A"},
+                               "http_requests", "z", "b", "now")
+        self.assertEqual(logpush["cloudflare"]["http"]["request_target"], "/p?id=' or 1=1-- ")
+        graphql = LP.normalize({"ClientRequestPath": "/s", "ClientRequestQuery": "?q=%3Cscript%3E"},
+                               "http_requests", "z", "b", "now")
+        self.assertEqual(graphql["cloudflare"]["http"]["query"], "?q=%3Cscript%3E")
+        self.assertEqual(graphql["cloudflare"]["http"]["request_target"], "/s?q=<script>")
+        long = LP.normalize({"ClientRequestURI": "/" + "a" * 9000}, "http_requests", "z", "b", "now")
+        self.assertEqual(len(long["cloudflare"]["http"]["request_target"]), LP.MAX_TARGET_CHARS)
+        firewall = LP.normalize({"ClientRequestPath": "/x"}, "firewall_events", "z", "b", "now")
+        self.assertNotIn("request_target", firewall["cloudflare"]["firewall"])
+
     def test_unknown_dataset_is_retained_and_scoped(self):
         self.source.write_text('{"future":"data"}\n')
         self.assertEqual(self.ingest("future_dataset"), 1)

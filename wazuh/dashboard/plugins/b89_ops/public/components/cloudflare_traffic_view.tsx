@@ -277,12 +277,19 @@ export function CloudflareTrafficView({
                 <>
                   <StatTiles aggs={data.aggregations} dataset={state.dataset} />
                   <EuiSpacer size="m" />
-                  <Histogram aggs={data.aggregations} />
-                  <EuiSpacer size="m" />
-                  <TopLists
-                    aggs={data.aggregations}
-                    onPick={(list, value) => go(applyTop(state, list, value))}
-                  />
+                  {/* Gráfico y rankings plegados: la lista de eventos queda a la vista sin desplazarse. */}
+                  <details className="b89Guide__details" data-test-subj="b89TrafficCharts">
+                    <summary>
+                      Ver gráfico por tiempo y lo más frecuente (IPs, rutas, países…)
+                    </summary>
+                    <EuiSpacer size="m" />
+                    <Histogram aggs={data.aggregations} />
+                    <EuiSpacer size="m" />
+                    <TopLists
+                      aggs={data.aggregations}
+                      onPick={(list, value) => go(applyTop(state, list, value))}
+                    />
+                  </details>
                   <EuiSpacer size="l" />
                 </>
               )}

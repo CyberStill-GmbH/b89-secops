@@ -15,6 +15,7 @@ import os
 import pathlib
 import re
 import sys
+import urllib.parse
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "common"))
 from b89_collector import ProviderError, commit_batch, iso, read_state, recover_pending, utc_now
@@ -35,7 +36,16 @@ HTTP_FIELDS = {
     "EdgeStartTimestamp": "datetime", "RayID": "ray", "CacheCacheStatus": "cache", "SecurityAction": "security_action",
     "SecuritySource": "security_source", "BotScore": "bot_score", "WAFAttackScore": "waf_attack_score",
     "EdgeResponseBytes": "bytes", "ClientSSLProtocol": "tls",
+    # Detección OWASP sobre el log HTTP (no solo sobre eventos del WAF): la cadena de consulta y las
+    # puntuaciones del clasificador de ataques llegan aunque Cloudflare no bloquee.
+    "ClientRequestQuery": "query", "WAFSQLiAttackScore": "waf_sqli_score", "WAFXSSAttackScore": "waf_xss_score",
+    "WAFRCEAttackScore": "waf_rce_score", "WAFRequestSignatureCategories": "waf_signature_categories",
+    "SecurityRuleID": "security_rule_id", "SecurityRuleDescription": "security_rule_description",
+    "VerifiedBotCategory": "verified_bot_category", "RequestSource": "request_source",
 }
+# Destino de la petición (ruta + consulta) decodificado, para que las reglas vean `' or 1=1`, `<script>` o
+# `${jndi:` aunque lleguen como %27, %3C o %24%7B. Se acota para no crear términos enormes en el índice.
+MAX_TARGET_CHARS = 2048
 DNS_FIELDS = {
     "Timestamp": "datetime", "QueryName": "query", "QueryType": "query_type", "ResponseCode": "response_code",
     "SourceIP": "client_ip", "ColoCode": "colo", "EDNSSubnet": "edns_subnet", "ResponseCached": "cached",
@@ -90,7 +100,29 @@ def normalize(record: dict, dataset: str, scope: str, batch: str, now: str) -> d
         event["cloudflare"][section] = {
             dest: str(record[source]) for source, dest in names.items() if record.get(source) is not None
         }
+        if section == "http":
+            target = request_target(event["cloudflare"][section])
+            if target:
+                event["cloudflare"][section]["request_target"] = target
     return event
+
+
+def request_target(http: dict) -> str:
+    """Ruta + consulta decodificadas (hasta dos veces, contra el doble %25), en minúsculas y acotadas."""
+    target = http.get("uri") or ""
+    if not target:
+        path, query = http.get("path") or "", http.get("query") or ""
+        target = path + (("" if query.startswith("?") else "?") + query if query else "")
+    if not target:
+        return ""
+    for _ in range(2):
+        decoded = urllib.parse.unquote_plus(target[: MAX_TARGET_CHARS * 3])
+        if decoded == target:
+            break
+        target = decoded
+    # Sin saltos de línea ni controles: una alerta Wazuh es una línea.
+    target = re.sub(r"[\x00-\x1f\x7f]+", " ", target)
+    return target[:MAX_TARGET_CHARS].lower()
 
 
 def ingest(path: pathlib.Path, output: pathlib.Path, state_path: pathlib.Path, dataset: str, scope: str) -> int:

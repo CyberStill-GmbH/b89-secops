@@ -6,6 +6,9 @@
     una zona crítica (detections/lists/b89-critical-zones); en otra zona el WAF ya la bloqueó → nivel 7.
   - Automatización aprobada (detections/lists/b89-service-accounts): cambios DNS de b89service@b89.io bajan de
     5 a 3 (siguen indexados). Los cambios de controles de seguridad o identidad NO se degradan.
+  - Salida corporativa conocida (detections/lists/b89-backoffice-trusted-egress): oficina, VPN corporativa o
+    automatización propia alojada en nube. Sus usos del backoffice desde un ASN de hosting bajan a nivel 3
+    (siguen indexados) y no cuentan para la sesión sostenida 101545. 2026-11-22.
   Rango B89 Cloudflare 101740–101749. Se instala como b89_soc_cloudflare_noise_tuning.xml.
 -->
 <group name="b89_provider,cloudflare,b89_tuning,">
@@ -46,5 +49,13 @@
     <description>B89 Cloudflare: cambio DNS ($(cloudflare.audit.action)) en $(cloudflare.audit.zone_name) por la automatización aprobada $(cloudflare.audit.actor_email).</description>
     <options>no_full_log</options>
     <group>b89_audit,b89_dns_change,b89_trusted_principal,</group>
+  </rule>
+
+  <rule id="101745" level="3">
+    <if_sid>101531, 101532, 101537, 101538</if_sid>
+    <list field="cloudflare.http.client_ip" lookup="address_match_key">etc/lists/b89-backoffice-trusted-egress</list>
+    <description>B89 Cloudflare: backoffice de pagos usado desde la salida corporativa conocida $(cloudflare.http.client_ip) ($(cloudflare.http.asn_name)): $(cloudflare.http.method) $(cloudflare.http.path).</description>
+    <options>no_full_log</options>
+    <group>b89_http,b89_backoffice,b89_trusted_principal,</group>
   </rule>
 </group>

@@ -20,6 +20,7 @@ import {
   CHANNEL_LABEL,
   CloudflareAnalysis,
   Finding,
+  findingNextStep,
   LIMA_LABEL,
   limaTime,
   minuteTimeline,
@@ -127,10 +128,8 @@ export function AnalysisContent({
 }) {
   return (
     <div className="b89Analysis">
-      <SamplingNote data={data} />
       {data.partial && (
         <>
-          <EuiSpacer size="s" />
           <EuiCallOut
             color="warning"
             iconType="alert"
@@ -157,13 +156,23 @@ export function AnalysisContent({
         onOpenRecords={onOpenRecords}
       />
       <EuiSpacer size="l" />
-      <SessionsSection data={data} basePath={basePath} onOpenRecords={onOpenRecords} />
-      <EuiSpacer size="l" />
-      <MoneySection data={data} onOpenRecords={onOpenRecords} />
-      <EuiSpacer size="l" />
-      <SensitiveSection data={data} onOpenRecords={onOpenRecords} />
-      <EuiSpacer size="l" />
-      <AnomaliesSection anomalies={data.anomalies} onOpenRecords={onOpenRecords} />
+      {/* El detalle (tablas, gráficos, ML) queda plegado: la pantalla abre con la respuesta, no con datos. */}
+      <details className="b89Guide__details b89Analysis__detail" data-test-subj="b89AnalysisDetail">
+        <summary>
+          Ver el detalle: sesiones del backoffice ({formatCount(data.sessions.length)}), dinero,
+          exportaciones y anomalías
+        </summary>
+        <EuiSpacer size="m" />
+        <SamplingNote data={data} />
+        <EuiSpacer size="l" />
+        <SessionsSection data={data} basePath={basePath} onOpenRecords={onOpenRecords} />
+        <EuiSpacer size="l" />
+        <MoneySection data={data} onOpenRecords={onOpenRecords} />
+        <EuiSpacer size="l" />
+        <SensitiveSection data={data} onOpenRecords={onOpenRecords} />
+        <EuiSpacer size="l" />
+        <AnomaliesSection anomalies={data.anomalies} onOpenRecords={onOpenRecords} />
+      </details>
     </div>
   );
 }
@@ -265,6 +274,12 @@ export function FindingsSection({
               <DataZone>
                 <p className="b89Finding__summary">{finding.summary}</p>
               </DataZone>
+              {findingNextStep(finding.id) && (
+                <p className="b89Finding__next">
+                  <strong>Qué hacer: </strong>
+                  {findingNextStep(finding.id)}
+                </p>
+              )}
               <dl className="b89Finding__evidence">
                 {finding.evidence
                   .filter((item) => item.value !== '' && item.value !== '0')

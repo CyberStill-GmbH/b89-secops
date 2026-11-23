@@ -478,3 +478,8 @@ $b89TrafficMobile: 767px;
 .b89Trend__column[data-off-hours='true'] {
   background: rgba($ouiColorWarning, 0.08);
 }
+
+.b89Finding__next {
+  margin: $ouiSizeXS 0 0;
+  font-size: 14px;
+}
