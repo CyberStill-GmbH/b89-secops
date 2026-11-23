@@ -285,6 +285,10 @@ unit b89-collector-cloudflare 'B89 Cloudflare security collector' "/usr/bin/pyth
 unit b89-collector-cloudflare-traffic 'B89 Cloudflare traffic collector (GraphQL)' "/usr/bin/python3 -I $PI/cloudflare/traffic.py --config $ETC/cloudflare-traffic.json" 2min
 unit b89-collector-cloudflare-index 'B89 Cloudflare traffic indexer' "/usr/bin/python3 -I $PI/cloudflare/traffic_index.py --config $ETC/cloudflare-index.json" 1min
 unit b89-collector-cloudflare-logpush 'B89 Cloudflare Logpush spool consumer' "/usr/bin/python3 -I $PI/cloudflare/logpush_spool.py --spool $ROOT/spool/cloudflare-logpush --output $OUT/cloudflare-logpush.jsonl --ledger $STATE/cloudflare-logpush-ledger.json --heartbeat $STATE/cloudflare-logpush.json" 5s 0s 5s
+# Lista blanca de la API de pagos: la API la sirve con un token propio (deploy-host.sh lo genera en
+# api.env y en $CS/allowlist-feed-token). Se llega al API por el edge en la red de Docker, como el
+# manager de Wazuh (extra_hosts), validando el certificado del nombre público.
+unit b89-collector-cloudflare-allowlist 'B89 Cloudflare payments allowlist sync' "/usr/bin/python3 -I $PI/cloudflare/sync_allowlist.py --url https://${SOC_HOSTNAME:-dev.security.b89.io} --connect ${B89_EDGE_IP:-172.30.89.11} --token-file $CS/allowlist-feed-token --output $STATE/cloudflare-allowlist.json" 2min 15s 60s
 unit b89-collector-sharepoint-audit 'B89 SharePoint audit collector' "/usr/bin/python3 -I $PI/sharepoint/sharepoint.py audit --config $ETC/sharepoint-audit.json" 5min
 unit b89-collector-sharepoint-posture 'B89 SharePoint posture collector' "/usr/bin/python3 -I $PI/sharepoint/sharepoint.py posture --config $ETC/sharepoint-posture.json" 60min
 INTERVAL="$(read_file alert-interval-min)"; [[ $INTERVAL =~ ^[0-9]{1,3}$ ]] || INTERVAL=5
@@ -327,6 +331,13 @@ done
 if [[ $CF == true ]]; then
   bash "${HERE}/cloudflare/prepare-logpush-receiver.sh"
   systemctl enable --now b89-collector-cloudflare-logpush.timer >/dev/null
+  if [[ -s $CS/allowlist-feed-token ]]; then
+    systemctl enable --now b89-collector-cloudflare-allowlist.timer >/dev/null
+    log 'Cloudflare: lista blanca de la API de pagos sincronizada cada 2 min (alertas 101546-101549)'
+  else
+    systemctl disable --now b89-collector-cloudflare-allowlist.timer >/dev/null 2>&1 || true
+    log 'Cloudflare: falta allowlist-feed-token (deploy-host.sh lo genera); sin lista blanca no hay alertas 101546-101549'
+  fi
   systemctl enable --now b89-collector-cloudflare-traffic.timer >/dev/null
   if bash "${HERE}/cloudflare/setup-traffic-index.sh"; then
     systemctl enable --now b89-collector-cloudflare-index.timer >/dev/null

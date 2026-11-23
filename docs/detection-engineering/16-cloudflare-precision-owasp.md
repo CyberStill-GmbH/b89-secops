@@ -105,16 +105,18 @@ desde otra IP es alerta crítica (sobre todo login, pagos, payins y payouts); un
 - **Identificadores:** texto que aparece en las peticiones de un cliente (p. ej. su código de comercio
   en la ruta). Permiten reconocerlo cuando llama desde una IP que no es suya (→ 101547) y eximir a los
   clientes sin IP (→ sin alerta).
-- **Cómo llega al colector:** la API expone `GET /api/cloudflare/allowlist/feed` con
-  `Authorization: Bearer $B89_ALLOWLIST_FEED_TOKEN` (≥ 32 caracteres, en el entorno de la API).
-  En el host de Wazuh, un timer cada 2 minutos ejecuta
-  `B89_API_URL=… B89_ALLOWLIST_FEED_TOKEN_FILE=/etc/b89/allowlist-feed.token python3 wazuh/provider-ingestion/cloudflare/sync_allowlist.py`,
-  que escribe `/var/ossec/etc/b89/cloudflare-allowlist.json` de forma atómica y conserva la última
-  versión buena si la API no responde. El colector lo relee cuando cambia.
+- **Cómo llega al colector (automático al desplegar):** `deploy-host.sh` genera una vez
+  `B89_ALLOWLIST_FEED_TOKEN` en `secrets/api.env` y la misma copia en
+  `secrets/collectors/allowlist-feed-token`. `install-b89-collectors.sh` instala el timer
+  `b89-collector-cloudflare-allowlist` (cada 2 min, solo con Cloudflare activo y el token presente), que
+  llama a `GET /api/cloudflare/allowlist/feed` por el edge de la red de Docker (`--connect 172.30.89.11`,
+  certificado del nombre público, como el manager de Wazuh) y escribe
+  `/opt/b89/collectors/state/cloudflare-allowlist.json` de forma atómica; si la API no responde, se conserva
+  la última versión buena. El consumidor de Logpush lo relee cuando cambia.
 - **Veredicto del colector** (`cloudflare.http.allowlist_verdict`): `allowed`, `client_without_ip`,
   `outside` o `unknown`, más `allowlist_client`, `allowlist_sensitive` y `allowlist_revision`. Sin
   archivo no hay veredicto ni alerta. `B89_CF_ALLOWLIST_HOSTS` cambia los hosts vigilados.
 - **Reglas:** 101546 (base, 0), 101547 (cliente con IP desde otra IP, 13), 101548 (login o pago desde
   IP fuera de la lista, 12), 101549 (resto de la API desde IP fuera de la lista, 5). Caso de uso
-  `detections/cloudflare/payments-api-allowlist`. Pruebas: `tests/test_cloudflare_allowlist.py`.
-  Pendiente: `wazuh-logtest` en contenedor.
+  `detections/cloudflare/payments-api-allowlist`. Pruebas: `tests/test_cloudflare_allowlist.py` y 5 casos en la suite
+  `collector-cases.jsonl`. Pendiente: correr `detections/tools/test-in-container.sh` (`wazuh-logtest`).

@@ -147,6 +147,25 @@ if [[ ! -s $SECRETS/api.env ]]; then
   } >"$SECRETS/api.env"
   chmod 600 "$SECRETS/api.env"
 fi
+# Lista blanca de la API de pagos: un token propio para que el timer de colectores lea
+# /api/cloudflare/allowlist/feed. Se genera una vez y se conserva; la misma copia va al directorio
+# de credenciales de los colectores. Python escribe los archivos: el token nunca va en argumentos.
+install -d -o root -g root -m 0700 "$SECRETS/collectors"
+python3 - "$SECRETS/api.env" "$SECRETS/collectors/allowlist-feed-token" <<'PY'
+import os, secrets, sys
+from pathlib import Path
+env, token_file = map(Path, sys.argv[1:])
+lines = env.read_text(encoding="utf-8").splitlines()
+found = [line.split("=", 1)[1].strip().strip("'\"") for line in lines if line.startswith("B89_ALLOWLIST_FEED_TOKEN=")]
+value = found[-1] if found and len(found[-1]) >= 32 else secrets.token_urlsafe(48)
+lines = [line for line in lines if not line.startswith("B89_ALLOWLIST_FEED_TOKEN=")] + [f"B89_ALLOWLIST_FEED_TOKEN={value}"]
+NL = chr(10)
+for path, text in ((env, NL.join(lines) + NL), (token_file, value + NL)):
+    tmp = path.with_name("." + path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, path)
+PY
 # Entra uses the app registration secret provisioned from the local .env into services.env.
 # Never let a generated placeholder secret make production sign-in appear configured.
 entra_client_secret="$(grep -s '^B89_ENTRA_CLIENT_SECRET=.' "$SECRETS/services.env" | cut -d= -f2- || true)"

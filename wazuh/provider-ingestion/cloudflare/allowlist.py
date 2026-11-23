@@ -23,7 +23,8 @@ import os
 import pathlib
 import re
 
-DEFAULT_FILE = "/var/ossec/etc/b89/cloudflare-allowlist.json"
+# Estado de los colectores en el host (install-b89-collectors.sh): lo escribe el timer de sincronización.
+DEFAULT_FILE = "/opt/b89/collectors/state/cloudflare-allowlist.json"
 DEFAULT_HOSTS = ("apipayments.b89.io",)
 SENSITIVE = re.compile(
     r"(login|logout|signin|sign-in|auth|oauth|token|session|password|otp|2fa|mfa"
