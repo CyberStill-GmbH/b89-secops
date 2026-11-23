@@ -47,13 +47,13 @@
   ],
   "detection_interval": {
     "period": {
-      "interval": 10,
+      "interval": 5,
       "unit": "Minutes"
     }
   },
   "window_delay": {
     "period": {
-      "interval": 15,
+      "interval": 5,
       "unit": "Minutes"
     }
   },

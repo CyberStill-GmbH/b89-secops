@@ -1,0 +1,25 @@
+{
+  "name": "b89-provider-aws-activity",
+  "description": "B89: aumento anómalo de eventos AWS de nivel alto; solo actividad del collector AWS",
+  "time_field": "timestamp",
+  "indices": ["wazuh-alerts-*"],
+  "filter_query": {
+    "bool": {
+      "filter": [
+        { "term": { "data.b89.vendor": "aws" } },
+        { "range": { "rule.level": { "gte": 7 } } }
+      ]
+    }
+  },
+  "feature_attributes": [
+    {
+      "feature_name": "high_severity_events",
+      "feature_enabled": true,
+      "aggregation_query": {
+        "high_severity_events": { "value_count": { "field": "rule.id" } }
+      }
+    }
+  ],
+  "detection_interval": { "period": { "interval": 5, "unit": "Minutes" } },
+  "window_delay": { "period": { "interval": 5, "unit": "Minutes" } }
+}

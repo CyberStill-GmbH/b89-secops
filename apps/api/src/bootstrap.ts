@@ -41,6 +41,7 @@ import { ApiLifecycle, type ApiEvent } from './lifecycle.js';
 import { resolveApiSecretEnvironment } from './runtime/secret-environment.js';
 import { abuseIpdbFromEnvironment } from './runtime/abuseipdb.js';
 import { createCloudflareTrafficSearch } from './runtime/cloudflare-traffic.js';
+import { createOpenSearchAnomalyIngestion } from './runtime/opensearch-anomaly-ingestion.js';
 import { DemoAdminLogin } from './access/demo-admin-credentials.js';
 import { entityRefFactory } from './runtime/entity-refs.js';
 import { deriveCsrfKey } from './http/csrf.js';
@@ -648,6 +649,39 @@ export async function buildApi(
   });
   // Inicialización de canales: una fila por canal que aún no la tenga (`system:bootstrap`,
   // auditada). Idempotente; una fila existente no se toca (la base manda sobre el entorno).
+  const anomalyAccessToken =
+    ingestionConfig.source !== 'wazuh'
+      ? undefined
+      : ingestionConfig.gatewayAuth === 'static-token'
+        ? new StaticGatewayTokenSource(ingestionConfig.gatewayAccessToken).token
+        : clientSecret
+          ? new EntraClientCredentialsTokenSource({
+              tenantId: access.tenantId,
+              clientId: access.clientId,
+              clientSecret,
+              scope: ingestionConfig.gatewayScope,
+            }).token
+          : undefined;
+  const anomalyIngestion =
+    eventProvider && anomalyAccessToken && ingestionConfig.source === 'wazuh'
+      ? createOpenSearchAnomalyIngestion({
+          gatewayBaseUrl: ingestionConfig.gatewayBaseUrl,
+          accessToken: anomalyAccessToken,
+          tenantId: access.tenantId,
+          sourceId: ingestionConfig.sourceId,
+          now: () => runtime.now(),
+          promote: (event) => runtime.promoteEvent(event),
+          onError: onIngestionError ?? ((error) => {
+            const code = (error as { code?: unknown } | undefined)?.code;
+            console.error(JSON.stringify({
+              event: 'b89_opensearch_anomaly_ingestion_error',
+              code: typeof code === 'string' && /^ANOMALY_[A-Z0-9_]+$/u.test(code)
+                ? code
+                : 'ANOMALY_INGESTION_FAILED',
+            }));
+          }),
+        })
+      : undefined;
   const channelInitialization = await channels.initialize({ audit: runtime.audit });
   // Bunny (asistente de IA): solo existe con B89_BUNNY_ENABLED=true; sin él, el endpoint no responde.
   // Su historial va a PostgreSQL cuando el SOC es durable (pool propio y mínimo); si no, a memoria.
@@ -801,6 +835,7 @@ export async function buildApi(
       // Primero se detiene el despacho: espera la pasada en curso para no dejar leases
       // tomados por un proceso que ya no existe.
       await ingestion?.stop();
+      await anomalyIngestion?.stop();
       await activation?.stop();
       await directorySync?.stop();
       // El analista se drena antes que el despacho: sus acciones pueden encolar avisos.
@@ -866,6 +901,7 @@ export async function buildApi(
           runtime.startDispatcher();
           analyst.host?.start();
           ingestion?.start();
+          anomalyIngestion?.start();
           directorySync?.start();
           activation?.start();
         }

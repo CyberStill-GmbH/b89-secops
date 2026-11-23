@@ -31,7 +31,7 @@
   ],
   "detection_interval": {
     "period": {
-      "interval": 10,
+      "interval": 5,
       "unit": "Minutes"
     }
   },
