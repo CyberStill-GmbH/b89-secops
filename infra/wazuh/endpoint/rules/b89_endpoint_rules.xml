@@ -17,19 +17,65 @@
     </mitre>
     <group>b89_initial_access,b89_phishing_triage,</group>
   </rule>
+  <!--
+    DLP de endpoints (Ferrispector). El agente escribe JSONL con integration=b89_ferrispector; nunca
+    rutas ni contenido. Corre en Windows, macOS y Linux: prefijo «B89 DLP:», no «B89 Windows:».
+    Hallazgos: 101110 (dato sensible, nivel 5), 101111 (credencial, nivel 8), 101112 (copia exacta de
+    un documento protegido, nivel 10). Salud del agente: 101113-101116.
+  -->
   <rule id="101110" level="5">
     <decoded_as>json</decoded_as>
     <field name="integration">^b89_ferrispector$</field>
     <field name="event_type">^match$</field>
-    <description>B89 Windows: una regla de detección DLP encontró contenido sensible en un archivo (regla YARA: $(yara_rule_id), huella SHA-256: $(file_sha256)).</description>
+    <description>B89 DLP: Ferrispector encontró datos sensibles en un archivo del equipo $(endpoint) (regla $(yara_rule_id)).</description>
     <options>no_full_log</options>
     <group>b89_dlp,b89_endpoint,</group>
   </rule>
   <rule id="101111" level="8">
     <if_sid>101110</if_sid>
-    <field name="yara_rule_id" type="pcre2">^(B89_CRED_PRIVATE_KEY_PEM|B89_CRED_GITHUB_TOKEN|B89_CRED_SLACK_TOKEN|B89_CRED_GOOGLE_API_KEY|B89_CRED_AZURE_STORAGE_KEY|B89_CRED_OPENAI_API_KEY|B89_CRED_AWS_ACCESS_KEY_PAIR|B89_SECRET_DATABASE_CONNECTION|B89_DLP_EXACT_FILE_FINGERPRINT)$</field>
-    <description>B89 Windows: se encontro una credencial reconocible o un archivo protegido por fingerprint (regla $(yara_rule_id), SHA-256 $(file_sha256)).</description>
+    <field name="yara_rule_id" type="pcre2">^(B89_CRED_PRIVATE_KEY_PEM|B89_CRED_GITHUB_TOKEN|B89_CRED_SLACK_TOKEN|B89_CRED_GOOGLE_API_KEY|B89_CRED_AZURE_STORAGE_KEY|B89_CRED_OPENAI_API_KEY|B89_CRED_AWS_ACCESS_KEY_PAIR|B89_SECRET_DATABASE_CONNECTION)$</field>
+    <description>B89 DLP: Ferrispector encontró una credencial guardada en un archivo del equipo $(endpoint) (regla $(yara_rule_id)).</description>
+    <options>no_full_log</options>
+    <mitre>
+      <id>T1552.001</id>
+    </mitre>
+    <group>b89_dlp,b89_endpoint,</group>
+  </rule>
+  <rule id="101112" level="10">
+    <if_sid>101110</if_sid>
+    <field name="yara_rule_id">^B89_DLP_EXACT_FILE_FINGERPRINT$</field>
+    <description>B89 DLP: apareció una copia exacta de un documento protegido en el equipo $(endpoint).</description>
     <options>no_full_log</options>
     <group>b89_dlp,b89_endpoint,</group>
+  </rule>
+  <rule id="101113" level="3">
+    <decoded_as>json</decoded_as>
+    <field name="integration">^b89_ferrispector$</field>
+    <field name="event_type">^policy_sync_error$</field>
+    <description>B89 DLP: Ferrispector no pudo consultar la política en el servidor.</description>
+    <options>no_full_log</options>
+    <group>b89_dlp,b89_dlp_health,</group>
+  </rule>
+  <rule id="101114" level="7" frequency="10" timeframe="600">
+    <if_matched_sid>101113</if_matched_sid>
+    <same_field>agent.id</same_field>
+    <description>B89 DLP: Ferrispector lleva más de 5 minutos sin recibir la política (credencial revocada o servidor inaccesible).</description>
+    <options>no_full_log</options>
+    <group>b89_dlp,b89_dlp_health,</group>
+  </rule>
+  <rule id="101115" level="3">
+    <decoded_as>json</decoded_as>
+    <field name="integration">^b89_ferrispector$</field>
+    <field name="event_type">^scan_error$</field>
+    <description>B89 DLP: Ferrispector no pudo revisar un archivo ($(error_code)).</description>
+    <options>no_full_log</options>
+    <group>b89_dlp,b89_dlp_health,</group>
+  </rule>
+  <rule id="101116" level="6" frequency="20" timeframe="900">
+    <if_matched_sid>101115</if_matched_sid>
+    <same_field>agent.id</same_field>
+    <description>B89 DLP: Ferrispector falla al revisar muchos archivos del mismo equipo; la protección puede estar incompleta.</description>
+    <options>no_full_log</options>
+    <group>b89_dlp,b89_dlp_health,</group>
   </rule>
 </group>

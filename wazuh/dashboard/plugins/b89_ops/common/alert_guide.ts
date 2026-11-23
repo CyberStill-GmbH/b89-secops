@@ -199,7 +199,80 @@ const DNS_RECON: AlertGuide = {
   whatToDo: ['No requiere acción. Revisa que la transferencia de zona esté deshabilitada.'],
 };
 
+// DLP de endpoints (Ferrispector): reglas 101110-101116 (docs/detection-engineering/runbooks/dlp-endpoint.md).
+const DLP_SENSITIVE: AlertGuide = {
+  urgency: 'review',
+  headline: 'Hay datos personales o contraseñas escritas en un archivo de un equipo.',
+  whatHappened:
+    'Ferrispector revisó las carpetas aprobadas del equipo y encontró un dato sensible (por ejemplo, un DNI o una contraseña en texto). No mueve ni borra el archivo, y no envía su contenido.',
+  isItReal: [
+    'Pregunta a quien usa el equipo si reconoce el archivo (usa la huella SHA-256 del detalle técnico para ubicarlo).',
+    'Es normal si el área puede guardar ese dato y el archivo está en la carpeta autorizada.',
+  ],
+  whatToDo: [
+    'Si el archivo no debería estar ahí, muévelo a la ubicación aprobada o bórralo.',
+    'Si es una contraseña real, cámbiala en el sistema donde se usa.',
+    'Clasifica la alerta y anota qué se hizo con el archivo.',
+  ],
+};
+
+const DLP_CREDENTIAL: AlertGuide = {
+  urgency: 'act',
+  headline: 'Hay una credencial guardada en un archivo de un equipo.',
+  whatHappened:
+    'Ferrispector encontró una clave o token con formato reconocible (por ejemplo, de GitHub, AWS o una clave privada) en una carpeta aprobada del equipo. Cualquiera con acceso al archivo podría usarla.',
+  isItReal: [
+    'Confirma con quien usa el equipo si es una credencial real o un ejemplo de pruebas.',
+    'Revisa en el servicio de origen si la credencial está vigente y si se usó hace poco.',
+  ],
+  whatToDo: [
+    'Si es real, revócala o rótala ya en el servicio de origen.',
+    'Borra el archivo o quita la credencial y guárdala en el gestor de secretos aprobado.',
+    'Clasifica la alerta con lo que encontraste en el uso reciente de la credencial.',
+  ],
+};
+
+const DLP_FINGERPRINT: AlertGuide = {
+  urgency: 'act',
+  headline: 'Apareció una copia exacta de un documento protegido en un equipo.',
+  whatHappened:
+    'El archivo tiene la misma huella SHA-256 que un documento registrado como protegido en DLP. Es una copia idéntica, no un documento parecido.',
+  isItReal: [
+    'Confirma si ese equipo y esa persona deberían tener el documento.',
+    'Si es la copia de trabajo autorizada, es normal: considera excluir la carpeta.',
+  ],
+  whatToDo: [
+    'Si no debería estar ahí, pide que se elimine y averigua cómo llegó (correo, USB, descarga).',
+    'Si salió del equipo o se compartió, abre un incidente.',
+    'Clasifica la alerta con la conclusión.',
+  ],
+};
+
+const DLP_AGENT_HEALTH: AlertGuide = {
+  urgency: 'review',
+  headline: 'El agente DLP de un equipo no está funcionando bien.',
+  whatHappened:
+    'Ferrispector no puede recibir la política del servidor o no puede revisar archivos. Mientras dure, ese equipo puede no estar protegido por completo.',
+  isItReal: [
+    'Mira en «DLP de endpoints» si el equipo figura sin conexión o revocado.',
+    'Si se revocó a propósito, es lo esperado: falta desinstalar Ferrispector en ese equipo.',
+  ],
+  whatToDo: [
+    'Comprueba que el equipo tenga red y que la consola responda.',
+    'Si sigue fallando, reinstala Ferrispector con una clave nueva desde «Conectar un equipo».',
+    'Clasifica la alerta como benigna con la causa cuando se recupere.',
+  ],
+};
+
 const RULE_GUIDES: Readonly<Record<string, AlertGuide>> = {
+  // DLP de endpoints
+  '101110': DLP_SENSITIVE,
+  '101111': DLP_CREDENTIAL,
+  '101112': DLP_FINGERPRINT,
+  '101113': { ...DLP_AGENT_HEALTH, urgency: 'info' },
+  '101114': DLP_AGENT_HEALTH,
+  '101115': { ...DLP_AGENT_HEALTH, urgency: 'info' },
+  '101116': DLP_AGENT_HEALTH,
   // Backoffice de pagos
   '101531': STOLEN_CREDENTIAL,
   '101545': {

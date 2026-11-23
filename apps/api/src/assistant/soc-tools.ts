@@ -477,6 +477,24 @@ export function buildSocTools(
       build: () => '/api/operations/health',
     },
     {
+      name: 'dlp_endpoints',
+      label: 'Revisando los equipos protegidos por DLP',
+      description:
+        'Equipos con Ferrispector (DLP de endpoints): nombre, estado (`current` protegido y al día, `updating` aplicando la política, `offline` sin contacto en 2 min, `re-enrollment-required` hay que reinstalar, `revoked`), último contacto y revisión de política aplicada frente a `policyRevision`. Úsala para «¿qué equipos están protegidos?» o «¿cuál necesita atención?». Los hallazgos de archivos están en el SIEM: búscalos con search_events y el grupo de reglas b89_dlp (reglas 101110-101112; salud del agente 101113-101116).',
+      anyOf: ['dlp.read'],
+      properties: {},
+      build: () => '/api/dlp/endpoints',
+    },
+    {
+      name: 'dlp_policy',
+      label: 'Revisando la política DLP',
+      description:
+        'Política DLP vigente: revisión, reglas activas (IDs B89_CRED_*, B89_SECRET_*, B89_PII_*) y cantidad de huellas SHA-256 de documentos protegidos. La huella exacta de documento (B89_DLP_EXACT_FILE_FINGERPRINT) siempre está activa. No incluye el contenido de ningún archivo.',
+      anyOf: ['dlp.read'],
+      properties: {},
+      build: () => '/api/dlp/policy',
+    },
+    {
       name: 'list_notifications',
       label: 'Revisando las notificaciones',
       description: 'Avisos enviados y su acuse (pendientes, entregados, fallidos).',

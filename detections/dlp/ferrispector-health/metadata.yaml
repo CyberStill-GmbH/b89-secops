@@ -1,0 +1,44 @@
+# B89 SOC · metadatos de detección (estándar: docs/detection-engineering/01-ciclo-de-vida.md#metadatos)
+# Referencia: las reglas viven en su ruta canónica y no se mueven.
+id: B89-DET-DLP-002
+title: DLP de endpoints · salud del agente Ferrispector
+source: dlp
+use_case: dlp-agent-health
+status: experimental
+version: 1.0.0
+owner: soc-detection-engineering
+reviewers:
+- b89.soc.lead
+created: '2026-11-23'
+updated: '2026-11-23'
+hypothesis: >-
+  Si Ferrispector no recibe la política o no puede leer archivos, el equipo deja de estar protegido
+  sin que nadie lo note.
+data_sources:
+- Ferrispector (eventos policy_sync_error y scan_error) vía agente Wazuh
+rules:
+  file: infra/wazuh/endpoint/rules/b89_endpoint_rules.xml
+  ids:
+  - 101113
+  - 101114
+  - 101115
+  - 101116
+mitre: []
+severity:
+  levels: '3, 6, 7'
+  priority_hint: P4
+  rationale: Es salud de la plataforma, no un ataque; solo la falla sostenida merece revisión.
+false_positives:
+- Corte breve de red o reinicio del servidor (se recupera solo en minutos).
+- Archivos bloqueados por otro programa mientras se escriben.
+escalate_when:
+- La sincronización falla después de revocar el equipo a propósito (es lo esperado: desinstálalo).
+- La falla sigue más de una hora o afecta a varios equipos a la vez.
+tuning: []
+tests:
+  runner: validator
+  script: infra/wazuh/endpoint/tests/validate-dlp-fixtures.py
+  fixtures: infra/wazuh/endpoint/tests/dlp-cases.jsonl
+  expected: infra/wazuh/endpoint/tests/dlp-expected-rules.txt
+runbook: docs/detection-engineering/runbooks/dlp-endpoint.md
+notes: 'Las reglas de frecuencia (101114, 101116) se validan con wazuh-logtest en contenedor.'

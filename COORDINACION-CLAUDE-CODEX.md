@@ -591,3 +591,24 @@ SIEM (nunca Indexer ni `wazuh-alerts-*`) · equipo · Analista IA · Bunny · t�
   en `/alerts`, `attention.why` en palabras desde la API, nombres en solicitudes de rol, retorno tras
   `/b89/logout`. IDs de regla 1018xx repetidos entre fuentes (afecta a `notification-enricher`).
 - Revisión pedida a Codex: copy y estilos de todo lo anterior, y pruebas visuales en el dashboard.
+
+### Claude · 2026-11-23 · DLP integrado al SOC: hallazgos, salud del agente, resumen, Bunny y marca Ferrispector
+
+Lo pidió el dueño. Local, sin commit al escribir esta nota.
+
+- **Reglas** (`infra/wazuh/endpoint/rules/b89_endpoint_rules.xml`): prefijo «B89 DLP:» (antes «B89 Windows:»,
+  aunque Ferrispector corre en macOS y Linux), descripciones con el equipo; 101112 nueva para la copia
+  exacta de un documento protegido (nivel 10); salud del agente 101113/101115 (nivel 3) y frecuencias
+  101114 (sin política > 5 min, 7) y 101116 (muchos archivos sin revisar, 6). Fuente `dlp` y rango
+  101110–101139 en `catalog.yaml`; casos de uso `detections/dlp/ferrispector-{findings,health}`; runbook
+  `docs/detection-engineering/runbooks/dlp-endpoint.md`; validador `validate-dlp-fixtures.py` (7/7).
+  Las frecuencias requieren `wazuh-logtest` en contenedor (no corrido).
+- **Consola:** pantalla DLP con el cangrejo de Ferrispector (SVG original, guiño a Ferris de Rust, sin
+  copiar su dibujo) y sección «Qué encontró» (24 h/7 d/30 d: por tipo, por equipo, últimos, fallas del
+  agente) desde la ruta nueva del plugin `GET /api/b89_ops/dlp/findings` (`asCurrentUser`, sin permiso →
+  aviso). «Resumen del SOC»: línea DLP (equipos protegidos, hallazgos 24 h, fallas) para `dlp.read`. Guías
+  en lenguaje llano para 101110–101116 y fuente «Ferrispector (DLP de endpoints)».
+- **Bunny:** herramientas de solo lectura `dlp_endpoints` y `dlp_policy` (`dlp.read`); conocimiento
+  regenerado (`soc-knowledge.generated.ts`, incluye también los casos de Cloudflare ya integrados).
+- Validación: plugin 587/588 (falla previa), typecheck OK, suite raíz 1534/1536 (`provider-coupling` falla
+  desde e6d0a3c, OpenSearch en `promotion.ts`), lint 0 errores. **No verificado en un OSD real.**

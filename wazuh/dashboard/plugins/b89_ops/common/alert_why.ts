@@ -66,9 +66,14 @@ export function cleanAlertTitle(title: string): string {
   return capitalize(clean) || 'Alerta del SIEM sin descripción';
 }
 
+/** Prefijos «B89 X:» cuyo nombre visible es otro. */
+const SOURCE_NAME: Readonly<Record<string, string>> = {
+  DLP: 'Ferrispector (DLP de endpoints)',
+};
+
 function sourceOf(title: string): string | null {
   const prefix = SOURCE_PREFIX.exec(title)?.[1]?.trim();
-  if (prefix) return prefix;
+  if (prefix) return SOURCE_NAME[prefix] ?? prefix;
   const vendor = vendorOfTitle(title);
   return vendor === 'wazuh' ? null : VENDORS[vendor].name;
 }

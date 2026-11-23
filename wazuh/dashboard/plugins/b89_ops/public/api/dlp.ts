@@ -3,6 +3,8 @@
  */
 
 import type { B89ApiClient } from './client';
+import { DLP_FINDINGS_ROUTE, emptyDlpFindings } from '../../common/dlp_findings';
+import type { DlpFindings, DlpWindow } from '../../common/dlp_findings';
 
 export interface DlpPolicy {
   readonly revision: number;
@@ -85,4 +87,32 @@ export async function cancelDlpEnrollmentToken(api: B89ApiClient, id: string): P
 
 export async function revokeDlpEndpoint(api: B89ApiClient, id: string): Promise<void> {
   await api.post(`/dlp/endpoints/${encodeURIComponent(id)}/revoke`, {});
+}
+
+/**
+ * Hallazgos de Ferrispector en el SIEM (ruta del servidor del plugin, identidad de quien mira).
+ * Nunca lanza: un fallo de red se devuelve como `readable: 'error'`.
+ */
+export async function getDlpFindings(
+  basePath: string,
+  window: DlpWindow,
+  fetchImpl: typeof fetch = (...args) => window_fetch(...args),
+): Promise<DlpFindings> {
+  try {
+    const response = await fetchImpl(`${basePath}${DLP_FINDINGS_ROUTE}?window=${encodeURIComponent(window)}`, {
+      credentials: 'same-origin',
+      headers: { accept: 'application/json' },
+      cache: 'no-store',
+    });
+    if (!response.ok || !(response.headers.get('content-type') ?? '').includes('json')) {
+      return emptyDlpFindings(window, 'error');
+    }
+    return (await response.json()) as DlpFindings;
+  } catch {
+    return emptyDlpFindings(window, 'error');
+  }
+}
+
+function window_fetch(...args: Parameters<typeof fetch>): ReturnType<typeof fetch> {
+  return globalThis.fetch(...args);
 }

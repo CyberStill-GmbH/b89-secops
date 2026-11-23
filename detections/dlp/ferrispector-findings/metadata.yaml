@@ -1,0 +1,49 @@
+# B89 SOC · metadatos de detección (estándar: docs/detection-engineering/01-ciclo-de-vida.md#metadatos)
+# Referencia: las reglas viven en su ruta canónica y no se mueven.
+id: B89-DET-DLP-001
+title: DLP de endpoints · credenciales, datos personales y documentos protegidos en archivos
+source: dlp
+use_case: dlp-endpoint-findings
+status: experimental
+version: 1.0.0
+owner: soc-detection-engineering
+reviewers:
+- b89.soc.lead
+created: '2026-11-23'
+updated: '2026-11-23'
+hypothesis: >-
+  Una credencial, un dato personal o una copia de un documento protegido guardados en una carpeta
+  aprobada pueden filtrarse o reutilizarse si nadie los mueve, rota o elimina.
+data_sources:
+- Ferrispector (YARA-X) vía agente Wazuh, JSONL sin rutas ni contenido
+rules:
+  file: infra/wazuh/endpoint/rules/b89_endpoint_rules.xml
+  ids:
+  - 101110
+  - 101111
+  - 101112
+mitre:
+- technique: T1552.001
+  tactic: credential-access
+severity:
+  levels: '5, 8, 10'
+  priority_hint: P3
+  rationale: >-
+    Un hallazgo DLP no prueba una filtración: muestra que el dato está expuesto en el equipo. La copia
+    exacta de un documento protegido (huella SHA-256) es la señal más fuerte.
+false_positives:
+- Archivos de ejemplo o de pruebas con claves falsas (README, fixtures, documentación).
+- Copias de trabajo legítimas de un documento protegido en una carpeta autorizada.
+- Números de DNI o RUC en documentos que el área tiene permitido guardar.
+escalate_when:
+- La credencial es real y vigente (rótala y revisa su uso reciente).
+- El documento protegido aparece en un equipo o carpeta que no debería tenerlo.
+- El mismo equipo acumula hallazgos nuevos después de limpiarlo.
+tuning: []
+tests:
+  runner: validator
+  script: infra/wazuh/endpoint/tests/validate-dlp-fixtures.py
+  fixtures: infra/wazuh/endpoint/tests/dlp-cases.jsonl
+  expected: infra/wazuh/endpoint/tests/dlp-expected-rules.txt
+runbook: docs/detection-engineering/runbooks/dlp-endpoint.md
+notes: 'Ferrispector detecta; no bloquea ni pone en cuarentena.'

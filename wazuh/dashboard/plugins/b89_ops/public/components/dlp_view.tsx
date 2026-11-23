@@ -60,6 +60,10 @@ import {
   wizardReducer,
 } from './dlp_model';
 import { ErrorCallout, Mono, Timestamp } from './primitives';
+import { FerrispectorMark } from './ferrispector_mark';
+import { getDlpFindings } from '../api/dlp';
+import type { DlpFindings, DlpWindow } from '../../common/dlp_findings';
+import { detectorLabel } from './dlp_model';
 
 // La lista se refresca cada 5 s (decisión del dueño, 9e3b05a): un equipo recién instalado aparece solo.
 const ENDPOINT_POLL_MS = 5_000;
@@ -600,6 +604,182 @@ export function RolloutNotice({
   );
 }
 
+const WINDOW_LABEL: Record<DlpWindow, string> = { '24h': '24 h', '7d': '7 días', '30d': '30 días' };
+
+/** Enlace a Discover con una consulta KQL y el periodo elegido. */
+function discoverHref(basePath: string, range: DlpWindow, query: string): string {
+  const kql = query.replace(/'/gu, "!'");
+  return `${basePath}/app/data-explorer/discover#?_g=(time:(from:now-${range},to:now))&_q=(query:(language:kuery,query:'${encodeURIComponent(kql)}'))`;
+}
+
+/** Qué encontró Ferrispector en el SIEM y qué equipos tienen el agente con fallas. */
+export function FindingsPanel({
+  findings,
+  range,
+  onRange,
+  basePath,
+}: {
+  findings: DlpFindings | null;
+  range: DlpWindow;
+  onRange: (range: DlpWindow) => void;
+  basePath: string;
+}) {
+  return (
+    <section className="b89Panel" aria-labelledby="b89-dlp-findings">
+      <div className="b89Panel__header">
+        <h2 id="b89-dlp-findings">Qué encontró</h2>
+        <span className="b89Dlp__windows" role="group" aria-label="Periodo">
+          {(Object.keys(WINDOW_LABEL) as DlpWindow[]).map((value) => (
+            <EuiButtonEmpty
+              key={value}
+              size="xs"
+              aria-pressed={value === range}
+              isSelected={value === range}
+              onClick={() => onRange(value)}
+            >
+              {WINDOW_LABEL[value]}
+            </EuiButtonEmpty>
+          ))}
+        </span>
+      </div>
+      {findings === null ? (
+        <EuiLoadingContent lines={2} />
+      ) : findings.readable === 'forbidden' ? (
+        <p className="b89Dlp__hint">
+          Tu rol no tiene permiso para ver los eventos del SIEM, así que no se pueden mostrar los hallazgos.
+        </p>
+      ) : findings.readable === 'error' ? (
+        <p className="b89Dlp__hint">No se pudieron leer los hallazgos del SIEM. Vuelve a intentarlo en unos minutos.</p>
+      ) : (
+        <>
+          <p className="b89Dlp__findingsHeadline">
+            {findings.total === 0
+              ? `Sin hallazgos en ${WINDOW_LABEL[range]}.`
+              : `${findings.total} ${findings.total === 1 ? 'hallazgo' : 'hallazgos'} en ${WINDOW_LABEL[range]}`}
+            {findings.byHost.length > 0
+              ? ` · en ${findings.byHost.length} ${findings.byHost.length === 1 ? 'equipo' : 'equipos'}`
+              : ''}
+          </p>
+          {findings.agentIssues.length > 0 && (
+            <EuiCallOut
+              size="s"
+              color="warning"
+              title={`${findings.agentIssues.length} ${findings.agentIssues.length === 1 ? 'equipo tiene' : 'equipos tienen'} fallas del agente`}
+            >
+              <ul className="b89Dlp__issues">
+                {findings.agentIssues.map((issue) => (
+                  <li key={`${issue.host}-${issue.ruleId}`}>
+                    <strong data-b89-no-translate="">{issue.host}</strong>:{' '}
+                    {issue.ruleId === '101114' ? 'no recibe la política' : 'no puede revisar archivos'}
+                    {issue.last ? (
+                      <>
+                        {' · '}
+                        <Timestamp iso={issue.last} focusable={false} />
+                      </>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </EuiCallOut>
+          )}
+          {findings.total > 0 && (
+            <div className="b89Dlp__findingsGrid">
+              <div>
+                <h3>Por tipo</h3>
+                <ul className="b89Dlp__bars">
+                  {findings.byDetector.map((item) => (
+                    <li key={item.detector}>
+                      <span>{detectorLabel(item.detector)}</span>
+                      <strong className="b89Tabular">{item.count}</strong>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <h3>Por equipo</h3>
+                <ul className="b89Dlp__bars">
+                  {findings.byHost.map((item) => (
+                    <li key={item.host}>
+                      <a
+                        href={discoverHref(basePath, range, `rule.groups:b89_dlp and agent.name:"${item.host}"`)}
+                        data-b89-no-translate=""
+                      >
+                        {item.host}
+                      </a>
+                      <strong className="b89Tabular">{item.count}</strong>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+          {findings.latest.length > 0 && (
+            <details className="b89Guide__details b89Dlp__more">
+              <summary>Últimos hallazgos ({findings.latest.length})</summary>
+              <div className="b89TableScroll">
+                <table className="b89Dlp__table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Cuándo</th>
+                      <th scope="col">Equipo</th>
+                      <th scope="col">Qué</th>
+                      <th scope="col">Archivo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {findings.latest.map((finding) => (
+                      <tr key={finding.id || `${finding.at}-${finding.sha256 ?? ''}`}>
+                        <td>
+                          <Timestamp iso={finding.at} focusable={false} />
+                        </td>
+                        <th scope="row" data-b89-no-translate="">
+                          {finding.host}
+                        </th>
+                        <td>{detectorLabel(finding.detector)}</td>
+                        <td>
+                          {finding.extension ?? 'sin extensión'}
+                          {finding.sha256 && (
+                            <small>
+                              Huella: <Mono title={finding.sha256}>{finding.sha256.slice(0, 12)}…</Mono>
+                            </small>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <a className="b89InlineLink" href={discoverHref(basePath, range, 'rule.groups:b89_dlp')}>
+                Ver todos en el SIEM
+              </a>
+            </details>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+function FindingsLoader({ basePath }: { basePath: string }) {
+  const [range, setRange] = useState<DlpWindow>('7d');
+  const [findings, setFindings] = useState<DlpFindings | null>(null);
+  useEffect(() => {
+    let active = true;
+    setFindings(null);
+    const load = () =>
+      void getDlpFindings(basePath, range).then((result) => {
+        if (active) setFindings(result);
+      });
+    load();
+    const timer = globalThis.setInterval(load, 60_000);
+    return () => {
+      active = false;
+      globalThis.clearInterval(timer);
+    };
+  }, [basePath, range]);
+  return <FindingsPanel findings={findings} range={range} onRange={setRange} basePath={basePath} />;
+}
+
 // ======================================================================== pantalla
 
 export function DlpView() {
@@ -826,6 +1006,7 @@ export function DlpView() {
   return (
     <B89Page
       title="DLP de endpoints"
+      icon={<FerrispectorMark size={30} />}
       actions={canConfigure
         ? wizard.step === 'closed' && <EuiButton fill iconType="plusInCircle" onClick={openWizard}>Conectar un equipo</EuiButton>
         : <EuiBadge color="hollow">Solo lectura</EuiBadge>}
@@ -845,6 +1026,8 @@ export function DlpView() {
             onRetry={() => void loadEndpoints()}
           />
         )}
+
+        <FindingsLoader basePath={basePath} />
 
         {rollout && policy && progress && rollout.revision === policy.revision && (
           <RolloutNotice

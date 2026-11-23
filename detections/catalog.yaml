@@ -30,11 +30,14 @@ sources:
   edge:        {name: "Edge nginx de la consola del SOC", prefix: "B89 Edge:"}
   network:     {name: "Red: reputación de IP y correlación entre fuentes", prefix: "B89 Red:"}
   sharepoint:  {name: "SharePoint y OneDrive", prefix: "B89 SharePoint:"}
+  dlp:         {name: "DLP de endpoints (Ferrispector)", prefix: "B89 DLP:"}
 
 # Rangos reservados. Un ID no se reutiliza: una regla retirada deja su ID documentado en su metadata.
 id_ranges:
   - {from: 100500, to: 100549, source: m365,        owner: soc-detection-engineering, note: "M365/Entra vía módulo office365"}
-  - {from: 101100, to: 101199, source: windows,     owner: soc-detection-engineering, note: "Endpoint Windows (Sysmon)"}
+  - {from: 101100, to: 101109, source: windows,     owner: soc-detection-engineering, note: "Endpoint Windows (Sysmon)"}
+  - {from: 101110, to: 101139, source: dlp,         owner: soc-detection-engineering, note: "DLP de endpoints (Ferrispector): hallazgos y salud del agente"}
+  - {from: 101140, to: 101199, source: windows,     owner: soc-detection-engineering, note: "Endpoint Windows (Sysmon)"}
   - {from: 101200, to: 101215, source: launch-pack, owner: soc-detection-engineering, note: "Paquete de lanzamiento de proveedores normalizados"}
   - {from: 101216, to: 101299, source: platform,    owner: provider-monitoring,       note: "Servicio de proveedores (archivo de otro owner, en curso)"}
   - {from: 101300, to: 101399, source: ad,          owner: soc-detection-engineering, note: "Active Directory (Security de DC)"}

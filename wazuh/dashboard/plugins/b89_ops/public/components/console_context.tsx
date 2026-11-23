@@ -79,9 +79,12 @@ export function B89Page({
   title,
   description,
   actions,
+  icon,
   children,
 }: {
   title: string;
+  /** Marca junto al título (p. ej. el cangrejo de Ferrispector en DLP). */
+  icon?: React.ReactNode;
   description?: React.ReactNode;
   actions?: React.ReactNode;
   children: React.ReactNode;
@@ -103,7 +106,7 @@ export function B89Page({
       >
         <EuiFlexItem grow>
           <EuiTitle size="m">
-            <h1>{title}</h1>
+            <h1 className={icon ? 'b89Page__titleWithIcon' : undefined}>{icon}{title}</h1>
           </EuiTitle>
           {description && (
             <EuiText size="s" color="subdued">

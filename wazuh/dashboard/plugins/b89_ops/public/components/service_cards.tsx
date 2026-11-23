@@ -395,6 +395,18 @@ export function ServiceCard({
           </EuiText>
         )}
       </div>
+      {compact && model.critical24h !== undefined && (spec.id === 'wazuh' || isProvider(spec.id)) && (
+        <a
+          className="b89Service__critical"
+          data-zero={model.critical24h === 0}
+          href={levelBandHref(basePath, 'critical', spec.id === 'wazuh' ? undefined : spec.id)}
+          aria-label={`${spec.name}: ${model.critical24h} eventos críticos (nivel 12 o más) en 24 horas. Ver los eventos`}
+        >
+          {model.critical24h === 0
+            ? 'Sin eventos críticos en 24 h'
+            : `${formatNumber(model.critical24h)} ${model.critical24h === 1 ? 'evento crítico' : 'eventos críticos'} en 24 h →`}
+        </a>
+      )}
       <MetricList metrics={metrics} />
       {hasAttention && (
         <div ref={attentionRef}>

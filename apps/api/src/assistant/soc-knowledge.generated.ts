@@ -85,6 +85,27 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
    "markdown": "# Runbook · Ataques de credenciales\n\nAlcance: `m365/credential-attacks` (100502–100506, 100530), `m365/compromise-chain` (101700–101703),\n`m365/bec-mailbox-persistence` (100510–100514), `m365/data-exfiltration`, `ad/kerberos-attacks` (101304–101307),\n`aws/console-bruteforce-success` (101713, base 101607/101608), `linux/ssh-bruteforce-success` (101750, base\n5710/5712/5763). Playbooks: `b89-triage-enriquecimiento` (automático) y `b89-contencion-identidad-aprobada` /\n`b89-contencion-endpoint-aprobada` (con aprobación).\n\n## Triage en 10 minutos\n\n1. ¿Hubo **éxito**? 100505, 101703, 101713, 101750 = sí → **P1**. Solo fallos (100503, 100504, 101608, 5712) → P2/P3.\n2. ¿La cuenta es privilegiada o break-glass? (razones `PRIVILEGED_IDENTITY` / `BREAK_GLASS_IDENTITY` en B89) → P1.\n3. ¿La IP de origen es de B89 (oficina, VPN, CI)? Si sí y la persona confirma por un canal fuera de banda, es\n   benigno: documentar y cerrar.\n4. ¿Hay acciones posteriores de la misma cuenta (cadena)? Abrir la caza **H01** del dashboard «B89 · Threat hunting».\n\n<a id=\"cadena-m365\"></a>\n## M365 / Entra: cadena de compromiso (101700–101703)\n\n- **Investigar:** en Discover, `data.office365.UserId:\"<cuenta>\"` 48 h: inicios (IP, país, cliente), cambios de\n  MFA (100526), reglas de bandeja (100510–100512), roles (100520/101704), consentimientos (100522).\n- **Contener (aprobación):** `m365.revoke-sessions` y, si hay persistencia, `m365.disable-user` desde B89. Mientras\n  el playbook no esté habilitado, lo ejecuta un administrador de Entra con el ticket del incidente.\n- **Recuperar:** restablecer contraseña, eliminar métodos MFA no reconocidos, borrar reglas de bandeja/reenvío,\n  revocar consentimientos y roles agregados, revisar correos enviados (fraude de pago).\n\n<a id=\"bec\"></a>\n## BEC: reglas de bandeja y reenvío (100510–100514, 101702)\n\n- Confirmar destino del reenvío (dominio externo = P1 si hay pagos involucrados).\n- Revisar mensajes movidos/borrados por la regla: suelen esconder respuestas de proveedores o bancos.\n- Avisar a Tesorería/Riesgos no financieros si el buzón gestiona pagos.\n\n<a id=\"exfiltracion\"></a>\n## Exfiltración (100515, 100529)\n\n- Enlace anónimo: ¿el archivo contiene datos personales o de clientes? Si sí, revocar el enlace y escalar a Legal.\n- eDiscovery: confirmar caso legal aprobado por Compliance; si no existe, P1.\n\n<a id=\"kerberos\"></a>\n## Kerberos (101304–101307)\n\n- Agrupar por cuenta de servicio y origen; RC4 aislado es higiene (P3), muchas cuentas desde un host = Kerberoasting (P1).\n- DCSync candidato: el principal debe ser un DC o una cuenta de sincronización documentada.\n\n<a id=\"aws\"></a>\n## Consola AWS tras fuerza bruta (101713)\n\n- Ver `data.aws.principal`, MFA y región; listar lo que hizo ese principal después (`data.aws.principal:\"<p>\"`).\n- Contener: deshabilitar el login profile / access keys del usuario IAM (consola AWS por un administrador con el\n  ticket; no hay acción automatizada para AWS) y rotar credenciales.\n\n<a id=\"ssh\"></a>\n## SSH tras fuerza bruta (101750)\n\n- `data.srcip` y `data.dstuser`: ¿cuenta con llave o contraseña? En los nodos B89 la autenticación por contraseña\n  debería estar deshabilitada: si entró con contraseña, es hallazgo de hardening además del incidente.\n- Revisar lo que hizo la sesión: sudo (5402), cambios FIM (101755–101760), usuarios nuevos (5902).\n- Contener (aprobación): `endpoint.block-ip` (firewall-drop 600 s) y, si hubo acceso real, aislar el host.\n\n## Consultas\n\n```text\nrule.groups:b89_attack_chain\nrule.id:(100502 or 100503 or 100504 or 100505) and data.office365.UserId:\"<cuenta>\"\nrule.groups:sshd and data.srcip:\"<ip>\"\nrule.groups:aws and data.aws.source_ip:\"<ip>\"\n```\n\n**Cierre:** clasificación, métodos MFA y sesiones revocadas, IPs bloqueadas (con vencimiento), lección para el\nbacklog (p. ej. Conditional Access, deshabilitar contraseña en SSH)."
   },
   {
+   "id": "dlp-endpoint",
+   "title": "DLP de endpoints (Ferrispector)",
+   "path": "docs/detection-engineering/runbooks/dlp-endpoint.md",
+   "sections": [
+    "Triage de 10 minutos",
+    "101110–101112 · Hallazgos",
+    "101113–101116 · Salud del agente"
+   ],
+   "ruleIds": [
+    "101110",
+    "101111",
+    "101112",
+    "101113",
+    "101114",
+    "101115",
+    "101116"
+   ],
+   "useCases": [],
+   "markdown": "# Runbook · DLP de endpoints (Ferrispector)\n\nReglas 101110–101116 (`infra/wazuh/endpoint/rules/b89_endpoint_rules.xml`). Ferrispector detecta; no\nbloquea, no mueve y no borra archivos. Los eventos traen el equipo, la regla, la extensión, el tamaño y la\nhuella SHA-256 del archivo; nunca la ruta ni el contenido.\n\n## Triage de 10 minutos\n\n1. Abre la alerta y mira «Por qué saltó»: qué tipo de dato se encontró y en qué equipo.\n2. Abre **DLP de endpoints** y revisa si el equipo está «Protegido» y con la revisión vigente.\n3. Contacta a la persona que usa el equipo y pídele que ubique el archivo por su huella SHA-256 (la consola la muestra en el detalle técnico).\n4. Credencial real: rótala o revócala en el servicio de origen y revisa su uso reciente; luego borra el archivo.\n5. Dato personal o documento protegido: confirma si ese equipo y esa carpeta pueden guardarlo; si no, muévelo a la ubicación aprobada.\n6. Clasifica la alerta con la conclusión y una nota de lo que hiciste.\n\n## 101110–101112 · Hallazgos\n\n- 101110 (nivel 5): dato sensible de una regla avanzada (DNI, RUC, contraseñas en texto).\n- 101111 (nivel 8): credencial reconocible (clave privada, token de GitHub, Slack, Google, Azure, OpenAI, AWS, base de datos).\n- 101112 (nivel 10): copia exacta de un documento protegido por huella.\n\n## 101113–101116 · Salud del agente\n\n1. 101114 (sin política más de 5 minutos): revisa si el equipo fue revocado a propósito. Si no, comprueba la red del equipo y que la consola responda.\n2. 101116 (muchos archivos sin revisar): revisa permisos de las carpetas aprobadas y archivos bloqueados por otro programa."
+  },
+  {
    "id": "escalada-de-privilegios",
    "title": "Escalada de privilegios (Entra, AWS, AD y Linux)",
    "path": "docs/detection-engineering/runbooks/escalada-de-privilegios.md",
@@ -829,7 +850,8 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
     "101741",
     "101742",
     "101743",
-    "101744"
+    "101744",
+    "101745"
    ],
    "mitre": [
     "T1190",
@@ -862,6 +884,99 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
    ],
    "dataSources": [
     "Cloudflare firewall events"
+   ]
+  },
+  {
+   "id": "B89-DET-CF-003",
+   "title": "Ataques web (OWASP Top 10), escaneos y fuerza bruta en el log HTTP de Cloudflare",
+   "source": "cloudflare",
+   "useCase": "web-attacks-owasp",
+   "status": "testing",
+   "ruleIds": [
+    "102000",
+    "102001",
+    "102002",
+    "102003",
+    "102004",
+    "102005",
+    "102006",
+    "102007",
+    "102008",
+    "102009",
+    "102010",
+    "102011",
+    "102012",
+    "102013",
+    "102014",
+    "102015",
+    "102016",
+    "102017",
+    "102018",
+    "102019"
+   ],
+   "mitre": [
+    "T1190",
+    "T1595.002",
+    "T1595.003",
+    "T1110.001",
+    "T1110.004"
+   ],
+   "priorityHint": "P2 solo con evidencia de impacto (500) o ataque a credenciales; el resto, cola sin correo",
+   "falsePositives": [
+    "Búsquedas o documentación con «../» o «select … from»: el patrón SQL exige un catálogo de sistema (information_schema, pg_catalog…) y el recorrido de rutas a 2xx queda en 5 (fuera de la cola).",
+    "Callbacks OAuth a localhost en staging y plantillas {{config}} sin renderizar: excluidos del patrón (fixtures FP).",
+    "Pentest autorizado: IPs en b89-authorized-scanners bajan a 102008 (nivel 2) y no cuentan para campañas.",
+    "Comercios con credenciales caducadas reintentando: 102018 exige 30 IPs distintas en 10 min."
+   ],
+   "dataSources": [
+    "Cloudflare http_requests por Logpush (cada petición; requiere Logs Write en el token)",
+    "Cloudflare httpRequestsAdaptive por GraphQL (todos los planes; muestreado ~1 de cada 11)"
+   ]
+  },
+  {
+   "id": "B89-DET-DLP-001",
+   "title": "DLP de endpoints · credenciales, datos personales y documentos protegidos en archivos",
+   "source": "dlp",
+   "useCase": "dlp-endpoint-findings",
+   "status": "experimental",
+   "ruleIds": [
+    "101110",
+    "101111",
+    "101112"
+   ],
+   "mitre": [
+    "T1552.001"
+   ],
+   "priorityHint": "P3",
+   "falsePositives": [
+    "Archivos de ejemplo o de pruebas con claves falsas (README, fixtures, documentación).",
+    "Copias de trabajo legítimas de un documento protegido en una carpeta autorizada.",
+    "Números de DNI o RUC en documentos que el área tiene permitido guardar."
+   ],
+   "dataSources": [
+    "Ferrispector (YARA-X) vía agente Wazuh, JSONL sin rutas ni contenido"
+   ]
+  },
+  {
+   "id": "B89-DET-DLP-002",
+   "title": "DLP de endpoints · salud del agente Ferrispector",
+   "source": "dlp",
+   "useCase": "dlp-agent-health",
+   "status": "experimental",
+   "ruleIds": [
+    "101113",
+    "101114",
+    "101115",
+    "101116"
+   ],
+   "mitre": [],
+   "priorityHint": "P4",
+   "falsePositives": [
+    "Corte breve de red o reinicio del servidor (se recupera solo en minutos).",
+    "Archivos bloqueados por otro programa mientras se escriben."
+   ],
+   "dataSources": [
+    "Ferrispector (eventos policy_sync_error y scan_error) vía agente Wazuh"
    ]
   },
   {
@@ -2235,6 +2350,127 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
     "malware-edr"
    ]
   },
+  "101110": {
+   "id": "101110",
+   "level": 5,
+   "description": "B89 DLP: Ferrispector encontró datos sensibles en un archivo del equipo $(endpoint) (regla $(yara_rule_id)).",
+   "mitre": [],
+   "groups": [
+    "b89_dlp",
+    "b89_endpoint"
+   ],
+   "file": "infra/wazuh/endpoint/rules/b89_endpoint_rules.xml",
+   "useCases": [
+    "B89-DET-DLP-001"
+   ],
+   "runbooks": [
+    "dlp-endpoint"
+   ]
+  },
+  "101111": {
+   "id": "101111",
+   "level": 8,
+   "description": "B89 DLP: Ferrispector encontró una credencial guardada en un archivo del equipo $(endpoint) (regla $(yara_rule_id)).",
+   "mitre": [
+    "T1552.001"
+   ],
+   "groups": [
+    "b89_dlp",
+    "b89_endpoint"
+   ],
+   "file": "infra/wazuh/endpoint/rules/b89_endpoint_rules.xml",
+   "useCases": [
+    "B89-DET-DLP-001"
+   ],
+   "runbooks": [
+    "dlp-endpoint"
+   ]
+  },
+  "101112": {
+   "id": "101112",
+   "level": 10,
+   "description": "B89 DLP: apareció una copia exacta de un documento protegido en el equipo $(endpoint).",
+   "mitre": [],
+   "groups": [
+    "b89_dlp",
+    "b89_endpoint"
+   ],
+   "file": "infra/wazuh/endpoint/rules/b89_endpoint_rules.xml",
+   "useCases": [
+    "B89-DET-DLP-001"
+   ],
+   "runbooks": [
+    "dlp-endpoint"
+   ]
+  },
+  "101113": {
+   "id": "101113",
+   "level": 3,
+   "description": "B89 DLP: Ferrispector no pudo consultar la política en el servidor.",
+   "mitre": [],
+   "groups": [
+    "b89_dlp",
+    "b89_dlp_health"
+   ],
+   "file": "infra/wazuh/endpoint/rules/b89_endpoint_rules.xml",
+   "useCases": [
+    "B89-DET-DLP-002"
+   ],
+   "runbooks": [
+    "dlp-endpoint"
+   ]
+  },
+  "101114": {
+   "id": "101114",
+   "level": 7,
+   "description": "B89 DLP: Ferrispector lleva más de 5 minutos sin recibir la política (credencial revocada o servidor inaccesible).",
+   "mitre": [],
+   "groups": [
+    "b89_dlp",
+    "b89_dlp_health"
+   ],
+   "file": "infra/wazuh/endpoint/rules/b89_endpoint_rules.xml",
+   "useCases": [
+    "B89-DET-DLP-002"
+   ],
+   "runbooks": [
+    "dlp-endpoint"
+   ]
+  },
+  "101115": {
+   "id": "101115",
+   "level": 3,
+   "description": "B89 DLP: Ferrispector no pudo revisar un archivo ($(error_code)).",
+   "mitre": [],
+   "groups": [
+    "b89_dlp",
+    "b89_dlp_health"
+   ],
+   "file": "infra/wazuh/endpoint/rules/b89_endpoint_rules.xml",
+   "useCases": [
+    "B89-DET-DLP-002"
+   ],
+   "runbooks": [
+    "dlp-endpoint"
+   ]
+  },
+  "101116": {
+   "id": "101116",
+   "level": 6,
+   "description": "B89 DLP: Ferrispector falla al revisar muchos archivos del mismo equipo; la protección puede estar incompleta.",
+   "mitre": [],
+   "groups": [
+    "b89_dlp",
+    "b89_dlp_health"
+   ],
+   "file": "infra/wazuh/endpoint/rules/b89_endpoint_rules.xml",
+   "useCases": [
+    "B89-DET-DLP-002"
+   ],
+   "runbooks": [
+    "dlp-endpoint"
+   ]
+  },
   "101200": {
    "id": "101200",
    "level": 0,
@@ -3187,7 +3423,7 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
   "101510": {
    "id": "101510",
    "level": 3,
-   "description": "B89 Cloudflare: $(cloudflare.firewall.action) de $(cloudflare.firewall.client_ip) en $(cloudflare.firewall.host) ($(cloudflare.firewall.source)).",
+   "description": "Cloudflare $(cloudflare.firewall.action): solicitud a $(cloudflare.firewall.host)$(cloudflare.firewall.path) desde $(cloudflare.firewall.client_ip). Causa registrada: $(cloudflare.firewall.rule_description) ($(cloudflare.firewall.source), regla $(cloudflare.firewall.rule_id)).",
    "mitre": [],
    "groups": [
     "b89_waf"
@@ -3203,7 +3439,7 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
   "101511": {
    "id": "101511",
    "level": 5,
-   "description": "B89 Cloudflare: regla $(cloudflare.firewall.rule_id) coincidió solo en modo log para $(cloudflare.firewall.client_ip) en $(cloudflare.firewall.host).",
+   "description": "Cloudflare detectó una solicitud sospechosa pero solo la registró; pudo llegar a la aplicación: $(cloudflare.firewall.host)$(cloudflare.firewall.path), origen $(cloudflare.firewall.client_ip). Motivo: $(cloudflare.firewall.rule_description) (regla $(cloudflare.firewall.rule_id)).",
    "mitre": [],
    "groups": [
     "b89_waf"
@@ -3423,8 +3659,8 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
   },
   "101531": {
    "id": "101531",
-   "level": 13,
-   "description": "B89 Cloudflare: sesión válida en el backoffice de pagos desde hosting/VPN ($(cloudflare.http.asn_name), $(cloudflare.http.country)) IP $(cloudflare.http.client_ip): $(cloudflare.http.method) $(cloudflare.http.path) el $(cloudflare.http.datetime) UTC. Posible uso de credenciales robadas.",
+   "level": 12,
+   "description": "B89 Cloudflare: credencial del backoffice de pagos usada desde hosting/VPN ($(cloudflare.http.asn_name), $(cloudflare.http.country)) IP $(cloudflare.http.client_ip): $(cloudflare.http.path) correcto el $(cloudflare.http.datetime) UTC. Posible credencial o token robado.",
    "mitre": [
     "T1078",
     "T1550.001"
@@ -3439,7 +3675,7 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
   "101532": {
    "id": "101532",
    "level": 13,
-   "description": "B89 Cloudflare: exportación de datos del backoffice ($(cloudflare.http.path)) desde $(cloudflare.http.country) IP $(cloudflare.http.client_ip) ($(cloudflare.http.asn_name)) el $(cloudflare.http.datetime) UTC. Posible exfiltración.",
+   "description": "B89 Cloudflare: exportación de datos del backoffice ($(cloudflare.http.path)) desde hosting/VPN en $(cloudflare.http.country), IP $(cloudflare.http.client_ip) ($(cloudflare.http.asn_name)) el $(cloudflare.http.datetime) UTC. Posible exfiltración.",
    "mitre": [
     "T1567",
     "T1213"
@@ -3453,9 +3689,161 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
   },
   "101533": {
    "id": "101533",
-   "level": 12,
+   "level": 2,
    "description": "B89 Cloudflare: login correcto al backoffice de pagos desde $(cloudflare.http.country) IP $(cloudflare.http.client_ip) ($(cloudflare.http.asn_name)) el $(cloudflare.http.datetime) UTC.",
    "mitre": [
+    "T1078"
+   ],
+   "groups": [
+    "b89_http",
+    "b89_backoffice",
+    "b89_credential_misuse"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml"
+  },
+  "101534": {
+   "id": "101534",
+   "level": 0,
+   "description": "B89 Cloudflare: verificación previa del navegador ($(cloudflare.http.method)) al backoffice; no usa credenciales.",
+   "mitre": [],
+   "groups": [
+    "b89_http",
+    "b89_backoffice"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml"
+  },
+  "101536": {
+   "id": "101536",
+   "level": 3,
+   "description": "B89 Cloudflare: backoffice de pruebas ($(cloudflare.http.host)) usado desde nube/VPN ($(cloudflare.http.asn_name)) IP $(cloudflare.http.client_ip). Habitual en QA/CI; sin alerta.",
+   "mitre": [],
+   "groups": [
+    "b89_http",
+    "b89_backoffice"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml"
+  },
+  "101537": {
+   "id": "101537",
+   "level": 13,
+   "description": "B89 Cloudflare: cambio en el backoffice de pagos ($(cloudflare.http.method) $(cloudflare.http.path)) desde hosting/VPN ($(cloudflare.http.asn_name), $(cloudflare.http.country)) IP $(cloudflare.http.client_ip) el $(cloudflare.http.datetime) UTC. Posible movimiento de dinero con credencial robada.",
+   "mitre": [
+    "T1078",
+    "T1565.001"
+   ],
+   "groups": [
+    "b89_http",
+    "b89_backoffice",
+    "b89_credential_misuse"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml"
+  },
+  "101538": {
+   "id": "101538",
+   "level": 3,
+   "description": "B89 Cloudflare: petición de backoffice desde hosting/VPN ($(cloudflare.http.asn_name)) IP $(cloudflare.http.client_ip): $(cloudflare.http.method) $(cloudflare.http.path). Señal; alerta si se sostiene (101545).",
+   "mitre": [],
+   "groups": [
+    "b89_http",
+    "b89_backoffice"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml"
+  },
+  "101539": {
+   "id": "101539",
+   "level": 8,
+   "description": "Cloudflare bloqueó una solicitud con patrón de posible inyección web en $(cloudflare.firewall.host)$(cloudflare.firewall.path), desde $(cloudflare.firewall.client_ip). Firma: $(cloudflare.firewall.rule_description) (regla $(cloudflare.firewall.rule_id)).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [
+    "b89_waf",
+    "b89_web_injection",
+    "b89_owasp_signal",
+    "b89_attack"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml"
+  },
+  "101540": {
+   "id": "101540",
+   "level": 12,
+   "description": "Cloudflare detectó un patrón de posible inyección web y lo dejó en modo registro; la solicitud pudo llegar a la aplicación. Revisar ahora: $(cloudflare.firewall.host)$(cloudflare.firewall.path), origen $(cloudflare.firewall.client_ip). Firma: $(cloudflare.firewall.rule_description) (regla $(cloudflare.firewall.rule_id)).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [
+    "b89_waf",
+    "b89_web_injection",
+    "b89_owasp_signal",
+    "b89_attack"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml"
+  },
+  "101541": {
+   "id": "101541",
+   "level": 8,
+   "description": "Cloudflare detuvo una solicitud con firma de ataque web ($(cloudflare.firewall.waf_signature_categories)). No llegó a la aplicación según la acción registrada. Sitio: $(cloudflare.firewall.host)$(cloudflare.firewall.path); origen: $(cloudflare.firewall.client_ip).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [
+    "b89_waf",
+    "b89_web_attack",
+    "b89_owasp_signal",
+    "b89_attack"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml"
+  },
+  "101542": {
+   "id": "101542",
+   "level": 12,
+   "description": "Cloudflare registró una firma de ataque web ($(cloudflare.firewall.waf_signature_categories)) sin bloquearla; la solicitud pudo llegar a la aplicación. Revisar ahora: $(cloudflare.firewall.host)$(cloudflare.firewall.path), origen $(cloudflare.firewall.client_ip).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [
+    "b89_waf",
+    "b89_web_attack",
+    "b89_owasp_signal",
+    "b89_attack"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml"
+  },
+  "101543": {
+   "id": "101543",
+   "level": 10,
+   "description": "Cloudflare observó una firma de ataque web ($(cloudflare.firewall.waf_signature_categories)); la acción fue $(cloudflare.firewall.action). Confirma si la solicitud alcanzó la aplicación. Sitio: $(cloudflare.firewall.host)$(cloudflare.firewall.path); origen: $(cloudflare.firewall.client_ip).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [
+    "b89_waf",
+    "b89_web_attack",
+    "b89_owasp_signal",
+    "b89_attack"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml"
+  },
+  "101544": {
+   "id": "101544",
+   "level": 8,
+   "description": "Cloudflare clasificó esta solicitud como ataque probable (puntuación WAF $(cloudflare.firewall.waf_attack_score), escala 1–99); revisa $(cloudflare.firewall.host)$(cloudflare.firewall.path), acción $(cloudflare.firewall.action), origen $(cloudflare.firewall.client_ip).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [
+    "b89_waf",
+    "b89_web_attack",
+    "b89_attack"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml"
+  },
+  "101545": {
+   "id": "101545",
+   "level": 12,
+   "description": "B89 Cloudflare: sesión sostenida en el backoffice de pagos desde hosting/VPN ($(cloudflare.http.asn_name), $(cloudflare.http.country)) IP $(cloudflare.http.client_ip): 5+ registros en 30 min. Posible token de sesión robado.",
+   "mitre": [
+    "T1550.001",
     "T1078"
    ],
    "groups": [
@@ -4531,6 +4919,21 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
    "groups": [
     "b89_audit",
     "b89_dns_change",
+    "b89_trusted_principal"
+   ],
+   "file": "detections/cloudflare/noise-tuning/rule.xml",
+   "useCases": [
+    "B89-TUNE-CF-001"
+   ]
+  },
+  "101745": {
+   "id": "101745",
+   "level": 3,
+   "description": "B89 Cloudflare: backoffice de pagos usado desde la salida corporativa conocida $(cloudflare.http.client_ip) ($(cloudflare.http.asn_name)): $(cloudflare.http.method) $(cloudflare.http.path).",
+   "mitre": [],
+   "groups": [
+    "b89_http",
+    "b89_backoffice",
     "b89_trusted_principal"
    ],
    "file": "detections/cloudflare/noise-tuning/rule.xml",
@@ -7670,6 +8073,15 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
     }
    ]
   },
+  "T1110.004": {
+   "name": "Brute Force: Credential Stuffing",
+   "tactics": [
+    {
+     "id": "TA0006",
+     "name": "Acceso a credenciales"
+    }
+   ]
+  },
   "T1114": {
    "name": "Email Collection",
    "tactics": [
@@ -7959,6 +8371,15 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
     {
      "id": "TA0008",
      "name": "Movimiento lateral"
+    }
+   ]
+  },
+  "T1552.001": {
+   "name": "Unsecured Credentials: Credentials In Files",
+   "tactics": [
+    {
+     "id": "TA0006",
+     "name": "Acceso a credenciales"
     }
    ]
   },

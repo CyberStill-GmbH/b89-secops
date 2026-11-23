@@ -39,6 +39,7 @@ import {
   useAsync,
 } from './primitives';
 import { VendorLogo } from './vendor_logo';
+import { DlpOverviewLine } from './dlp_overview';
 import { indexerUnavailableMessage } from '../../common/indexer_status';
 import { vendorOfProvider } from '../../common';
 import { alertsQueueHref, PRIORITY_NAME } from './alerts_filters';
@@ -242,9 +243,24 @@ export function AttentionItem({
 }
 
 const PROBLEM_TONES = new Set(['warn', 'fail']);
+/** Lo que necesita atención primero: caídos, con problemas, sin datos y, al final, los que funcionan. */
+const TONE_ORDER: Readonly<Record<string, number>> = { fail: 0, warn: 1, info: 2, neutral: 3, ok: 4 };
 
-/** Servicios: solo los que tienen problemas, y una línea para el resto. */
-function ServicesSection({ models, basePath }: { models: ServiceModel[]; basePath: string }) {
+/** Orden de las tarjetas: estado más grave primero y, con igual estado, más eventos críticos. */
+export function orderServices(models: readonly ServiceModel[]): ServiceModel[] {
+  return [...models].sort((a, b) => {
+    if (a.loading !== b.loading) return a.loading ? 1 : -1;
+    const tone = (TONE_ORDER[a.status.tone] ?? 3) - (TONE_ORDER[b.status.tone] ?? 3);
+    if (tone !== 0) return tone;
+    return (b.critical24h ?? 0) - (a.critical24h ?? 0);
+  });
+}
+
+/**
+ * Servicios: TODOS a la vista, de un vistazo (estado, eventos críticos de 24 h y enlace a su
+ * panel), con los que necesitan atención primero y una línea de resumen arriba.
+ */
+export function ServicesSection({ models, basePath }: { models: ServiceModel[]; basePath: string }) {
   const settled = models.filter((model) => !model.loading);
   const problems = settled.filter((model) => PROBLEM_TONES.has(model.status.tone));
   const ok = settled.filter((model) => model.status.tone === 'ok').length;
@@ -257,9 +273,7 @@ function ServicesSection({ models, basePath }: { models: ServiceModel[]; basePat
   return (
     <section aria-labelledby="b89-services-title">
       <div className="b89SectionTitle">
-        <h2 id="b89-services-title">
-          {problems.length ? 'Servicios con problemas' : 'Servicios integrados'}
-        </h2>
+        <h2 id="b89-services-title">Servicios integrados</h2>
         <EuiButtonEmpty size="xs" href={`${basePath}/app/b89-integrations`} flush="right">
           Ver integraciones
         </EuiButtonEmpty>
@@ -269,13 +283,11 @@ function ServicesSection({ models, basePath }: { models: ServiceModel[]; basePat
           ? `Todos los servicios funcionan: ${parts[0]}.`
           : `${parts.join(' · ')}.`}
       </p>
-      {problems.length > 0 && (
-        <div className="b89ServiceGrid">
-          {problems.map((model) => (
-            <ServiceCard key={model.spec.id} model={model} basePath={basePath} compact />
-          ))}
-        </div>
-      )}
+      <div className="b89ServiceGrid">
+        {orderServices(models).map((model) => (
+          <ServiceCard key={model.spec.id} model={model} basePath={basePath} compact />
+        ))}
+      </div>
     </section>
   );
 }
@@ -408,6 +420,8 @@ export function OverviewView({ basePath }: { basePath: string }) {
       />
 
       <ServicesSection models={serviceModels(shown)} basePath={basePath} />
+
+      {can('dlp.read') && <DlpOverviewLine basePath={basePath} />}
 
       <section className="b89Panel b89Panel--fold" aria-labelledby="b89-siem-title">
         <details className="b89Guide__details">

@@ -211,3 +211,106 @@
 #b89-main:focus {
   outline: none;
 }
+
+// Título con marca (DLP: cangrejo de Ferrispector).
+.b89Page__titleWithIcon {
+  display: inline-flex;
+  align-items: center;
+  gap: $ouiSizeS;
+}
+
+.b89FerrisMark {
+  flex: none;
+  color: $ouiTextColor;
+}
+
+// DLP · «Qué encontró»
+.b89Dlp__windows {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.b89Dlp__findingsHeadline {
+  margin: 0 0 $ouiSizeS;
+  font-size: $ouiFontSizeM;
+  font-weight: $ouiFontWeightMedium;
+}
+
+.b89Dlp__issues {
+  margin: 0;
+  padding-left: $ouiSize;
+}
+
+.b89Dlp__findingsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: $ouiSize $ouiSizeL;
+  margin-top: $ouiSizeS;
+
+  h3 {
+    margin: 0 0 $ouiSizeXS;
+    color: $ouiTextSubduedColor;
+    font-size: 12px;
+    font-weight: $ouiFontWeightMedium;
+  }
+}
+
+.b89Dlp__bars {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    display: flex;
+    justify-content: space-between;
+    gap: $ouiSizeS;
+    padding: 4px 0;
+    border-bottom: 1px solid $ouiBorderColor;
+    font-size: $ouiFontSizeS;
+  }
+}
+
+// «DLP de endpoints» en el Resumen del SOC: una línea con estado y enlace.
+.b89DlpLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $ouiSizeS $ouiSize;
+  margin: $ouiSize 0;
+  padding: $ouiSizeS $ouiSize;
+  border: 1px solid $ouiBorderColor;
+  border-left: 4px solid $ouiColorSuccess;
+  border-radius: $ouiBorderRadius;
+  background: $ouiColorEmptyShade;
+
+  &[data-tone='warn'] {
+    border-left-color: $ouiColorWarning;
+  }
+
+  &[data-tone='unknown'] {
+    border-left-color: $ouiColorMediumShade;
+  }
+
+  p {
+    flex: 1 1 280px;
+    margin: 0;
+  }
+}
+
+// Inicio: eventos críticos de cada servicio, destacados y con enlace.
+.b89Service__critical {
+  display: block;
+  margin: $ouiSizeXS 0;
+  color: $ouiColorDanger;
+  font-weight: $ouiFontWeightBold;
+
+  &[data-zero='true'] {
+    color: $ouiTextSubduedColor;
+    font-weight: $ouiFontWeightMedium;
+  }
+
+  &:focus-visible {
+    outline: 2px solid $ouiColorPrimary;
+    outline-offset: 2px;
+  }
+}

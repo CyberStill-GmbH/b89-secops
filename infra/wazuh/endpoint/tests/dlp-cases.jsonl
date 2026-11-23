@@ -1,0 +1,7 @@
+{"integration":"b89_ferrispector","event_type":"match","endpoint":"PC-FIN-01","yara_rule_id":"B89_CRED_GITHUB_TOKEN","file_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","file_extension":".env","file_size_bytes":120}
+{"integration":"b89_ferrispector","event_type":"match","endpoint":"PC-FIN-01","yara_rule_id":"B89_PII_PERU_DNI_CONTEXTUAL","file_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","file_extension":".xlsx","file_size_bytes":4096}
+{"integration":"b89_ferrispector","event_type":"match","endpoint":"mac-legal","yara_rule_id":"B89_DLP_EXACT_FILE_FINGERPRINT","file_sha256":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","file_extension":".pdf","file_size_bytes":90000}
+{"integration":"b89_ferrispector","event_type":"policy_sync_error","error_code":"DLP_POLICY_UNAVAILABLE"}
+{"integration":"b89_ferrispector","event_type":"scan_error","error_code":"FILE_SCAN_FAILED"}
+{"integration":"b89_ferrispector","event_type":"watcher_resync","error_code":"WATCHER_BUFFER_OVERFLOW"}
+{"integration":"otra_integracion","event_type":"match","yara_rule_id":"B89_CRED_GITHUB_TOKEN"}

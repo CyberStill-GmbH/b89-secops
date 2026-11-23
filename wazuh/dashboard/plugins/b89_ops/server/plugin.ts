@@ -33,6 +33,13 @@ import {
 } from '../common/cloudflare_traffic';
 import { readabilityOf } from './overview';
 import {
+  DLP_FINDINGS_ROUTE,
+  dlpFindingsQuery,
+  dlpWindow,
+  emptyDlpFindings,
+  parseDlpFindings,
+} from '../common/dlp_findings';
+import {
   INVESTIGATION_ROUTES,
   MAX_QUERY_ENTITIES,
   parseEntityKey,
@@ -297,6 +304,28 @@ export class B89OpsServerPlugin implements Plugin<void, void> {
             'content-disposition': `attachment; filename="${exportFilename(filters.value)}"`,
           },
         });
+      },
+    );
+
+    // «DLP de endpoints»: hallazgos de Ferrispector en el SIEM, con la identidad de quien mira.
+    // Sin permiso sobre los índices, responde «forbidden» y la pantalla lo dice (no es un error).
+    router.get(
+      {
+        path: DLP_FINDINGS_ROUTE,
+        validate: { query: schema.object({ window: schema.maybe(schema.string({ maxLength: 8 })) }) },
+      },
+      async (context, request, response) => {
+        const window = dlpWindow((request.query as { window?: string }).window);
+        try {
+          const result = await currentUser(context).search({
+            index: 'wazuh-alerts-*',
+            body: dlpFindingsQuery(window),
+          });
+          return response.ok({ body: parseDlpFindings(window, result.body), headers: json });
+        } catch (error) {
+          const readable = readabilityOf(error) === 'forbidden' ? 'forbidden' : 'error';
+          return response.ok({ body: emptyDlpFindings(window, readable), headers: json });
+        }
       },
     );
 

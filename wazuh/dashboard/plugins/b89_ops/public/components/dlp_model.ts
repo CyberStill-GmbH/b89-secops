@@ -44,6 +44,13 @@ export function ruleLabel(id: string): string {
   return RULE_LABEL.get(id) ?? id;
 }
 
+/** Nombre de lo que encontró Ferrispector, incluida la huella de documento (siempre activa). */
+export function detectorLabel(id: string | null): string {
+  if (!id) return 'Tipo desconocido';
+  if (id === 'B89_DLP_EXACT_FILE_FINGERPRINT') return 'Copia de un documento protegido';
+  return RULE_LABEL.get(id) ?? 'Otro dato sensible';
+}
+
 // ------------------------------------------------------------------ huellas
 
 const HASH = /^[0-9a-f]{64}$/iu;
