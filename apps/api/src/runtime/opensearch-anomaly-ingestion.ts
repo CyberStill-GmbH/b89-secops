@@ -50,7 +50,7 @@ const PRESENTATION: Readonly<Record<string, Omit<DetectorPresentation, 'name'>>>
     title: 'Aumento inusual de inicios de sesión de una cuenta', vendor: 'Wazuh', product: 'Wazuh authentication monitoring', category: 'authentication',
   },
   'b89-provider-aws-activity': {
-    title: 'Aumento inusual de actividad de riesgo en AWS', vendor: 'Amazon Web Services', product: 'AWS', category: 'cloud',
+    title: 'Aumento inusual de actividad de riesgo en AWS', vendor: 'Amazon Web Services', product: 'AWS', category: 'threat',
   },
   'b89-provider-bitdefender-activity': {
     title: 'Actividad inusual de protección de endpoint', vendor: 'Bitdefender', product: 'GravityZone', category: 'malware',
