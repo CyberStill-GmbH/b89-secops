@@ -487,3 +487,36 @@ Lo pidió el dueño. Local, sin commit ni despliegue. Doc: [18](docs/18-integrac
   mostrar la reputación también en el detalle de alerta (hoy solo aparece en el expediente);
   (3) correr el typecheck TS 4.0.2 del plugin.
 
+
+### Claude · 2026-11-22 · DLP de endpoints: rediseño de pantalla y flujo de conexión de Ferrispector
+
+Lo pidió el dueño: **frontend hecho por Claude** (normalmente de Codex). Local, sin commit ni despliegue.
+
+- **UI** (`public/components/dlp_view.tsx`, lógica pura en `dlp_model.ts`, estilos `.b89Dlp*` en `overview.scss`):
+  primero el estado de los equipos (titular + conteos + revisión vigente); asistente «Conectar un equipo» de 3 pasos
+  (crear clave → comando listo con la URL de la consola, la clave aparte porque el instalador la pide oculta → detección
+  automática cada 5 s, con cuenta regresiva y «Cancelar y anular la clave»); reglas como interruptores con nombres en
+  español, ID técnico solo en tooltip; avanzadas y huellas plegadas (`.b89Guide__details`); barra de guardado solo con
+  cambios y que dice qué cambia; tras guardar, «N de M equipos aplicaron la revisión» con sondeo de 10 s. Step-up solo
+  junto a la acción que lo pidió. Revocar también equipos sin conexión (antes no se podía). `lang="es-PE" translate="no"`:
+  «Accede a una holgura» era el traductor del navegador sobre «Accesos a Slack».
+- **Contrato API nuevo** (`apps/api/src/soc/dlp-policy.controller.ts`): `POST /api/dlp/enrollment-tokens` devuelve `id`;
+  `GET /api/dlp/enrollment-tokens/:id` → `{ state: waiting|connected|expired|revoked, expiresAt, endpoint }`
+  (`dlp.configure`); `POST /api/dlp/enrollment-tokens/:id/cancel` (CSRF, **sin step-up**: solo reduce acceso);
+  `GET /api/dlp/endpoints` agrega `enrolledAt` y `onlineWindowSeconds`. Store: `enrollment()` y `cancelEnrollment()`
+  (sin migración).
+- **Agente**: Windows (`ferrispector.ps1`) rechazaba las 5 reglas avanzadas → nunca acusaba y quedaba «Aplicando» para
+  siempre; ahora acepta las 11. Windows y Unix limpiaban la caché de escaneo después del acuse: si el acuse fallaba, la
+  política nueva no se reaplicaba a archivos ya vistos; ahora se limpia antes. Unix: el latido se mantiene durante
+  recorridos largos (antes aparecía «Sin conexión» tras 2 min de escaneo), hostname saneado al patrón del servidor,
+  textos con mojibake corregidos.
+- Validación: API 571/571 (nuevo `apps/api/test/dlp-enrollment.spec.ts`: uso único, vencimiento, rotación, latido, acuse,
+  revocación, cancelación, solo lectura); plugin 513/514 (falla previa `investigation_report.test.ts`); typecheck TS 4.0.2
+  OK. **No verificado** en un OSD real ni con un agente real.
+- Riesgos abiertos: (1) el comando usa `window.location.origin` como control plane: falla si los equipos no alcanzan ese
+  host o si `apiPrefix` ≠ `/api`; (2) step-up: por decisión del dueño (22/11), DLP usa `needsRecentAuth`
+  como canales: `b89.platform.admin` configura con su sesión vigente; otros roles con `dlp.configure` siguen necesitando
+  sesión < 30 min; (3) una credencial revocada sigue escaneando con la última política y solo
+  emite `policy_sync_error` (no distingue «revocado»); (4) reinstalar crea una fila nueva por equipo: el viejo queda
+  «Sin conexión» hasta revocarlo.
+- Revisión pedida a Codex: copy y estilo de la pantalla y del asistente.

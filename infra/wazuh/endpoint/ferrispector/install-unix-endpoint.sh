@@ -53,7 +53,7 @@ if [ "$ACTION" = remove ]; then
   remove_localfile
   restart_wazuh
   rm -rf -- "$DEST" "$DATA"
-  echo "Ferrispector local fue eliminado. Revoca su credencial en Políticas de protección de datos; Wazuh y las carpetas vigiladas permanecen."
+  echo "Ferrispector local fue eliminado. Revoca su credencial en DLP de endpoints; Wazuh y las carpetas vigiladas permanecen."
   exit 0
 fi
 

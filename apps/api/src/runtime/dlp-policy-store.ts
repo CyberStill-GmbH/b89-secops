@@ -44,6 +44,10 @@ export interface DlpPolicyStore {
     agentId: string;
     at: Date;
   }): Promise<DlpEndpointRecord | undefined>;
+  /** Pending or used enrollment by its id (the endpoint row id), for the connection wizard. */
+  enrollment(input: { tenantId: string; id: string }): Promise<DlpEndpointRecord | undefined>;
+  /** Deletes an enrollment token that has not been used yet. */
+  cancelEnrollment(input: { tenantId: string; id: string; at: Date }): Promise<boolean>;
   endpointByToken(input: {
     tenantId: string;
     tokenHash: string;

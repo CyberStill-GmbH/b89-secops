@@ -94,9 +94,14 @@ function Set-FerrispectorPolicyState {
     [Parameter(Mandatory = $true)][int] $Revision,
     [Parameter(Mandatory = $true)][string] $Version
   )
+  # Must match DLP_RULE_IDS in the API. An advanced rule enabled in the console used to be
+  # rejected here, so Windows endpoints never acknowledged and stayed "updating" forever.
   $knownRules = @(
     'B89_CRED_PRIVATE_KEY_PEM', 'B89_CRED_GITHUB_TOKEN', 'B89_CRED_SLACK_TOKEN',
-    'B89_CRED_GOOGLE_API_KEY', 'B89_CRED_AZURE_STORAGE_KEY', 'B89_CRED_OPENAI_API_KEY'
+    'B89_CRED_GOOGLE_API_KEY', 'B89_CRED_AZURE_STORAGE_KEY', 'B89_CRED_OPENAI_API_KEY',
+    'B89_CRED_AWS_ACCESS_KEY_PAIR', 'B89_SECRET_DATABASE_CONNECTION',
+    'B89_SECRET_CREDENTIAL_ASSIGNMENT', 'B89_PII_PERU_DNI_CONTEXTUAL',
+    'B89_PII_PERU_RUC_CONTEXTUAL'
   )
   if ($EnabledRuleIds.Count -gt $knownRules.Count -or @($EnabledRuleIds | Where-Object { $_ -notin $knownRules }).Count -gt 0) {
     throw 'The DLP policy contains an unsupported rule ID.'
@@ -139,15 +144,16 @@ function Sync-FerrispectorPolicy {
     [IO.File]::WriteAllLines($fingerprintTemporary, $fingerprintBody, [Text.UTF8Encoding]::new($false))
     Move-Item -LiteralPath $fingerprintTemporary -Destination $script:FingerprintCatalogPath -Force
 
-    $ackUri = $script:ControlPlaneUrl.TrimEnd('/') + '/api/dlp/agent/ack'
-    $ackBody = @{ revision = $script:PolicyRevision; policyVersion = $script:PolicyVersion } | ConvertTo-Json -Compress
-    Invoke-RestMethod -Method Post -Uri $ackUri -Headers $headers -ContentType 'application/json' -Body $ackBody -TimeoutSec 20 | Out-Null
-    $script:LastPolicySyncAt = [DateTime]::UtcNow
-    $script:RemotePolicyReady = $true
+    # Rescan before the ack: if the ack fails, the next sync no longer sees a revision change.
     if ($policyChanged -and $script:LastScanned -and $script:LastScanned.Count -gt 0) {
       $script:LastScanned.Clear()
       $script:PolicyRescanNeeded = $true
     }
+    $script:RemotePolicyReady = $true
+    $ackUri = $script:ControlPlaneUrl.TrimEnd('/') + '/api/dlp/agent/ack'
+    $ackBody = @{ revision = $script:PolicyRevision; policyVersion = $script:PolicyVersion } | ConvertTo-Json -Compress
+    Invoke-RestMethod -Method Post -Uri $ackUri -Headers $headers -ContentType 'application/json' -Body $ackBody -TimeoutSec 20 | Out-Null
+    $script:LastPolicySyncAt = [DateTime]::UtcNow
   }
   catch {
     Write-FerrispectorEvent @{

@@ -984,103 +984,105 @@ a.b89Kpi__chip {
 }
 
 // ---------------------------------------------------------------- DLP de endpoints
-.b89Dlp__intro,
-.b89Dlp__note {
-  max-width: 76ch;
-  color: $ouiTextSubduedColor;
-  line-height: 1.5;
-}
-
-.b89Dlp__rules {
+// La respuesta primero (estado de equipos), el detalle plegado (.b89Guide__details).
+.b89Dlp {
   display: grid;
-  gap: $ouiSizeS;
-  margin-top: $ouiSize;
-
-  h3 {
-    margin: $ouiSizeS 0 0;
-    font-size: 15px;
-  }
-}
-
-.b89Dlp__rule {
-  display: grid;
-  grid-template-columns: minmax(190px, 1fr) minmax(220px, 1.4fr) auto;
-  align-items: center;
   gap: $ouiSize;
-  padding: $ouiSizeS $ouiSize;
-  border: 1px solid $ouiBorderColor;
-  border-radius: $b89OvRadius;
-  background: $ouiColorEmptyShade;
+  max-width: 1100px;
 
-  &:focus-within {
-    outline: 2px solid $ouiColorPrimary;
-    outline-offset: 2px;
-  }
-
-  &--advanced {
-    border-left: 3px solid $ouiColorWarning;
-  }
-
-  .euiCheckbox__label {
-    font-weight: $ouiFontWeightMedium;
-  }
-
-  .b89Mono {
-    overflow-wrap: anywhere;
-    text-align: right;
+  .b89Panel__header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: $ouiSizeS;
   }
 }
 
-.b89Dlp__ruleDetail {
-  color: $ouiTextSubduedColor;
-  font-size: 12px;
-  line-height: 1.45;
+.b89VisuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
-.b89Dlp__file {
-  max-width: 100%;
-  padding: $ouiSizeXS 0;
-}
-
-.b89Dlp__validation {
-  margin: $ouiSizeS 0 0;
-  color: $ouiColorDanger;
-}
-
-.b89Dlp__actions {
+.b89Dlp__status {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: $ouiSize;
-  margin: $ouiSizeL 0;
-}
-
-.b89Dlp__version {
-  color: $ouiTextSubduedColor;
-  font-size: 12px;
-}
-
-.b89Dlp__token {
-  display: grid;
-  gap: $ouiSizeS;
-  max-width: 760px;
-  padding: $ouiSize;
+  justify-content: space-between;
+  gap: $ouiSizeS $ouiSizeL;
+  padding: $ouiSize $ouiSizeL;
   border: 1px solid $ouiBorderColor;
+  border-left: 4px solid $ouiColorMediumShade;
   border-radius: $b89OvRadius;
-  background: $ouiColorLightestShade;
+  background: $ouiColorEmptyShade;
 
-  > div {
-    display: flex;
-    align-items: center;
-    gap: $ouiSize;
-    overflow-wrap: anywhere;
-  }
+  &--success { border-left-color: $ouiColorSuccess; }
+  &--primary { border-left-color: $ouiColorPrimary; }
+  &--warning { border-left-color: $ouiColorWarning; }
 
-  p {
+  h2 {
     margin: 0;
-    color: $ouiTextSubduedColor;
-    font-size: 12px;
+    font-size: 20px;
+    font-weight: $ouiFontWeightBold;
+    line-height: 1.3;
   }
+
+  @media (max-width: $b89OvMobile) {
+    padding: $ouiSize;
+  }
+}
+
+.b89Dlp__counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $ouiSizeXS $ouiSize;
+  margin: $ouiSizeXS 0 0;
+  font-size: $ouiFontSizeS;
+}
+
+// El color siempre acompaña a un punto y a un rótulo.
+.b89Dlp__count {
+  &::before {
+    content: '';
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin-right: 6px;
+    border-radius: 50%;
+    background: $ouiColorMediumShade;
+  }
+
+  &--success::before { background: $ouiColorSuccess; }
+  &--primary::before { background: $ouiColorPrimary; }
+  &--warning::before { background: $ouiColorWarning; }
+  &--danger::before { background: $ouiColorDanger; }
+}
+
+.b89Dlp__policyMeta,
+.b89Dlp__stale,
+.b89Dlp__hint,
+.b89Dlp__empty {
+  margin: 0;
+  color: $ouiTextSubduedColor;
+  font-size: $ouiFontSizeS;
+}
+
+.b89Dlp__stale {
+  margin-top: $ouiSizeXS;
+}
+
+.b89Dlp__hint {
+  margin: $ouiSizeS 0;
+}
+
+.b89Dlp__empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $ouiSizeS;
 }
 
 .b89Dlp__table {
@@ -1089,10 +1091,16 @@ a.b89Kpi__chip {
 
   th,
   td {
-    padding: $ouiSizeS $ouiSize;
+    padding: $ouiSizeS $ouiSize $ouiSizeS 0;
     border-bottom: 1px solid $ouiBorderColor;
     text-align: left;
     vertical-align: middle;
+  }
+
+  thead th {
+    color: $ouiTextSubduedColor;
+    font-size: 12px;
+    font-weight: $ouiFontWeightMedium;
   }
 
   th[scope='row'] {
@@ -1103,19 +1111,225 @@ a.b89Kpi__chip {
     display: block;
     margin-top: 3px;
     color: $ouiTextSubduedColor;
-    font-weight: normal;
+    font-size: 12px;
+  }
+
+  tr[data-health='reinstall'] th[scope='row'],
+  tr[data-health='offline'] th[scope='row'],
+  tr[data-health='never'] th[scope='row'] {
+    box-shadow: inset 3px 0 0 $ouiColorWarning;
+    padding-left: $ouiSizeS;
   }
 }
 
-@media (max-width: $b89OvMobile) {
-  .b89Dlp__rule {
-    grid-template-columns: 1fr;
-    gap: $ouiSizeXS;
+.b89Dlp__host {
+  overflow-wrap: anywhere;
+}
 
-    .b89Mono {
-      text-align: left;
-    }
+.b89Dlp__rowAction {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.b89Dlp__more {
+  margin-top: $ouiSize;
+}
+
+.b89Dlp__rules {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: $ouiSizeS $ouiSizeL;
+  margin: $ouiSizeS 0 0;
+  padding: 0;
+  list-style: none;
+
+  @media (max-width: $b89OvMobile) {
+    grid-template-columns: 1fr;
   }
+}
+
+.b89Dlp__rule {
+  display: flex;
+  align-items: center;
+  gap: $ouiSizeS;
+  min-height: 32px;
+}
+
+.b89Dlp__import {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $ouiSizeS;
+  margin-bottom: $ouiSizeS;
+  font-size: $ouiFontSizeS;
+
+  input {
+    max-width: 100%;
+  }
+}
+
+.b89Dlp__error {
+  margin: $ouiSizeS 0 0;
+  color: $ouiColorDanger;
+  font-size: $ouiFontSizeS;
+}
+
+// Barra de guardado: solo con cambios pendientes, pegada al borde inferior.
+.b89Dlp__saveBar {
+  position: sticky;
+  bottom: $ouiSize;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: $ouiSizeS $ouiSize;
+  padding: $ouiSizeM $ouiSize;
+  border: 1px solid $ouiColorPrimary;
+  border-radius: $b89OvRadius;
+  background: $ouiColorEmptyShade;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+
+  > .euiCallOut {
+    flex: 1 1 100%;
+  }
+}
+
+.b89Dlp__diff {
+  margin: $ouiSizeXS 0 0;
+  padding-left: $ouiSize;
+  font-size: $ouiFontSizeS;
+}
+
+.b89Dlp__inlineActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $ouiSizeS;
+  margin-top: $ouiSizeS;
+}
+
+// Asistente de conexión
+.b89Dlp__wizard {
+  border-color: $ouiColorPrimary;
+}
+
+.b89Dlp__steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $ouiSizeS $ouiSizeL;
+  margin: 0 0 $ouiSize;
+  padding: 0;
+  list-style: none;
+}
+
+.b89Dlp__step {
+  display: flex;
+  align-items: center;
+  gap: $ouiSizeS;
+  color: $ouiTextSubduedColor;
+  font-size: $ouiFontSizeS;
+
+  &--active {
+    color: $ouiTextColor;
+    font-weight: $ouiFontWeightBold;
+  }
+}
+
+.b89Dlp__stepMark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid $ouiBorderColor;
+  border-radius: 50%;
+  font-size: 12px;
+
+  .b89Dlp__step--active & {
+    border-color: $ouiColorPrimary;
+    background: $ouiColorPrimary;
+    color: #fff;
+  }
+
+  .b89Dlp__step--done & {
+    border-color: $ouiColorSuccess;
+    color: $ouiColorSuccess;
+  }
+}
+
+.b89Dlp__stepBody {
+  display: grid;
+  gap: $ouiSizeS;
+  max-width: 820px;
+
+  > p {
+    margin: 0;
+  }
+}
+
+.b89Dlp__osPicker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $ouiSizeS;
+}
+
+.b89Dlp__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: $ouiSizeS;
+
+  label {
+    display: grid;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: $ouiFontWeightMedium;
+  }
+}
+
+.b89Dlp__command {
+  margin: 0;
+  padding: $ouiSizeM;
+  overflow-x: auto;
+  border-radius: $ouiBorderRadius;
+  background: $ouiColorLightestShade;
+  font-family: $ouiCodeFontFamily;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.b89Dlp__missing {
+  color: $ouiTextColor;
+  font-weight: $ouiFontWeightMedium;
+  font-size: $ouiFontSizeS;
+}
+
+.b89Dlp__token {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $ouiSizeS;
+
+  .b89Mono {
+    padding: $ouiSizeXS $ouiSizeS;
+    border-radius: $ouiBorderRadius;
+    background: $ouiColorLightestShade;
+    overflow-wrap: anywhere;
+  }
+}
+
+.b89Dlp__waiting {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $ouiSizeS;
+  margin: $ouiSizeS 0 0;
+}
+
+.b89Dlp__stepUp {
+  margin: $ouiSizeS 0;
 }
 
 .b89Attention {

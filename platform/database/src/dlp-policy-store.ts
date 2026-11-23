@@ -114,6 +114,32 @@ export class PrismaDlpPolicyStore {
     return rows[0];
   }
 
+  public async enrollment(input: {
+    readonly tenantId: string;
+    readonly id: string;
+  }): Promise<DlpEndpointRow | undefined> {
+    const rows = await this.client.$queryRaw<DlpEndpointRow[]>`
+      SELECT "id", "tenant_id" AS "tenantId", "hostname", "agent_id" AS "agentId",
+             "enrolled_at" AS "enrolledAt", "last_seen_at" AS "lastSeenAt",
+             "revoked_at" AS "revokedAt",
+             "applied_revision" AS "appliedRevision", "credential_version" AS "credentialVersion", "policy_version" AS "policyVersion",
+             "enrollment_expires_at" AS "enrollmentExpiresAt"
+        FROM "dlp_endpoints" WHERE "tenant_id" = ${input.tenantId} AND "id" = ${input.id}`;
+    return rows[0];
+  }
+
+  /** Only an unused token can be cancelled; an enrolled endpoint is revoked instead. */
+  public async cancelEnrollment(input: {
+    readonly tenantId: string;
+    readonly id: string;
+    readonly at: Date;
+  }): Promise<boolean> {
+    const count = await this.client.$executeRaw`
+      DELETE FROM "dlp_endpoints"
+       WHERE "tenant_id" = ${input.tenantId} AND "id" = ${input.id} AND "enrolled_at" IS NULL`;
+    return count === 1;
+  }
+
   public async endpointByToken(input: {
     readonly tenantId: string;
     readonly tokenHash: string;

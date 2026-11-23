@@ -4,7 +4,11 @@ Ferrispector es un detector local de B89 basado en YARA-X. Inspecciona únicamen
 
 ## Política y datos
 
-El paquete usa la política `policy/starter-credentials.yar`: seis detectores de credenciales activos por defecto y cinco reglas avanzadas optativas. DNI/RUC requieren aprobación de privacidad; las reglas avanzadas pueden elevar falsos positivos. `policy/fingerprints.sha256` es un catálogo inicialmente vacío con una huella SHA-256 aprobada por línea. El administrador gestiona reglas activas y fingerprints desde **Políticas → Protección de datos**. Los cambios del servidor se consultan cada 30 segundos y el endpoint informa la revisión como aplicada solo después de confirmar el acuse.
+El paquete usa la política `policy/starter-credentials.yar`: seis detectores de credenciales activos por defecto y cinco reglas avanzadas optativas. DNI/RUC requieren aprobación de privacidad; las reglas avanzadas pueden elevar falsos positivos. `policy/fingerprints.sha256` es un catálogo inicialmente vacío con una huella SHA-256 aprobada por línea. El administrador gestiona reglas activas y fingerprints desde **DLP de endpoints** en la consola. Los cambios del servidor se consultan cada 30 segundos (esa consulta es también el latido: sin ella durante 2 minutos, el equipo aparece «Sin conexión») y el endpoint informa la revisión como aplicada solo después de confirmar el acuse.
+
+## Conectar un equipo desde la consola
+
+En **DLP de endpoints → Conectar un equipo**: (1) crea la clave (un solo uso, vence en 30 minutos); (2) elige el sistema, escribe la carpeta aprobada y copia el comando ya armado con la URL de la consola; cuando el instalador lo pida, pega la clave; (3) la consola detecta sola cuándo el equipo se conecta. «Cancelar y anular la clave» invalida una clave sin usar.
 
 Cada evento reporta el ID de regla, hostname, SHA-256 del archivo, extensión, tamaño, hora y hash de política. No incluye rutas ni contenido. El token de inscripción no se escribe en eventos, logs de servicio ni argumentos de proceso. Se solicita de forma oculta y se usa una sola vez. El servidor devuelve endpointCredential, una credencial exclusiva del equipo, y solo esta credencial se guarda en config.json con permisos de administrador.
 
@@ -55,7 +59,7 @@ La lectura se realiza por sondeo, cada 30 segundos. Por eso un cambio de archivo
 
 La inscripción invalida el token de instalación y devuelve una credencial nueva solo una vez. El servidor persiste únicamente su SHA-256 y exige esa credencial para policy y ack. Windows, macOS y Linux usan configuración v2; la configuración v1 con agent_token es incompatible.
 
-Después de aplicar la migración, los endpoints previos quedan en versión 0 y ya no sincronizan políticas. Para volver a conectarlos, revoca el endpoint antiguo en Políticas de protección de datos, crea un token nuevo y reinstala Ferrispector con las mismas rutas WatchRoot aprobadas. En macOS o Linux, ejecuta primero install-unix-endpoint.sh remove y luego install-unix-endpoint.sh install con las rutas aprobadas y el control plane. La eliminación local no revoca el endpoint remoto. En Windows, vuelve a ejecutar el instalador. No reutilices el token anterior.
+Después de aplicar la migración, los endpoints previos quedan en versión 0 y ya no sincronizan políticas. Para volver a conectarlos, revoca el endpoint antiguo en DLP de endpoints, crea un token nuevo y reinstala Ferrispector con las mismas rutas WatchRoot aprobadas. En macOS o Linux, ejecuta primero install-unix-endpoint.sh remove y luego install-unix-endpoint.sh install con las rutas aprobadas y el control plane. La eliminación local no revoca el endpoint remoto. En Windows, vuelve a ejecutar el instalador. No reutilices el token anterior.
 
 La CLI interna del servicio no es un instalador: en Unix el servicio ejecuta ferrispector.py run --config <ruta>; en Windows la tarea programada ejecuta ferrispector.ps1 -Mode Watch -ConfigPath <ruta>. La operación enroll de Unix pide el token con entrada oculta y no acepta un argumento --token. No pases secretos como argumentos de proceso. Si el servidor completó el enrolamiento pero falló el guardado local, revoca el endpoint huérfano y solicita un token nuevo.
 ## Quitar Ferrispector

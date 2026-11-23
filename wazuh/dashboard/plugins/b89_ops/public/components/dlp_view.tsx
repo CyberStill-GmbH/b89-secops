@@ -2,158 +2,651 @@
  * Copyright B89. SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+/**
+ * DLP de endpoints. Responde primero «¿qué equipos están protegidos y hay algo que atender?»;
+ * después, conectar un equipo (asistente de 3 pasos) y qué detecta la política. Lo técnico
+ * (IDs de regla, huellas SHA-256, reglas avanzadas) queda plegado o en tooltips.
+ *
+ * `lang="es-PE" translate="no"`: el dashboard declara la página en inglés y el traductor del
+ * navegador convertía «Tokens de Slack» en «Accede a una holgura».
+ */
+
+import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import {
   EuiBadge,
   EuiButton,
   EuiButtonEmpty,
   EuiCallOut,
-  EuiCheckbox,
   EuiConfirmModal,
-  EuiFormRow,
+  EuiFieldText,
+  EuiIcon,
   EuiLoadingContent,
-  EuiSpacer,
+  EuiLoadingSpinner,
+  EuiSwitch,
   EuiTextArea,
+  EuiToolTip,
 } from '@elastic/eui';
+import { LOGOUT_PATH } from '../../common';
 import { B89ApiError } from '../api/client';
+import type { DlpEndpoint, DlpEnrollmentToken, DlpPolicy } from '../api/dlp';
 import {
+  cancelDlpEnrollmentToken,
   createDlpEnrollmentToken,
-  type DlpEndpoint,
-  type DlpPolicy,
   getDlpEndpoints,
   getDlpPolicy,
   revokeDlpEndpoint,
   saveDlpPolicy,
 } from '../api/dlp';
 import { B89Page, useConsole } from './console_context';
+import type { FleetSummary, InstallInput, InstallOs, PolicyDiff, WizardState } from './dlp_model';
+import {
+  checkEnrollment,
+  describeDiff,
+  DLP_RULES,
+  endpointHealth,
+  hasChanges,
+  HEALTH_ACTION,
+  HEALTH_LABEL,
+  HEALTH_TONE,
+  installCommand,
+  minutesLeft,
+  missingInstallFields,
+  nextVersion,
+  parseFingerprints,
+  policyDiff,
+  rolloutProgress,
+  sortEndpoints,
+  summarizeFleet,
+  wizardReducer,
+} from './dlp_model';
 import { ErrorCallout, Mono, Timestamp } from './primitives';
 
-const RULES = [
-  {
-    id: 'B89_CRED_PRIVATE_KEY_PEM',
-    title: 'Claves privadas',
-    detail: 'Archivos PEM RSA, EC, OpenSSH, DSA y formato genérico.',
-  },
-  {
-    id: 'B89_CRED_GITHUB_TOKEN',
-    title: 'Accesos a GitHub',
-    detail: 'Tokens clásicos y de grano fino con formato reconocible.',
-  },
-  {
-    id: 'B89_CRED_SLACK_TOKEN',
-    title: 'Accesos a Slack',
-    detail: 'Tokens con prefijo y longitud compatibles con Slack.',
-  },
-  {
-    id: 'B89_CRED_GOOGLE_API_KEY',
-    title: 'Claves de Google API',
-    detail: 'Claves con el prefijo de API de Google.',
-  },
-  {
-    id: 'B89_CRED_AZURE_STORAGE_KEY',
-    title: 'Claves de Azure Storage',
-    detail: 'Valores AccountKey de cadenas de conexión reconocibles.',
-  },
-  {
-    id: 'B89_CRED_OPENAI_API_KEY',
-    title: 'Claves API de OpenAI',
-    detail: 'Formatos de clave con prefijos reconocibles.',
-  },
-  {
-    id: 'B89_CRED_AWS_ACCESS_KEY_PAIR',
-    title: 'Par de acceso AWS',
-    detail: 'Identificador y clave secreta encontrados juntos en el mismo archivo.',
-    advanced: true,
-  },
-  {
-    id: 'B89_SECRET_DATABASE_CONNECTION',
-    title: 'Credenciales de bases de datos',
-    detail: 'Cadenas de conexión con usuario y contraseña en formatos reconocibles.',
-    advanced: true,
-  },
-  {
-    id: 'B89_SECRET_CREDENTIAL_ASSIGNMENT',
-    title: 'Contraseñas asignadas en texto',
-    detail: 'Campos password, client_secret o api_key con un valor visible.',
-    advanced: true,
-  },
-  {
-    id: 'B89_PII_PERU_DNI_CONTEXTUAL',
-    title: 'DNI peruano con contexto',
-    detail: 'Ocho dígitos cerca de una etiqueta DNI o documento de identidad.',
-    advanced: true,
-  },
-  {
-    id: 'B89_PII_PERU_RUC_CONTEXTUAL',
-    title: 'RUC peruano con contexto',
-    detail: 'Once dígitos cerca de una etiqueta RUC o registro tributario.',
-    advanced: true,
-  },
-] as const;
-const HASH = /^[0-9a-f]{64}$/iu;
+const ENDPOINT_POLL_MS = 30_000;
+const ROLLOUT_POLL_MS = 10_000;
+const ENROLLMENT_POLL_MS = 5_000;
+const INSTALL_PREFS_KEY = 'b89.dlp.install';
 
-function parseFingerprints(text: string): { values: string[]; invalid: string[] } {
-  const values: string[] = [];
-  const invalid: string[] = [];
-  const seen = new Set<string>();
-  for (const [index, source] of text.split(/\r?\n/u).entries()) {
-    const line = source.trim();
-    if (!line || line.startsWith('#')) continue;
-    if (!HASH.test(line)) {
-      invalid.push(String(index + 1));
-      continue;
-    }
-    const normalized = line.toLowerCase();
-    if (!seen.has(normalized)) {
-      seen.add(normalized);
-      values.push(normalized);
-    }
+const isStepUp = (error: unknown) => error instanceof B89ApiError && error.code === 'STEP_UP_REQUIRED';
+
+function copy(text: string): Promise<boolean> {
+  const clipboard = typeof navigator === 'undefined' ? undefined : navigator.clipboard;
+  if (!clipboard) return Promise.resolve(false);
+  return clipboard.writeText(text).then(() => true, () => false);
+}
+
+function readInstallPrefs(): Pick<InstallInput, 'os' | 'wazuhManager'> {
+  try {
+    const raw = window.localStorage.getItem(INSTALL_PREFS_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Partial<InstallInput>) : {};
+    return {
+      os: parsed.os === 'unix' ? 'unix' : 'windows',
+      wazuhManager: typeof parsed.wazuhManager === 'string' ? parsed.wazuhManager.slice(0, 255) : '',
+    };
+  } catch {
+    return { os: 'windows', wazuhManager: '' };
   }
-  return { values, invalid };
 }
 
-function nextVersion(value: string): string {
-  const match = /^(\d+)\.(\d+)\.(\d+)$/u.exec(value);
-  if (!match) return '1.0.0';
-  return `${match[1]}.${Number(match[2]) + 1}.0`;
+function writeInstallPrefs(input: InstallInput) {
+  try {
+    window.localStorage.setItem(INSTALL_PREFS_KEY, JSON.stringify({ os: input.os, wazuhManager: input.wazuhManager }));
+  } catch {
+    // Solo es una comodidad: sin almacenamiento, la persona vuelve a escribir el servidor.
+  }
 }
 
-function endpointState(endpoint: DlpEndpoint): 'applied' | 'pending' | 'unknown' | 'revoked' {
-  if (endpoint.status === 'revoked') return 'revoked';
-  if (endpoint.status === 're-enrollment-required') return 'pending';
-  if (endpoint.status === 'offline') return 'unknown';
-  if (endpoint.status === 'updating') return 'pending';
-  return 'applied';
+// ======================================================================== piezas exportadas
+
+/** Aviso de reautenticación: solo aparece junto a la acción que la pidió. */
+export function StepUpNotice({ action, logoutHref, onDismiss }: { action: string; logoutHref: string; onDismiss?: () => void }) {
+  return (
+    <EuiCallOut color="warning" size="s" iconType="lock" title={`Para ${action}, vuelve a iniciar sesión`} className="b89Dlp__stepUp">
+      <p>Por seguridad, esta acción pide un inicio de sesión de menos de 30 minutos.</p>
+      <div className="b89Dlp__inlineActions">
+        <EuiButton size="s" href={logoutHref}>Cerrar sesión y volver a entrar</EuiButton>
+        {onDismiss && <EuiButtonEmpty size="s" onClick={onDismiss}>Ahora no</EuiButtonEmpty>}
+      </div>
+    </EuiCallOut>
+  );
 }
+
+/** La respuesta primero: cuántos equipos están protegidos y si hay algo que atender. */
+export function FleetStatus({
+  summary,
+  policy,
+  endpointsError,
+  stale,
+  onRetry,
+}: {
+  summary: FleetSummary | null;
+  policy: DlpPolicy | null;
+  endpointsError: unknown;
+  stale: boolean;
+  onRetry: () => void;
+}) {
+  const unknown = summary === null;
+  const tone = summary === null ? 'warning' : summary.tone;
+  const parts: { key: string; tone: string; text: string }[] = [];
+  if (summary) {
+    const { counts } = summary;
+    if (counts.ok) parts.push({ key: 'ok', tone: 'success', text: `${counts.ok} ${counts.ok === 1 ? 'protegido' : 'protegidos'}` });
+    if (counts.updating) parts.push({ key: 'updating', tone: 'primary', text: `${counts.updating} aplicando cambios` });
+    if (counts.offline + counts.never) parts.push({ key: 'offline', tone: 'warning', text: `${counts.offline + counts.never} sin conexión` });
+    if (counts.reinstall) parts.push({ key: 'reinstall', tone: 'danger', text: `${counts.reinstall} por reinstalar` });
+  }
+  return (
+    <section className={`b89Dlp__status b89Dlp__status--${tone}`} aria-labelledby="b89-dlp-status" aria-live="polite">
+      <div>
+        <h2 id="b89-dlp-status">{summary === null ? 'No se pudo consultar el estado de los equipos' : summary.headline}</h2>
+        {parts.length > 0 && (
+          <p className="b89Dlp__counts">
+            {parts.map((part) => (
+              <span key={part.key} className={`b89Dlp__count b89Dlp__count--${part.tone}`}>{part.text}</span>
+            ))}
+          </p>
+        )}
+        {(unknown || stale) && (
+          <p className="b89Dlp__stale">
+            {unknown
+              ? endpointsError instanceof B89ApiError ? endpointsError.message : 'El servicio no respondió.'
+              : 'No se pudo actualizar; se muestran los últimos datos recibidos.'}{' '}
+            <EuiButtonEmpty size="xs" flush="left" onClick={onRetry}>Reintentar</EuiButtonEmpty>
+          </p>
+        )}
+      </div>
+      {policy && (
+        <p className="b89Dlp__policyMeta">
+          {policy.revision === 0
+            ? 'Política inicial del paquete'
+            : <>Política revisión {policy.revision} · <Timestamp iso={policy.updatedAt} /></>}
+        </p>
+      )}
+    </section>
+  );
+}
+
+function EndpointRow({ endpoint, policyRevision, canConfigure, onRevoke }: {
+  endpoint: DlpEndpoint;
+  policyRevision: number | null;
+  canConfigure: boolean;
+  onRevoke: (endpoint: DlpEndpoint) => void;
+}) {
+  const health = endpointHealth(endpoint);
+  const action = HEALTH_ACTION[health];
+  const lagging = health === 'updating' && policyRevision !== null && endpoint.currentRevision !== null;
+  return (
+    <tr data-health={health}>
+      <th scope="row">
+        <span className="b89Dlp__host" data-b89-no-translate="">{endpoint.hostname}</span>
+      </th>
+      <td>
+        <EuiBadge color={HEALTH_TONE[health]}>{HEALTH_LABEL[health]}</EuiBadge>
+        {lagging && <small>Tiene la revisión {endpoint.currentRevision}; la vigente es {policyRevision}.</small>}
+        {action && <small>{action}</small>}
+      </td>
+      <td>{health === 'never' ? <span className="b89Muted">Nunca</span> : <Timestamp iso={endpoint.lastSeenAt} />}</td>
+      <td className="b89Dlp__rowAction">
+        {canConfigure && health !== 'revoked' && (
+          <EuiButtonEmpty size="xs" color="danger" onClick={() => onRevoke(endpoint)} aria-label={`Revocar ${endpoint.hostname}`}>
+            Revocar
+          </EuiButtonEmpty>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+export function EndpointList({
+  endpoints,
+  policyRevision,
+  canConfigure,
+  onRevoke,
+  onConnect,
+}: {
+  endpoints: readonly DlpEndpoint[];
+  policyRevision: number | null;
+  canConfigure: boolean;
+  onRevoke: (endpoint: DlpEndpoint) => void;
+  onConnect?: () => void;
+}) {
+  const sorted = sortEndpoints(endpoints);
+  const active = sorted.filter((endpoint) => endpointHealth(endpoint) !== 'revoked');
+  const revoked = sorted.filter((endpoint) => endpointHealth(endpoint) === 'revoked');
+  const table = (rows: readonly DlpEndpoint[]) => (
+    <div className="b89TableScroll">
+      <table className="b89Dlp__table">
+        <thead>
+          <tr>
+            <th scope="col">Equipo</th>
+            <th scope="col">Estado</th>
+            <th scope="col">Último contacto</th>
+            <th scope="col"><span className="b89VisuallyHidden">Acciones</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((endpoint) => (
+            <EndpointRow key={endpoint.id} endpoint={endpoint} policyRevision={policyRevision} canConfigure={canConfigure} onRevoke={onRevoke} />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+  return (
+    <section className="b89Panel" aria-labelledby="b89-dlp-endpoints">
+      <div className="b89Panel__header">
+        <h2 id="b89-dlp-endpoints">Equipos</h2>
+      </div>
+      {active.length === 0 ? (
+        <p className="b89Dlp__empty">
+          Aún no hay equipos conectados.
+          {canConfigure && onConnect && (
+            <EuiButtonEmpty size="s" onClick={onConnect}>Conectar el primero</EuiButtonEmpty>
+          )}
+        </p>
+      ) : (
+        table(active)
+      )}
+      {revoked.length > 0 && (
+        <details className="b89Guide__details b89Dlp__more">
+          <summary>Revocados ({revoked.length})</summary>
+          {table(revoked)}
+        </details>
+      )}
+    </section>
+  );
+}
+
+function CopyButton({ text, label }: { text: string; label: string }) {
+  const [state, setState] = useState<'idle' | 'copied' | 'failed'>('idle');
+  useEffect(() => {
+    if (state === 'idle') return undefined;
+    const timer = window.setTimeout(() => setState('idle'), 2500);
+    return () => window.clearTimeout(timer);
+  }, [state]);
+  return (
+    <EuiButton
+      size="s"
+      iconType={state === 'copied' ? 'check' : 'copyClipboard'}
+      onClick={() => void copy(text).then((ok) => setState(ok ? 'copied' : 'failed'))}
+    >
+      {state === 'copied' ? 'Copiado' : state === 'failed' ? 'Selecciónalo y copia' : label}
+    </EuiButton>
+  );
+}
+
+const STEP_TITLES = ['Crear una clave', 'Instalar en el equipo', 'Esperar a que aparezca'] as const;
+
+function stepIndex(state: WizardState): number {
+  if (state.step === 'create') return 0;
+  if (state.step === 'waiting') return 1;
+  return 2;
+}
+
+/** Asistente de 3 pasos: crear la clave, pegar el comando, esperar al equipo (se detecta solo). */
+export function ConnectWizard({
+  state,
+  install,
+  now,
+  logoutHref,
+  onInstallChange,
+  onCreate,
+  onCancel,
+  onClose,
+}: {
+  state: WizardState;
+  install: InstallInput;
+  now: number;
+  logoutHref: string;
+  onInstallChange: (next: InstallInput) => void;
+  onCreate: () => void;
+  onCancel: () => void;
+  onClose: () => void;
+}) {
+  if (state.step === 'closed') return null;
+  const current = stepIndex(state);
+  const missing = missingInstallFields(install);
+  const command = installCommand(install);
+  const set = (patch: Partial<InstallInput>) => onInstallChange({ ...install, ...patch });
+  const token: DlpEnrollmentToken | null = state.step === 'waiting' ? state.token : null;
+  return (
+    <section className="b89Panel b89Dlp__wizard" aria-labelledby="b89-dlp-wizard">
+      <div className="b89Panel__header">
+        <h2 id="b89-dlp-wizard">Conectar un equipo</h2>
+        {state.step !== 'waiting' && <EuiButtonEmpty size="s" onClick={onClose}>Cerrar</EuiButtonEmpty>}
+      </div>
+      <ol className="b89Dlp__steps">
+        {STEP_TITLES.map((title, index) => (
+          <li
+            key={title}
+            className={`b89Dlp__step${index === current ? ' b89Dlp__step--active' : ''}${index < current ? ' b89Dlp__step--done' : ''}`}
+            aria-current={index === current ? 'step' : undefined}
+          >
+            <span className="b89Dlp__stepMark" aria-hidden="true">{index < current ? <EuiIcon type="check" size="s" /> : index + 1}</span>
+            <span className="b89Dlp__stepTitle">{title}</span>
+          </li>
+        ))}
+      </ol>
+
+      {state.step === 'create' && (
+        <div className="b89Dlp__stepBody">
+          <p>La clave sirve para un solo equipo y vence en 30 minutos.</p>
+          {state.stepUp && <StepUpNotice action="crear la clave" logoutHref={logoutHref} />}
+          {Boolean(state.error) && <ErrorCallout error={state.error} />}
+          <EuiButton fill onClick={onCreate} isLoading={state.busy}>Crear clave</EuiButton>
+        </div>
+      )}
+
+      {token && (
+        <div className="b89Dlp__stepBody">
+          <div className="b89Dlp__osPicker" role="group" aria-label="Sistema del equipo">
+            {([['windows', 'Windows'], ['unix', 'macOS o Linux']] as const).map(([os, label]) => (
+              <EuiButton
+                key={os}
+                size="s"
+                fill={install.os === os}
+                aria-pressed={install.os === os}
+                onClick={() => set({ os: os as InstallOs })}
+              >
+                {label}
+              </EuiButton>
+            ))}
+          </div>
+          <div className="b89Dlp__fields">
+            <label>
+              <span>Carpeta que se revisará</span>
+              <EuiFieldText
+                compressed
+                value={install.watchRoot}
+                placeholder={install.os === 'windows' ? 'C:\\Datos\\Proyecto' : '/Users/ana/Proyecto'}
+                onChange={(event) => set({ watchRoot: event.target.value })}
+                aria-label="Carpeta que se revisará"
+              />
+            </label>
+            {install.os === 'windows' && (
+              <>
+                <label>
+                  <span>Servidor Wazuh</span>
+                  <EuiFieldText compressed value={install.wazuhManager} onChange={(event) => set({ wazuhManager: event.target.value })} aria-label="Servidor Wazuh" />
+                </label>
+                <label>
+                  <span>SHA-256 del paquete</span>
+                  <EuiFieldText compressed value={install.packageSha256} onChange={(event) => set({ packageSha256: event.target.value })} aria-label="SHA-256 del paquete" />
+                </label>
+              </>
+            )}
+          </div>
+          <p className="b89Dlp__hint">
+            {install.os === 'windows'
+              ? 'En PowerShell como administrador, dentro de la carpeta del paquete:'
+              : 'En una terminal, dentro de la carpeta del paquete descomprimido:'}
+          </p>
+          <pre className="b89Dlp__command" data-b89-no-translate="">{command}</pre>
+          <div className="b89Dlp__inlineActions">
+            <CopyButton text={command} label="Copiar comando" />
+            {missing.length > 0 && <span className="b89Dlp__missing">Falta {missing.join(', ')}.</span>}
+          </div>
+          <p className="b89Dlp__hint">Cuando el instalador pida la clave, pega esta:</p>
+          <div className="b89Dlp__token">
+            <Mono>{token.token}</Mono>
+            <CopyButton text={token.token} label="Copiar clave" />
+          </div>
+          <p className="b89Dlp__waiting" role="status">
+            <EuiLoadingSpinner size="m" /> Esperando al equipo… aparecerá aquí solo.{' '}
+            <span className="b89Muted">La clave vence en {minutesLeft(token.expiresAt, now)} min.</span>
+          </p>
+          <EuiButtonEmpty size="s" color="danger" flush="left" onClick={onCancel}>Cancelar y anular la clave</EuiButtonEmpty>
+        </div>
+      )}
+
+      {state.step === 'connected' && (
+        <div className="b89Dlp__stepBody">
+          <EuiCallOut color="success" iconType="check" size="s" title={`${state.hostname} se conectó`}>
+            <p>Recibirá la política vigente en menos de un minuto.</p>
+          </EuiCallOut>
+          <div className="b89Dlp__inlineActions">
+            <EuiButton fill size="s" onClick={onClose}>Listo</EuiButton>
+            <EuiButtonEmpty size="s" onClick={onCreate}>Conectar otro equipo</EuiButtonEmpty>
+          </div>
+        </div>
+      )}
+
+      {state.step === 'expired' && (
+        <div className="b89Dlp__stepBody">
+          <EuiCallOut color="warning" size="s" title="La clave venció sin que el equipo se conectara">
+            <p>Si el instalador mostró un error, revísalo y vuelve a intentar con una clave nueva.</p>
+          </EuiCallOut>
+          <EuiButton size="s" onClick={onCreate}>Crear otra clave</EuiButton>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function RuleSwitch({ ruleId, label, hint, checked, disabled, onToggle }: {
+  ruleId: string;
+  label: string;
+  hint: string;
+  checked: boolean;
+  disabled: boolean;
+  onToggle: (id: string, on: boolean) => void;
+}) {
+  return (
+    <li className="b89Dlp__rule">
+      <EuiSwitch
+        compressed
+        label={label}
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onToggle(ruleId, event.target.checked)}
+      />
+      <EuiToolTip content={<>{hint}<br />ID: {ruleId}</>}>
+        <EuiIcon type="iInCircle" color="subdued" tabIndex={0} aria-label={`Más información sobre ${label}`} />
+      </EuiToolTip>
+    </li>
+  );
+}
+
+export function RulesPanel({
+  rules,
+  fingerprintsText,
+  fingerprintError,
+  canConfigure,
+  onToggle,
+  onFingerprintsChange,
+  onImport,
+}: {
+  rules: readonly string[];
+  fingerprintsText: string;
+  fingerprintError: string | null;
+  canConfigure: boolean;
+  onToggle: (id: string, on: boolean) => void;
+  onFingerprintsChange: (text: string) => void;
+  onImport: (event: React.ChangeEvent<HTMLInputElement>) => void;
+}) {
+  const basic = DLP_RULES.filter((rule) => !rule.advanced);
+  const advanced = DLP_RULES.filter((rule) => rule.advanced);
+  const advancedOn = advanced.filter((rule) => rules.includes(rule.id)).length;
+  const parsed = parseFingerprints(fingerprintsText);
+  const renderRule = (rule: (typeof DLP_RULES)[number]) => (
+    <RuleSwitch
+      key={rule.id}
+      ruleId={rule.id}
+      label={rule.label}
+      hint={rule.hint}
+      checked={rules.includes(rule.id)}
+      disabled={!canConfigure}
+      onToggle={onToggle}
+    />
+  );
+  return (
+    <section className="b89Panel" aria-labelledby="b89-dlp-rules">
+      <div className="b89Panel__header">
+        <h2 id="b89-dlp-rules">Qué detecta</h2>
+        <span className="b89Panel__meta">{rules.length} de {DLP_RULES.length} reglas · solo alerta, no bloquea</span>
+      </div>
+      <ul className="b89Dlp__rules">{basic.map(renderRule)}</ul>
+      <details className="b89Guide__details b89Dlp__more" open={advancedOn > 0 ? true : undefined}>
+        <summary>Reglas avanzadas · {advancedOn} de {advanced.length} activas</summary>
+        <p className="b89Dlp__hint">Pueden dar falsos positivos. DNI y RUC son datos personales: actívalos solo con aprobación de privacidad.</p>
+        <ul className="b89Dlp__rules">{advanced.map(renderRule)}</ul>
+      </details>
+      <details className="b89Guide__details b89Dlp__more">
+        <summary>Documentos específicos · {parsed.values.length}</summary>
+        <p className="b89Dlp__hint">Alerta cuando aparece una copia exacta de un documento. Pega su huella SHA-256, una por línea; el documento nunca sale del equipo.</p>
+        {canConfigure && (
+          <label className="b89Dlp__import">
+            <span>Importar desde .txt</span>
+            <input type="file" accept=".txt,text/plain" onChange={onImport} />
+          </label>
+        )}
+        <EuiTextArea
+          aria-label="Huellas SHA-256, una por línea"
+          value={fingerprintsText}
+          readOnly={!canConfigure}
+          onChange={(event) => onFingerprintsChange(event.target.value)}
+          rows={6}
+          resize="vertical"
+          fullWidth
+          isInvalid={Boolean(fingerprintError) || parsed.invalid.length > 0}
+          placeholder={canConfigure ? 'Una huella SHA-256 por línea' : 'Sin documentos registrados'}
+        />
+        {parsed.invalid.length > 0 && (
+          <p className="b89Dlp__error">
+            {parsed.invalid.length === 1 ? 'La línea' : 'Las líneas'} {parsed.invalid.slice(0, 8).join(', ')}
+            {parsed.invalid.length > 8 ? '…' : ''} no {parsed.invalid.length === 1 ? 'es una huella válida' : 'son huellas válidas'} (64 caracteres 0-9, a-f).
+          </p>
+        )}
+      </details>
+      {fingerprintError && <p className="b89Dlp__error" role="alert">{fingerprintError}</p>}
+    </section>
+  );
+}
+
+/** Aparece solo con cambios sin guardar y dice exactamente qué cambiará. */
+export function SaveBar({
+  diff,
+  saving,
+  stepUp,
+  conflict,
+  logoutHref,
+  onSave,
+  onDiscard,
+  onReload,
+  onDismissStepUp,
+}: {
+  diff: PolicyDiff;
+  saving: boolean;
+  stepUp: boolean;
+  conflict: boolean;
+  logoutHref: string;
+  onSave: () => void;
+  onDiscard: () => void;
+  onReload: () => void;
+  onDismissStepUp: () => void;
+}) {
+  if (!hasChanges(diff) && !conflict) return null;
+  return (
+    <div className="b89Dlp__saveBar" role="region" aria-label="Cambios sin guardar">
+      {conflict ? (
+        <EuiCallOut color="warning" size="s" title="Alguien guardó otra versión mientras editabas">
+          <EuiButtonEmpty size="xs" flush="left" onClick={onReload}>Cargar la versión nueva (descarta tus cambios)</EuiButtonEmpty>
+        </EuiCallOut>
+      ) : (
+        <>
+          <div>
+            <strong>Cambios sin guardar</strong>
+            <ul className="b89Dlp__diff">
+              {describeDiff(diff).map((line) => <li key={line}>{line}</li>)}
+            </ul>
+          </div>
+          <div className="b89Dlp__inlineActions">
+            <EuiButton fill size="s" onClick={onSave} isLoading={saving}>Guardar y enviar a los equipos</EuiButton>
+            <EuiButtonEmpty size="s" onClick={onDiscard} disabled={saving}>Descartar</EuiButtonEmpty>
+          </div>
+        </>
+      )}
+      {stepUp && <StepUpNotice action="guardar" logoutHref={logoutHref} onDismiss={onDismissStepUp} />}
+    </div>
+  );
+}
+
+/** Después de guardar: qué cambió y cuántos equipos ya aplicaron la revisión. */
+export function RolloutNotice({
+  revision,
+  changes,
+  applied,
+  total,
+  onDismiss,
+}: {
+  revision: number;
+  changes: readonly string[];
+  applied: number;
+  total: number;
+  onDismiss: () => void;
+}) {
+  const done = total > 0 && applied >= total;
+  const title = total === 0
+    ? `Revisión ${revision} guardada. No hay equipos conectados que la reciban.`
+    : done
+      ? `Revisión ${revision} aplicada en ${total === 1 ? 'el equipo' : `los ${total} equipos`}`
+      : `Revisión ${revision} guardada · ${applied} de ${total} ${total === 1 ? 'equipo la aplicó' : 'equipos la aplicaron'}`;
+  return (
+    <EuiCallOut color={done || total === 0 ? 'success' : 'primary'} size="s" iconType={done ? 'check' : 'clock'} title={title} className="b89Dlp__rollout">
+      {changes.length > 0 && <ul className="b89Dlp__diff">{changes.map((line) => <li key={line}>{line}</li>)}</ul>}
+      {!done && total > 0 && <p className="b89Muted">Los equipos en línea la reciben en menos de un minuto.</p>}
+      <EuiButtonEmpty size="xs" flush="left" onClick={onDismiss}>Cerrar</EuiButtonEmpty>
+    </EuiCallOut>
+  );
+}
+
+// ======================================================================== pantalla
 
 export function DlpView() {
-  const { api, can } = useConsole();
+  const { api, can, basePath } = useConsole();
+  const canRead = can('dlp.read');
+  const canConfigure = can('dlp.configure');
+  const logoutHref = `${basePath}${LOGOUT_PATH}`;
+
   const [policy, setPolicy] = useState<DlpPolicy | null>(null);
-  const [endpoints, setEndpoints] = useState<readonly DlpEndpoint[]>([]);
   const [policyError, setPolicyError] = useState<unknown>(null);
-  const [endpointError, setEndpointError] = useState<unknown>(null);
   const [loading, setLoading] = useState(true);
+  const [endpoints, setEndpoints] = useState<readonly DlpEndpoint[] | null>(null);
+  const [endpointsError, setEndpointsError] = useState<unknown>(null);
+
+  const [rules, setRules] = useState<string[]>([]);
+  const [fingerprintsText, setFingerprintsText] = useState('');
+  const [fingerprintError, setFingerprintError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [draftRules, setDraftRules] = useState<string[]>([]);
-  const [draftHashes, setDraftHashes] = useState('');
-  const [hashError, setHashError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [saveStepUp, setSaveStepUp] = useState(false);
   const [conflict, setConflict] = useState(false);
-  const [enrollmentBusy, setEnrollmentBusy] = useState(false);
-  const [enrollmentToken, setEnrollmentToken] = useState<string | null>(null);
-  const [enrollmentExpires, setEnrollmentExpires] = useState<string | null>(null);
-  const [stepUpRequired, setStepUpRequired] = useState(false);
+  const [rollout, setRollout] = useState<{ revision: number; changes: string[]; at: number } | null>(null);
+
+  const [wizard, dispatch] = useReducer(wizardReducer, { step: 'closed' } as WizardState);
+  const [install, setInstall] = useState<InstallInput>(() => ({
+    ...readInstallPrefs(),
+    controlPlaneUrl: typeof window === 'undefined' ? '' : window.location.origin,
+    watchRoot: '',
+    packageSha256: '',
+  }));
+  const [now, setNow] = useState(() => Date.now());
+
   const [revokeTarget, setRevokeTarget] = useState<DlpEndpoint | null>(null);
   const [revoking, setRevoking] = useState(false);
+  const [revokeStepUp, setRevokeStepUp] = useState(false);
+  const [actionError, setActionError] = useState<unknown>(null);
+
+  const applyPolicy = (data: DlpPolicy) => {
+    setPolicy(data);
+    setRules([...data.enabledRuleIds]);
+    setFingerprintsText(data.fingerprintsSha256.join('\n'));
+    setFingerprintError(null);
+    setConflict(false);
+  };
 
   const loadPolicy = useCallback(async () => {
     setPolicyError(null);
     try {
-      const data = await getDlpPolicy(api);
-      setPolicy(data);
-      setDraftRules([...data.enabledRuleIds]);
-      setDraftHashes(data.fingerprintsSha256.join('\n'));
-      setConflict(false);
+      applyPolicy(await getDlpPolicy(api));
     } catch (error) {
       setPolicyError(error);
     } finally {
@@ -162,108 +655,140 @@ export function DlpView() {
   }, [api]);
 
   const loadEndpoints = useCallback(async () => {
-    setEndpointError(null);
     try {
       const result = await getDlpEndpoints(api);
       setEndpoints(result.items);
+      setEndpointsError(null);
     } catch (error) {
-      setEndpointError(error);
+      // Se conservan los datos anteriores: la pantalla pasa a «degradada», no a vacía.
+      setEndpointsError(error);
     }
   }, [api]);
 
   useEffect(() => {
+    if (!canRead) return;
     void loadPolicy();
     void loadEndpoints();
-    const timer = window.setInterval(() => void loadEndpoints(), 30000);
-    return () => window.clearInterval(timer);
-  }, [loadPolicy, loadEndpoints]);
+  }, [canRead, loadPolicy, loadEndpoints]);
 
-  const parsedFingerprints = useMemo(() => parseFingerprints(draftHashes), [draftHashes]);
-  const canRead = can('dlp.read');
-  const canConfigure = can('dlp.configure');
-  const activeEndpoints = endpoints.filter((endpoint) => ['current', 'updating'].includes(endpoint.status)).length;
-  const pendingEndpoints = policy
-    ? endpoints.filter((endpoint) => endpointState(endpoint) === 'pending').length
-    : 0;
+  // Mientras una revisión recién guardada se distribuye, se consulta más seguido (5 min máx.).
+  const progress = policy && endpoints ? rolloutProgress(endpoints, policy.revision) : null;
+  const fastPoll = Boolean(rollout && progress && progress.applied < progress.total && now - rollout.at < 5 * 60_000);
+  useEffect(() => {
+    if (!canRead) return undefined;
+    const timer = window.setInterval(() => void loadEndpoints(), fastPoll ? ROLLOUT_POLL_MS : ENDPOINT_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [canRead, fastPoll, loadEndpoints]);
+
+  // Reloj para la cuenta regresiva de la clave y la ventana de sondeo rápido.
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 15_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  useEffect(() => dispatch({ type: 'tick', now }), [now]);
+
+  // Paso 3: detectar solo cuándo el equipo usa la clave.
+  const waitingId = wizard.step === 'waiting' ? wizard.token.id : null;
+  const mounted = useRef(true);
+  useEffect(() => () => { mounted.current = false; }, []);
+  useEffect(() => {
+    if (!waitingId) return undefined;
+    let cancelled = false;
+    const poll = async () => {
+      const status = await checkEnrollment(api, waitingId);
+      if (cancelled) return;
+      dispatch({ type: 'status', status });
+      if (status.state === 'connected') void loadEndpoints();
+    };
+    const timer = window.setInterval(() => void poll(), ENROLLMENT_POLL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [api, waitingId, loadEndpoints]);
+
+  const parsed = useMemo(() => parseFingerprints(fingerprintsText), [fingerprintsText]);
+  const diff = useMemo(
+    () => (policy ? policyDiff(policy, rules, parsed.values) : { enabled: [], disabled: [], fingerprintsAdded: 0, fingerprintsRemoved: 0 }),
+    [policy, rules, parsed.values],
+  );
+  const summary = endpoints ? summarizeFleet(endpoints) : null;
+
+  const createToken = async () => {
+    dispatch({ type: 'creating' });
+    try {
+      const token = await createDlpEnrollmentToken(api);
+      if (mounted.current) dispatch({ type: 'created', token });
+    } catch (error) {
+      if (mounted.current) dispatch({ type: 'createFailed', error });
+    }
+  };
+
+  const cancelToken = async () => {
+    if (wizard.step !== 'waiting') return;
+    const id = wizard.token.id;
+    setActionError(null);
+    dispatch({ type: 'close' });
+    try {
+      await cancelDlpEnrollmentToken(api, id);
+    } catch (error) {
+      // Si ya se usó o venció, no hay nada que anular; cualquier otro error se muestra.
+      if (!(error instanceof B89ApiError && error.code === 'RESOURCE_UNAVAILABLE')) setActionError(error);
+      void loadEndpoints();
+    }
+  };
+
+  const updateInstall = (next: InstallInput) => {
+    setInstall(next);
+    writeInstallPrefs(next);
+  };
 
   const save = async () => {
     if (!policy) return;
-    if (parsedFingerprints.invalid.length > 0) {
-      setHashError(`Revisa las líneas ${parsedFingerprints.invalid.slice(0, 8).join(', ')}: cada una debe tener 64 caracteres hexadecimales.`);
+    if (parsed.invalid.length > 0) {
+      setFingerprintError('Corrige las huellas marcadas antes de guardar.');
       return;
     }
-    if (draftRules.length === 0 && parsedFingerprints.values.length === 0) {
-      setHashError('Activa al menos una regla o agrega una huella para proteger los equipos.');
+    if (rules.length === 0 && parsed.values.length === 0) {
+      setFingerprintError('Activa al menos una regla o agrega un documento.');
       return;
     }
+    const changes = describeDiff(diff);
+    setActionError(null);
     setSaving(true);
-    setNotice(null);
-    setHashError(null);
-    setConflict(false);
-    setStepUpRequired(false);
+    setFingerprintError(null);
+    setSaveStepUp(false);
     try {
       const updated = await saveDlpPolicy(api, {
         expectedRevision: policy.revision,
         policyVersion: nextVersion(policy.policyVersion),
-        enabledRuleIds: draftRules,
-        fingerprintsSha256: parsedFingerprints.values,
+        enabledRuleIds: rules,
+        fingerprintsSha256: parsed.values,
       });
-      setPolicy(updated);
-      setDraftRules([...updated.enabledRuleIds]);
-      setDraftHashes(updated.fingerprintsSha256.join('\n'));
-      setNotice(`Política ${updated.policyVersion} guardada. Los equipos conectados la recibirán en su siguiente consulta.`);
-      await loadEndpoints();
+      applyPolicy(updated);
+      setRollout({ revision: updated.revision, changes, at: Date.now() });
+      void loadEndpoints();
     } catch (error) {
-      if (error instanceof B89ApiError && error.code === 'STATE_CONFLICT') {
-        setConflict(true);
-        setNotice('Otra persona guardó cambios primero. Recarga la política antes de volver a guardar.');
-      } else if (error instanceof B89ApiError && error.code === 'STEP_UP_REQUIRED') {
-        setStepUpRequired(true);
-        setNotice(null);
-      } else {
-        setPolicyError(error);
-      }
+      if (error instanceof B89ApiError && error.code === 'STATE_CONFLICT') setConflict(true);
+      else if (isStepUp(error)) setSaveStepUp(true);
+      else setActionError(error);
     } finally {
       setSaving(false);
     }
   };
 
-  const createToken = async () => {
-    setEnrollmentBusy(true);
-    setEnrollmentToken(null);
-    setEnrollmentExpires(null);
-    setStepUpRequired(false);
-    try {
-      const result = await createDlpEnrollmentToken(api);
-      setEnrollmentToken(result.token);
-      setEnrollmentExpires(result.expiresAt);
-    } catch (error) {
-      if (error instanceof B89ApiError && error.code === 'STEP_UP_REQUIRED') {
-        setStepUpRequired(true);
-      } else {
-        setPolicyError(error);
-      }
-    } finally {
-      setEnrollmentBusy(false);
-    }
-  };
-
-  const revokeEndpoint = async () => {
+  const confirmRevoke = async () => {
     if (!revokeTarget) return;
+    setActionError(null);
     setRevoking(true);
-    setStepUpRequired(false);
     try {
       await revokeDlpEndpoint(api, revokeTarget.id);
       setRevokeTarget(null);
-      setNotice(`Se revocó la credencial de ${revokeTarget.hostname}. El agente dejará de recibir políticas nuevas.`);
-      await loadEndpoints();
+      void loadEndpoints();
     } catch (error) {
-      if (error instanceof B89ApiError && error.code === 'STEP_UP_REQUIRED') {
-        setStepUpRequired(true);
-        setRevokeTarget(null);
-      } else {
-        setPolicyError(error);
-      }
+      setRevokeTarget(null);
+      if (isStepUp(error)) setRevokeStepUp(true);
+      else setActionError(error);
     } finally {
       setRevoking(false);
     }
@@ -276,186 +801,133 @@ export function DlpView() {
     const reader = new FileReader();
     reader.onload = () => {
       const text = typeof reader.result === 'string' ? reader.result : '';
-      setDraftHashes((previous) => [previous.trim(), text.trim()].filter(Boolean).join('\n'));
-      setHashError(null);
+      setFingerprintsText((previous) => [previous.trim(), text.trim()].filter(Boolean).join('\n'));
+      setFingerprintError(null);
     };
-    reader.onerror = () => setHashError('No se pudo leer el archivo. Usa un .txt UTF-8 con un SHA-256 por línea.');
+    reader.onerror = () => setFingerprintError('No se pudo leer el archivo. Usa un .txt con una huella por línea.');
     reader.readAsText(file);
   };
 
   if (!canRead) {
     return (
-      <B89Page
-        title="DLP de endpoints"
-        description="Administra reglas de credenciales y fingerprints de archivos sensibles."
-      >
-        <EuiCallOut color="warning" title="Tu rol no tiene acceso a DLP">
-          Pide al administrador que te asigne el acceso DLP correspondiente.
-        </EuiCallOut>
+      <B89Page title="DLP de endpoints">
+        <div lang="es-PE" translate="no">
+          <EuiCallOut color="warning" title="Tu rol no tiene acceso a DLP">
+            <p>Pide al administrador el acceso de lectura de DLP.</p>
+          </EuiCallOut>
+        </div>
       </B89Page>
     );
   }
 
+  const openWizard = () => dispatch({ type: 'open' });
+
   return (
     <B89Page
       title="DLP de endpoints"
-      description={canConfigure
-        ? "Define qué credenciales y huellas SHA-256 detecta Ferrispector en las carpetas aprobadas de cada equipo."
-        : "Consulta qué protege Ferrispector y si los equipos están aplicando la política vigente."}
-      actions={<EuiBadge color={pendingEndpoints > 0 ? 'warning' : 'hollow'}>{pendingEndpoints > 0 ? `${pendingEndpoints} equipos pendientes` : `${activeEndpoints} equipos conectados`}</EuiBadge>}
+      actions={canConfigure
+        ? wizard.step === 'closed' && <EuiButton fill iconType="plusInCircle" onClick={openWizard}>Conectar un equipo</EuiButton>
+        : <EuiBadge color="hollow">Solo lectura</EuiBadge>}
     >
-      {policyError && <ErrorCallout error={policyError} onRetry={() => { void loadPolicy(); void loadEndpoints(); }} />}
-      {!canConfigure && <EuiCallOut color="primary" title="Vista de consulta para investigación"><p>Puedes revisar las reglas activas, las huellas SHA-256 y el estado de los equipos. Para cambiar la política o administrar equipos, contacta al Administrador.</p></EuiCallOut>}
-      {stepUpRequired && (
-        <EuiCallOut color="warning" title="Confirma tu sesión de nuevo">
-          Reautentícate para guardar cambios, crear una clave de instalación o revocar un equipo. Después vuelve a intentar la acción.
-        </EuiCallOut>
-      )}
-      {notice && (
-        <EuiCallOut color={conflict ? 'warning' : 'success'} title={conflict ? 'Hay cambios más recientes' : 'Cambios guardados'}>
-          <p>{notice}</p>
-          {conflict && <EuiButtonEmpty size="xs" flush="left" onClick={() => void loadPolicy()}>Recargar la política</EuiButtonEmpty>}
-        </EuiCallOut>
-      )}
-      {loading && !policy ? <EuiLoadingContent lines={5} /> : policy && (
-        <>
-          <section className="b89Panel" aria-labelledby="b89-dlp-rules">
-            <div className="b89Panel__header">
-              <h2 id="b89-dlp-rules">Reglas de detección</h2>
-              <span className="b89Panel__meta">Versión {policy.policyVersion} · revisión {policy.revision}</span>
-            </div>
-            <p className="b89Dlp__intro">Activa los tipos de credencial que debe revisar el agente. El hallazgo genera una alerta; no bloquea el archivo.</p>
-            <div className="b89Dlp__rules">
-              <h3>Reglas principales</h3>
-              {RULES.filter((rule) => !('advanced' in rule && rule.advanced)).map((rule) => (
-                <div className="b89Dlp__rule" key={rule.id}>
-                  <EuiCheckbox
-                    id={`dlp-rule-${rule.id}`}
-                    checked={draftRules.includes(rule.id)}
-                    disabled={!canConfigure}
-                    onChange={(event) => setDraftRules((current) => event.target.checked ? [...current, rule.id] : current.filter((id) => id !== rule.id))}
-                    label={rule.title}
-                  />
-                  <span className="b89Dlp__ruleDetail">{rule.detail}</span>
-                  <Mono>{rule.id}</Mono>
-                </div>
-              ))}
-              <h3>Reglas avanzadas</h3>
-              <p className="b89Dlp__note">Pueden detectar información personal o valores escritos en texto. Actívalas solo en carpetas aprobadas: elevan el riesgo de falsos positivos.</p>
-              {RULES.filter((rule) => 'advanced' in rule && rule.advanced).map((rule) => (
-                <div className="b89Dlp__rule b89Dlp__rule--advanced" key={rule.id}>
-                  <EuiCheckbox
-                    id={`dlp-rule-${rule.id}`}
-                    checked={draftRules.includes(rule.id)}
-                    disabled={!canConfigure}
-                    onChange={(event) => setDraftRules((current) => event.target.checked ? [...current, rule.id] : current.filter((id) => id !== rule.id))}
-                    label={rule.title}
-                  />
-                  <span className="b89Dlp__ruleDetail">{rule.detail}</span>
-                  <Mono>{rule.id}</Mono>
-                </div>
-              ))}
-            </div>
-          </section>
+      <div className="b89Dlp" lang="es-PE" translate="no">
+        {policyError && <ErrorCallout error={policyError} onRetry={() => { void loadPolicy(); void loadEndpoints(); }} />}
+        {Boolean(actionError) && <ErrorCallout error={actionError} />}
 
-          <section className="b89Panel" aria-labelledby="b89-dlp-fingerprints">
-            <div className="b89Panel__header">
-              <h2 id="b89-dlp-fingerprints">Fingerprints de documentos</h2>
-              <span className="b89Panel__meta">{parsedFingerprints.values.length} SHA-256</span>
-            </div>
-            <p className="b89Dlp__intro">Agrega un hash SHA-256 por línea. Una coincidencia exacta genera una alerta; el nombre y el contenido del documento no se envían.</p>
-            <EuiFormRow label="Importar catálogo .txt" helpText="Solo hashes SHA-256 de 64 caracteres hexadecimales; las líneas que empiezan con # se ignoran.">
-              <input className="b89Dlp__file" type="file" accept=".txt,text/plain" aria-label="Importar catálogo de fingerprints SHA-256" onChange={importFile} disabled={!canConfigure} />
-            </EuiFormRow>
-            <EuiSpacer size="s" />
-            <EuiFormRow label="Fingerprints SHA-256" isInvalid={Boolean(hashError)} error={hashError ?? undefined}>
-              <EuiTextArea
-                aria-label="Fingerprints SHA-256, uno por línea"
-                value={draftHashes}
-                readOnly={!canConfigure}
-                onChange={(event) => { setDraftHashes(event.target.value); setHashError(null); }}
-                rows={8}
-                resize="vertical"
-                placeholder="Pega aquí un SHA-256 por línea"
+        {endpoints === null && !endpointsError ? (
+          <EuiLoadingContent lines={2} />
+        ) : (
+          <FleetStatus
+            summary={summary}
+            policy={policy}
+            endpointsError={endpointsError}
+            stale={Boolean(endpointsError) && endpoints !== null}
+            onRetry={() => void loadEndpoints()}
+          />
+        )}
+
+        {rollout && policy && progress && rollout.revision === policy.revision && (
+          <RolloutNotice
+            revision={rollout.revision}
+            changes={rollout.changes}
+            applied={progress.applied}
+            total={progress.total}
+            onDismiss={() => setRollout(null)}
+          />
+        )}
+
+        {canConfigure && (
+          <ConnectWizard
+            state={wizard}
+            install={install}
+            now={now}
+            logoutHref={logoutHref}
+            onInstallChange={updateInstall}
+            onCreate={() => void createToken()}
+            onCancel={() => void cancelToken()}
+            onClose={() => dispatch({ type: 'close' })}
+          />
+        )}
+
+        {revokeStepUp && (
+          <StepUpNotice action="revocar un equipo" logoutHref={logoutHref} onDismiss={() => setRevokeStepUp(false)} />
+        )}
+
+        {endpoints !== null && (
+          <EndpointList
+            endpoints={endpoints}
+            policyRevision={policy?.revision ?? null}
+            canConfigure={canConfigure}
+            onRevoke={(endpoint) => { setRevokeStepUp(false); setRevokeTarget(endpoint); }}
+            onConnect={wizard.step === 'closed' ? openWizard : undefined}
+          />
+        )}
+
+        {loading && !policy ? (
+          <EuiLoadingContent lines={4} />
+        ) : policy && (
+          <>
+            <RulesPanel
+              rules={rules}
+              fingerprintsText={fingerprintsText}
+              fingerprintError={fingerprintError}
+              canConfigure={canConfigure}
+              onToggle={(id, on) => setRules((current) => (on ? [...current.filter((rule) => rule !== id), id] : current.filter((rule) => rule !== id)))}
+              onFingerprintsChange={(text) => { setFingerprintsText(text); setFingerprintError(null); }}
+              onImport={importFile}
+            />
+            {canConfigure && (
+              <SaveBar
+                diff={diff}
+                saving={saving}
+                stepUp={saveStepUp}
+                conflict={conflict}
+                logoutHref={logoutHref}
+                onSave={() => void save()}
+                onDiscard={() => applyPolicy(policy)}
+                onReload={() => void loadPolicy()}
+                onDismissStepUp={() => setSaveStepUp(false)}
               />
-            </EuiFormRow>
-            {parsedFingerprints.invalid.length > 0 && <p className="b89Dlp__validation">{parsedFingerprints.invalid.length} líneas no tienen formato SHA-256.</p>}
-          </section>
-
-          <div className="b89Dlp__actions">
-            {canConfigure && <>
-              <EuiButton fill onClick={() => void save()} isLoading={saving} disabled={saving || conflict || !policy}>
-                Guardar y distribuir
-              </EuiButton>
-              <EuiButtonEmpty onClick={() => void loadPolicy()} disabled={saving}>Descartar cambios</EuiButtonEmpty>
-            </>}
-            <span className="b89Dlp__version">Último cambio: <Timestamp iso={policy.updatedAt} /></span>
-          </div>
-          <p className="b89Dlp__note">Los equipos aplican la nueva revisión al consultar al servidor. La tabla confirma la revisión cuando cada agente responde; guardar aquí no significa que todos ya la recibieron.</p>
-
-          <section className="b89Panel" aria-labelledby="b89-dlp-endpoints">
-            <div className="b89Panel__header">
-              <h2 id="b89-dlp-endpoints">Equipos y distribución</h2>
-              <span className="b89Panel__meta">Consulta de equipos cada 30 segundos</span>
-            </div>
-            {endpointError ? (
-              <ErrorCallOutCompact error={endpointError} retry={() => void loadEndpoints()} />
-            ) : endpoints.length === 0 ? (
-              <p className="b89Panel__empty">Todavía no hay equipos registrados para recibir la política.</p>
-            ) : (
-              <div className="b89TableScroll">
-                <table className="b89Dlp__table">
-                  <thead><tr><th scope="col">Equipo</th><th scope="col">Estado</th><th scope="col">Último contacto</th><th scope="col">Revisión aplicada</th><th scope="col">Acceso</th></tr></thead>
-                  <tbody>{endpoints.map((endpoint) => {
-                    const state = endpointState(endpoint);
-                    return <tr key={endpoint.id}>
-                      <th scope="row">{endpoint.hostname}{endpoint.agentId && <small>Agente Wazuh {endpoint.agentId}</small>}</th>
-                      <td><EuiBadge color={state === 'applied' ? 'success' : state === 'pending' ? 'warning' : 'hollow'}>{state === 'applied' ? 'Al día' : state === 'pending' ? endpoint.status === 're-enrollment-required' ? 'Reinscripción necesaria' : 'Aplicando' : state === 'revoked' ? 'Revocado' : 'Sin conexión'}</EuiBadge></td>
-                      <td><Timestamp iso={endpoint.lastSeenAt} /></td>
-                      <td>{endpoint.currentRevision === null ? 'Sin confirmar' : `Revisión ${endpoint.currentRevision} · ${endpoint.currentPolicyVersion ?? 'sin versión'}`}</td>
-                      <td>{canConfigure && endpoint.status !== 'offline' && endpoint.status !== 'revoked' && <EuiButtonEmpty size="xs" color="danger" onClick={() => setRevokeTarget(endpoint)}>Revocar credencial</EuiButtonEmpty>}{endpoint.status === 'revoked' && endpoint.revokedAt && <span>Revocada <Timestamp iso={endpoint.revokedAt} /></span>}{!canConfigure && endpoint.status !== 'revoked' && <span>Administrado por el equipo de plataforma</span>}</td>
-                    </tr>;
-                  })}</tbody>
-                </table>
-              </div>
             )}
-          </section>
+          </>
+        )}
+      </div>
 
-          {canConfigure && <section className="b89Panel" aria-labelledby="b89-dlp-install">
-            <div className="b89Panel__header"><h2 id="b89-dlp-install">Agregar un equipo</h2></div>
-            <p className="b89Dlp__intro">Crea una clave de instalación para un solo equipo. Copia el valor y entrégalo por el canal de administración de PCs; solo se muestra una vez y vence en 30 minutos.</p>
-            {enrollmentToken ? (
-              <div className="b89Dlp__token" role="status">
-                <label htmlFor="b89-dlp-token">Clave de instalación de un solo uso</label>
-                <div><Mono>{enrollmentToken}</Mono><EuiButtonEmpty size="s" onClick={() => { void navigator.clipboard?.writeText(enrollmentToken); }}>Copiar</EuiButtonEmpty></div>
-                {enrollmentExpires && <p>Vence <Timestamp iso={enrollmentExpires} />. Cierra o recarga esta pantalla después de copiarla.</p>}
-              </div>
-            ) : (
-              <EuiButton onClick={() => void createToken()} isLoading={enrollmentBusy}>Crear clave de instalación</EuiButton>
-            )}
-          </section>}
-        </>
-      )}
       {revokeTarget && (
         <EuiConfirmModal
-          title={`Revocar credencial de ${revokeTarget.hostname}`}
-          aria-label={`Confirmar revocación de ${revokeTarget.hostname}`}
+          title={`¿Revocar ${revokeTarget.hostname}?`}
           onCancel={() => setRevokeTarget(null)}
-          onConfirm={() => void revokeEndpoint()}
-          cancelButtonText="Mantener acceso"
-          confirmButtonText="Revocar credencial"
+          onConfirm={() => void confirmRevoke()}
+          cancelButtonText="Cancelar"
+          confirmButtonText="Revocar"
           buttonColor="danger"
           confirmButtonDisabled={revoking}
           defaultFocusedButton="cancel"
         >
-          <p>El equipo dejará de recibir cambios de política en su siguiente consulta.</p>
-          <p>Esto no desinstala Ferrispector ni detiene el escaneo local. La credencial revocada ya no podrá sincronizar ni confirmar revisiones.</p>
+          <p lang="es-PE" translate="no">
+            El equipo dejará de recibir la política. Ferrispector sigue instalado: para quitarlo, desinstálalo en el equipo.
+          </p>
         </EuiConfirmModal>
       )}
     </B89Page>
   );
-}
-
-function ErrorCallOutCompact({ error, retry }: { error: unknown; retry: () => void }) {
-  return <ErrorCallout error={error} onRetry={retry} />;
 }

@@ -7,6 +7,7 @@ import { ApiError } from '../http/api-error.js';
 import type { SecOpsRuntime } from '../runtime/secops-runtime.js';
 import type { DlpEndpointRecord } from '../runtime/dlp-policy-store.js';
 import { correlationIdOf } from '../http/request-context.js';
+import { needsRecentAuth } from './notification-channels.controller.js';
 import { mutatingActor, readingActor } from './session-actor.js';
 import { SECOPS_RUNTIME } from './tokens.js';
 
@@ -28,7 +29,10 @@ export const DLP_RULE_IDS = Object.freeze([
 export const DLP_ALWAYS_ON_RULE_IDS = Object.freeze(['B89_DLP_EXACT_FILE_FINGERPRINT'] as const);
 const DEFAULT_ENABLED_RULE_IDS = DLP_RULE_IDS.slice(0, 6);
 const DEFAULT_POLICY_VERSION = '1.0.0';
-const RECENT_AUTH_MS = 30 * 60_000;
+const ENROLLMENT_TTL_MS = 30 * 60_000;
+/** The agent polls every 30 s; two missed polls plus a long scan still count as online. */
+export const DLP_ONLINE_WINDOW_MS = 2 * 60_000;
+const ENDPOINT_ID = /^[0-9a-f-]{36}$/iu;
 const MAX_FINGERPRINTS = 10_000;
 const MAX_HOSTNAME = /^[A-Za-z0-9_.-]{1,128}$/u;
 const AGENT_ID = /^[A-Za-z0-9_.-]{1,16}$/u;
@@ -137,7 +141,7 @@ function endpointView(endpoint: DlpEndpointRecord, currentRevision: number, now:
     ? 'revoked'
     : endpoint.enrolledAt && endpoint.credentialVersion !== 1
       ? 're-enrollment-required'
-    : !endpoint.lastSeenAt || now.getTime() - endpoint.lastSeenAt.getTime() > 2 * 60_000
+    : !endpoint.lastSeenAt || now.getTime() - endpoint.lastSeenAt.getTime() > DLP_ONLINE_WINDOW_MS
       ? 'offline'
       : endpoint.appliedRevision < currentRevision
         ? 'updating'
@@ -165,14 +169,21 @@ export class DlpPolicyController {
     return store;
   }
 
-  private async authorized(request: IncomingRequest, capability: 'dlp.read' | 'dlp.configure', mutate = false) {
+  private async authorized(
+    request: IncomingRequest,
+    capability: 'dlp.read' | 'dlp.configure',
+    mutate = false,
+    recentAuth = mutate,
+  ) {
     const resolved = mutate
       ? await mutatingActor(this.runtime, request)
       : await readingActor(this.runtime, request);
     if (!resolved.actor.capabilities.has(capability) || resolved.actor.tenantId !== this.runtime.tenantId) {
       throw new ApiError('RESOURCE_UNAVAILABLE', resolved.correlationId);
     }
-    if (mutate && this.runtime.now().getTime() - resolved.session.createdAt.getTime() > RECENT_AUTH_MS) {
+    // Misma regla que canales (decisión del dueño): la administración de plataforma usa su sesión
+    // vigente; el resto de roles con dlp.configure necesita un inicio de sesión de < 30 min.
+    if (recentAuth && needsRecentAuth(resolved.actor, resolved.session, this.runtime.now())) {
       throw new ApiError('STEP_UP_REQUIRED', resolved.correlationId);
     }
     return resolved;
@@ -274,12 +285,14 @@ export class DlpPolicyController {
     return {
       correlationId,
       policyRevision: policy.revision,
+      onlineWindowSeconds: DLP_ONLINE_WINDOW_MS / 1_000,
       items: endpoints.map((endpoint) => {
         const view = endpointView(endpoint, policy.revision, now);
         return {
           id: view.id,
           hostname: view.hostname,
           agentId: view.agentId,
+          enrolledAt: view.enrolledAt,
           lastSeenAt: view.lastSeenAt,
           currentRevision: view.appliedRevision,
           currentPolicyVersion: view.policyVersion,
@@ -297,7 +310,7 @@ export class DlpPolicyController {
     const token = randomBytes(32).toString('base64url');
     const id = randomUUID();
     const now = this.runtime.now();
-    const expiresAt = new Date(now.getTime() + 30 * 60_000);
+    const expiresAt = new Date(now.getTime() + ENROLLMENT_TTL_MS);
     const created = await this.store(correlationId).issueEnrollmentToken({
       id,
       tenantId: actor.tenantId,
@@ -309,13 +322,66 @@ export class DlpPolicyController {
     await this.audit(actor, correlationId, 'dlp.endpoint.enrollment_token_created', { type: 'dlp_endpoint', id }, {
       expiresAt: expiresAt.toISOString(),
     });
-    return { correlationId, token, expiresAt: expiresAt.toISOString() };
+    return { correlationId, id, token, expiresAt: expiresAt.toISOString() };
+  }
+
+  /**
+   * Lets the connection wizard detect the endpoint without exposing other tokens. The row id is
+   * shared by the token and the endpoint it becomes, so `connected` names the new endpoint.
+   */
+  @Get('enrollment-tokens/:id')
+  @Header('Cache-Control', 'no-store')
+  public async enrollmentStatus(@Req() request: IncomingRequest, @Param('id') id: string) {
+    const { actor, correlationId } = await this.authorized(request, 'dlp.configure');
+    if (!ENDPOINT_ID.test(id)) throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
+    const row = await this.store(correlationId).enrollment({ tenantId: actor.tenantId, id });
+    if (!row) throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
+    const now = this.runtime.now();
+    if (row.enrolledAt) {
+      return {
+        correlationId,
+        id,
+        state: row.revokedAt ? 'revoked' : 'connected',
+        expiresAt: row.enrollmentExpiresAt.toISOString(),
+        endpoint: {
+          id: row.id,
+          hostname: row.hostname,
+          enrolledAt: row.enrolledAt.toISOString(),
+          lastSeenAt: row.lastSeenAt?.toISOString() ?? null,
+        },
+      };
+    }
+    return {
+      correlationId,
+      id,
+      state: row.enrollmentExpiresAt.getTime() <= now.getTime() ? 'expired' : 'waiting',
+      expiresAt: row.enrollmentExpiresAt.toISOString(),
+      endpoint: null,
+    };
+  }
+
+  /**
+   * Withdraws an unused installation key. No recent sign-in is required: cancelling only reduces
+   * access, and blocking it would leave a valid key alive for up to 30 minutes.
+   */
+  @Post('enrollment-tokens/:id/cancel')
+  public async cancelEnrollmentToken(@Req() request: IncomingRequest, @Param('id') id: string) {
+    const { actor, correlationId } = await this.authorized(request, 'dlp.configure', true, false);
+    if (!ENDPOINT_ID.test(id)) throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
+    const cancelled = await this.store(correlationId).cancelEnrollment({
+      tenantId: actor.tenantId,
+      id,
+      at: this.runtime.now(),
+    });
+    if (!cancelled) throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
+    await this.audit(actor, correlationId, 'dlp.endpoint.enrollment_token_cancelled', { type: 'dlp_endpoint', id }, {});
+    return { correlationId, id, cancelled: true };
   }
 
   @Post('endpoints/:id/revoke')
   public async revokeEndpoint(@Req() request: IncomingRequest, @Param('id') id: string) {
     const { actor, correlationId } = await this.authorized(request, 'dlp.configure', true);
-    if (!/^[0-9a-f-]{36}$/iu.test(id)) throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
+    if (!ENDPOINT_ID.test(id)) throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
     const revoked = await this.store(correlationId).revokeEndpoint({ tenantId: actor.tenantId, id, at: this.runtime.now() });
     if (!revoked) throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
     await this.audit(actor, correlationId, 'dlp.endpoint.revoked', { type: 'dlp_endpoint', id }, {});

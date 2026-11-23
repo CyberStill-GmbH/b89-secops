@@ -132,11 +132,13 @@ def sync_policy(config, state):
         os.replace(temp_path, fingerprint_file)
         state.update({"revision": revision, "policy_version": version, "enabled_rule_ids": enabled,
                       "policy_sha256": policy_hash(config, enabled, fingerprints, version)})
-        request_json(url.rstrip("/") + "/api/dlp/agent/ack", method="POST", token=token,
-                     body={"revision": revision, "policyVersion": version})
-        state["remote_policy_ready"] = True
+        # Rescan before acknowledging: if the ack fails, the next sync sees the same revision as
+        # "unchanged", so clearing afterwards would leave files unscanned with the new policy.
         if changed:
             state["files"] = {}
+        state["remote_policy_ready"] = True
+        request_json(url.rstrip("/") + "/api/dlp/agent/ack", method="POST", token=token,
+                     body={"revision": revision, "policyVersion": version})
         return state
     except Exception:
         emit(config, {"event_type": "policy_sync_error", "error_code": "DLP_POLICY_UNAVAILABLE"})
@@ -190,7 +192,7 @@ def process_file(config, path, state):
         emit(config, {"event_type": "scan_error", "error_code": "FILE_SCAN_FAILED"})
 
 
-def walk(config, state):
+def walk(config, state, tick=lambda: None):
     for root in config["watch_roots"]:
         for directory, dirs, files in os.walk(root, topdown=True, followlinks=False):
             dirs[:] = [name for name in dirs if not (Path(directory) / name).is_symlink()]
@@ -198,6 +200,7 @@ def walk(config, state):
                 path = Path(directory) / name
                 if not path.is_symlink():
                     process_file(config, path, state)
+                tick()
 
 
 def run(config_path):
@@ -206,7 +209,6 @@ def run(config_path):
     config = load_json(config_path)
     if config.get("schema_version") != 2:
         raise SystemExit("Configuración v1 reutiliza el token de inscripción; reinstala Ferrispector con un token nuevo.")
-        raise SystemExit("Versión de configuración no compatible.")
     roots = config.get("watch_roots")
     if not isinstance(roots, list) or not roots:
         raise SystemExit("No hay carpetas aprobadas configuradas.")
@@ -225,12 +227,18 @@ def run(config_path):
         state["policy_sha256"] = policy_hash(config, state["enabled_rule_ids"], fingerprints, state.get("policy_version", "1.0.0"))
         state["remote_policy_ready"] = True
     os.umask(0o077)
-    last_sync = 0.0
+    last_sync = [0.0]
+
+    def tick():
+        # The policy poll is also the heartbeat: keep it every 30 s even during a long walk,
+        # otherwise the console shows the endpoint offline after 2 minutes of scanning.
+        if config.get("control_plane_url") and time.monotonic() - last_sync[0] >= 30:
+            sync_policy(config, state)
+            last_sync[0] = time.monotonic()
+
     while True:
-        if config.get("control_plane_url") and time.monotonic() - last_sync >= 30:
-            state = sync_policy(config, state)
-            last_sync = time.monotonic()
-        walk(config, state)
+        tick()
+        walk(config, state, tick)
         atomic_json(state_path, state)
         time.sleep(30)
 
@@ -241,15 +249,17 @@ def enroll(config_path, url):
     url = url.rstrip("/")
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password or parsed.query or parsed.fragment:
-        raise SystemExit("La URL del servicio debe ser HTTPS y no incluir credenciales ni parÃ¡metros.")
-    token = getpass.getpass("Token de inscripciÃ³n de Ferrispector (entrada oculta, se usa una vez): ").strip()
+        raise SystemExit("La URL del servicio debe ser HTTPS y no incluir credenciales ni parámetros.")
+    token = getpass.getpass("Clave de instalación de Ferrispector (entrada oculta, se usa una vez): ").strip()
     if not token:
-        raise SystemExit("No se proporcionÃ³ el token de inscripciÃ³n.")
+        raise SystemExit("No se proporcionó la clave de instalación.")
     agent_id = uuid.uuid4().hex[:16]
+    # The server accepts [A-Za-z0-9_.-]{1,128}; a name such as "Ana's MacBook" would be rejected.
+    hostname = re.sub(r"[^A-Za-z0-9_.-]", "-", platform.node()).strip("-.")[:128] or "equipo-" + agent_id[:8]
     endpoint_credential = ""
     try:
         response = request_json(url + "/api/dlp/agent/enroll", method="POST", token=token,
-                                body={"hostname": platform.node(), "agentId": agent_id})
+                                body={"hostname": hostname, "agentId": agent_id})
         endpoint_credential = response.get("endpointCredential")
         if (not response.get("endpointId") or not isinstance(endpoint_credential, str)
                 or not re.fullmatch(r"[A-Za-z0-9_-]{40,64}", endpoint_credential)):
@@ -261,7 +271,7 @@ def enroll(config_path, url):
     except Exception:
         token = ""
         endpoint_credential = ""
-        raise SystemExit("No se pudo completar la inscripciÃ³n. Revoca cualquier endpoint creado, solicita un token nuevo e inténtalo otra vez.")
+        raise SystemExit("No se pudo completar la inscripción. Si el equipo aparece en la consola, revócalo; crea una clave nueva e inténtalo otra vez.")
     token = ""
     endpoint_credential = ""
     print("Equipo inscrito; credencial exclusiva guardada con permisos solo para administrador.")
