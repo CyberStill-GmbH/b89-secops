@@ -70,13 +70,17 @@ export const FILTER_LABEL: Readonly<Record<FilterKey, string>> = {
   q: 'Texto',
 };
 
-/** Pestañas de la vista: «Análisis» (por defecto) y «Registros» (la tabla de eventos). */
-export const TRAFFIC_TABS = ['analisis', 'registros'] as const;
+/**
+ * Pestañas de la vista: «Análisis» (por defecto), «Registros» (la tabla de eventos) y «Lista
+ * blanca» (quién puede llamar a la API de pagos; solo con `allowlist.read`).
+ */
+export const TRAFFIC_TABS = ['analisis', 'registros', 'lista-blanca'] as const;
 export type TrafficTab = (typeof TRAFFIC_TABS)[number];
 
 export const TRAFFIC_TAB_LABEL: Readonly<Record<TrafficTab, string>> = {
   analisis: 'Análisis',
   registros: 'Registros',
+  'lista-blanca': 'Lista blanca',
 };
 
 export interface TrafficViewState {

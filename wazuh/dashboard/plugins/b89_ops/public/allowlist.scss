@@ -1,0 +1,222 @@
+// «Tráfico de Cloudflare» › «Lista blanca»: respuesta, búsqueda de IP, filtros, tabla y barra de guardado.
+
+.b89Allow {
+  display: flex;
+  flex-direction: column;
+  gap: $ouiSize;
+}
+
+.b89Allow__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: $ouiSizeS $ouiSize;
+}
+
+.b89Allow__headText {
+  display: flex;
+  flex-direction: column;
+  gap: $ouiSizeXS;
+  min-width: 0;
+}
+
+.b89Allow__answer {
+  margin: 0;
+  color: $ouiTitleColor;
+  font-size: $ouiFontSizeM;
+  font-weight: $ouiFontWeightBold;
+  font-variant-numeric: tabular-nums;
+}
+
+.b89Allow__meta,
+.b89Allow__sub {
+  margin: 0;
+  color: $ouiTextSubduedColor;
+  font-size: $ouiFontSizeXS;
+}
+
+.b89Allow__warning,
+.b89Allow__rowWarning {
+  margin: 0;
+  color: $ouiColorWarningText;
+  font-size: $ouiFontSizeS;
+}
+
+.b89Allow__rowWarning {
+  font-size: $ouiFontSizeXS;
+}
+
+.b89Allow__invalid {
+  color: $ouiColorDangerText;
+}
+
+.b89Allow__rule {
+  ul {
+    margin: $ouiSizeS 0 0 $ouiSize;
+    list-style: disc;
+  }
+
+  li {
+    margin-bottom: $ouiSizeXS;
+    font-size: $ouiFontSizeS;
+  }
+}
+
+.b89Allow__lookup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: $ouiSizeS $ouiSize;
+  padding: $ouiSizeM;
+  border: 1px solid $ouiBorderColor;
+  border-radius: $ouiBorderRadius;
+  background: $ouiColorLightestShade;
+
+  > div {
+    min-width: 0;
+  }
+}
+
+.b89Allow__lookupResult {
+  margin: 0;
+  max-width: 640px;
+  font-size: $ouiFontSizeS;
+
+  ul {
+    margin: $ouiSizeXS 0 0 $ouiSize;
+    list-style: disc;
+  }
+}
+
+.b89Allow__lookupResult--none {
+  color: $ouiColorWarningText;
+}
+
+.b89Allow__filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $ouiSizeS $ouiSize;
+}
+
+.b89Allow__search {
+  min-width: 220px;
+}
+
+.b89Allow__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $ouiSizeXS;
+}
+
+.b89Allow__chip {
+  padding: 2px $ouiSizeS;
+  border: 1px solid $ouiBorderColor;
+  border-radius: $ouiBorderRadius;
+  background: $ouiColorEmptyShade;
+  color: $ouiTextColor;
+  font-size: $ouiFontSizeXS;
+  cursor: pointer;
+
+  &[aria-pressed='true'] {
+    border-color: $ouiColorPrimary;
+    color: $ouiColorPrimaryText;
+    font-weight: $ouiFontWeightBold;
+  }
+
+  &:focus-visible {
+    outline: 2px solid $ouiFocusRingColor;
+    outline-offset: 1px;
+  }
+}
+
+.b89Allow__chipCount {
+  color: $ouiTextSubduedColor;
+  font-variant-numeric: tabular-nums;
+}
+
+.b89Allow__ipRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $ouiSizeXS;
+  margin-bottom: 2px;
+}
+
+.b89Allow__ipLabel {
+  min-width: 52px;
+  color: $ouiTextSubduedColor;
+  font-size: $ouiFontSizeXS;
+}
+
+.b89Allow__ip,
+.b89Allow__mono,
+.b89Allow__mono textarea,
+.b89Allow__mono input {
+  font-family: $ouiCodeFontFamily;
+}
+
+.b89Allow__ip {
+  padding: 0 $ouiSizeXS;
+  border-radius: $ouiBorderRadius;
+  background: $ouiColorLightestShade;
+  font-size: $ouiFontSizeXS;
+}
+
+.b89Allow__more {
+  color: $ouiLinkColor;
+  font-size: $ouiFontSizeXS;
+  cursor: help;
+}
+
+.b89Allow__empty {
+  margin: 0;
+  color: $ouiTextSubduedColor;
+  font-size: $ouiFontSizeS;
+}
+
+.b89Allow__diff {
+  margin: $ouiSizeXS 0 0 $ouiSize;
+  list-style: disc;
+  font-size: $ouiFontSizeS;
+}
+
+.b89Allow__inlineActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $ouiSizeS;
+}
+
+.b89Allow__saveBar {
+  position: sticky;
+  bottom: $ouiSize;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: $ouiSizeS $ouiSize;
+  padding: $ouiSizeM $ouiSize;
+  border: 1px solid $ouiColorPrimary;
+  border-radius: $ouiBorderRadius;
+  background: $ouiColorEmptyShade;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+
+  > .euiCallOut {
+    flex-basis: 100%;
+  }
+}
+
+.b89Allow__form {
+  display: flex;
+  flex-direction: column;
+  gap: $ouiSizeXS;
+}
+
+.b89Allow__flyoutFooter {
+  display: flex;
+  flex-direction: column;
+  gap: $ouiSizeXS;
+}

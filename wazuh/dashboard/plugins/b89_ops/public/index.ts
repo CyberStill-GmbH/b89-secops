@@ -12,6 +12,7 @@ import './investigation.scss';
 import './investigation_activity_groups.scss';
 import './ai_analyst.scss';
 import './cloudflare_traffic.scss';
+import './allowlist.scss';
 import './alerts.scss';
 import { B89OpsPublicPlugin } from './plugin';
 

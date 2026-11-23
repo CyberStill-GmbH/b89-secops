@@ -27,6 +27,7 @@ import {
   EuiToolTip,
 } from '@elastic/eui';
 import {
+  CAPABILITIES,
   LIMA_LABEL,
   limaInputToIso,
   limaInputValue,
@@ -41,6 +42,7 @@ import {
   TrafficResponse,
 } from '../../common';
 import { fetchTraffic, trafficExportHref } from '../api/cloudflare_traffic';
+import { CloudflareAllowlistPanel } from './cloudflare_allowlist_view';
 import { CloudflareAnalysisPanel } from './cloudflare_analysis_view';
 import {
   activeTab,
@@ -75,7 +77,7 @@ import {
   viewStateSearch,
   withFilters,
 } from './cloudflare_traffic_model';
-import { B89Page } from './console_context';
+import { B89Page, useConsole } from './console_context';
 import { DataZone, EmptyLine, Mono, useIsMobile } from './primitives';
 
 const PAGE_SIZE = 100;
@@ -95,6 +97,9 @@ export function CloudflareTrafficView({
   navigator: Navigator;
 }) {
   const state = useMemo(() => parseViewState(navigator.search), [navigator.search]);
+  const { can } = useConsole();
+  const canReadAllowlist = can(CAPABILITIES.allowlistRead);
+  const tabs = TRAFFIC_TABS.filter((id) => id !== 'lista-blanca' || canReadAllowlist);
   // Los atajos («24 h») se resuelven al cargar o al pulsar «Actualizar», no en cada render.
   const [tick, setTick] = useState(0);
   const now = useMemo(() => Date.now(), [navigator.search, tick]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -179,16 +184,20 @@ export function CloudflareTrafficView({
         <>
           «Análisis» resume qué pasó en el backoffice y en los pagos (sesiones sospechosas,
           movimientos de dinero, exportaciones y anomalías); «Registros» muestra cada evento tal
-          cual (HTTP, DNS, firewall/WAF y auditoría). Todas las horas están en {LIMA_LABEL}.
+          cual (HTTP, DNS, firewall/WAF y auditoría)
+          {canReadAllowlist ? '; «Lista blanca», quién puede llamar a la API de pagos y desde qué IPs' : ''}.
+          Todas las horas están en {LIMA_LABEL}.
         </>
       }
       actions={
         <EuiFlexGroup gutterSize="s" responsive={false} wrap>
-          <EuiFlexItem grow={false}>
-            <EuiButtonEmpty size="s" iconType="refresh" onClick={() => setTick((v) => v + 1)}>
-              Actualizar
-            </EuiButtonEmpty>
-          </EuiFlexItem>
+          {tab !== 'lista-blanca' && (
+            <EuiFlexItem grow={false}>
+              <EuiButtonEmpty size="s" iconType="refresh" onClick={() => setTick((v) => v + 1)}>
+                Actualizar
+              </EuiButtonEmpty>
+            </EuiFlexItem>
+          )}
           <EuiFlexItem grow={false}>
             <EuiToolTip content="Copia la URL con el rango y los filtros actuales">
               <EuiButtonEmpty size="s" iconType="link" onClick={copyLink}>
@@ -212,7 +221,7 @@ export function CloudflareTrafficView({
       }
     >
       <EuiTabs className="b89Traffic__views" aria-label="Vistas del tráfico">
-        {TRAFFIC_TABS.map((id) => (
+        {tabs.map((id) => (
           <EuiTab
             key={id}
             isSelected={tab === id}
@@ -224,9 +233,16 @@ export function CloudflareTrafficView({
         ))}
       </EuiTabs>
       <EuiSpacer size="m" />
-      <RangeBar state={state} filters={filters.ok ? filters.value : null} onChange={go} />
-      <EuiSpacer size="m" />
-      {tab === 'analisis' ? (
+      {tab !== 'lista-blanca' && (
+        <>
+          <RangeBar state={state} filters={filters.ok ? filters.value : null} onChange={go} />
+          <EuiSpacer size="m" />
+        </>
+      )}
+      {tab === 'lista-blanca' ? (
+        // Sin `allowlist.read` la pestaña no aparece; un enlace directo muestra el aviso de acceso.
+        <CloudflareAllowlistPanel />
+      ) : tab === 'analisis' ? (
         !filters.ok ? (
           <EuiCallOut color="warning" iconType="alert" size="s" title={filters.error} />
         ) : (
