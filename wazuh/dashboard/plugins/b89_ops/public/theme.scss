@@ -23,6 +23,13 @@ $b89IsDark: lightness($euiColorEmptyShade) < 50%;
   --b89-brand-blue: #{$b89Blue};
   --b89-brand-lavender: #cdcced;
   --b89-font-sans: 'Satoshi', 'Helvetica Neue', Arial, sans-serif;
+  // Tonos de salud (HealthMark): el tema oscuro usa estos; el claro los oscurece abajo.
+  --b89-tone-ok: #5fb98a;
+  --b89-tone-warn: #d8c35c;
+  --b89-tone-fail: #ff5f57;
+  --b89-tone-neutral: #8f8f95;
+  --b89-tone-info: #8fb3d9;
+  --b89-focus-ring: #{$b89Blue};
 }
 
 html,
@@ -122,6 +129,13 @@ textarea,
 } @else {
   :root {
     color-scheme: light;
+    // ≥ 3:1 sobre blanco para glifos, bordes y el anillo de foco (WCAG 1.4.11).
+    --b89-tone-ok: #1f7a4d;
+    --b89-tone-warn: #8a6d00;
+    --b89-tone-fail: #c4302b;
+    --b89-tone-neutral: #6b6b72;
+    --b89-tone-info: #2f6ca3;
+    --b89-focus-ring: #006bb8;
   }
 
   .euiHeader,
@@ -148,7 +162,7 @@ textarea,
 }
 
 :focus-visible {
-  outline: 2px solid $b89Blue;
+  outline: 2px solid var(--b89-focus-ring, #{$b89Blue});
   outline-offset: 2px;
 }
 
@@ -169,6 +183,15 @@ textarea,
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .b89App,
+  .b89App *,
+  .b89App *::before,
+  .b89App *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
   .b89App {
     animation: none;
   }

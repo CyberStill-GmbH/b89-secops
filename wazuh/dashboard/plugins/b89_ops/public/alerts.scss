@@ -1,0 +1,213 @@
+// Cola y detalle de alertas, y el bloque «Por qué saltó» (alert_guide_panel.tsx).
+
+// Título de la fila: un botón con aspecto de enlace, para abrir la alerta con teclado.
+.b89LinkButton {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: $ouiFontWeightMedium;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    color: $ouiLinkColor;
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 2px solid $ouiColorPrimary;
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+}
+
+// «Por qué saltó» en una línea, bajo el título de la fila.
+.b89AlertWhy {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  margin-top: 2px;
+  font-size: $ouiFontSizeS;
+}
+
+.b89Person {
+  border-bottom: 1px dotted $ouiTextSubduedColor;
+
+  &:focus-visible {
+    outline: 2px solid $ouiColorPrimary;
+    outline-offset: 2px;
+  }
+}
+
+.b89AlertHead__source {
+  display: inline-flex;
+  align-items: center;
+  gap: $ouiSizeS;
+}
+
+.b89AlertHead__facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 4px;
+}
+
+// El formulario de clasificar/cerrar va arriba del detalle, a la vista.
+.b89AlertForm {
+  padding: $ouiSize;
+  border: 1px solid $ouiColorPrimary;
+  border-radius: $ouiBorderRadius;
+  background: $ouiColorEmptyShade;
+  margin-bottom: $ouiSize;
+}
+
+.b89AlertFacts {
+  margin-bottom: $ouiSizeS;
+}
+
+// Bloque «Por qué saltó»: la frase principal, más grande que el resto.
+.b89Guide {
+  display: grid;
+  gap: $ouiSizeS;
+}
+
+.b89Guide__why {
+  p:first-child {
+    font-size: $ouiFontSizeM;
+    line-height: 1.5;
+  }
+}
+
+.b89Guide__priority {
+  color: $ouiTextSubduedColor;
+}
+
+// Incidentes: ciclo de vida, «Para cerrar», cancelación de tareas y actividad.
+.b89Lifecycle__steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px $ouiSizeM;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: $ouiFontSizeXS;
+  color: $ouiTextSubduedColor;
+
+  li {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border: 1px solid $ouiBorderColor;
+    border-radius: 50%;
+    font-size: 10px;
+  }
+
+  .is-done span {
+    border-color: $ouiColorSuccess;
+    color: $ouiColorSuccess;
+  }
+
+  .is-current {
+    color: $ouiTextColor;
+    font-weight: $ouiFontWeightBold;
+
+    span {
+      border-color: $ouiColorPrimary;
+      background: $ouiColorPrimary;
+      color: #fff;
+    }
+  }
+}
+
+.b89Lifecycle__next {
+  margin: 4px 0 0;
+  font-size: $ouiFontSizeS;
+}
+
+.b89Checklist {
+  padding: $ouiSizeS $ouiSize;
+  border: 1px solid $ouiBorderColor;
+  border-radius: $ouiBorderRadius;
+
+  ul {
+    margin: 4px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+
+  li[data-ok='false'] > span:first-child {
+    color: $ouiColorDanger;
+    font-weight: $ouiFontWeightBold;
+  }
+
+  li[data-ok='true'] > span:first-child {
+    color: $ouiColorSuccess;
+  }
+}
+
+.b89TaskCancel {
+  margin-top: $ouiSizeS;
+}
+
+.b89IncidentLog {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    display: grid;
+    grid-template-columns: minmax(150px, max-content) 1fr;
+    gap: $ouiSizeS;
+    padding: 6px 0;
+    border-bottom: 1px solid $ouiBorderColor;
+    font-size: $ouiFontSizeS;
+  }
+}
+
+.b89Guide__sub {
+  margin: $ouiSizeXS 0 2px;
+  font-weight: $ouiFontWeightMedium;
+}
+
+// Enlace «Saltar al contenido»: invisible hasta recibir el foco con Tab.
+.b89SkipLink {
+  position: absolute;
+  left: $ouiSize;
+  top: -48px;
+  z-index: 10;
+  padding: $ouiSizeS $ouiSize;
+  border-radius: $ouiBorderRadius;
+  background: $ouiColorPrimary;
+  color: #fff;
+
+  &:focus {
+    top: $ouiSizeS;
+  }
+}
+
+.b89Page {
+  position: relative;
+}
+
+.b89Page__content:focus,
+#b89-main:focus {
+  outline: none;
+}

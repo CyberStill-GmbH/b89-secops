@@ -4,7 +4,13 @@
 
 import { describe, expect, it } from 'vitest';
 import type { Alert } from '../../common';
-import { loadAttentionTop, sortByPriorityThenRecency } from './attention_queue';
+import {
+  countUnassigned,
+  loadAttentionTop,
+  plainAttentionWhy,
+  sortByPriorityThenRecency,
+  whyBelowTitle,
+} from './attention_queue';
 
 function alert(id: string, priority: Alert['priority'], occurredAt: string): Alert {
   return {
@@ -58,5 +64,34 @@ describe('cola de atención de la vista general', () => {
       sortByPriorityThenRecency(open, 6).map((a) => a.id),
     );
     expect((await loadAttentionTop({ get: async () => ({ items: [] }) }, open, 6)).length).toBe(3);
+  });
+});
+
+describe('textos de la lista de atención del inicio', () => {
+  it('traduce el porqué del correlador a palabras llanas', () => {
+    expect(plainAttentionWhy('Riesgo de entidad 72/100 · en cadena correlada · 3 fuentes · 1 relacionadas')).toBe(
+      'Arriba porque: el usuario o la IP acumula un riesgo de 72 sobre 100, forma parte de una posible cadena de ataque, lo vieron 3 fuentes distintas y tiene 1 alerta relacionada.',
+    );
+    expect(plainAttentionWhy('cadena 3 etapas')).toBe(
+      'Arriba porque: encadena 3 pasos de un posible ataque.',
+    );
+    expect(plainAttentionWhy(null)).toBeNull();
+    expect(plainAttentionWhy('  ')).toBeNull();
+  });
+
+  it('cuenta las alertas sin responsable y avisa si el conteo es parcial', () => {
+    const items = [{ assigneeId: null }, { assigneeId: 'u1' }, { assigneeId: null }];
+    expect(countUnassigned(items, 3)).toEqual({ count: 2, partial: false });
+    expect(countUnassigned(items, 140)).toEqual({ count: 2, partial: true });
+  });
+
+  it('no repite el título en la línea del porqué', () => {
+    expect(whyBelowTitle('Inicio de sesión fallido', 'Inicio de sesión fallido · usuario ana · se repitió 5 veces')).toBe(
+      'usuario ana · se repitió 5 veces',
+    );
+    expect(whyBelowTitle('Inicio de sesión fallido', 'Inicio de sesión fallido')).toBeNull();
+    expect(whyBelowTitle('Regla X', 'Alguien probó contraseñas · IP 1.2.3.4')).toBe(
+      'Alguien probó contraseñas · IP 1.2.3.4',
+    );
   });
 });

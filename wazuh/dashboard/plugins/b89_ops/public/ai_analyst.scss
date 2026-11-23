@@ -194,7 +194,7 @@ a.b89Ai__cite {
   border-radius: 999px;
   background: rgba($b89AiWarn, 0.25);
   color: $ouiTitleColor;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   line-height: 18px;
   text-align: center;
@@ -213,7 +213,7 @@ a.b89Ai__cite {
   background: $ouiColorLightestShade;
   color: $ouiTextSubduedColor;
   font-family: $ouiCodeFontFamily;
-  font-size: 11px;
+  font-size: 12px;
   overflow-wrap: anywhere;
 }
 
@@ -270,7 +270,7 @@ a.b89Ai__cite {
   border-radius: 50%;
   background: var(--b89-verdict);
   color: #111;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -332,7 +332,7 @@ a.b89Ai__cite {
   padding: 0 6px;
   border: 1px solid $b89AiRisk;
   border-radius: 4px;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -396,7 +396,7 @@ a.b89Ai__cite {
 
 .b89AiTile__label {
   color: $ouiTextSubduedColor;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -608,7 +608,7 @@ a.b89Ai__cite {
 
   dt {
     color: $ouiTextSubduedColor;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -952,7 +952,7 @@ a.b89Ai__cite {
   padding: 0 5px;
   border-radius: 999px;
   background: $ouiColorLightShade;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 16px;
   text-align: center;
 }
@@ -1013,7 +1013,7 @@ a.b89Ai__cite {
   border-bottom: 1px solid $ouiBorderColor;
   background: $ouiColorLightestShade;
   color: $ouiTextSubduedColor;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1157,7 +1157,7 @@ a.b89Ai__cite {
   padding: 0 8px;
   border: 1px solid rgba($b89AiRisk, 0.6);
   border-radius: 6px;
-  font-size: 11px;
+  font-size: 12px;
   white-space: nowrap;
 }
 
@@ -1335,7 +1335,7 @@ a.b89Ai__cite {
   border-radius: 999px;
   background: $ouiColorLightShade;
   color: $ouiTextSubduedColor;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   line-height: 18px;
   text-align: center;
@@ -1377,7 +1377,7 @@ a.b89Ai__cite {
 .b89AiConclusion__eyebrow {
   margin: 0 0 $ouiSizeS;
   color: $ouiTextSubduedColor;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1403,7 +1403,7 @@ a.b89Ai__cite {
 
   dt {
     color: $ouiTextSubduedColor;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
@@ -1479,7 +1479,7 @@ a.b89Ai__cite {
       background: $ouiColorLightShade;
       color: $ouiTitleColor;
       content: counter(b89AiItem);
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 700;
     }
   }
@@ -1851,7 +1851,7 @@ a.b89Ai__cite {
 .b89AiSetSummary__label {
   margin-right: 4px;
   color: $ouiTextSubduedColor;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -2250,4 +2250,128 @@ a.b89Ai__cite {
   @media (max-width: $b89AiTablet) {
     padding-left: 0;
   }
+}
+
+// ------------------------------------------------------------------ Conclusión primero
+.b89AiConclusion__verification {
+  margin: $ouiSizeS 0 0;
+  font-size: $ouiFontSizeS;
+}
+
+.b89AiConclusion__summary {
+  display: block;
+  margin-top: $ouiSizeS;
+  color: $ouiTitleColor;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.b89AiConclusion__subhead {
+  margin: $ouiSize 0 4px;
+  color: $ouiTitleColor;
+  font-size: $ouiFontSizeS;
+  font-weight: 700;
+}
+
+.b89AiConclusion__steps {
+  margin: 0 0 4px;
+  padding-left: 1.4em;
+
+  li + li {
+    margin-top: 2px;
+  }
+}
+
+.b89AiConclusion__gaps {
+  margin: $ouiSizeS 0 0;
+  font-size: $ouiFontSizeS;
+}
+
+.b89AiConclusion__priority {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.b89AiConclusion__help {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  cursor: help;
+  @include b89AiFocus;
+}
+
+.b89AiDocument__priority {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.b89AiDocument__error:focus {
+  outline: none;
+}
+
+.b89AiCitations {
+  margin-top: $ouiSize;
+}
+
+// «Detalles técnicos»: un solo pliegue para cronología, cobertura, uso y ficha.
+.b89AiTechnical {
+  padding: $ouiSizeS $ouiSizeL;
+  border: 1px solid $ouiBorderColor;
+  border-radius: $b89AiRadius;
+  background: $ouiColorEmptyShade;
+
+  > summary {
+    min-height: 24px;
+    padding: 4px 0;
+    color: $ouiTitleColor;
+    font-size: $ouiFontSizeS;
+    font-weight: 700;
+    scroll-margin-top: 64px;
+  }
+}
+
+.b89AiTechnical__body {
+  display: flex;
+  flex-direction: column;
+  gap: $ouiSize;
+  margin-top: $ouiSizeS;
+}
+
+.b89AiOverview__fold > summary {
+  min-height: 24px;
+  padding: 4px 0;
+  font-size: $ouiFontSizeS;
+}
+
+// Bandeja: lo mínimo para decidir (resumen, vacíos, citas) antes de los botones.
+.b89AiReview__briefing {
+  margin: 0 0 $ouiSize;
+  padding: $ouiSizeS $ouiSize;
+  border-left: 3px solid $ouiBorderColor;
+  background: $ouiColorLightestShade;
+  font-size: $ouiFontSizeS;
+
+  p {
+    margin: 0 0 6px;
+  }
+}
+
+.b89AiReview__briefingFacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px $ouiSize;
+  margin: 6px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.b89AiReview__feedback:focus,
+.b89AiSettings__saved:focus {
+  outline: none;
+}
+
+.b89AiSettings__saved {
+  margin: $ouiSizeS 0;
 }

@@ -56,7 +56,7 @@ describe('estado de servicios', () => {
       label: 'Requiere permiso',
       detail: 'ActivityFeed.Read · Pedir consentimiento',
     });
-    expect(providerStatus('aws', overview(), NOW).label).toBe('Deshabilitado');
+    expect(providerStatus('aws', overview(), NOW).label).toBe('Desactivada');
   });
 
   it('lo medido: reciente, callado según el ritmo del proveedor', () => {
@@ -65,9 +65,9 @@ describe('estado de servicios', () => {
     expect(providerStatus('snyk', overview(), NOW).tone).toBe('ok');
     expect(providerStatus('cloudflare', overview(), NOW)).toMatchObject({
       tone: 'warn',
-      label: 'Silencioso',
+      label: 'Sin eventos',
     });
-    expect(providerStatus('bitdefender', overview(), NOW).label).toBe('Operativo');
+    expect(providerStatus('bitdefender', overview(), NOW).label).toBe('Funciona');
   });
 
   it('sin permiso de lectura no se presenta como caída', () => {
@@ -78,7 +78,7 @@ describe('estado de servicios', () => {
   });
 
   it('Wazuh: agentes desconectados degradan; todo activo es operativo', () => {
-    expect(wazuhStatus(overview(), null).label).toBe('Operativo');
+    expect(wazuhStatus(overview(), null).label).toBe('Funciona');
     expect(
       wazuhStatus(
         overview({
@@ -114,10 +114,10 @@ describe('estado de servicios', () => {
         providers: { ...base.providers!, office365: stats('2026-11-04T15:55:00Z') },
         platformHealth: h,
       }) as OverviewResponse;
-    expect(providerStatus('office365', o(health('ok')), NOW).label).toBe('Operativo');
+    expect(providerStatus('office365', o(health('ok')), NOW).label).toBe('Funciona');
     expect(providerStatus('office365', o(health('failing', 'HTTP 503 del proveedor')), NOW)).toMatchObject({
       tone: 'fail',
-      label: 'Fallando',
+      label: 'Con problemas',
     });
     expect(
       providerStatus('office365', o(health('failing', 'AF10001: permission set does not include')), NOW)
@@ -125,15 +125,15 @@ describe('estado de servicios', () => {
     ).toBe('Requiere permiso');
     // Monitor atrasado («deshabilitado»/«silencioso») con eventos fluyendo: Operativo.
     expect(providerStatus('office365', o(health('disabled', 'falta ActivityFeed.Read')), NOW).label).toBe(
-      'Operativo',
+      'Funciona',
     );
-    expect(providerStatus('office365', o(health('silent')), NOW).label).toBe('Operativo');
+    expect(providerStatus('office365', o(health('silent')), NOW).label).toBe('Funciona');
     // Monitor con más de 2 h: deciden los datos.
     expect(
       providerStatus('office365', o(health('failing', 'x', '2026-11-04T10:00:00Z')), NOW).label,
-    ).toBe('Operativo');
+    ).toBe('Funciona');
     // Sin eventos: el monitor manda.
     const quiet = { ...o(health('disabled')), providers: { ...base.providers!, office365: stats(null) } };
-    expect(providerStatus('office365', quiet as OverviewResponse, NOW).label).toBe('Deshabilitado');
+    expect(providerStatus('office365', quiet as OverviewResponse, NOW).label).toBe('Desactivada');
   });
 });

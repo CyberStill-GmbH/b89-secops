@@ -44,7 +44,7 @@ import {
 import { TeamsSetupGuide, teamsSetupStep } from './channels_setup';
 import { useConsole } from './console_context';
 import { webhookProblem } from './notification_groups';
-import { EmptyLine, ErrorCallout, HealthMark, Mono, Timestamp, useAsync } from './primitives';
+import { EmptyLine, ErrorCallout, HealthMark, Mono, Person, Timestamp, useAsync } from './primitives';
 
 /**
  * «Canales»: estado de Microsoft Teams, correo y consola; webhook de Teams, prueba y
@@ -60,7 +60,7 @@ const STATE: Record<NotificationChannelState, { label: string; tone: HealthTone 
   inactive: { label: 'Inactivo', tone: 'neutral' },
   failing: { label: 'Con errores', tone: 'fail' },
   unconfigured: { label: 'No configurado', tone: 'warn' },
-  unknown: { label: 'Sin una prueba reciente', tone: 'neutral' },
+  unknown: { label: 'Sin probar', tone: 'neutral' },
 };
 
 /** Estado de carga que no es un error con reintento: sin permiso o gestión no servida. */
@@ -71,26 +71,29 @@ export function ChannelsUnavailable({ problem }: { problem: 'forbidden' | 'unava
       iconType="lock"
       title="Tu cuenta no tiene permiso para ver los canales de notificación."
     >
-      <p>Requiere la capacidad de lectura de notificaciones. La bandeja no cambia.</p>
+      <p>Pide el permiso de lectura de notificaciones a un Administrador de plataforma.</p>
     </EuiCallOut>
   ) : (
     <EuiCallOut
       size="s"
       color="warning"
       iconType="alert"
-      title="La API B89 no está sirviendo la gestión de canales."
+      title="No se pudo cargar la configuración de canales."
     >
-      <p>
-        Tu cuenta sí puede verla, así que no es un problema de permisos: la versión desplegada de
-        la API no publica GET /api/notifications/channels o su registro de canales no inició. La
-        bandeja sigue funcionando; avisa al equipo de plataforma.
-      </p>
+      <p>La bandeja sigue funcionando. Avisa a plataforma para que lo revise.</p>
+      <details className="b89Guide__details">
+        <summary>Detalle técnico</summary>
+        <p>
+          Tu rol sí puede ver los canales (no es un problema de permisos): el servidor no responde
+          a <Mono>GET /api/notifications/channels</Mono> o su registro de canales no inició.
+        </p>
+      </details>
     </EuiCallOut>
   );
 }
 
 export function ChannelsPanel() {
-  const { api, can, notifications } = useConsole();
+  const { api, can, notifications, session } = useConsole();
   const manage = can(CAPABILITIES.notificationsManage);
   const canRead = can(CAPABILITIES.notificationsRead);
   const loaded = useAsync(
@@ -257,7 +260,7 @@ export function ChannelsPanel() {
                         {channel.updatedBy ? (
                           <>
                             {' '}
-                            por <Mono>{channel.updatedBy.slice(0, 24)}</Mono>
+                            por <Person id={channel.updatedBy} viewerId={session.subjectId} />
                           </>
                         ) : null}
                       </dd>
@@ -294,7 +297,8 @@ export function ChannelsPanel() {
                       role="group"
                       aria-label={`Acciones para ${channelName(channel)}`}
                     >
-                      {channel.id === 'teams' && (
+                      {/* Durante la puesta en marcha, la guía tiene la única acción principal. */}
+                      {channel.id === 'teams' && !showSetup && (
                         <EuiButton size="s" onClick={() => setEditing(true)}>
                           {channel.configured ? 'Cambiar configuración' : 'Configurar Teams'}
                         </EuiButton>
@@ -330,7 +334,12 @@ export function ChannelsPanel() {
           onStale={loaded.reload}
           onSaved={() => {
             setEditing(false);
-            notifications.toasts.addSuccess({ title: 'Webhook de Teams actualizado' });
+            notifications.toasts.addSuccess({
+              title: 'Webhook de Teams guardado',
+              text: teams.enabled
+                ? 'Siguiente paso: envía una prueba y comprueba que la tarjeta aparece en Teams.'
+                : 'Siguiente paso: activa el canal y envía una prueba desde la guía de puesta en marcha.',
+            });
             loaded.reload();
           }}
         />

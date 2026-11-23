@@ -15,11 +15,11 @@ export class ViewErrorBoundary extends React.Component<
   }
   public render() {
     return this.state.failed ? (
-      <section className="b89RenderFailure" role="alert">
+      <section className="b89RenderFailure" role="alert" lang="es-PE">
         <h2>No se pudo abrir esta vista</h2>
-        <p>La interfaz no termino de cargar. Recarga la pagina para volver a intentarlo.</p>
+        <p>La pantalla no terminó de cargar. Recarga la página; si vuelve a pasar, avisa a plataforma.</p>
         <button type="button" onClick={() => window.location.reload()}>
-          Recargar pagina
+          Recargar página
         </button>
       </section>
     ) : (
@@ -34,14 +34,15 @@ export function renderMountFailure(element: HTMLElement, error: unknown): () => 
   const section = document.createElement('section');
   section.className = 'b89RenderFailure';
   section.setAttribute('role', 'alert');
+  section.setAttribute('lang', 'es-PE');
   const title = document.createElement('h2');
   title.textContent = 'No se pudo abrir esta vista';
   const detail = document.createElement('p');
   detail.textContent =
-    'La interfaz no termino de cargar. Recarga la pagina para volver a intentarlo.';
+    'La pantalla no terminó de cargar. Recarga la página; si vuelve a pasar, avisa a plataforma.';
   const retry = document.createElement('button');
   retry.type = 'button';
-  retry.textContent = 'Recargar pagina';
+  retry.textContent = 'Recargar página';
   retry.onclick = () => window.location.reload();
   section.append(title, detail, retry);
   element.textContent = '';

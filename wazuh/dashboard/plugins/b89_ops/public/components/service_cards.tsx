@@ -39,7 +39,7 @@ import { declaredStatus, providerStatus, ServiceStatus, wazuhStatus } from './se
 
 export interface ServiceModel {
   readonly attention?: ServiceAttention;
-  /** Críticas (nivel ≥ 12) en 24 h, para el resumen de la lista cuando solo se ven críticas. */
+  /** Eventos de nivel 12 o más en 24 h, para el resumen de la lista cuando solo se ven esos. */
   readonly critical24h?: number;
   readonly spec: IntegrationSpec;
   readonly status: ServiceStatus;
@@ -97,7 +97,7 @@ export function cloudflareMetrics(m: Readonly<Record<string, number>>): Metric[]
       {
         label: 'Tráfico 24 h',
         value: 'Sin permiso',
-        hint: 'Tu rol no puede leer b89-cloudflare-traffic-*',
+        hint: 'Tu rol no tiene permiso para ver el tráfico de Cloudflare',
       },
       zones,
     ];
@@ -130,23 +130,24 @@ export function cloudflareMetrics(m: Readonly<Record<string, number>>): Metric[]
 }
 
 /**
- * «Críticas 24 h» y «Altas y críticas 24 h»: cada cifra muestra exactamente lo que cuenta
- * (en la tarjeta filtra la lista «Atención prioritaria»; sin lista, abre Discover filtrado).
+ * «Nivel 12+ · 24 h» y «Nivel 8+ · 24 h»: cada cifra muestra exactamente lo que cuenta (con la
+ * lista «Atención prioritaria» la filtra; sin lista, abre Discover filtrado). Son niveles del
+ * SIEM: nunca «Crítica/Alta», que son palabras de la prioridad de las alertas.
  */
 export function severityMetrics(service: ServiceId, levels: LevelCounts): Metric[] {
   return [
     {
-      label: 'Críticas 24 h',
+      label: 'Nivel 12+ · 24 h',
       value: formatNumber(levels.critical),
-      hint: 'Eventos de nivel ≥ 12',
+      hint: 'Eventos de nivel 12 o más en 24 h',
       drill: { kql: attentionQuery(service, true), from: 'now-24h' },
       focus: 'critical',
       emphasis: levels.critical > 0 ? 'danger' : undefined,
     },
     {
-      label: 'Altas y críticas 24 h',
+      label: 'Nivel 8+ · 24 h',
       value: formatNumber(levels.high + levels.critical),
-      hint: 'Eventos de nivel ≥ 8',
+      hint: 'Eventos de nivel 8 o más en 24 h',
       drill: { kql: attentionQuery(service, false), from: 'now-24h' },
       focus: 'all',
     },
@@ -162,9 +163,9 @@ function providerMetrics(id: ProviderId, data: PlatformData): Metric[] {
     case 'bitdefender':
       return [
         {
-          label: 'Endpoints con hallazgos',
+          label: 'Equipos con hallazgos',
           value: formatNumber(m.endpoints ?? 0),
-          hint: 'Endpoints distintos con algún hallazgo en 30 días',
+          hint: 'Equipos distintos con algún hallazgo en 30 días',
         },
         {
           label: 'Infectados',
@@ -230,7 +231,7 @@ function serviceModel(spec: IntegrationSpec, data: PlatformData): ServiceModel {
         emphasis: agents.disconnected > 0 ? 'warning' : undefined,
       });
     } else if (overview && overview.monitoringAccess !== 'ok') {
-      metrics.push({ label: 'Agentes', value: 'Sin permiso', hint: 'wazuh-monitoring-*' });
+      metrics.push({ label: 'Agentes', value: 'Sin permiso', hint: 'Tu rol no puede ver los agentes' });
     }
     if (overview?.siem) {
       metrics.push({ label: 'Alertas 24 h', value: formatNumber(overview.siem.total24h) });
@@ -316,7 +317,7 @@ function serviceModel(spec: IntegrationSpec, data: PlatformData): ServiceModel {
         ? { tone: 'warn', label: 'Con fallos de entrega', detail: null }
         : { tone: 'ok', label: 'Configurado', detail: null }),
     metrics: [
-      { label: 'Umbral', value: 'Nivel ≥ 8' },
+      { label: 'Umbral', value: 'Nivel 8 o más' },
       ...(failed === null ? [] : [{ label: 'Fallidas', value: formatNumber(failed) } as Metric]),
     ],
     lastEventAt: undefined,
@@ -360,8 +361,10 @@ export function ServiceCard({
   const attentionRef = useRef<HTMLDivElement>(null);
   if (model.loading) return <SkeletonCard />;
   const { spec, status } = model;
-  const hasAttention = spec.id === 'wazuh' || isProvider(spec.id);
-  // «Críticas» deja solo críticas en la lista de la propia tarjeta; «Altas y críticas», ambas.
+  // En el inicio (`compact`) la tarjeta no trae su propia lista: la única lista de trabajo es
+  // «Alertas que requieren atención», y cada cifra abre directamente los eventos que cuenta.
+  const hasAttention = !compact && (spec.id === 'wazuh' || isProvider(spec.id));
+  // «Nivel 12+» deja solo ese nivel en la lista de la propia tarjeta; «Nivel 8+», ambos.
   // En los dos casos se limpia la búsqueda y el filtro activo queda a la vista.
   const metrics = linkedMetrics(model.metrics, basePath).map((metric) => {
     const band = metric.focus;

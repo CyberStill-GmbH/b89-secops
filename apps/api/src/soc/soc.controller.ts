@@ -32,6 +32,8 @@ import { paginate, type PageQuery } from '../http/pagination.js';
 import { mutatingActor, readingActor } from './session-actor.js';
 import { SECOPS_RUNTIME } from './tokens.js';
 import type { SecOpsRuntime } from '../runtime/secops-runtime.js';
+import { SOC_KNOWLEDGE } from '../assistant/soc-knowledge.generated.js';
+import { explainAlertFromKnowledge } from './alert-explanation.js';
 
 export function alertView(alert: Alert, capabilities: ReadonlySet<string>) {
   return projectFields(
@@ -39,6 +41,8 @@ export function alertView(alert: Alert, capabilities: ReadonlySet<string>) {
       id: alert.id,
       // Conserva títulos nuevos y limpia proveedor/ID de registros anteriores.
       title: alert.title.replace(/\s+\([a-z0-9._-]+\s+\d+\)$/iu, '').trim(),
+      // El título ya no lleva «(wazuh N)»: la regla viaja aparte para la guía y el detalle técnico.
+      ruleId: alert.ruleId,
       priority: alert.priority,
       score: alert.score,
       status: alert.status,
@@ -78,6 +82,8 @@ function incidentView(incident: Incident) {
     summary: incident.summary,
     openedAt: incident.openedAt.toISOString(),
     closedAt: incident.closedAt?.toISOString() ?? null,
+    // La conclusión del cierre: la consola la muestra en el resumen del incidente cerrado.
+    closureReason: incident.closureReason,
     revision: incident.revision,
   };
 }
@@ -150,7 +156,14 @@ export class SocController {
       // Mismo error para inexistente y no autorizado: la API no enumera.
       throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
     }
-    return { correlationId, alert: alertView(alert, actor.capabilities) };
+    return {
+      correlationId,
+      alert: {
+        ...alertView(alert, actor.capabilities),
+        // Solo en el detalle: por qué salta esta regla, cuándo es falso positivo y qué hacer.
+        explanation: explainAlertFromKnowledge(alert, SOC_KNOWLEDGE),
+      },
+    };
   }
 
   @Post('alerts/:id/commands')

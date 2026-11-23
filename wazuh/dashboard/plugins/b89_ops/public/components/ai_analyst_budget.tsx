@@ -116,7 +116,7 @@ export function AiBudgetTile({ budget }: { budget: AiBudget | null }) {
       value={off ? 'IA apagada' : percentText(usage.share) ?? NO_DATA}
       hint={
         off
-          ? 'Solo reglas deterministas, sin costo de modelo'
+          ? 'Solo reglas automáticas, sin usar IA (sin costo)'
           : `${used ?? NO_DATA} de ${limit ?? NO_DATA} (estimado)`
       }
     >
@@ -156,9 +156,9 @@ export function AiBudgetPanel({ budget }: { budget: AiBudget }) {
       {off && (
         <p className="b89Ai__note" role="status">
           {budget.inferenceEnabled === false
-            ? 'La inferencia está apagada'
-            : 'No hay techo diario configurado, así que la inferencia está apagada'}
-          : las investigaciones se resuelven solo con reglas deterministas, sin llamada al modelo.
+            ? 'La IA está apagada'
+            : 'No hay techo diario configurado, así que la IA está apagada'}
+          : las investigaciones se resuelven solo con reglas automáticas, sin usar IA (sin costo).
         </p>
       )}
       <BudgetMeter budget={budget} />
@@ -171,26 +171,26 @@ export function AiBudgetPanel({ budget }: { budget: AiBudget }) {
               : formatMicroUsd(budget.day.limitMicroUsd)
           }
         />
-        <Stat label="Uso confirmado" value={formatMicroUsd(budget.day.settledMicroUsd)} />
+        <Stat label="Gasto confirmado" value={formatMicroUsd(budget.day.settledMicroUsd)} />
         <Stat
-          label="Reservado"
+          label="Apartado"
           value={formatMicroUsd(budget.day.reservedMicroUsd)}
-          hint="llamadas en curso"
+          hint="investigaciones en curso"
         />
         <Stat label="Investigaciones hoy" value={formatCount(budget.runs.today)} />
         <Stat
           label="Resueltas sin IA"
           value={formatCount(budget.runs.withoutInference)}
-          hint={share === null ? undefined : `${formatShare(share)} del día, sin costo de modelo`}
+          hint={share === null ? undefined : `${formatShare(share)} del día, sin costo`}
         />
         <Stat
-          label="Con modelo"
+          label="Con IA"
           value={`${formatCount(budget.runs.economy)} / ${formatCount(budget.runs.advanced)}`}
-          hint="económico / avanzado"
+          hint="estándar / avanzada"
         />
       </dl>
       <details className="b89AiDetails">
-        <summary>Tokens del día</summary>
+        <summary>Detalles técnicos: volumen de texto del día (tokens)</summary>
         <dl className="b89Ai__stats">
           <Stat
             label="Tokens"
@@ -209,16 +209,21 @@ export function AiBudgetPanel({ budget }: { budget: AiBudget }) {
           size="s"
           color="warning"
           iconType="alert"
-          title={`Uso por conciliar: ${formatCount(unknown)} ${
+          title={`Costo por confirmar: ${formatCount(unknown)} ${
             unknown === 1 ? 'llamada' : 'llamadas'
-          } al modelo sin consumo confirmado`}
+          } a la IA sin costo confirmado`}
         >
-          <p>El gasto real del día puede ser mayor que el uso confirmado que se muestra.</p>
+          <p>El gasto real del día puede ser mayor que el gasto confirmado que se muestra.</p>
         </EuiCallOut>
       )}
       <p className="b89Ai__note">
-        Costo estimado; facturación no conectada. Tarifario:{' '}
-        {budget.rateCardVersion ? <Mono>{budget.rateCardVersion}</Mono> : NO_DATA}.
+        Costo aproximado; puede diferir de la factura.
+        {budget.rateCardVersion && (
+          <>
+            {' '}
+            Precios de referencia: <Mono>{budget.rateCardVersion}</Mono>.
+          </>
+        )}
       </p>
     </section>
   );

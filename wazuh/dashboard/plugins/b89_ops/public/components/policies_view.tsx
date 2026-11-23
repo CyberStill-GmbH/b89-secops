@@ -12,7 +12,8 @@ import {
 } from '../../common';
 import { fetchOverview } from '../api/overview';
 import { formatNumber } from './overview_parts';
-import { useAsync } from './primitives';
+import { B89Page } from './console_context';
+import { ErrorCallout, useAsync } from './primitives';
 
 /**
  * «Políticas»: resumen de lo aplicado como código (docs/16-politicas.md). Los conteos de agentes
@@ -23,26 +24,22 @@ export function PoliciesView({ basePath }: { basePath: string }) {
   const agents = overview.data?.agents ?? null;
   const counted = overview.data?.monitoringAccess === 'ok';
   return (
-    <main className="b89Page b89Overview">
-      <header className="b89Hero">
-        <div className="b89Hero__text">
-          <span className="b89Hero__eyebrow">B89 SOC</span>
-          <h1>Políticas</h1>
-          <p>
-            Políticas de seguridad aplicadas como código: grupos de agentes, manager y retención. Se
-            reaplican con <code>infra/wazuh/policies/apply-policies.sh</code>.
-          </p>
-        </div>
-        <div className="b89Hero__actions">
-          <EuiButtonEmpty size="s" href={`${basePath}/app/b89-integrations`}>
-            Ver integraciones
-          </EuiButtonEmpty>
-        </div>
-      </header>
-
+    <B89Page
+      title="Políticas"
+      description="Reglas de seguridad aplicadas a los agentes, al servidor Wazuh y a la retención de datos."
+      actions={
+        <EuiButtonEmpty size="s" href={`${basePath}/app/b89-integrations`}>
+          Ver integraciones
+        </EuiButtonEmpty>
+      }
+    >
+      <div className="b89Overview" lang="es-PE" translate="no">
+      {overview.error != null && (
+        <ErrorCallout error={overview.error} onRetry={overview.reload} />
+      )}
       <section className="b89Panel" aria-labelledby="b89-policy-manager">
         <div className="b89Panel__header">
-          <h2 id="b89-policy-manager">Manager y detección</h2>
+          <h2 id="b89-policy-manager">Servidor Wazuh y detección</h2>
         </div>
         <FactGrid facts={MANAGER_POLICIES} />
       </section>
@@ -78,7 +75,13 @@ export function PoliciesView({ basePath }: { basePath: string }) {
                       <code>{group.name}</code>
                     </th>
                     <td className="b89Tabular">
-                      {counted ? formatNumber(agents?.groups[group.name] ?? 0) : '—'}
+                      {counted ? (
+                        formatNumber(agents?.groups[group.name] ?? 0)
+                      ) : (
+                        <span className="b89Muted" title="Sin dato">
+                          Sin dato
+                        </span>
+                      )}
                     </td>
                     <td>{group.fim}</td>
                     <td>{group.sca}</td>
@@ -92,19 +95,30 @@ export function PoliciesView({ basePath }: { basePath: string }) {
         )}
         {!counted && overview.data && (
           <p className="b89Panel__empty">
-            Tu rol no puede leer wazuh-monitoring-*: no se muestran los agentes por grupo.
+            Tu rol no incluye el conteo de agentes por grupo. Pídelo a un Administrador de
+            plataforma si lo necesitas.
           </p>
         )}
       </section>
 
       <section className="b89Panel" aria-labelledby="b89-policy-retention">
         <div className="b89Panel__header">
-          <h2 id="b89-policy-retention">Retención del Indexer (ISM)</h2>
-          <span className="b89Panel__meta">Sin snapshots S3 en el nodo PowerUser</span>
+          <h2 id="b89-policy-retention">Retención de datos del SIEM</h2>
+          <span className="b89Panel__meta">Sin copias externas: lo que vence se borra</span>
         </div>
         <FactGrid facts={RETENTION_POLICIES} />
       </section>
-    </main>
+
+      <details className="b89Guide__details">
+        <summary>Cómo se aplican (para plataforma)</summary>
+        <p>
+          Las políticas viven como código y se vuelven a aplicar con{' '}
+          <code>infra/wazuh/policies/apply-policies.sh</code>. La retención la gestiona ISM en el
+          SIEM; este nodo no tiene copias en S3.
+        </p>
+      </details>
+      </div>
+    </B89Page>
   );
 }
 

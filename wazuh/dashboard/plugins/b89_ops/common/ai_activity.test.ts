@@ -94,8 +94,8 @@ describe('feedSentence', () => {
       'Resolvió sin IA: patrón benigno conocido',
     );
     expect(finished({ status: 'completed', inference: 'none', reason: 'NEW_CODE' })).toEqual({ text: 'Resolvió sin IA', code: 'NEW_CODE' });
-    expect(finished({ status: 'completed', inference: 'economy' }).text).toBe('Terminó la investigación con modelo económico');
-    expect(finished({ status: 'completed', inference: 'advanced' }).text).toBe('Terminó la investigación con modelo avanzado');
+    expect(finished({ status: 'completed', inference: 'economy' }).text).toBe('Terminó la investigación con IA estándar');
+    expect(finished({ status: 'completed', inference: 'advanced' }).text).toBe('Terminó la investigación con IA avanzada');
     expect(finished({ status: 'requires_review', inference: 'economy' }).text).toBe('Terminó: requiere revisión humana');
     expect(finished({ status: 'failed', reason: 'LEASE_EXPIRED_MAX_ATTEMPTS' })).toEqual({
       text: 'La investigación falló',

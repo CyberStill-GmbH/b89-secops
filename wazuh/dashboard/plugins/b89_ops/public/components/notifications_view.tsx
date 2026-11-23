@@ -43,6 +43,7 @@ import {
   ErrorCallout,
   HealthMark,
   Mono,
+  Person,
   PriorityMark,
   Timestamp,
   useAsync,
@@ -63,8 +64,8 @@ import {
 /**
  * Bandeja de notificaciones (doc 04 §6). Agrupa los avisos de la misma alerta o incidente,
  * muestra de qué alerta se trata (título, prioridad, origen, entidad enmascarada y regla) y el
- * estado de entrega por canal e intento: Enviado (aceptado por M365) / Entregado / Fallido /
- * Reconocido. Entregado no es lo mismo que reconocido por una persona.
+ * estado de entrega por canal e intento: Entregado al canal / Entrega confirmada / Fallido /
+ * Visto por el SOC. Que el canal lo reciba no significa que una persona lo haya visto.
  */
 
 export function NotificationsView() {
@@ -72,7 +73,9 @@ export function NotificationsView() {
   if (!can(CAPABILITIES.notificationsRead)) {
     return (
       <B89Page title="Notificaciones">
-        <EmptyLine>Tu rol no incluye la bandeja de notificaciones.</EmptyLine>
+        <EmptyLine>
+          Tu rol no incluye la bandeja de notificaciones. Pídela a tu Líder SOC si la necesitas.
+        </EmptyLine>
       </B89Page>
     );
   }
@@ -84,6 +87,8 @@ function NotificationsContent() {
   const [onlyPending, setOnlyPending] = useState(true);
   const [items, setItems] = useState<readonly NotificationAttempt[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [moreError, setMoreError] = useState<unknown>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [open, setOpen] = useState<string | null>(null);
@@ -142,12 +147,20 @@ function NotificationsContent() {
 
   const loadMore = async () => {
     if (!cursor) return;
-    const next = await api.get<Page<NotificationAttempt>>('/notifications', {
-      pageSize: 100,
-      cursor,
-    });
-    setItems((current) => [...current, ...next.items]);
-    setCursor(next.nextCursor);
+    setLoadingMore(true);
+    setMoreError(null);
+    try {
+      const next = await api.get<Page<NotificationAttempt>>('/notifications', {
+        pageSize: 100,
+        cursor,
+      });
+      setItems((current) => [...current, ...next.items]);
+      setCursor(next.nextCursor);
+    } catch (failure) {
+      setMoreError(failure);
+    } finally {
+      setLoadingMore(false);
+    }
   };
 
   const acknowledge = async (attempt: NotificationAttempt) => {
@@ -164,7 +177,7 @@ function NotificationsContent() {
             : item,
         ),
       );
-      notifications.toasts.addSuccess({ title: 'Acuse registrado' });
+      notifications.toasts.addSuccess({ title: 'Marcado como visto por el SOC' });
     } catch (failure) {
       setError(failure);
       if (failure instanceof B89ApiError && failure.code === 'STATE_CONFLICT') page.reload();
@@ -178,12 +191,12 @@ function NotificationsContent() {
   return (
     <B89Page
       title="Notificaciones"
-      description="Avisos por Teams, correo o consola, agrupados por alerta, incidente o mensaje. La aceptación del canal no confirma la lectura; el acuse lo registra una persona en B89."
+      description="Avisos por Teams, correo o consola, agrupados por alerta. Que el canal reciba un aviso no significa que alguien lo vio: márcalo como visto cuando lo atiendas."
       actions={
         showChannels && tab === 'channels' ? undefined : (
           <EuiSwitch
             compressed
-            label="Solo requieren acuse"
+            label="Solo los que nadie marcó como vistos"
             checked={onlyPending}
             onChange={(event) => setOnlyPending(event.target.checked)}
           />
@@ -205,26 +218,16 @@ function NotificationsContent() {
         <ChannelsPanel />
       ) : (
         <>
-          <EuiCallOut
-            size="s"
-            color="primary"
-            iconType="iInCircle"
-            title="Tiempos y estado de los avisos"
-          >
+          <details className="b89Guide__details">
+            <summary>¿Cuándo se envía un aviso?</summary>
             <p>
-              P1 genera un intento inmediato; P2 recientes también. Las P2 procesadas con más de una
-              hora de atraso y los avisos agrupados aparecen en resúmenes; P3 y P4 se consolidan
-              cada seis horas. Revisa «Canales» para confirmar la configuración y «Salud de fuentes»
-              para ver la última actividad recibida.
+              P1 y P2 recientes se avisan de inmediato. Las P2 que llegan con más de una hora de
+              atraso y las ráfagas de la misma regla van en un resumen; P3 y P4 se juntan cada seis
+              horas. Revisa «Canales» para la configuración y «Salud de fuentes» para la última
+              actividad recibida.
             </p>
-          </EuiCallOut>
+          </details>
           <EuiSpacer size="m" />
-          {error != null && (
-            <>
-              <ErrorCallout error={error} />
-              <EuiSpacer size="m" />
-            </>
-          )}
           {page.error != null ? (
             <ErrorCallout error={page.error} onRetry={page.reload} />
           ) : page.loading && items.length === 0 ? (
@@ -232,7 +235,7 @@ function NotificationsContent() {
           ) : visible.length === 0 ? (
             <EmptyLine>
               {onlyPending
-                ? 'No hay notificaciones pendientes de acuse.'
+                ? 'No hay avisos pendientes: todos están marcados como vistos.'
                 : 'Todavía no se ha enviado ninguna notificación.'}
             </EmptyLine>
           ) : (
@@ -304,10 +307,11 @@ function NotificationsContent() {
                   );
                 })}
               </ul>
+              {moreError != null && <ErrorCallout error={moreError} onRetry={loadMore} />}
               {cursor && (
                 <>
                   <EuiSpacer size="s" />
-                  <EuiButtonEmpty size="s" onClick={loadMore}>
+                  <EuiButtonEmpty size="s" isLoading={loadingMore} onClick={loadMore}>
                     Cargar más
                   </EuiButtonEmpty>
                 </>
@@ -321,8 +325,12 @@ function NotificationsContent() {
           group={selected}
           alert={selected.alertId ? alerts[selected.alertId] : null}
           busy={busy}
+          error={error}
           onAcknowledge={acknowledge}
-          onClose={() => setOpen(null)}
+          onClose={() => {
+            setOpen(null);
+            setError(null);
+          }}
         />
       )}
     </B89Page>
@@ -333,16 +341,19 @@ function NotificationFlyout({
   group,
   alert,
   busy,
+  error = null,
   onAcknowledge,
   onClose,
 }: {
   group: NotificationGroup;
   alert: Alert | null | undefined;
   busy: string | null;
+  /** Error de la última acción: se muestra dentro del panel, no detrás de él. */
+  error?: unknown;
   onAcknowledge: (attempt: NotificationAttempt) => void;
   onClose: () => void;
 }) {
-  const { basePath, notifications } = useConsole();
+  const { basePath, notifications, session } = useConsole();
   const mobile = useIsMobile();
   const info = describeGroup(group, alert);
   const source = useAsync(
@@ -454,29 +465,32 @@ function NotificationFlyout({
               >
                 {group.incidentId ? (
                   <p>
-                    El aviso pertenece al incidente <Mono>{group.incidentId}</Mono>. No tiene un
-                    alertId individual para abrir una ficha de alerta.
+                    El aviso pertenece a un incidente, no a una alerta concreta. Ábrelo con «Ver
+                    incidente».
                   </p>
                 ) : (
-                  <p>
-                    El API no incluyó alertId en este aviso, por lo que no se puede abrir una ficha
-                    ni iniciar una investigación desde aquí. Se muestra el contexto que sí entregó
-                    el aviso; el identificador lógico es{' '}
-                    <Mono>{group.latest.messageId ?? group.latest.id}</Mono>.
-                  </p>
+                  <>
+                    <p>
+                      Este aviso no está vinculado a una alerta concreta. Se muestra lo que trae el
+                      aviso.
+                    </p>
+                    <details className="b89Guide__details">
+                      <summary>Identificador del aviso</summary>
+                      <Mono>{group.latest.messageId ?? group.latest.id}</Mono>
+                    </details>
+                  </>
                 )}
               </EuiCallOut>
               {!group.incidentId && !info.summary && (
                 <EmptyLine>
-                  El aviso no incluye título ni resumen. Consulta Canales y los registros de
-                  notificaciones para rastrear el intento.
+                  El aviso no incluye título ni resumen. Revisa la entrega por canal más abajo.
                 </EmptyLine>
               )}
             </>
           ) : alert === undefined ? (
             <EuiLoadingContent lines={2} />
           ) : alert === null ? (
-            <EmptyLine>No se pudo leer la alerta (sin permiso o ya no existe).</EmptyLine>
+            <EmptyLine>No encontramos la alerta o tu rol no puede verla.</EmptyLine>
           ) : (
             <dl className="b89KeyValues">
               <dt>Estado</dt>
@@ -501,7 +515,7 @@ function NotificationFlyout({
             <>
               <EuiSpacer size="l" />
               <EuiTitle size="xxs">
-                <h3>Por qué importa</h3>
+                <h3>Motivos de la prioridad</h3>
               </EuiTitle>
               <EuiSpacer size="s" />
               {mitre && mitre.ids.length > 0 && (
@@ -535,7 +549,7 @@ function NotificationFlyout({
                   {line.kind === 'acknowledged' && line.actor ? (
                     <>
                       {' '}
-                      · por <Mono>{line.actor.slice(0, 24)}</Mono>
+                      · por <Person id={line.actor} viewerId={session.subjectId} />
                     </>
                   ) : null}
                   {line.reason ? ` · ${line.reason}` : ''}
@@ -550,18 +564,18 @@ function NotificationFlyout({
           </ol>
           <EuiSpacer size="l" />
           <EuiTitle size="xxs">
-            <h3>Acuse humano</h3>
+            <h3>Visto por el SOC</h3>
           </EuiTitle>
           <EuiSpacer size="s" />
           {acknowledged.length > 0 ? (
             <ul className="b89List">
               {acknowledged.map((item) => (
                 <li key={item.id}>
-                  Acuse registrado <Timestamp iso={item.acknowledgedAt} />
+                  Marcado como visto <Timestamp iso={item.acknowledgedAt} />
                   {item.acknowledgedBy ? (
                     <>
                       {' '}
-                      por <Mono>{item.acknowledgedBy.slice(0, 24)}</Mono>
+                      por <Person id={item.acknowledgedBy} viewerId={session.subjectId} />
                     </>
                   ) : null}
                 </li>
@@ -569,24 +583,29 @@ function NotificationFlyout({
             </ul>
           ) : (
             <EmptyLine>
-              Sin acuse humano. La aceptación del canal no confirma que el equipo SOC haya visto el
-              aviso.
+              Nadie lo marcó como visto todavía. Que el canal lo reciba no significa que alguien
+              del SOC lo vio.
             </EmptyLine>
           )}
         </DataZone>
       </EuiFlyoutBody>
       <EuiFlyoutFooter>
+        {error != null && (
+          <>
+            <ErrorCallout error={error} />
+            <EuiSpacer size="s" />
+          </>
+        )}
         <EuiFlexGroup gutterSize="s" justifyContent="flexEnd" wrap responsive={false}>
           {acknowledgeable.length > 0 && (
             <EuiFlexItem grow={false}>
               <EuiButton
                 fill
-                size="s"
                 iconType="check"
                 isLoading={busy === acknowledgeable[0].id}
                 onClick={() => onAcknowledge(acknowledgeable[0])}
               >
-                Acusar recibo del último intento
+                Marcar como visto
               </EuiButton>
             </EuiFlexItem>
           )}
@@ -625,7 +644,7 @@ function NotificationFlyout({
           )}
           <EuiFlexItem grow={false}>
             <EuiButton
-              fill
+              fill={acknowledgeable.length === 0}
               iconType="inspect"
               isDisabled={!group.alertId}
               href={group.alertId ? alertInvestigationHref(basePath, group.alertId) : undefined}

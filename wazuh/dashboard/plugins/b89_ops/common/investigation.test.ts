@@ -298,9 +298,20 @@ describe('navegación del SIEM', () => {
     }
   });
 
-  it('B89 Respond aparece con su nombre de producto, no como «SOAR»', () => {
-    expect(NAV_PLACEMENT['b89-respond'].title).toBe('B89 Respond');
-    expect(NAV_PLACEMENT['b89-respond'].category).toBe('response');
+  it('B89 Respond se nombra por lo que hace y conserva el producto en el tooltip', () => {
+    expect(NAV_PLACEMENT['b89-respond'].title).toBe('Respuesta automática (SOAR)');
+    expect(NAV_PLACEMENT['b89-respond'].tooltip).toContain('B89 Respond');
+    expect(NAV_PLACEMENT['b89-respond'].category).toBe('investigation');
+  });
+
+  it('no repite títulos visibles en el menú', () => {
+    const titles = Object.entries(NAV_PLACEMENT)
+      .filter(([id]) => id !== 'discover')
+      .map(([, placement]) => placement.title);
+    expect(new Set(titles).size).toBe(titles.length);
+    expect(NAV_PLACEMENT['b89-overview'].title).not.toBe(NAV_PLACEMENT['wz-home'].title);
+    expect(NAV_PLACEMENT['b89-overview'].tooltip).toBeTruthy();
+    expect(NAV_PLACEMENT['wz-home'].tooltip).toBeTruthy();
   });
 
   it('oculta los módulos sin servicio en este despliegue', () => {

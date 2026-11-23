@@ -27,7 +27,7 @@ describe('operations correlator contract and copy', () => {
   it.each([
     ['ready', 'Listo'],
     ['pending', 'Inicializando'],
-    ['failed', 'Refresh fallido'],
+    ['failed', 'Actualización fallida'],
     ['unavailable', 'Sin respuesta'],
     ['unconfigured', 'No configurado'],
   ] as const)('labels feedback status %s as %s', (feedbackStatus, label) => {
@@ -43,7 +43,7 @@ describe('operations correlator contract and copy', () => {
         lastFeedbackSuccess: '2026-11-12T10:00:00.000Z',
       }),
     );
-    expect(status.label).toBe('Atrasado · 2 min sin refresh');
+    expect(status.label).toBe('Atrasado · 2 min sin actualizar');
     expect(status.tone).toBe('warn');
   });
 
@@ -51,7 +51,7 @@ describe('operations correlator contract and copy', () => {
     expect(describeCorrelatorHealth(undefined).label).toBe('Sin respuesta');
     expect(
       describeCorrelatorHealth(correlator('ready', { status: 'DEGRADED', ready: false })).label,
-    ).toBe('Degradado');
+    ).toBe('Con problemas');
   });
 });
 
@@ -80,7 +80,7 @@ describe('operations outbox lease copy', () => {
         oldestExpiredLeaseAgeSeconds: 9,
       }),
     ).toBe(
-      '2 pendientes · 3 en curso · más antigua 1 min · 2 leases vencidos · lease más antiguo vencido hace 9 s',
+      '2 pendientes · 3 en curso · más antigua 1 min · 2 atascados · el más antiguo atascado hace 9 s',
     );
     expect(
       formatOutboxQueueSummary({
@@ -90,7 +90,7 @@ describe('operations outbox lease copy', () => {
         expiredProcessing: 0,
         oldestExpiredLeaseAgeSeconds: null,
       }),
-    ).toBe('0 pendientes · 1 en curso · más antigua Sin dato · 0 leases vencidos');
+    ).toBe('0 pendientes · 1 en curso · más antigua Sin dato · 0 atascados');
   });
 });
 
@@ -125,8 +125,8 @@ describe('source coverage copy', () => {
     expect(state.label).toBe('Cobertura incompleta');
     expect(state.tone).toBe('warn');
     expect(state.details).toEqual([
-      'm365: el colector va atrasado respecto del proveedor (1 h)',
-      'wazuh: no verificada: no llegó latido del colector',
+      'Microsoft 365: el colector va atrasado respecto del proveedor (1 h)',
+      'wazuh: no verificada: el colector no reportó su estado',
     ]);
     expect(JSON.stringify(state)).not.toMatch(/sin actividad/i);
   });
@@ -147,7 +147,7 @@ describe('source coverage copy', () => {
     expect(state).toEqual({
       label: 'Cobertura incompleta',
       tone: 'neutral',
-      details: ['snyk: no verificada'],
+      details: ['Snyk: no verificada'],
     });
   });
 

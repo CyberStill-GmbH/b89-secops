@@ -399,6 +399,13 @@ export function reviewInbox(runs: readonly AiRunSummary[]): AiRunSummary[] {
   );
 }
 
+/** Texto único para «el Analista IA no existe en este entorno» (lista, Resumen, Informes, Configuración). */
+export const ANALYST_UNAVAILABLE_TITLE = 'El Analista IA no está activado en este entorno';
+export const ANALYST_UNAVAILABLE_TEXT = 'Pídele a quien administra la plataforma que lo active.';
+
+/** Cuenta de servicio del analista (`apps/api/src/assistant/analyst-actions.ts`). */
+const AI_ANALYST_ACTOR = 'svc:b89-ai-analyst';
+
 /** Estado de la alerta en una frase corta para la bandeja. */
 export function alertStateText(alert: AiRunAlert | null): string {
   if (!alert) return 'Estado de la alerta sin dato';
@@ -406,7 +413,8 @@ export function alertStateText(alert: AiRunAlert | null): string {
     alert.status === 'unknown' ? 'Estado no reconocido' : ALERT_STATUS_LABEL[alert.status],
   ];
   if (alert.assignedToYou) parts.push('asignada a ti');
-  else if (alert.assigneeId) parts.push(`asignada a ${alert.assigneeId}`);
+  else if (alert.assigneeId === AI_ANALYST_ACTOR) parts.push('asignada al Analista IA');
+  else if (alert.assigneeId) parts.push('asignada a otro analista');
   else parts.push('sin asignar');
   if (alert.verdict && alert.verdict !== 'unknown') {
     parts.push(VERDICT_LABEL[alert.verdict].toLowerCase());
@@ -470,7 +478,7 @@ export function falsePositivePlan(alert: Alert, viewer: ReviewViewer): FalsePosi
   if (alert.status === 'triaged') {
     return CLOSABLE_VERDICTS.includes(alert.verdict)
       ? { steps: [{ name: 'close' }], blocked: null }
-      : none('La alerta ya se trió como verdadero positivo.');
+      : none('La alerta ya se clasificó como verdadero positivo.');
   }
   const steps: ReviewCommandStep[] = [];
   // `acknowledge` conserva la asignación existente o asigna a quien reconoce.

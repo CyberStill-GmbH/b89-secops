@@ -2,7 +2,7 @@
  * Copyright B89. SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   EuiBadge,
   EuiBasicTable,
@@ -30,10 +30,13 @@ import {
   EuiTabs,
   EuiTextArea,
   EuiTitle,
+  EuiToolTip,
 } from '@elastic/eui';
 import {
   AdminSession,
+  amrText,
   CAPABILITIES,
+  LOGOUT_PATH,
   DirectorySync,
   DirectoryUser,
   DirectoryUserDetail,
@@ -48,6 +51,7 @@ import {
   ROLE_ORIGIN_LABEL,
   userState,
 } from '../../common';
+import { B89ApiError } from '../api/client';
 import { B89Page, useChanges, useConsole } from './console_context';
 import { EmptyLine, ErrorCallout, HealthMark, Mono, Timestamp, useAsync } from './primitives';
 
@@ -115,15 +119,26 @@ export function AccessView() {
   const canSessions = can(CAPABILITIES.sessionsRead);
   const canRoleRequests = can(CAPABILITIES.rolesRequest);
   const canReviewRoles = can(CAPABILITIES.rolesApprove) || can(CAPABILITIES.rolesApprovePrivileged);
+  const requestedTab =
+    typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('tab') : null;
   const [tab, setTab] = useState<'users' | 'sessions' | 'role-requests'>(
-    canUsers ? 'users' : canSessions ? 'sessions' : 'role-requests',
+    requestedTab === 'role-requests' && (canRoleRequests || canReviewRoles)
+      ? 'role-requests'
+      : requestedTab === 'sessions' && canSessions
+        ? 'sessions'
+        : canUsers
+          ? 'users'
+          : canSessions
+            ? 'sessions'
+            : 'role-requests',
   );
 
   return (
     <B89Page
       title="Usuarios y sesiones"
-      description="Admisión por Microsoft Entra ID y el grupo Accesos_SOC. Salir del grupo revoca las sesiones abiertas."
+      description="Entra quien está en el grupo Accesos_SOC de Microsoft Entra ID. Salir del grupo cierra sus sesiones abiertas."
     >
+      <div lang="es-PE" translate="no">
       {!canUsers && !canSessions && !canRoleRequests && !canReviewRoles ? (
         <EmptyLine>Tu rol no incluye la administración de accesos.</EmptyLine>
       ) : (
@@ -153,6 +168,7 @@ export function AccessView() {
           )}
         </>
       )}
+      </div>
     </B89Page>
   );
 }
@@ -175,8 +191,15 @@ function UsersPanel() {
       truncateText: false,
       render: (value: string | null, user: DirectoryUser) => (
         <span className="b89CellTitle" data-b89-no-translate="">
-          <span>{value ?? 'Sin nombre'}</span>
-          <span className="b89CellMeta">{user.upn ?? user.oid}</span>
+          <EuiButtonEmpty
+            size="xs"
+            flush="left"
+            onClick={() => setSelected(user.oid)}
+            aria-label={`Abrir el detalle de ${value ?? user.upn ?? 'esta persona'}`}
+          >
+            {value ?? 'Sin nombre'}
+          </EuiButtonEmpty>
+          <span className="b89CellMeta">{user.upn ?? 'Sin cuenta en el directorio'}</span>
         </span>
       ),
       mobileOptions: { header: false },
@@ -190,7 +213,7 @@ function UsersPanel() {
     },
     {
       field: 'membership',
-      name: 'Accesos_SOC',
+      name: 'Grupo Accesos_SOC',
       render: (value: DirectoryUser['membership'], user: DirectoryUser) =>
         value === 'member' ? (
           user.isOwner ? (
@@ -373,10 +396,10 @@ function UserFlyout({ oid, onClose }: { oid: string; onClose: () => void }) {
               className="b89Facts"
               listItems={[
                 {
-                  title: 'Cuenta (UPN)',
+                  title: 'Cuenta',
                   description: user.upn ? <Mono>{user.upn}</Mono> : 'Sin dato',
                 },
-                { title: 'Object ID', description: <Mono>{user.oid}</Mono> },
+                { title: 'Identificador en Entra', description: <Mono>{user.oid}</Mono> },
                 {
                   title: 'Cuenta en Entra',
                   description:
@@ -387,7 +410,7 @@ function UserFlyout({ oid, onClose }: { oid: string; onClose: () => void }) {
                         : 'Deshabilitada',
                 },
                 {
-                  title: 'Accesos_SOC',
+                  title: 'Grupo Accesos_SOC',
                   description:
                     user.membership === 'member'
                       ? 'Miembro'
@@ -413,11 +436,16 @@ function UserFlyout({ oid, onClose }: { oid: string; onClose: () => void }) {
                 >
                   {user.roles.length === 0 ? 'Asignar rol' : 'Cambiar rol'}
                 </EuiButton>
-                {user.membership !== 'member' && (
+                {user.membership !== 'member' ? (
                   <p className="b89CellMeta">
                     Solo se pueden solicitar roles para miembros vigentes de Accesos_SOC.
                   </p>
-                )}
+                ) : user.accountEnabled !== true ? (
+                  <p className="b89CellMeta">
+                    La cuenta está deshabilitada o sin dato en Entra: habilítala allí para poder
+                    cambiar su rol.
+                  </p>
+                ) : null}
               </>
             )}
             <EuiSpacer size="l" />
@@ -440,7 +468,7 @@ function UserFlyout({ oid, onClose }: { oid: string; onClose: () => void }) {
                         {item.current ? ' · esta sesión' : ''}
                       </span>
                       <span className="b89CellMeta">
-                        {item.amr.join(' + ') || 'sin método'}
+                        {amrText(item.amr)}
                         {item.revocationReason ? ` · ${item.revocationReason}` : ''}
                       </span>
                     </span>
@@ -466,27 +494,85 @@ function UserFlyout({ oid, onClose }: { oid: string; onClose: () => void }) {
 }
 
 const ROLE_REQUEST_STATUS_LABEL: Record<RoleRequestView['status'], string> = {
-  pending_access: 'Pendiente de Acceso',
-  pending_security: 'Pendiente de Seguridad',
+  pending_access: 'Espera aprobación de Accesos',
+  pending_security: 'Espera aprobación de Seguridad',
   approved: 'Aprobada',
   rejected: 'Rechazada',
   cancelled: 'Cancelada',
 };
 
-const ROLE_REQUEST_ACTION_LABEL: Record<RoleRequestAction, string> = {
-  grant: 'Conceder',
-  revoke: 'Retirar',
-};
+/** Nombre de una persona del padrón por su identificador de Entra; el identificador en el tooltip. */
+export function PersonName({
+  oid,
+  names,
+  viewerId,
+}: {
+  oid: string;
+  names: ReadonlyMap<string, string>;
+  viewerId: string;
+}) {
+  const name = oid === viewerId ? 'Tú' : names.get(oid);
+  return (
+    <EuiToolTip content={`Identificador en Entra: ${oid}`}>
+      <span tabIndex={0} className="b89Person" data-b89-no-translate="">
+        {name ?? 'Persona fuera del padrón'}
+      </span>
+    </EuiToolTip>
+  );
+}
+
+/** «Ana Pérez pide conceder Analista SOC a Luis Rojas». */
+export function RoleRequestSentence({
+  request,
+  names,
+  viewerId,
+}: {
+  request: RoleRequestView;
+  names: ReadonlyMap<string, string>;
+  viewerId: string;
+}) {
+  const role = ROLE_LABEL[request.role] ?? request.role;
+  return (
+    <span>
+      <PersonName oid={request.requesterOid} names={names} viewerId={viewerId} />{' '}
+      {request.requesterOid === viewerId ? 'pides' : 'pide'}{' '}
+      {request.action === 'grant' ? `conceder ${role} a` : `retirar ${role} a`}{' '}
+      <PersonName oid={request.targetOid} names={names} viewerId={viewerId} />
+    </span>
+  );
+}
+
+/** Nombres del padrón (`GET /api/admin/users`) por identificador, si el rol puede leerlo. */
+function useDirectoryNames(): ReadonlyMap<string, string> {
+  const { api, can } = useConsole();
+  const canUsers = can(CAPABILITIES.usersRead);
+  const users = useAsync(
+    () =>
+      canUsers
+        ? api.get<{ items: DirectoryUser[] }>('/admin/users')
+        : Promise.resolve({ items: [] as DirectoryUser[] }),
+    [api, canUsers],
+  );
+  return useMemo(() => {
+    const map = new Map<string, string>();
+    for (const user of users.data?.items ?? []) {
+      const name = user.displayName ?? user.upn;
+      if (name) map.set(user.oid, name);
+    }
+    return map;
+  }, [users.data]);
+}
 
 function RoleRequestsPanel({ canReviewRoles }: { canReviewRoles: boolean }) {
-  const { api, can } = useConsole();
+  const { api, can, session } = useConsole();
   const requests = useAsync(() => api.get<RoleRequestListResponse>('/admin/role-requests'), [api]);
+  const names = useDirectoryNames();
+  const [filter, setFilter] = useState<'pending' | 'all'>('pending');
   const [selected, setSelected] = useState<RoleRequestView | null>(null);
   const [items, setItems] = useState<readonly RoleRequestView[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreError, setMoreError] = useState<unknown>(null);
-  const canRequest = can(CAPABILITIES.rolesRequest);
   const canApproveAccess = can(CAPABILITIES.rolesApprove);
   const canApproveSecurity = can(CAPABILITIES.rolesApprovePrivileged);
 
@@ -514,6 +600,12 @@ function RoleRequestsPanel({ canReviewRoles }: { canReviewRoles: boolean }) {
 
   if (requests.error) return <ErrorCallout error={requests.error} onRetry={requests.reload} />;
   const directoryState = requests.data?.directory;
+  const isPending = (request: RoleRequestView) => request.status.startsWith('pending');
+  const pendingCount = items.filter(isPending).length;
+  const visible = filter === 'pending' ? items.filter(isPending) : [...items];
+  const securityPending = items.filter(
+    (request) => request.approvalStage === 'security' && isPending(request),
+  ).length;
 
   const columns: Array<EuiBasicTableColumn<RoleRequestView>> = [
     {
@@ -525,13 +617,8 @@ function RoleRequestsPanel({ canReviewRoles }: { canReviewRoles: boolean }) {
       name: 'Cambio solicitado',
       render: (request: RoleRequestView) => (
         <span className="b89CellTitle">
-          <span>
-            {ROLE_REQUEST_ACTION_LABEL[request.action]} · {ROLE_LABEL[request.role] ?? request.role}
-          </span>
-          <span className="b89CellMeta">
-            Solicita <Mono>{request.requesterOid}</Mono> · objetivo <Mono>{request.targetOid}</Mono>
-            {request.ticket ? ` · ${request.ticket}` : ''}
-          </span>
+          <RoleRequestSentence request={request} names={names} viewerId={session.subjectId} />
+          {request.ticket && <span className="b89CellMeta">Ticket {request.ticket}</span>}
         </span>
       ),
     },
@@ -540,10 +627,10 @@ function RoleRequestsPanel({ canReviewRoles }: { canReviewRoles: boolean }) {
       name: 'Etapa',
       render: (stage: RoleRequestView['approvalStage']) =>
         stage === 'security'
-          ? 'Seguridad · step-up requerido'
+          ? 'Seguridad (pide inicio de sesión reciente)'
           : stage === 'access'
-            ? 'Acceso'
-            : '—',
+            ? 'Accesos'
+            : 'Terminada',
     },
     {
       field: 'status',
@@ -564,7 +651,19 @@ function RoleRequestsPanel({ canReviewRoles }: { canReviewRoles: boolean }) {
             : request.approvalStage === 'security'
               ? canApproveSecurity
               : false;
-        if (!stageCapability || request.approvalStage === null) return null;
+        if (request.approvalStage === null) return null;
+        if (request.requesterOid === session.subjectId) {
+          return <span className="b89CellMeta">La revisa otra persona</span>;
+        }
+        if (!stageCapability) {
+          return (
+            <span className="b89CellMeta">
+              {request.approvalStage === 'security'
+                ? 'La aprueba Seguridad'
+                : 'La aprueba Accesos'}
+            </span>
+          );
+        }
         return (
           <EuiButtonEmpty size="xs" onClick={() => setSelected(request)}>
             Revisar
@@ -589,17 +688,18 @@ function RoleRequestsPanel({ canReviewRoles }: { canReviewRoles: boolean }) {
           </EuiButtonEmpty>
         </EuiFlexItem>
       </EuiFlexGroup>
-      {canReviewRoles && (
+      {canApproveSecurity && securityPending > 0 && (
         <>
           <EuiCallOut
             size="s"
-            color="warning"
-            iconType="alert"
-            title="El rol Administrador de plataforma requiere step-up reciente."
+            color="primary"
+            iconType="iInCircle"
+            title={`${securityPending} ${securityPending === 1 ? 'solicitud espera' : 'solicitudes esperan'} la aprobación de Seguridad.`}
           >
             <p>
-              La sesión actual no aporta evidencia de reautenticación reciente. La aprobación de esa
-              segunda etapa seguirá fallando de forma segura hasta que el login la proporcione.
+              Esa etapa pide un inicio de sesión reciente. Si al aprobar aparece el aviso de inicio
+              de sesión reciente, cierra sesión, vuelve a entrar y repite la aprobación desde esta
+              pestaña.
             </p>
           </EuiCallOut>
           <EuiSpacer size="m" />
@@ -629,22 +729,37 @@ function RoleRequestsPanel({ canReviewRoles }: { canReviewRoles: boolean }) {
           <EuiSpacer size="m" />
         </>
       )}
-      {!canRequest && canReviewRoles && (
-        <EuiCallOut size="s" color="primary" iconType="iInCircle" title="Bandeja de aprobaciones">
-          <p>
-            Las acciones disponibles dependen de tu etapa de aprobación y las valida el backend.
-          </p>
-        </EuiCallOut>
-      )}
+      <div className="b89Segmented" role="group" aria-label="Mostrar solicitudes">
+        <EuiButtonEmpty
+          size="s"
+          aria-pressed={filter === 'pending'}
+          isSelected={filter === 'pending'}
+          onClick={() => setFilter('pending')}
+        >
+          Pendientes ({pendingCount})
+        </EuiButtonEmpty>
+        <EuiButtonEmpty
+          size="s"
+          aria-pressed={filter === 'all'}
+          isSelected={filter === 'all'}
+          onClick={() => setFilter('all')}
+        >
+          Todas ({items.length})
+        </EuiButtonEmpty>
+      </div>
       <EuiSpacer size="s" />
       <EuiBasicTable<RoleRequestView>
-        items={[...items]}
+        items={visible}
         columns={columns}
         loading={requests.loading}
         responsive
         tableLayout="auto"
         noItemsMessage={
-          requests.loading ? 'Cargando solicitudes…' : 'No hay solicitudes pendientes.'
+          requests.loading
+            ? 'Cargando solicitudes…'
+            : filter === 'pending'
+              ? 'No hay solicitudes pendientes.'
+              : 'No hay solicitudes de rol.'
         }
       />
       {moreError != null && <ErrorCallout error={moreError} />}
@@ -658,6 +773,7 @@ function RoleRequestsPanel({ canReviewRoles }: { canReviewRoles: boolean }) {
       )}
       {selected && (
         <RoleDecisionModal
+          names={names}
           request={selected}
           onClose={() => setSelected(null)}
           onDecided={() => {
@@ -698,6 +814,21 @@ function RoleChangeModal({
     action === 'grant' ? !user.roles.includes(value) : grantRoles.includes(value),
   );
   const roleExists = availableRoles.includes(role);
+  const optionsKey = availableRoles.join('|');
+  // El rol elegido siempre es una opción visible: si cambia la lista, se toma la primera.
+  useEffect(() => {
+    if (!availableRoles.includes(role) && availableRoles.length > 0) setRole(availableRoles[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [optionsKey]);
+  const blockedReason = !current.data
+    ? null
+    : !current.data.eligible
+      ? 'La cuenta no es elegible: debe ser miembro vigente de Accesos_SOC y estar habilitada.'
+      : availableRoles.length === 0
+        ? 'No hay un rol que se pueda elegir para esta acción.'
+        : length < REASON_MIN
+          ? `Escribe un motivo de al menos ${REASON_MIN} caracteres (faltan ${REASON_MIN - length}).`
+          : null;
 
   const submit = async () => {
     if (!current.data?.eligible || !roleExists || length < REASON_MIN) return;
@@ -728,10 +859,18 @@ function RoleChangeModal({
   };
 
   return (
-    <EuiModal onClose={onClose} className="b89Modal" maxWidth={560}>
+    <EuiModal
+      onClose={onClose}
+      className="b89Modal"
+      maxWidth={560}
+      aria-labelledby="b89-role-change-title"
+    >
       <EuiModalHeader>
         <EuiModalHeaderTitle>
-          <h2>{user.roles.length === 0 ? 'Asignar rol' : 'Cambiar rol'}</h2>
+          <h2 id="b89-role-change-title">
+            {user.roles.length === 0 ? 'Asignar rol' : 'Cambiar rol'} a{' '}
+            {user.displayName ?? user.upn ?? 'esta persona'}
+          </h2>
         </EuiModalHeaderTitle>
       </EuiModalHeader>
       <EuiModalBody>
@@ -747,8 +886,8 @@ function RoleChangeModal({
         ) : created ? (
           <EuiCallOut size="s" color="success" iconType="check" title="Solicitud registrada">
             <p>
-              La solicitud <Mono>{created}</Mono> quedó pendiente de aprobación. El rol no cambia
-              hasta que termine el flujo requerido.
+              Quedó pendiente de aprobación por otra persona (referencia <Mono>{created}</Mono>).
+              El rol no cambia hasta que se apruebe; puedes seguirla en «Solicitudes de rol».
             </p>
           </EuiCallOut>
         ) : current.data ? (
@@ -771,9 +910,10 @@ function RoleChangeModal({
                 onChange={(event) => {
                   const next = event.target.value as RoleRequestAction;
                   setAction(next);
-                  setRole(
-                    next === 'grant' ? 'b89.soc.analyst' : (grantRoles[0] ?? 'b89.soc.analyst'),
+                  const options = (current.data?.assignableRoles ?? []).filter((value) =>
+                    next === 'grant' ? !user.roles.includes(value) : grantRoles.includes(value),
                   );
+                  if (options[0]) setRole(options[0]);
                 }}
                 options={[
                   { value: 'grant', text: 'Conceder un rol' },
@@ -851,10 +991,18 @@ function RoleChangeModal({
                 isDisabled={
                   !current.data?.eligible || current.loading || !roleExists || length < REASON_MIN
                 }
+                aria-describedby={blockedReason ? 'b89-role-change-blocked' : undefined}
                 onClick={submit}
               >
                 {current.data?.directGrant ? 'Aplicar rol' : 'Enviar solicitud'}
               </EuiButton>
+            </EuiFlexItem>
+          )}
+          {!created && !applied && blockedReason && (
+            <EuiFlexItem grow={false} style={{ flexBasis: '100%' }}>
+              <p id="b89-role-change-blocked" className="b89CellMeta" style={{ textAlign: 'right' }}>
+                {blockedReason}
+              </p>
             </EuiFlexItem>
           )}
         </EuiFlexGroup>
@@ -865,21 +1013,24 @@ function RoleChangeModal({
 
 function RoleDecisionModal({
   request,
+  names,
   onClose,
   onDecided,
 }: {
   request: RoleRequestView;
+  names: ReadonlyMap<string, string>;
   onClose: () => void;
   onDecided: () => void;
 }) {
-  const { api, can } = useConsole();
+  const { api, can, session, basePath, notifications } = useConsole();
   const [decision, setDecision] = useState<'approve' | 'reject'>('approve');
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const length = reason.trim().length;
   const path = `/admin/role-requests/${encodeURIComponent(request.id)}/${decision}`;
-  const stepUpBlocked = request.approvalStage === 'security' && decision === 'approve';
+  const securityStage = request.approvalStage === 'security';
+  const stepUpMissing = error instanceof B89ApiError && error.code === 'STEP_UP_REQUIRED';
   const capabilityAllowed =
     request.approvalStage === 'access'
       ? can(CAPABILITIES.rolesApprove)
@@ -890,6 +1041,14 @@ function RoleDecisionModal({
     setError(null);
     try {
       await api.post(path, { expectedRevision: request.revision, reason: reason.trim() });
+      notifications.toasts.addSuccess({
+        title:
+          decision === 'approve'
+            ? securityStage || request.approvalStage === null
+              ? 'Solicitud aprobada'
+              : 'Etapa de Accesos aprobada'
+            : 'Solicitud rechazada',
+      });
       onDecided();
     } catch (failure) {
       setError(failure);
@@ -899,34 +1058,50 @@ function RoleDecisionModal({
   };
 
   return (
-    <EuiModal onClose={onClose} className="b89Modal" maxWidth={560}>
+    <EuiModal
+      onClose={onClose}
+      className="b89Modal"
+      maxWidth={560}
+      aria-labelledby="b89-role-decision-title"
+    >
       <EuiModalHeader>
         <EuiModalHeaderTitle>
-          <h2>Revisar solicitud de rol</h2>
+          <h2 id="b89-role-decision-title">Revisar solicitud de rol</h2>
         </EuiModalHeaderTitle>
       </EuiModalHeader>
       <EuiModalBody>
-        {error != null && <ErrorCallout error={error} />}
-        <EuiCallOut size="s" color="primary" iconType="iInCircle" title="Cambio propuesto">
-          <p>
-            {ROLE_REQUEST_ACTION_LABEL[request.action]} {ROLE_LABEL[request.role] ?? request.role}{' '}
-            para <Mono>{request.targetOid}</Mono>. El solicitante es{' '}
-            <Mono>{request.requesterOid}</Mono>.
-          </p>
-          <p>{request.reason}</p>
-        </EuiCallOut>
-        <EuiSpacer size="m" />
-        {stepUpBlocked && (
+        {error != null && !stepUpMissing && <ErrorCallout error={error} />}
+        {stepUpMissing && (
           <EuiCallOut
             size="s"
             color="warning"
-            iconType="alert"
-            title="La aprobación requiere step-up reciente"
+            iconType="lock"
+            title="Para aprobar esta etapa necesitas un inicio de sesión reciente."
           >
             <p>
-              La sesión actual no proporciona esa evidencia. Puedes rechazarla o cerrar la ventana.
+              Cierra sesión, vuelve a entrar y repite la aprobación desde Usuarios y sesiones ›
+              Solicitudes de rol. La solicitud sigue pendiente.
             </p>
+            <EuiButton size="s" href={`${basePath}${LOGOUT_PATH}`}>
+              Cerrar sesión y volver a entrar
+            </EuiButton>
           </EuiCallOut>
+        )}
+        <EuiCallOut size="s" color="primary" iconType="iInCircle" title="Cambio propuesto">
+          <p>
+            <RoleRequestSentence request={request} names={names} viewerId={session.subjectId} />.
+          </p>
+          <p>
+            <strong>Motivo:</strong> {request.reason}
+          </p>
+          {request.ticket && <p>Ticket: {request.ticket}</p>}
+        </EuiCallOut>
+        <EuiSpacer size="m" />
+        {securityStage && !stepUpMissing && (
+          <p className="b89CellMeta">
+            Etapa de Seguridad: pide un inicio de sesión reciente. Si al aprobar se te pide,
+            cierra sesión, vuelve a entrar y repite la aprobación.
+          </p>
         )}
         <EuiFormRow label="Decisión" fullWidth>
           <EuiSelect
@@ -965,16 +1140,22 @@ function RoleDecisionModal({
               fill
               color={decision === 'reject' ? 'danger' : 'primary'}
               isLoading={busy}
-              isDisabled={
-                !capabilityAllowed ||
-                (stepUpBlocked && decision === 'approve') ||
-                length < REASON_MIN
-              }
+              isDisabled={!capabilityAllowed || length < REASON_MIN}
+              aria-describedby={length < REASON_MIN ? 'b89-role-decision-blocked' : undefined}
               onClick={submit}
             >
               {decision === 'approve' ? 'Confirmar aprobación' : 'Rechazar solicitud'}
             </EuiButton>
           </EuiFlexItem>
+          {(length < REASON_MIN || !capabilityAllowed) && (
+            <EuiFlexItem grow={false} style={{ flexBasis: '100%' }}>
+              <p id="b89-role-decision-blocked" className="b89CellMeta" style={{ textAlign: 'right' }}>
+                {!capabilityAllowed
+                  ? 'Tu rol no puede decidir esta etapa.'
+                  : `Escribe el motivo de la decisión (al menos ${REASON_MIN} caracteres; faltan ${REASON_MIN - length}).`}
+              </p>
+            </EuiFlexItem>
+          )}
         </EuiFlexGroup>
       </EuiModalFooter>
     </EuiModal>
@@ -990,6 +1171,8 @@ function SessionsPanel() {
   const [revoking, setRevoking] = useState<AdminSession | null>(null);
   const [items, setItems] = useState<readonly AdminSession[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [moreError, setMoreError] = useState<unknown>(null);
   useEffect(() => {
     if (sessions.data) {
       setItems(sessions.data.items);
@@ -1000,9 +1183,17 @@ function SessionsPanel() {
 
   const loadMore = async () => {
     if (!cursor) return;
-    const next = await api.get<Page<AdminSession>>('/admin/sessions', { cursor });
-    setItems((current) => [...current, ...next.items]);
-    setCursor(next.nextCursor);
+    setLoadingMore(true);
+    setMoreError(null);
+    try {
+      const next = await api.get<Page<AdminSession>>('/admin/sessions', { cursor });
+      setItems((current) => [...current, ...next.items]);
+      setCursor(next.nextCursor);
+    } catch (error) {
+      setMoreError(error);
+    } finally {
+      setLoadingMore(false);
+    }
   };
 
   if (sessions.error) return <ErrorCallout error={sessions.error} onRetry={sessions.reload} />;
@@ -1019,7 +1210,7 @@ function SessionsPanel() {
             {session.current ? ' · esta sesión' : ''}
           </span>
           <span className="b89CellMeta">
-            {session.amr.join(' + ') || 'sin método'} · {session.clientIp ?? 'IP sin dato'}
+            {amrText(session.amr)} · {session.clientIp ?? 'IP sin dato'}
           </span>
         </span>
       ),
@@ -1046,7 +1237,12 @@ function SessionsPanel() {
       width: '120px',
       render: (session: AdminSession) =>
         can(CAPABILITIES.sessionsRevoke) && session.state === 'active' && !session.current ? (
-          <EuiButtonEmpty size="xs" color="danger" onClick={() => setRevoking(session)}>
+          <EuiButtonEmpty
+            size="xs"
+            color="danger"
+            onClick={() => setRevoking(session)}
+            aria-label={`Revocar la sesión de ${session.displayName ?? session.email ?? 'esta persona'}`}
+          >
             Revocar
           </EuiButtonEmpty>
         ) : null,
@@ -1067,10 +1263,11 @@ function SessionsPanel() {
             : `Sin sesiones en los últimos ${sessions.data?.windowDays ?? 7} días.`
         }
       />
+      {moreError != null && <ErrorCallout error={moreError} onRetry={loadMore} />}
       {cursor && (
         <>
           <EuiSpacer size="s" />
-          <EuiButtonEmpty size="s" onClick={loadMore}>
+          <EuiButtonEmpty size="s" isLoading={loadingMore} onClick={loadMore}>
             Cargar más
           </EuiButtonEmpty>
         </>
@@ -1098,11 +1295,12 @@ function RevokeModal({
   onClose: () => void;
   onRevoked: () => void;
 }) {
-  const { api } = useConsole();
+  const { api, notifications } = useConsole();
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const length = reason.trim().length;
+  const who = session.displayName ?? session.email ?? 'esta persona';
 
   const revoke = async () => {
     setBusy(true);
@@ -1111,6 +1309,9 @@ function RevokeModal({
       await api.post(`/admin/sessions/${encodeURIComponent(session.ref)}/revoke`, {
         reason: reason.trim(),
         expectedRevision: session.revision,
+      });
+      notifications.toasts.addSuccess({
+        title: `Sesión revocada. ${who} tendrá que volver a iniciar sesión.`,
       });
       onRevoked();
     } catch (failure) {
@@ -1121,23 +1322,35 @@ function RevokeModal({
   };
 
   return (
-    <EuiModal onClose={onClose} className="b89Modal" maxWidth={520}>
+    <EuiModal
+      onClose={onClose}
+      className="b89Modal"
+      maxWidth={520}
+      aria-labelledby="b89-revoke-title"
+    >
       <EuiModalHeader>
         <EuiModalHeaderTitle>
-          <h2>Revocar sesión</h2>
+          <h2 id="b89-revoke-title" data-b89-no-translate="">
+            Revocar la sesión de {who}
+          </h2>
         </EuiModalHeaderTitle>
       </EuiModalHeader>
       <EuiModalBody>
         {error != null && <ErrorCallout error={error} />}
         <p>
-          La persona tendrá que volver a iniciar sesión. Queda registrado en la auditoría como{' '}
-          <Mono>access.session.revoked</Mono>.
+          {who} ({session.clientIp ? `IP ${session.clientIp}` : 'IP sin dato'},{' '}
+          {amrText(session.amr).toLowerCase()}) tendrá que volver a iniciar sesión. El motivo
+          queda en Auditoría.
         </p>
         <EuiSpacer size="m" />
         <EuiFormRow
           label="Motivo"
           fullWidth
-          helpText={`${length} de ${REASON_MAX} caracteres · mínimo ${REASON_MIN}`}
+          helpText={
+            length < REASON_MIN
+              ? `Escribe al menos ${REASON_MIN} caracteres para poder revocar (faltan ${REASON_MIN - length}).`
+              : `${length} de ${REASON_MAX} caracteres`
+          }
         >
           <EuiFieldText
             fullWidth

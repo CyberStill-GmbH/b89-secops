@@ -163,14 +163,58 @@ describe('códigos del backend en lenguaje llano', () => {
 describe('conclusión del expediente', () => {
   it('veredicto, confianza, prioridad sugerida y verificación arriba y juntos', () => {
     const markup = renderToStaticMarkup(<AiConclusion run={run()} />);
-    expect(markup).toContain('Conclusión del analista');
+    expect(markup).toContain('Conclusión del Analista IA');
     expect(markup).toContain('Probable verdadero positivo');
     expect(markup).toContain('data-tone="fail"');
-    expect(markup).toContain('Confianza media');
+    // «Confianza» ya es el rótulo: el valor dice solo «Media» (sin «Confianza: Confianza media»).
+    expect(markup).toContain('<span>Media</span>');
+    expect(markup).not.toContain('Confianza media');
     expect(markup).toContain('data-step="2"');
-    expect(markup).toContain('P2');
+    // La alerta es P3 y la IA sugiere P2: se dice en palabras.
+    expect(markup).toContain('Sugiere subir a P2');
     expect(markup).toContain('Citas verificadas');
     expect(markup).toContain('no cambió la alerta');
+  });
+
+  it('responde primero: resumen, qué recomienda y cuántos vacíos, dentro de la conclusión', () => {
+    const base = run();
+    const markup = renderToStaticMarkup(
+      <AiConclusion
+        run={{
+          ...base,
+          result: {
+            ...base.result!,
+            nextSteps: ['Bloquear la IP', 'Restablecer la contraseña', 'Revisar el buzón', 'Avisar al dueño'],
+            gaps: ['Sin datos de VPN'],
+          },
+        }}
+      />,
+    );
+    expect(markup).toContain('Inicio de sesión anómalo.');
+    expect(markup).toContain('Qué recomienda');
+    expect(markup).toContain('Bloquear la IP');
+    expect(markup).toContain('Revisar el buzón');
+    expect(markup).not.toContain('Avisar al dueño');
+    expect(markup).toContain('Ver 1 paso más');
+    expect(markup).toContain('Falta verificar 1 punto');
+    expect(markup.indexOf('Probable verdadero positivo')).toBeLessThan(markup.indexOf('Qué recomienda'));
+  });
+
+  it('en el expediente, «Tu revisión» va justo después de la conclusión y lo técnico queda plegado', () => {
+    const markup = renderToStaticMarkup(
+      <AiCaseFile run={run()} basePath="" now={NOW} review={<section>PANEL DE REVISIÓN</section>} />,
+    );
+    const conclusion = markup.indexOf('Conclusión del Analista IA');
+    const review = markup.indexOf('PANEL DE REVISIÓN');
+    expect(conclusion).toBeLessThan(review);
+    expect(review).toBeLessThan(markup.indexOf('Hechos observados'));
+    expect(markup.match(/<details class="b89AiDetails b89AiTechnical">/gu)).toHaveLength(1);
+    expect(markup.indexOf('<details class="b89AiDetails b89AiTechnical">')).toBeLessThan(
+      markup.indexOf('Datos del expediente'),
+    );
+    expect(markup.indexOf('<details class="b89AiDetails b89AiTechnical">')).toBeLessThan(
+      markup.indexOf('Uso y costo'),
+    );
   });
 
   it('sin resultado dice por qué', () => {
@@ -178,7 +222,7 @@ describe('conclusión del expediente', () => {
       renderToStaticMarkup(
         <AiConclusion run={run({ status: 'running', stage: 'triage', finishedAt: null, result: null })} />,
       ),
-    ).toContain('sigue en curso (triaje determinista)');
+    ).toContain('sigue en curso (revisión con reglas)');
     expect(renderToStaticMarkup(<AiConclusion run={run({ status: 'failed', result: null })} />)).toContain(
       'no produjo una conclusión',
     );
@@ -186,7 +230,7 @@ describe('conclusión del expediente', () => {
 
   it('la conclusión aparece antes que el resumen y los hechos', () => {
     const markup = renderToStaticMarkup(<AiCaseFile run={run()} basePath="" now={NOW} />);
-    expect(markup.indexOf('Conclusión del analista')).toBeLessThan(markup.indexOf('Inicio de sesión anómalo.'));
+    expect(markup.indexOf('Conclusión del Analista IA')).toBeLessThan(markup.indexOf('Inicio de sesión anómalo.'));
     expect(markup.indexOf('Inicio de sesión anómalo.')).toBeLessThan(markup.indexOf('Hechos observados'));
   });
 });

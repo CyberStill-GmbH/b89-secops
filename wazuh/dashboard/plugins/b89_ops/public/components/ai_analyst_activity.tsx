@@ -28,7 +28,14 @@ import {
 import { getAiActivity, isAnalystUnavailable, listAiRuns } from '../api/ai_investigations';
 import { AiBudgetPanel, AiBudgetTile } from './ai_analyst_budget';
 import { alertHref } from './ai_analyst_case_file';
-import { AttentionItem, attentionSummary, AttentionSummary, RunFilters } from './ai_analyst_model';
+import {
+  ANALYST_UNAVAILABLE_TEXT,
+  ANALYST_UNAVAILABLE_TITLE,
+  AttentionItem,
+  attentionSummary,
+  AttentionSummary,
+  RunFilters,
+} from './ai_analyst_model';
 import { AiTile, ReasonTag } from './ai_analyst_parts';
 import { openInPlace, runHref, RunTime } from './ai_analyst_runs';
 import { useConsole } from './console_context';
@@ -44,9 +51,25 @@ const ATTENTION_PAGE = 20;
 /** Las revisiones no caducan: se lee una página amplia para no perder pendientes antiguas. */
 const REVIEW_PAGE = 100;
 
-/** Tamaño intrínseco de `b89-ai-analyst-bunny-160.webp` (el de 2x es 453×512). */
-const MASCOT_WIDTH = 142;
-const MASCOT_HEIGHT = 160;
+/**
+ * La mascota acompaña el estado en una línea compacta: 48 px de alto (el archivo es 142×160 y el
+ * de 2x 453×512, así que se ve nítida).
+ */
+const MASCOT_WIDTH = 43;
+const MASCOT_HEIGHT = 48;
+
+const LIMA_DAY = new Intl.DateTimeFormat('es-PE', {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+  timeZone: 'America/Lima',
+});
+
+/** `2026-11-14` → «sábado, 14 de noviembre» (el día de Lima que informa el servicio). */
+function limaDay(day: string): string {
+  const date = new Date(`${day}T12:00:00-05:00`);
+  return Number.isNaN(date.getTime()) ? day : LIMA_DAY.format(date);
+}
 
 const LIMA_TIME = new Intl.DateTimeFormat('es-PE', {
   hour: '2-digit',
@@ -75,7 +98,7 @@ export function AiAnalystMascot({ basePath }: { basePath: string }) {
       srcSet={`${small} 1x, ${large} 2x`}
       width={MASCOT_WIDTH}
       height={MASCOT_HEIGHT}
-      alt="Analista IA"
+      alt=""
       decoding="async"
       draggable={false}
     />
@@ -116,17 +139,19 @@ export function AiActivityHeader({
         )}
         <dl className="b89AiStatus__facts">
           <div>
-            <dt>Último ciclo</dt>
+            <dt>Última revisión de la cola</dt>
             <dd>{since(host.lastTickAt, now)}</dd>
           </div>
           <div>
-            <dt>Último expediente terminado</dt>
+            <dt>Última investigación terminada</dt>
             <dd>{since(host.lastProcessedAt, now)}</dd>
           </div>
           <div>
-            <dt>En curso / simultáneas</dt>
+            <dt>Investigando ahora</dt>
             <dd className="b89Tabular">
-              {formatCount(host.inFlight)} / {formatCount(host.concurrency)}
+              {host.concurrency === null
+                ? formatCount(host.inFlight)
+                : `${formatCount(host.inFlight)} de ${formatCount(host.concurrency)} posibles`}
             </dd>
           </div>
           {queue && (
@@ -183,7 +208,9 @@ export function AiAttentionPanel({
     <section className="b89Panel b89AiAttention" aria-labelledby="b89AiAttentionTitle">
       <div className="b89Panel__header">
         <h2 id="b89AiAttentionTitle">Necesita tu atención</h2>
-        <span className="b89Panel__meta">Revisiones pendientes · fallos de las últimas 24 h</span>
+        <span className="b89Panel__meta">
+          Revisiones pendientes · fallos y escaladas de las últimas 24 h
+        </span>
       </div>
       {!summary ? (
         error != null ? (
@@ -212,14 +239,14 @@ export function AiAttentionPanel({
               label="Fallidas o incompletas"
               value={`${formatCount(summary.failed)}${summary.failed > 0 ? plus : ''}`}
               tone={summary.failed > 0 ? 'fail' : 'ok'}
-              hint="Sin recomendación fiable: reintentar o revisar a mano"
+              hint="Últimas 24 h. Sin recomendación fiable: reintentar o revisar a mano"
               onClick={onFilter ? () => onFilter({ status: '', view: 'failed' }) : undefined}
             />
             <AiTile
               label="Escaladas a incidente"
               value={formatCount(summary.escalated)}
               tone={summary.escalated > 0 ? 'info' : 'neutral'}
-              hint="El analista abrió o vinculó un incidente"
+              hint="Últimas 24 h. El analista abrió o vinculó un incidente"
               onClick={onFilter ? () => onFilter({ status: '', view: 'escalated' }) : undefined}
             />
           </div>
@@ -293,24 +320,20 @@ export function AiActivityKpis({
           }
         />
         <AiTile
-          label="Escaladas a incidente"
-          value={formatCount(today.escalated)}
-          hint={`${formatCount(today.incidentsCreated)} a incidente nuevo · ${formatCount(
-            today.incidentsAttached,
-          )} a uno existente`}
-        />
-        <AiTile
           label="Cerradas como benignas"
           value={formatCount(today.closedBenign)}
-          hint={`Revisión pedida: ${formatCount(today.reviewRequested)} (${formatCount(
-            today.reviewImmediate,
-          )} inmediata · ${formatCount(today.reviewDigest)} en resumen)`}
+          hint={`${formatCount(today.reviewRequested)} ${
+            today.reviewRequested === 1 ? 'enviada' : 'enviadas'
+          } a revisión (${formatCount(today.reviewImmediate)} al momento, ${formatCount(
+            today.reviewDigest,
+          )} en el resumen diario)`}
         />
         <AiBudgetTile budget={budget} />
       </div>
       <p className="b89Ai__note">
-        Hoy {today.day ? <Mono>{today.day}</Mono> : null} · día de Lima, desde las 00:00 · costo de
-        modelo: {formatMicroUsd(today.estimatedMicroUsd)} · fallidas: {formatCount(today.failed)}
+        Hoy{today.day ? `, ${limaDay(today.day)}` : ''} (hora de Lima, desde las 00:00) · escaladas
+        a incidente: {formatCount(today.escalated)} · costo de IA:{' '}
+        {formatMicroUsd(today.estimatedMicroUsd)} · fallidas: {formatCount(today.failed)}
       </p>
     </section>
   );
@@ -349,11 +372,11 @@ export function AiActivityQueuePanel({
           <dd>{queue.oldestQueuedAt ? since(queue.oldestQueuedAt, now) : 'Sin cola'}</dd>
         </div>
         <div>
-          <dt>Alertas abiertas sin expediente</dt>
+          <dt>Alertas abiertas aún sin investigar</dt>
           <dd className="b89Tabular">{formatCount(backlog.openAlertsWithoutCaseFile)}</dd>
         </div>
         <div>
-          <dt>Incidentes abiertos sin expediente</dt>
+          <dt>Incidentes abiertos aún sin investigar</dt>
           <dd className="b89Tabular">{formatCount(backlog.openIncidentsWithoutCaseFile)}</dd>
         </div>
       </dl>
@@ -391,7 +414,8 @@ export function AiActivityFeed({
           configurado, el analista las investigará y aparecerán aquí.
         </p>
       ) : (
-        <ol className="b89AiFeed__list" role="log" aria-live="polite" aria-label="Actividad del analista">
+        // Sin región viva: se refresca cada 5 s y sería ruidosa. El pie dice si está al día.
+        <ol className="b89AiFeed__list" aria-label="Actividad del analista">
           {feed.map((item) => {
             const sentence = feedSentence(item);
             const target = refHref(basePath, item.ref);
@@ -475,7 +499,7 @@ export function AiActivityPanel({
       : attentionSummary({ runs: [], feed: activity.feed, now }));
   return (
     <div className="b89AiOverview">
-      <AiActivityHeader host={activity.host} basePath={basePath} now={now} queue={activity.queue} />
+      {/* Primero lo que espera a una persona; después el estado del analista en una línea. */}
       <AiAttentionPanel
         summary={summary}
         basePath={basePath}
@@ -486,12 +510,16 @@ export function AiActivityPanel({
         onSelect={onSelect}
         onFilter={onFilter}
       />
+      <AiActivityHeader host={activity.host} basePath={basePath} now={now} queue={activity.queue} />
       <AiActivityKpis today={activity.today} budget={budget} />
       <div className="b89AiOverview__columns">
         <AiActivityFeed feed={activity.feed} basePath={basePath} onSelect={onSelect} />
         <div className="b89AiOverview__side">
-          <AiActivityQueuePanel queue={activity.queue} backlog={activity.backlog} now={now} />
-          {budget && <AiBudgetPanel budget={budget} />}
+          <details className="b89AiDetails b89AiOverview__fold">
+            <summary>Cola del analista y detalle del presupuesto</summary>
+            <AiActivityQueuePanel queue={activity.queue} backlog={activity.backlog} now={now} />
+            {budget && <AiBudgetPanel budget={budget} />}
+          </details>
         </div>
       </div>
     </div>
@@ -604,15 +632,10 @@ export function AiActivityTab({
     if (loading) return <EuiLoadingContent lines={6} />;
     if (isAnalystUnavailable(error)) {
       return (
-        <EuiCallOut
-          size="s"
-          color="warning"
-          iconType="offline"
-          title="El panel de actividad no está publicado en este entorno"
-        >
+        <EuiCallOut size="s" color="warning" iconType="offline" title={ANALYST_UNAVAILABLE_TITLE}>
           <p>
-            El servicio no expone la actividad del analista. Las pestañas «Investigaciones»,
-            «Informes» y «Configuración» siguen disponibles.
+            {ANALYST_UNAVAILABLE_TEXT} Mientras tanto no se puede mostrar su actividad; prueba las
+            pestañas «Investigaciones», «Informes» y «Configuración».
           </p>
           <EuiButtonEmpty size="xs" flush="left" onClick={() => void load()}>
             Volver a comprobar

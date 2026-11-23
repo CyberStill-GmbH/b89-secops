@@ -8,6 +8,7 @@ import {
   EuiDescriptionList,
   EuiFlexGrid,
   EuiFlexItem,
+  EuiLoadingContent,
   EuiPanel,
   EuiSpacer,
   EuiText,
@@ -34,8 +35,8 @@ import {
   SourceVerdict,
   verdictReasonLabel,
 } from '../../common';
-import { B89Page, B89Section, useChanges, useConsole } from './console_context';
-import { ErrorCallout, HealthMark, Timestamp, useAsync } from './primitives';
+import { B89Page, useChanges, useConsole } from './console_context';
+import { EmptyLine, ErrorCallout, HealthMark, Timestamp, useAsync } from './primitives';
 
 function duration(seconds: number | null): string {
   if (seconds === null) return 'Sin dato';
@@ -63,9 +64,9 @@ export function formatOutboxQueueSummary(input: {
 }): string {
   const expired =
     input.expiredProcessing > 0
-      ? ` · lease más antiguo vencido hace ${duration(input.oldestExpiredLeaseAgeSeconds)}`
+      ? ` · el más antiguo atascado hace ${duration(input.oldestExpiredLeaseAgeSeconds)}`
       : '';
-  return `${input.pending} pendientes · ${input.processing} en curso · más antigua ${duration(input.oldestPendingAgeSeconds)} · ${input.expiredProcessing} leases vencidos${expired}`;
+  return `${input.pending} pendientes · ${input.processing} en curso · más antigua ${duration(input.oldestPendingAgeSeconds)} · ${input.expiredProcessing} atascados${expired}`;
 }
 
 export function describeCorrelatorHealth(correlator: SocCorrelatorHealth | null | undefined): {
@@ -77,7 +78,7 @@ export function describeCorrelatorHealth(correlator: SocCorrelatorHealth | null 
   if (correlator.feedbackStatus === 'stale') {
     const age = correlator.feedbackAgeSeconds;
     return {
-      label: age === null ? 'Atrasado · edad sin dato' : `Atrasado · ${duration(age)} sin refresh`,
+      label: age === null ? 'Atrasado' : `Atrasado · ${duration(age)} sin actualizar`,
       tone: CORRELATOR_FEEDBACK_STATUS_TONE.stale,
     };
   }
@@ -90,7 +91,7 @@ export function describeCorrelatorHealth(correlator: SocCorrelatorHealth | null 
       };
     }
     if (correlator.ready === false || correlator.status === 'DEGRADED') {
-      return { label: 'Degradado', tone: 'warn' };
+      return { label: 'Con problemas', tone: 'warn' };
     }
     if (correlator.ready === null) return { label: 'Sin respuesta', tone: 'neutral' };
   }
@@ -128,7 +129,7 @@ export function describeSourceCoverage(coverage: CorrelatorCoverage | undefined)
       source.providerLagSeconds !== null && source.reason === 'collector_behind_provider'
         ? ` (${duration(source.providerLagSeconds)})`
         : '';
-    return `${source.source}: ${reason}${lag}`;
+    return `${SOURCE_ID_LABEL[source.source] ?? source.source}: ${reason}${lag}`;
   });
   return {
     label: 'Cobertura incompleta',
@@ -170,7 +171,21 @@ function SectionPanel({
   );
 }
 
-const VERDICT_ORDER: readonly SourceVerdict[] = ['failing', 'degraded', 'quiet', 'healthy', 'unknown'];
+/** Nombre legible de las fuentes de `/api/operations/health` (la sección no trae rótulo). */
+const SOURCE_ID_LABEL: Readonly<Record<string, string>> = {
+  m365: 'Microsoft 365',
+  entra: 'Entra ID',
+  'sharepoint-posture': 'SharePoint (configuración)',
+  'sharepoint-audit': 'SharePoint (auditoría)',
+  bitdefender: 'Bitdefender',
+  snyk: 'Snyk',
+  cloudflare: 'Cloudflare',
+  aws: 'AWS',
+  'wazuh-indexer': 'SIEM (Wazuh)',
+  'wazuh-agents': 'Agentes Wazuh',
+};
+
+const VERDICT_ORDER: readonly SourceVerdict[] = ['failing', 'degraded', 'unknown', 'quiet', 'healthy'];
 
 /** Sección `sources` (docs/20): conteo por veredicto y los problemas abiertos por fuente. */
 export function SourcesHealthPanel({
@@ -197,7 +212,7 @@ export function SourcesHealthPanel({
         <ul className="b89List" aria-label="Fuentes con problemas">
           {problems.map((item) => (
             <li key={item.id}>
-              <strong>{item.id}</strong> · {SOURCE_VERDICT_LABEL[item.verdict as SourceVerdict] ?? item.verdict}
+              <strong>{SOURCE_ID_LABEL[item.id] ?? item.id}</strong> · {SOURCE_VERDICT_LABEL[item.verdict as SourceVerdict] ?? item.verdict}
               {item.reasons.length > 0 ? ` · ${item.reasons.map(verdictReasonLabel).join('; ')}` : ''}
             </li>
           ))}
@@ -216,53 +231,146 @@ export function SourcesHealthPanel({
   );
 }
 
-/** Salud operativa (doc 12): ¿llegan los datos y funciona el despacho? Secciones por capacidad. */
-export function OperationsView({ embedded = false }: { embedded?: boolean }) {
+/** Una línea por área de la plataforma: lo que un analista necesita saber sin abrir el detalle. */
+export interface OperationsSummaryRow {
+  readonly key: string;
+  readonly title: string;
+  readonly tone: HealthTone;
+  readonly label: string;
+  readonly detail: React.ReactNode;
+}
+
+export function operationsSummaryRows(data: OperationsHealth): OperationsSummaryRow[] {
+  const rows: OperationsSummaryRow[] = [];
+  const summary = data.sections.summary;
+  rows.push({
+    key: 'detection',
+    title: 'Detección',
+    tone: OPERATIONS_TONE[summary.status],
+    label: OPERATIONS_STATUS_LABEL[summary.status],
+    detail: summary.lastAlertAt ? (
+      <>
+        Última alerta <Timestamp iso={summary.lastAlertAt} />
+      </>
+    ) : (
+      'Todavía no llegó ninguna alerta.'
+    ),
+  });
+  const soc = data.sections.soc;
+  if (soc) {
+    const reasons = soc.degradedReasons.filter(
+      (reason) =>
+        reason.startsWith('DISPATCHER') ||
+        reason.startsWith('OUTBOX') ||
+        reason.startsWith('NOTIFICATION'),
+    );
+    rows.push({
+      key: 'dispatch',
+      title: 'Envío de avisos',
+      tone: !soc.dispatcherRunning ? 'fail' : reasons.length > 0 ? 'warn' : 'ok',
+      label: !soc.dispatcherRunning ? 'Detenido' : reasons.length > 0 ? 'Con problemas' : 'Funciona',
+      detail:
+        reasons.length > 0
+          ? reasons.map((reason) => DEGRADED_REASON_LABEL[reason] ?? reason).join('. ')
+          : `${soc.outbox.pending} aviso${soc.outbox.pending === 1 ? '' : 's'} en cola.`,
+    });
+    const correlator = describeCorrelatorHealth(soc.correlator);
+    const coverage = describeSourceCoverage(soc.correlator?.coverage);
+    const gaps = coverage.details.length;
+    rows.push({
+      key: 'correlator',
+      title: 'Correlador',
+      tone: correlator.tone,
+      label: correlator.label,
+      detail:
+        coverage.label === 'Cobertura incompleta'
+          ? `Cobertura incompleta: ${gaps} fuente${gaps === 1 ? '' : 's'} sin verificar o con atraso; pueden faltar eventos.`
+          : coverage.label === 'Completa'
+            ? 'Cobertura completa de fuentes.'
+            : coverage.label,
+    });
+  }
+  const platform = data.sections.platform;
+  if (platform) {
+    rows.push({
+      key: 'database',
+      title: 'Base de datos',
+      tone: platform.databaseLatencyMs === null ? 'fail' : OPERATIONS_TONE[platform.status],
+      label:
+        platform.databaseLatencyMs === null
+          ? 'Sin respuesta'
+          : OPERATIONS_STATUS_LABEL[platform.status],
+      detail:
+        platform.databaseLatencyMs === null
+          ? 'La base de datos no respondió.'
+          : `Responde en ${platform.databaseLatencyMs} ms.`,
+    });
+  }
+  return rows;
+}
+
+/**
+ * Salud operativa (doc 12): ¿llegan los datos y funciona el despacho? Dentro de «Salud de
+ * fuentes» (`embedded`) muestra una línea por área y pliega las métricas internas; la página
+ * padre tiene el único botón «Actualizar» (`refreshKey`).
+ */
+export function OperationsView({
+  embedded = false,
+  refreshKey = 0,
+}: {
+  embedded?: boolean;
+  refreshKey?: number;
+}) {
   const { can } = useConsole();
   // El backend autoriza cada sección; sin ninguna capacidad de observabilidad no se consulta.
   const allowed =
     can(CAPABILITIES.observabilitySoc) ||
     can(CAPABILITIES.observabilityPlatform) ||
     can(CAPABILITIES.sourcesRead);
-  if (!allowed) return null;
-  return <OperationsContent embedded={embedded} />;
+  if (!allowed) {
+    const line = (
+      <EmptyLine>
+        Tu rol no incluye la salud operativa de la plataforma. Pídela a un Administrador de
+        plataforma si la necesitas.
+      </EmptyLine>
+    );
+    return embedded ? line : <B89Page title="Salud operativa">{line}</B89Page>;
+  }
+  return <OperationsContent embedded={embedded} refreshKey={refreshKey} />;
 }
 
-function OperationsContent({ embedded }: { embedded: boolean }) {
+function OperationsContent({ embedded, refreshKey }: { embedded: boolean; refreshKey: number }) {
   const { api } = useConsole();
-  const health = useAsync(() => api.get<OperationsHealth>('/operations/health'), [api]);
+  const health = useAsync(() => api.get<OperationsHealth>('/operations/health'), [api, refreshKey]);
   useChanges(['source', 'notification'], () => health.reload(), 2000);
 
   const data = health.data;
-  const Frame = embedded ? B89Section : B89Page;
-  return (
-    <Frame
-      title="Salud operativa"
-      description="Frescura de las alertas, despacho de notificaciones y estado de la plataforma."
-      actions={
-        <EuiButtonEmpty
-          size="s"
-          iconType="refresh"
-          onClick={health.reload}
-          isLoading={health.loading}
-        >
-          Actualizar
-        </EuiButtonEmpty>
-      }
-    >
+  const body = (
+    <>
       {health.error != null && <ErrorCallout error={health.error} onRetry={health.reload} />}
+      {health.loading && !data && health.error == null && <EuiLoadingContent lines={3} />}
       {data && (
         <>
-          <HealthMark
-            tone={OPERATIONS_TONE[data.status]}
-            label={`Global: ${OPERATIONS_STATUS_LABEL[data.status]}`}
-          />
-          <EuiText size="xs" color="subdued">
-            <p>
-              Generado <Timestamp iso={data.generatedAt} />
-            </p>
-          </EuiText>
-          <EuiSpacer size="m" />
+          <ul className="b89OpsSummary" aria-label="Estado por área">
+            {operationsSummaryRows(data).map((row) => (
+              <li key={row.key} className="b89OpsSummary__row">
+                <strong className="b89OpsSummary__title">{row.title}</strong>
+                <HealthMark tone={row.tone} label={row.label} />
+                <span className="b89Muted">{row.detail}</span>
+              </li>
+            ))}
+          </ul>
+          <EuiSpacer size="s" />
+          <details className="b89Guide__details">
+            <summary>Ver métricas internas (colas, tiempos y memoria)</summary>
+            <EuiSpacer size="s" />
+            <EuiText size="xs" color="subdued">
+              <p>
+                Medido <Timestamp iso={data.generatedAt} /> · estado global{' '}
+                {OPERATIONS_STATUS_LABEL[data.status]}
+              </p>
+            </EuiText>
+            <EuiSpacer size="s" />
           <EuiFlexGrid columns={3} gutterSize="m" responsive>
             <EuiFlexItem>
               <SectionPanel title="Detección" status={data.sections.summary.status}>
@@ -346,7 +454,7 @@ function OperationsContent({ embedded }: { embedded: boolean }) {
                         })(),
                       },
                       {
-                        title: 'Cola de salida',
+                        title: 'Cola de envío de avisos',
                         description: (
                           <span className="b89Tabular">
                             {formatOutboxQueueSummary(data.sections.soc.outbox)}
@@ -354,7 +462,7 @@ function OperationsContent({ embedded }: { embedded: boolean }) {
                         ),
                       },
                       {
-                        title: 'Inbox push Wazuh',
+                        title: 'Canal rápido de Wazuh',
                         description: data.sections.soc.wazuhPushInbox
                           ? `${data.sections.soc.wazuhPushInbox.counts.pending} pendientes · ${data.sections.soc.wazuhPushInbox.counts.processing} en curso · ${data.sections.soc.wazuhPushInbox.counts['failed-terminal']} terminales · más antigua ${duration(data.sections.soc.wazuhPushInbox.oldestUnresolvedAgeSeconds)}`
                           : 'No configurada',
@@ -362,12 +470,11 @@ function OperationsContent({ embedded }: { embedded: boolean }) {
                       ...(data.sections.soc.wazuhPushInbox
                         ? [
                             {
-                              title: `Push terminales (${data.sections.soc.wazuhPushInbox.terminalWindowHours} h)`,
+                              title: `Canal rápido: fallos definitivos (${data.sections.soc.wazuhPushInbox.terminalWindowHours} h)`,
                               description: (
                                 <>
                                   {data.sections.soc.wazuhPushInbox.terminalFailuresRecent} fallidas
-                                  · {data.sections.soc.wazuhPushInbox.expiredProcessing} leases
-                                  vencidos · último éxito{' '}
+                                  · {data.sections.soc.wazuhPushInbox.expiredProcessing} atascados · último éxito{' '}
                                   {data.sections.soc.wazuhPushInbox.lastProcessedAt ? (
                                     <Timestamp
                                       iso={data.sections.soc.wazuhPushInbox.lastProcessedAt}
@@ -379,17 +486,17 @@ function OperationsContent({ embedded }: { embedded: boolean }) {
                               ),
                             },
                             {
-                              title: `Wazuh origen → recepción API (${data.sections.soc.wazuhPushInbox.sourceToReceiptMs.windowHours} h)`,
+                              title: `Wazuh → recepción en B89 (${data.sections.soc.wazuhPushInbox.sourceToReceiptMs.windowHours} h)`,
                               description: (() => {
                                 const latency = data.sections.soc.wazuhPushInbox?.sourceToReceiptMs;
                                 if (!latency || latency.sampleCount === 0 || latency.p95 === null) {
                                   return 'Sin muestras válidas en la ventana';
                                 }
-                                return `p50 ${Math.round(latency.p50 ?? 0)} ms · p95 ${Math.round(latency.p95)} ms · p99 ${Math.round(latency.p99 ?? latency.p95)} ms · ${latency.sampleCount} muestras${latency.clockSkewSamples > 0 ? ` · ${latency.clockSkewSamples} excluidas por reloj` : ''}${latency.sampleCapReached ? ' · limitada a 10 000 receipts' : ''}`;
+                                return `p50 ${Math.round(latency.p50 ?? 0)} ms · p95 ${Math.round(latency.p95)} ms · p99 ${Math.round(latency.p99 ?? latency.p95)} ms · ${latency.sampleCount} muestras${latency.clockSkewSamples > 0 ? ` · ${latency.clockSkewSamples} excluidas por reloj` : ''}${latency.sampleCapReached ? ' · limitada a 10 000 eventos' : ''}`;
                               })(),
                             },
                             {
-                              title: `Recepción → fin del handler (${data.sections.soc.wazuhPushInbox.receiptToHandlerMs.windowHours} h)`,
+                              title: `Recepción → procesado (${data.sections.soc.wazuhPushInbox.receiptToHandlerMs.windowHours} h)`,
                               description: (() => {
                                 const latency =
                                   data.sections.soc.wazuhPushInbox?.receiptToHandlerMs;
@@ -419,15 +526,14 @@ function OperationsContent({ embedded }: { embedded: boolean }) {
                                 .join(' · '),
                       },
                       {
-                        title: `Outbox → aceptación del proveedor (${data.sections.soc.outboxToProviderAcceptanceMs.windowHours} h)`,
+                        title: `Cola de envío → aceptado por el canal (${data.sections.soc.outboxToProviderAcceptanceMs.windowHours} h)`,
                         description: (() => {
                           const latency = data.sections.soc.outboxToProviderAcceptanceMs;
                           if (latency.status === 'NO_DATA' || latency.sampleCount === 0) {
                             return (
                               <span>
-                                Sin muestras aceptadas con HTTP 2xx. La aceptación significa que el
-                                proveedor recibió la solicitud; no acredita lectura ni que un
-                                workflow haya publicado una tarjeta.
+                                Sin avisos aceptados por el canal en la ventana. «Aceptado» significa
+                                que el canal recibió el aviso, no que alguien lo leyó.
                               </span>
                             );
                           }
@@ -442,8 +548,8 @@ function OperationsContent({ embedded }: { embedded: boolean }) {
                                 ? ' · ventana limitada a 10 000 mensajes'
                                 : ''}
                               <br />
-                              HTTP 2xx = aceptado por el proveedor; no significa leído ni confirma
-                              que un workflow publicara una tarjeta.
+                              «Aceptado» significa que el canal recibió el aviso, no que alguien lo
+                              leyó.
                             </span>
                           );
                         })(),
@@ -460,7 +566,7 @@ function OperationsContent({ embedded }: { embedded: boolean }) {
                 </SectionPanel>
               </EuiFlexItem>
             )}
-            {data.sections.sources && (
+            {data.sections.sources && !embedded && (
               <EuiFlexItem>
                 <SourcesHealthPanel section={data.sections.sources} />
               </EuiFlexItem>
@@ -505,8 +611,39 @@ function OperationsContent({ embedded }: { embedded: boolean }) {
               </EuiFlexItem>
             )}
           </EuiFlexGrid>
+          </details>
         </>
       )}
-    </Frame>
+    </>
+  );
+  if (embedded) {
+    return (
+      <section className="b89TechSection" aria-labelledby="b89-operations-title">
+        <EuiTitle size="xs">
+          <h3 id="b89-operations-title">Salud operativa</h3>
+        </EuiTitle>
+        <p className="b89Muted">Alertas, envío de avisos, correlador y base de datos.</p>
+        <EuiSpacer size="s" />
+        {body}
+      </section>
+    );
+  }
+  return (
+    <B89Page
+      title="Salud operativa"
+      description="Alertas, envío de avisos, correlador y base de datos."
+      actions={
+        <EuiButtonEmpty
+          size="s"
+          iconType="refresh"
+          onClick={health.reload}
+          isLoading={health.loading}
+        >
+          Actualizar
+        </EuiButtonEmpty>
+      }
+    >
+      {body}
+    </B89Page>
   );
 }

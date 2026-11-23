@@ -37,7 +37,7 @@ import {
   ReviewViewer,
   threatSummary,
 } from './ai_analyst_model';
-import { AiReviewInboxRow, AiReviewPanelView, reviewAlertId } from './ai_analyst_review';
+import { AiReviewInboxRow, AiReviewPanelView, ReviewBriefing, reviewAlertId } from './ai_analyst_review';
 
 const NOW = Date.parse('2026-11-15T15:00:00.000Z');
 const ME = 'oid-me';
@@ -278,7 +278,7 @@ describe('acciones de revisión por los endpoints de alertas existentes', () => 
     expect((failure as AlertStepError).completed).toBe(1);
     expect((failure as AlertStepError).partial.status).toBe('acknowledged');
     expect(((failure as AlertStepError).failure as B89ApiError).message).toBe(
-      'El elemento cambió mientras trabajaba en él. Vuelva a cargarlo.',
+      'Alguien cambió este elemento mientras trabajabas. Recárgalo y repite el cambio.',
     );
   });
 
@@ -336,7 +336,7 @@ describe('capacidades: se oculta lo que el API rechazaría y se explica lo que n
       enabled: false,
       reason: 'La alerta está asignada a otra persona y tu cuenta no puede reasignarla.',
     });
-    expect(reviewActions(taken, ALL).acknowledge.reason).toBe('La alerta ya está reconocida.');
+    expect(reviewActions(taken, ALL).acknowledge.reason).toBe('La alerta ya está en revisión.');
     expect(reviewActions(alert({ status: 'acknowledged', assigneeId: ME }), ALL).assign.reason).toBe(
       'Ya la tienes asignada.',
     );
@@ -347,7 +347,7 @@ describe('capacidades: se oculta lo que el API rechazaría y se explica lo que n
     expect(closed.close_false_positive.reason).toBe('La alerta ya está cerrada.');
     expect(closed.assign.reason).toBe('La alerta está cerrada: ya no se reasigna.');
     expect(reviewActions(alert({ status: 'triaged', verdict: 'true_positive' }), ALL).close_false_positive.reason).toBe(
-      'La alerta ya se trió como verdadero positivo.',
+      'La alerta ya se clasificó como verdadero positivo.',
     );
   });
 
@@ -363,13 +363,13 @@ describe('capacidades: se oculta lo que el API rechazaría y se explica lo que n
       />,
     );
     expect(markup).toContain('Tu revisión');
-    expect(markup).toContain('Reconocida');
+    expect(markup).toContain('En revisión');
     expect(markup).toContain('Analista IA');
-    expect(markup).toContain('Confirmar: falso positivo y cerrar');
+    expect(markup).toContain('Es falso positivo…');
     expect(markup).toContain('La alerta está asignada a otra persona y tu cuenta no puede reasignarla.');
     expect(markup).toContain('Marcar revisada sin cambios');
     expect(markup).not.toContain('Asignármela');
-    expect(markup).not.toContain('Confirmar amenaza: abrir incidente');
+    expect(markup).not.toContain('Es una amenaza…');
     expect(markup).toContain('data-test-subj="b89AiReview-open"');
   });
 
@@ -379,8 +379,8 @@ describe('capacidades: se oculta lo que el API rechazaría y se explica lo que n
     );
     for (const label of [
       'Asignármela',
-      'Confirmar: falso positivo y cerrar',
-      'Confirmar amenaza: abrir incidente',
+      'Es falso positivo…',
+      'Es una amenaza…',
       'Marcar revisada sin cambios',
       'Abrir alerta',
     ]) {
@@ -429,7 +429,7 @@ describe('capacidades: se oculta lo que el API rechazaría y se explica lo que n
         error={new B89ApiError('RESOURCE_UNAVAILABLE', 404, 'c-1')}
       />,
     );
-    expect(markup).toContain('El recurso solicitado no está disponible para su cuenta.');
+    expect(markup).toContain('No encontramos este elemento o tu rol no puede verlo.');
   });
 });
 
@@ -443,9 +443,95 @@ describe('bandeja de revisión', () => {
     expect(markup).toContain('Revisar aquí');
     expect(markup).toContain('aria-expanded="false"');
     expect(markup).toContain('href="/b/app/b89-ai-analyst?id=run-1"');
-    expect(markup).toContain('Investigar');
+    expect(markup).toContain('Ver expediente');
     expect(markup).toContain('Nueva · sin asignar');
     expect(reviewAlertId(run())).toBe('a-1');
     expect(reviewAlertId({ subject: { kind: 'candidate', id: 'c', title: '' }, alertIds: ['x', 'y'] })).toBeNull();
+  });
+});
+
+describe('decidir sin sesgo y con la conclusión a la vista', () => {
+  const buttonFor = (markup: string, id: string) =>
+    new RegExp(`<button[^>]*data-test-subj="b89AiReview-${id}"[^>]*>`, 'u').exec(markup)?.[0] ?? '';
+
+  it('se destaca la acción que coincide con la conclusión de la IA, nunca cerrar por defecto', () => {
+    const render = (verdict: string) =>
+      renderToStaticMarkup(
+        <AiReviewPanelView run={run({ verdict })} alert={alert()} canReadAlert viewer={ALL} basePath="" headingId="h" />,
+      );
+    const threat = render('likely_true_positive');
+    expect(buttonFor(threat, 'open_incident')).toContain('data-emphasis="true"');
+    expect(buttonFor(threat, 'close_false_positive')).toContain('data-emphasis="false"');
+    const benign = render('likely_false_positive');
+    expect(buttonFor(benign, 'close_false_positive')).toContain('data-emphasis="true"');
+    expect(buttonFor(benign, 'open_incident')).toContain('data-emphasis="false"');
+    const unsure = render('inconclusive');
+    expect(unsure).not.toContain('data-emphasis="true"');
+  });
+
+  it('en la bandeja muestra resumen, vacíos y citas, y no deja cerrar mientras lee el expediente', () => {
+    const detail = run({
+      result: {
+        summary: 'Inicio de sesión desde un país nuevo sin otras señales.',
+        verdict: 'inconclusive',
+        confidence: 'low',
+        facts: [],
+        inferences: [],
+        gaps: ['Sin registros de VPN', 'Sin historial del usuario'],
+        nextSteps: [],
+        citations: [],
+        verified: false,
+      },
+    });
+    const ready = renderToStaticMarkup(
+      <AiReviewPanelView
+        run={detail}
+        alert={alert()}
+        canReadAlert
+        viewer={ALL}
+        basePath="/b"
+        headingId="h"
+        compact
+        briefing={<ReviewBriefing run={detail} result={detail.result} basePath="/b" />}
+      />,
+    );
+    expect(ready).toContain('Inicio de sesión desde un país nuevo');
+    expect(ready).toContain('Vacíos: 2 puntos sin verificar');
+    expect(ready).toContain('Citas sin verificar');
+    expect(ready).toContain('Ver expediente completo');
+    expect(ready.indexOf('Inicio de sesión')).toBeLessThan(ready.indexOf('Es falso positivo…'));
+    expect(buttonFor(ready, 'close_false_positive')).not.toContain('disabled');
+
+    const loading = renderToStaticMarkup(
+      <AiReviewPanelView
+        run={run()}
+        alert={alert()}
+        canReadAlert
+        viewer={ALL}
+        basePath="/b"
+        headingId="h"
+        compact
+        briefingReady={false}
+        briefing={<ReviewBriefing run={run()} result={undefined} basePath="/b" />}
+      />,
+    );
+    expect(loading).toContain('Leyendo el expediente');
+    expect(buttonFor(loading, 'close_false_positive')).toContain('disabled');
+  });
+
+  it('lo hecho se anuncia dentro de la región de estado', () => {
+    const done = renderToStaticMarkup(
+      <AiReviewPanelView
+        run={run()}
+        alert={alert({ status: 'closed', verdict: 'false_positive', assigneeId: ME })}
+        canReadAlert
+        viewer={ALL}
+        basePath=""
+        headingId="h"
+        done={REVIEW_DONE_TEXT.close_false_positive}
+      />,
+    );
+    expect(done).toMatch(/role="status"><span class="b89AiSrOnly">Alerta cerrada como falso positivo/u);
+    expect(done).toContain('tabindex="-1"');
   });
 });

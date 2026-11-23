@@ -25,11 +25,16 @@ export const NAV_CATEGORIES = {
   monitoring: { id: 'b89-nav-monitoring', label: 'Monitoreo', order: -990, icon: 'b89-alerts.svg' },
   investigation: {
     id: 'b89-nav-investigation',
-    label: 'Investigación',
+    label: 'Investigación y respuesta',
     order: -980,
     icon: 'b89-incidents.svg',
   },
-  detection: { id: 'b89-nav-detection', label: 'Detección', order: -970, icon: 'b89-sources.svg' },
+  detection: {
+    id: 'b89-nav-detection',
+    label: 'Detección',
+    order: -970,
+    icon: 'b89-ai-analyst.svg',
+  },
   compliance: {
     id: 'b89-nav-compliance',
     label: 'Cumplimiento',
@@ -42,8 +47,15 @@ export const NAV_CATEGORIES = {
     order: -950,
     icon: 'b89-sources.svg',
   },
+  /** Sin entradas propias: B89 Respond vive en «Investigación y respuesta». Se conserva la clave. */
   response: { id: 'b89-nav-response', label: 'Respuesta', order: -940, icon: 'b89-respond.svg' },
-  admin: { id: 'b89-nav-admin', label: 'Administración', order: -930, icon: 'b89-access.svg' },
+  admin: { id: 'b89-nav-admin', label: 'Accesos', order: -930, icon: 'b89-access.svg' },
+  platform: {
+    id: 'b89-nav-platform',
+    label: 'Plataforma (avanzado)',
+    order: -920,
+    icon: 'b89-session.svg',
+  },
 } as const;
 
 export type NavCategoryKey = keyof typeof NAV_CATEGORIES;
@@ -59,17 +71,33 @@ export interface NavPlacement {
 /** Apps visibles: categoría, orden y título. Lo que no está aquí ni en `NAV_HIDDEN` no se toca. */
 export const NAV_PLACEMENT: Readonly<Record<string, NavPlacement>> = {
   // Resumen
-  'b89-overview': { category: 'summary', order: 10, title: 'Resumen del SOC' },
-  'wz-home': { category: 'summary', order: 20, title: 'Resumen del SIEM' },
+  'b89-overview': {
+    category: 'summary',
+    order: 10,
+    title: 'Resumen del SOC',
+    tooltip: 'Portada de B89: alertas por atender, incidentes y estado de las fuentes',
+  },
+  'wz-home': {
+    category: 'summary',
+    order: 20,
+    title: 'Resumen de Wazuh (agentes y módulos)',
+    tooltip: 'Portada de Wazuh: agentes, módulos y eventos del SIEM',
+  },
   dashboards: { category: 'summary', order: 30, title: 'Paneles' },
+  visualize: { category: 'summary', order: 35, title: 'Editor de visualizaciones' },
   reporting: { category: 'summary', order: 40, title: 'Informes PDF del SIEM' },
   'reports-dashboards': { category: 'summary', order: 50, title: 'Informes programados' },
   // Monitoreo
   'b89-alerts': { category: 'monitoring', order: 10, title: 'Cola de alertas' },
   'b89-notifications': { category: 'monitoring', order: 20, title: 'Notificaciones' },
   'endpoints-summary': { category: 'monitoring', order: 30, title: 'Agentes' },
-  'b89-sources': { category: 'monitoring', order: 40, title: 'Salud de fuentes' },
-  // Investigación
+  'b89-sources': {
+    category: 'monitoring',
+    order: 40,
+    title: 'Salud de fuentes',
+    tooltip: '¿Llegan los datos de cada fuente? Estado en vivo y qué falla',
+  },
+  // Investigación y respuesta
   'b89-incidents': { category: 'investigation', order: 10, title: 'Incidentes' },
   'b89-ai-analyst': {
     category: 'investigation',
@@ -80,13 +108,21 @@ export const NAV_PLACEMENT: Readonly<Record<string, NavPlacement>> = {
   'b89-cloudflare-traffic': {
     category: 'investigation',
     order: 18,
-    title: 'Tráfico de Cloudflare',
-    tooltip: 'Peticiones HTTP, DNS, firewall/WAF y auditoría de Cloudflare, en hora de Lima',
+    title: 'Cloudflare: actividad y tráfico',
+    tooltip: 'Hallazgos del backoffice y pagos; registros HTTP, DNS y WAF, en hora de Lima',
   },
-  'threat-hunting': { category: 'investigation', order: 20, title: 'Threat Hunting' },
-  'data-explorer': { category: 'investigation', order: 30, title: 'Discover' },
-  discover: { category: 'investigation', order: 30, title: 'Discover' },
+  'threat-hunting': { category: 'investigation', order: 20, title: 'Búsqueda de amenazas' },
+  // OSD 2.19 registra `data-explorer` oculto y `discover` visible (redirige al primero): solo se
+  // ve una entrada. Ambas llevan el mismo título por si un despliegue muestra la otra.
+  'data-explorer': { category: 'investigation', order: 30, title: 'Explorar eventos' },
+  discover: { category: 'investigation', order: 30, title: 'Explorar eventos' },
   'mitre-attack': { category: 'investigation', order: 40, title: 'MITRE ATT&CK' },
+  'b89-respond': {
+    category: 'investigation',
+    order: 50,
+    title: 'Respuesta automática (SOAR)',
+    tooltip: 'B89 Respond: playbooks y respuesta',
+  },
   // Detección
   'vulnerability-detection': {
     category: 'detection',
@@ -118,44 +154,46 @@ export const NAV_PLACEMENT: Readonly<Record<string, NavPlacement>> = {
   'nist-800-53': { category: 'compliance', order: 60, title: 'NIST 800-53' },
   tsc: { category: 'compliance', order: 70, title: 'TSC (SOC 2)' },
   // Integraciones
-  'b89-integrations': { category: 'integrations', order: 10, title: 'Integraciones' },
-  office365: { category: 'integrations', order: 70, title: 'Office 365 (módulo Wazuh)' },
+  'b89-integrations': {
+    category: 'integrations',
+    order: 10,
+    title: 'Integraciones',
+    tooltip: 'Conexión y permisos de cada proveedor (el estado en vivo está en «Salud de fuentes»)',
+  },
+  office365: {
+    category: 'integrations',
+    order: 70,
+    title: 'Microsoft 365: vista del módulo Wazuh',
+  },
   sharepoint: { category: 'integrations', order: 75, title: 'SharePoint y OneDrive' },
   docker: { category: 'integrations', order: 80, title: 'Docker' },
-  // Respuesta
-  'b89-respond': {
-    category: 'response',
-    order: 10,
-    title: 'B89 Respond',
-    tooltip: 'SOAR: playbooks y respuesta',
-  },
-  // Administración
+  // Accesos (personas y control de datos)
   'b89-access': { category: 'admin', order: 10, title: 'Usuarios y sesiones' },
   'b89-session': { category: 'admin', order: 20, title: 'Mi sesión' },
-  'b89-dlp': { category: 'admin', order: 25, title: 'DLP de endpoints' },
+  'b89-dlp': { category: 'admin', order: 25, title: 'DLP en equipos' },
   'endpoint-groups': { category: 'admin', order: 30, title: 'Grupos de agentes' },
-  'server-status': { category: 'admin', order: 40, title: 'Estado del manager' },
-  statistics: { category: 'admin', order: 50, title: 'Estadísticas del manager' },
-  logs: { category: 'admin', order: 60, title: 'Logs del manager' },
-  settings: { category: 'admin', order: 70, title: 'Configuración del manager' },
-  'dashboards-settings': { category: 'admin', order: 70, title: 'Configuración del manager' },
-  'app-settings': { category: 'admin', order: 80, title: 'Ajustes de la app SIEM' },
-  'server-apis': { category: 'admin', order: 90, title: 'APIs del manager' },
-  'dev-tools': { category: 'admin', order: 100, title: 'Consola API del manager' },
-  security: { category: 'admin', order: 110, title: 'Roles del manager' },
+  // Plataforma (avanzado): servidor Wazuh, SIEM y dashboard
+  'server-status': { category: 'platform', order: 40, title: 'Estado del servidor Wazuh' },
+  statistics: { category: 'platform', order: 50, title: 'Estadísticas del servidor Wazuh' },
+  logs: { category: 'platform', order: 60, title: 'Registros del servidor Wazuh' },
+  settings: { category: 'platform', order: 70, title: 'Configuración del servidor Wazuh' },
+  'dashboards-settings': { category: 'platform', order: 75, title: 'Ajustes del dashboard' },
+  'app-settings': { category: 'platform', order: 80, title: 'Ajustes de la app Wazuh' },
+  'server-apis': { category: 'platform', order: 90, title: 'Conexión API del servidor Wazuh' },
+  'dev-tools': { category: 'platform', order: 100, title: 'Consola API del servidor Wazuh' },
+  security: { category: 'platform', order: 110, title: 'Roles del servidor Wazuh' },
   opensearch_index_management_dashboards: {
-    category: 'admin',
+    category: 'platform',
     order: 120,
-    title: 'Índices',
+    title: 'Índices del SIEM',
   },
   opensearch_snapshot_management_dashboards: {
-    category: 'admin',
+    category: 'platform',
     order: 130,
-    title: 'Instantáneas',
+    title: 'Copias del SIEM (instantáneas)',
   },
-  dev_tools: { category: 'admin', order: 140, title: 'Consola del Indexer' },
-  visualize: { category: 'admin', order: 150, title: 'Editor de visualizaciones' },
-  management: { category: 'admin', order: 160, title: 'Administración del dashboard' },
+  dev_tools: { category: 'platform', order: 140, title: 'Consola del SIEM' },
+  management: { category: 'platform', order: 160, title: 'Administración del dashboard' },
 };
 
 /**
@@ -176,13 +214,13 @@ export const NAV_HIDDEN: Readonly<Record<string, string>> = {
   'notifications-dashboards':
     'Canales de OSD no usados; las notificaciones del SOC están en «Notificaciones» (B89).',
   'sample-data': 'Datos de ejemplo: no se cargan en un SOC real.',
-  about: 'Versión del SIEM visible en «Ajustes de la app SIEM».',
+  about: 'Versión del SIEM visible en «Ajustes de la app Wazuh».',
   'observability-logs': 'Observability de OSD no se usa.',
   'observability-notebooks': 'Observability de OSD no se usa.',
   'observability-dashboards': 'Observability de OSD no se usa.',
   'observability-traces': 'Observability de OSD no se usa.',
   'observability-metrics': 'Observability de OSD no se usa.',
   'search-relevance': 'Herramienta de relevancia de búsqueda: no aplica a un SOC.',
-  'query-workbench': 'Usar Discover o Threat Hunting.',
-  'opensearch-query-workbench': 'Usar Discover o Threat Hunting.',
+  'query-workbench': 'Usar «Explorar eventos» o «Búsqueda de amenazas».',
+  'opensearch-query-workbench': 'Usar «Explorar eventos» o «Búsqueda de amenazas».',
 };

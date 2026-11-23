@@ -24,13 +24,13 @@ describe('progreso real de Bunny', () => {
 
   it('deriva estados de la secuencia SSE sin añadir acciones inventadas', () => {
     expect(bunnyProgressTimeline(events)).toEqual([
-      { key: 'model:1:0', label: 'Consulta al modelo · ronda 1', status: 'complete' },
+      { key: 'model:1:0', label: 'Analizando (paso 1)', status: 'complete' },
       {
         key: 'tool:Buscando alertas citadas:1',
         label: 'Buscando alertas citadas',
         status: 'no-result',
       },
-      { key: 'model:2:3', label: 'Consulta al modelo · ronda 2', status: 'running' },
+      { key: 'model:2:3', label: 'Analizando (paso 2)', status: 'running' },
     ]);
     expect(bunnyProgressTimeline([])).toEqual([]);
   });
@@ -38,7 +38,7 @@ describe('progreso real de Bunny', () => {
   it('muestra estados textuales y tiempo transcurrido accesible sin porcentajes estimados', () => {
     expect(elapsedLabel(68)).toBe('1 min 08 s');
     const markup = renderToStaticMarkup(
-      React.createElement(BunnyThinking, { events, elapsedSeconds: 68 }),
+      React.createElement(BunnyThinking, { events, elapsedSeconds: 68, initiallyExpanded: true }),
     );
     expect(markup).toContain('En curso');
     expect(markup).toContain('Completo');
@@ -50,9 +50,10 @@ describe('progreso real de Bunny', () => {
 
   it('no afirma actividad si todavía no llegó un evento SSE', () => {
     const markup = renderToStaticMarkup(
-      React.createElement(BunnyThinking, { events: [], elapsedSeconds: 0 }),
+      React.createElement(BunnyThinking, { events: [], elapsedSeconds: 0, initiallyExpanded: true }),
     );
-    expect(markup).toContain('Esperando la primera actualización de actividad del servidor');
+    expect(markup).toContain('Pensando…');
+    expect(markup).not.toContain('aria-live="polite"');
     expect(markup).not.toContain('Validando sesión');
   });
 });
@@ -85,7 +86,7 @@ describe('línea de actividad plegable', () => {
     expect(toolCount(steps)).toBe(2);
   });
 
-  it('la actividad terminada nace plegada y la en vivo desplegada', () => {
+  it('la actividad nace plegada, terminada o en vivo', () => {
     const done = renderToStaticMarkup(
       React.createElement(BunnyActivity, {
         steps: [{ label: 'Buscando alertas', ok: true }],
@@ -101,7 +102,8 @@ describe('línea de actividad plegable', () => {
         elapsedSeconds: 12,
       }),
     );
-    expect(live).toContain('aria-expanded="true"');
+    expect(live).toContain('aria-expanded="false"');
+    expect(live).not.toContain('Buscando alertas');
     expect(live).toContain('Trabajando… · 1 herramienta · 12 s');
     expect(renderToStaticMarkup(React.createElement(BunnyActivity, { steps: [] }))).toBe('');
   });

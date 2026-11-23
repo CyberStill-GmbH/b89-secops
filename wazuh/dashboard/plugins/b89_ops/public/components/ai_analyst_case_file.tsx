@@ -3,7 +3,7 @@
  */
 
 import React from 'react';
-import { EuiButton, EuiButtonEmpty, EuiCallOut } from '@elastic/eui';
+import { EuiButton, EuiButtonEmpty, EuiCallOut, EuiToolTip } from '@elastic/eui';
 import {
   AI_ACTION_KIND_LABEL,
   AI_ACTION_STATE_LABEL,
@@ -99,31 +99,23 @@ export function AiRunStatusCallout({ run }: { run: AiRunDetail }) {
     );
   }
   switch (run.status) {
-    case 'requires_review':
-      return (
-        <EuiCallOut size="s" color="warning" iconType="alert" title="Requiere revisión humana">
-          <p>
-            El resultado no superó la verificación automática. Trátalo como hipótesis y contrasta
-            cada afirmación con la evidencia antes de actuar.
-          </p>
-        </EuiCallOut>
-      );
+    // «Requiere revisión» ya lo dicen «Tu revisión» y la línea de verificación de la conclusión:
+    // un tercer aviso solo repetiría lo mismo.
     case 'budget_exhausted':
       return (
         <EuiCallOut size="s" color="warning" iconType="alert" title="Presupuesto diario agotado">
           <p>
-            No se llamó al modelo porque el techo diario de inferencia ya estaba comprometido. Se
-            puede reintentar cuando haya presupuesto.
+            No se usó la IA porque ya se alcanzó el gasto máximo de IA de hoy. Puedes reintentar
+            cuando haya presupuesto (mañana o si alguien sube el techo diario).
           </p>
         </EuiCallOut>
       );
     case 'usage_unreconciled':
       return (
-        <EuiCallOut size="s" color="warning" iconType="alert" title="Uso por conciliar">
+        <EuiCallOut size="s" color="warning" iconType="alert" title="Costo pendiente de confirmar">
           <p>
-            Se envió una llamada al modelo y su consumo no se confirmó. El costo de esta
-            investigación es desconocido hasta la conciliación; la consola no la reintenta para no
-            duplicar el gasto.
+            No sabemos aún cuánto costó la llamada a la IA. No se reintenta para no cobrarla dos
+            veces.
           </p>
         </EuiCallOut>
       );
@@ -294,9 +286,60 @@ function TextList({
 
 // ------------------------------------------------------------------ Conclusión
 
+/** Largo del resumen dentro de la conclusión; el resto queda en «Explicación del analista». */
+export const CONCLUSION_SUMMARY_MAX = 320;
+/** Pasos recomendados que se ven en la conclusión. */
+export const CONCLUSION_STEPS_MAX = 3;
+
+/** Recorta en un límite de palabra; `clipped` dice si quedó texto fuera. */
+export function clipText(text: string, max: number): { text: string; clipped: boolean } {
+  const clean = text.trim();
+  if (clean.length <= max) return { text: clean, clipped: false };
+  const cut = clean.slice(0, max);
+  const space = cut.lastIndexOf(' ');
+  return { text: `${(space > max * 0.6 ? cut.slice(0, space) : cut).replace(/[\s.,;:]+$/u, '')}…`, clipped: true };
+}
+
+const PRIORITY_RANK: Readonly<Record<string, number>> = { P1: 1, P2: 2, P3: 3, P4: 4 };
+
+/** Prioridad sugerida frente a la de la alerta, en palabras. */
+export function priorityAdvice(
+  current: AiRunDetail['priority'],
+  suggested: AiResult['recommendedPriority'],
+): string | null {
+  if (!suggested) return null;
+  if (!current || !(current in PRIORITY_RANK)) return `Sugiere ${suggested}`;
+  if (current === suggested) return `Mantener en ${suggested}`;
+  return PRIORITY_RANK[suggested] < PRIORITY_RANK[current]
+    ? `Sugiere subir a ${suggested}`
+    : `Sugiere bajar a ${suggested}`;
+}
+
+/** Qué significa cada nivel de confianza (ayuda breve junto al medidor). */
+export const CONFIDENCE_HELP: Readonly<Record<string, string>> = {
+  high: 'Alta: hechos con cita y sin vacíos relevantes.',
+  medium: 'Media: la evidencia apunta en esa dirección, pero hay algo sin confirmar.',
+  low: 'Baja: poca evidencia o vacíos importantes; tómala como una pista.',
+  unknown: 'El servicio no informó un nivel de confianza reconocible.',
+};
+
+function gapCountText(count: number): string {
+  return count === 1 ? 'Falta verificar 1 punto' : `Falta verificar ${formatCount(count)} puntos`;
+}
+
+function jumpTo(id: string) {
+  return (event: React.MouseEvent<HTMLAnchorElement>) => {
+    const target = document.getElementById(id);
+    if (!target) return;
+    event.preventDefault();
+    target.scrollIntoView({ block: 'start' });
+    if (target.hasAttribute('tabindex')) target.focus({ preventScroll: true });
+  };
+}
+
 /**
- * Lo primero del expediente: veredicto, confianza y prioridad sugerida, grandes y juntos.
- * Sin resultado dice por qué (en curso o terminó sin conclusión).
+ * Lo primero del expediente, al estilo de un copiloto de SOC: qué concluyó (veredicto, confianza,
+ * resumen), qué recomienda (primeros pasos) y qué falta verificar. Sin resultado dice por qué.
  */
 export function AiConclusion({ run }: { run: AiRunDetail }) {
   const result = run.result;
@@ -306,9 +349,10 @@ export function AiConclusion({ run }: { run: AiRunDetail }) {
     return (
       <section className="b89AiConclusion" data-tone="neutral" aria-labelledby="b89AiConclusion">
         <h3 id="b89AiConclusion" className="b89AiConclusion__eyebrow" tabIndex={-1}>
-          Conclusión del analista
+          Conclusión del Analista IA
         </h3>
-        <p className="b89AiConclusion__empty">
+        {/* Región de estado breve: solo cambia cuando cambia la etapa (no cada segundo). */}
+        <p className="b89AiConclusion__empty" role={active ? 'status' : undefined}>
           {active
             ? `Aún no hay conclusión: la investigación sigue en curso${
                 stage ? ` (${stage.toLowerCase()})` : ''
@@ -319,6 +363,11 @@ export function AiConclusion({ run }: { run: AiRunDetail }) {
     );
   }
   const alertChanged = changedAlert(run.actions);
+  const summary = clipText(result.summary, CONCLUSION_SUMMARY_MAX);
+  const steps = result.nextSteps.slice(0, CONCLUSION_STEPS_MAX);
+  const moreSteps = result.nextSteps.length - steps.length;
+  const advice = priorityAdvice(run.priority, result.recommendedPriority);
+  const confidenceKey = result.confidence ?? 'unknown';
   return (
     <section
       className="b89AiConclusion"
@@ -326,8 +375,15 @@ export function AiConclusion({ run }: { run: AiRunDetail }) {
       aria-labelledby="b89AiConclusion"
     >
       <h3 id="b89AiConclusion" className="b89AiConclusion__eyebrow" tabIndex={-1}>
-        Conclusión del analista{run.status === 'partial' ? ' (resultado parcial)' : ''}
+        Conclusión del Analista IA{run.status === 'partial' ? ' (resultado parcial)' : ''}
       </h3>
+      {active && (
+        <p className="b89AiSrOnly" role="status">
+          {`La investigación sigue en curso${
+            stageLabel(run.stage) ? `: ${stageLabel(run.stage)!.toLowerCase()}` : ''
+          }.`}
+        </p>
+      )}
       <div className="b89AiConclusion__grid">
         <div className="b89AiConclusion__verdict">
           <VerdictBadge verdict={result.verdict} size="l" />
@@ -336,39 +392,90 @@ export function AiConclusion({ run }: { run: AiRunDetail }) {
           <div>
             <dt>Confianza</dt>
             <dd>
-              <ConfidenceMeter confidence={result.confidence} />
+              <EuiToolTip content={CONFIDENCE_HELP[confidenceKey] ?? CONFIDENCE_HELP.unknown}>
+                <span tabIndex={0} className="b89AiConclusion__help">
+                  <ConfidenceMeter confidence={result.confidence} short />
+                </span>
+              </EuiToolTip>
             </dd>
           </div>
           <div>
-            <dt>Prioridad sugerida</dt>
+            <dt>Prioridad</dt>
             <dd>
-              {result.recommendedPriority ? (
-                <PriorityMark priority={result.recommendedPriority} />
+              {advice ? (
+                <span className="b89AiConclusion__priority">
+                  {result.recommendedPriority && <PriorityMark priority={result.recommendedPriority} />}
+                  <span>{advice}</span>
+                </span>
               ) : (
                 <span className="b89Muted">Sin sugerencia</span>
               )}
             </dd>
           </div>
           <div>
-            <dt>Verificación</dt>
-            <dd>
-              {result.verified ? (
-                <HealthMark tone="ok" label="Citas verificadas" />
-              ) : (
-                <HealthMark tone="warn" label="Sin verificar" />
-              )}
-            </dd>
-          </div>
-          <div>
-            <dt>Análisis</dt>
+            <dt>Uso de IA</dt>
             <dd>
               <span className="b89Ai__tier" data-tier={run.inference ?? 'unknown'}>
-                {run.inference === 'none' ? AI_INFERENCE_LABEL.none : `IA: ${inferenceLabel(run.inference).toLowerCase()}`}
+                {run.inference === 'none'
+                  ? `${AI_INFERENCE_LABEL.none} · sin costo`
+                  : `${inferenceLabel(run.inference)} · ${runCostText(run)}`}
               </span>
             </dd>
           </div>
         </dl>
       </div>
+      <p className="b89AiConclusion__verification" data-verified={result.verified ? 'true' : 'false'}>
+        {result.verified ? (
+          <HealthMark tone="ok" label="Citas verificadas contra la evidencia" />
+        ) : (
+          <HealthMark
+            tone="warn"
+            label="Sin verificar: las afirmaciones no se pudieron comprobar contra la evidencia citada. Trátala como hipótesis."
+          />
+        )}
+      </p>
+      {summary.text ? (
+        <DataZone className="b89Prose b89AiConclusion__summary">
+          {summary.text}
+          {summary.clipped && (
+            <>
+              {' '}
+              <a href="#b89AiSummary" onClick={jumpTo('b89AiSummary')}>
+                Leer la explicación completa
+              </a>
+            </>
+          )}
+        </DataZone>
+      ) : (
+        <p className="b89Muted">El analista no dejó un resumen.</p>
+      )}
+      <div className="b89AiConclusion__next">
+        <h4 className="b89AiConclusion__subhead">Qué recomienda</h4>
+        {steps.length === 0 ? (
+          <p className="b89Muted">No sugirió pasos concretos.</p>
+        ) : (
+          <ol className="b89AiConclusion__steps">
+            {steps.map((step, index) => (
+              <li key={index}>
+                <DataZone className="b89Prose">{step}</DataZone>
+              </li>
+            ))}
+          </ol>
+        )}
+        {moreSteps > 0 && (
+          <a href="#b89AiNextSteps" onClick={jumpTo('b89AiNextSteps')}>
+            {moreSteps === 1 ? 'Ver 1 paso más' : `Ver ${formatCount(moreSteps)} pasos más`}
+          </a>
+        )}
+      </div>
+      {result.gaps.length > 0 && (
+        <p className="b89AiConclusion__gaps">
+          <HealthMark tone="warn" label={gapCountText(result.gaps.length)} />{' '}
+          <a href="#b89AiGaps" onClick={jumpTo('b89AiGaps')}>
+            Ver qué falta
+          </a>
+        </p>
+      )}
       <p className="b89AiConclusion__note">
         {alertChanged
           ? 'El analista actuó sobre esta alerta según la configuración vigente; el detalle está en «Acciones del analista». La prioridad sugerida es solo una recomendación.'
@@ -391,34 +498,9 @@ export function AiResultView({
   /** Se conserva por compatibilidad: la nota de cambio vive ahora en la conclusión. */
   alertChanged?: boolean;
 }) {
+  const summary = clipText(result.summary, CONCLUSION_SUMMARY_MAX);
   return (
     <>
-      {!result.verified && (
-        <EuiCallOut
-          size="s"
-          color="warning"
-          iconType="alert"
-          title="Sin citas verificadas: requiere revisión humana"
-        >
-          <p>Las afirmaciones no se pudieron comprobar contra la evidencia citada.</p>
-        </EuiCallOut>
-      )}
-      <Section id="b89AiSummary" title={partial ? 'Resumen (resultado parcial)' : 'Resumen'}>
-        <DataZone className="b89Prose b89AiSummary">
-          {result.summary || <span className="b89Muted">Sin resumen.</span>}
-        </DataZone>
-      </Section>
-      {result.deterministicReasons.length > 0 && (
-        <Section id="b89AiDeterministic" title="Por qué decidió así">
-          <ul className="b89AiReasons">
-            {result.deterministicReasons.map((code) => (
-              <li key={code}>
-                <ReasonTag code={code} />
-              </li>
-            ))}
-          </ul>
-        </Section>
-      )}
       <Section
         id="b89AiFacts"
         title="Hechos observados"
@@ -435,15 +517,32 @@ export function AiResultView({
             variant="fact"
           />
         )}
+        {result.citations.length > 0 && (
+          <div className="b89AiCitations">
+            <p className="b89Ai__subhead">
+              Evidencia citada{' '}
+              <span className="b89AiSection__count b89Tabular">{result.citations.length}</span>
+            </p>
+            <span className="b89Chips">
+              {result.citations.map((citation) => (
+                <CitationChip
+                  key={`${citation.kind}:${citation.id}`}
+                  citation={citation}
+                  basePath={basePath}
+                />
+              ))}
+            </span>
+          </div>
+        )}
       </Section>
       <Section
         id="b89AiInferences"
-        title="Inferencias"
+        title="Hipótesis"
         count={result.inferences.length}
-        hint="Hipótesis del analista a partir de los hechos: contrástalas antes de actuar."
+        hint="Lo que el analista deduce a partir de los hechos: contrástalo antes de actuar."
       >
         {result.inferences.length === 0 ? (
-          <p className="b89Muted">No se registraron inferencias.</p>
+          <p className="b89Muted">No se registraron hipótesis.</p>
         ) : (
           <Statements
             items={result.inferences}
@@ -465,24 +564,28 @@ export function AiResultView({
           <TextList items={result.gaps} variant="gap" />
         )}
       </Section>
-      <Section id="b89AiNextSteps" title="Siguientes pasos" count={result.nextSteps.length}>
-        {result.nextSteps.length === 0 ? (
-          <p className="b89Muted">No se sugirieron pasos.</p>
-        ) : (
+      {result.nextSteps.length > CONCLUSION_STEPS_MAX && (
+        <Section id="b89AiNextSteps" title="Siguientes pasos" count={result.nextSteps.length}>
           <TextList items={result.nextSteps} variant="step" ordered />
-        )}
-      </Section>
-      {result.citations.length > 0 && (
-        <Section id="b89AiCitations" title="Evidencia citada" count={result.citations.length}>
-          <span className="b89Chips">
-            {result.citations.map((citation) => (
-              <CitationChip
-                key={`${citation.kind}:${citation.id}`}
-                citation={citation}
-                basePath={basePath}
-              />
+        </Section>
+      )}
+      {summary.clipped && (
+        <Section
+          id="b89AiSummary"
+          title={partial ? 'Explicación del analista (resultado parcial)' : 'Explicación del analista'}
+        >
+          <DataZone className="b89Prose b89AiSummary">{result.summary}</DataZone>
+        </Section>
+      )}
+      {result.deterministicReasons.length > 0 && (
+        <Section id="b89AiDeterministic" title="Por qué decidió así">
+          <ul className="b89AiReasons">
+            {result.deterministicReasons.map((code) => (
+              <li key={code}>
+                <ReasonTag code={code} />
+              </li>
             ))}
-          </span>
+          </ul>
         </Section>
       )}
     </>
@@ -609,6 +712,24 @@ export function AiRunActions({
 
 // ------------------------------------------------------------------ Progreso
 
+const CLOCK = new Intl.DateTimeFormat('es-PE', {
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+});
+
+/** Hora absoluta (HH:MM:SS): no cambia cada segundo como «hace 12 s». */
+function ClockTime({ iso }: { iso: string | null }) {
+  if (!iso) return <span className="b89Muted">{NO_DATA}</span>;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return <span className="b89Muted">{NO_DATA}</span>;
+  return (
+    <time dateTime={iso} className="b89Tabular" data-b89-no-translate="">
+      {CLOCK.format(date)}
+    </time>
+  );
+}
+
 export function AiProgress({ run, now }: { run: AiRunDetail; now: number }) {
   const active = isActive(run.status);
   const steps = buildProgressTimeline(run.events, active);
@@ -628,12 +749,8 @@ export function AiProgress({ run, now }: { run: AiRunDetail; now: number }) {
         </>
       }
     >
-      <div
-        role="log"
-        aria-live="polite"
-        aria-relevant="additions text"
-        aria-label="Etapas registradas por el servicio"
-      >
+      {/* Sin región viva: el cambio de etapa se anuncia una vez en la conclusión (role="status"). */}
+      <div aria-label="Etapas registradas por el servicio" role="group">
         {steps.length === 0 ? (
           <p className="b89Muted">
             {active
@@ -657,7 +774,7 @@ export function AiProgress({ run, now }: { run: AiRunDetail; now: number }) {
                       {AI_EVENT_KIND_LABEL[step.status]}
                       {duration && ` · ${duration}`}
                       {' · '}
-                      <Timestamp iso={step.endedAt ?? step.startedAt} />
+                      <ClockTime iso={step.endedAt ?? step.startedAt} />
                     </span>
                     {plain.length > 0 && (
                       <span className="b89AiStep__detail">
@@ -677,7 +794,7 @@ export function AiProgress({ run, now }: { run: AiRunDetail; now: number }) {
                     )}
                     {technical.length > 0 && (
                       <details className="b89AiDetails">
-                        <summary>Detalles técnicos</summary>
+                        <summary>Datos sin traducir</summary>
                         <span className="b89Ai__detail" data-b89-no-translate="" translate="no">
                           {technical.map((entry) => (
                             <code key={entry.key} className="b89Mono">
@@ -796,8 +913,10 @@ function ipReputationMeta(entry: AiIpReputation): string[] {
   const parts: string[] = [];
   if (entry.totalReports !== null) {
     parts.push(
-      `${formatCount(entry.totalReports)} reporte(s)` +
-        (entry.distinctUsers !== null ? ` de ${formatCount(entry.distinctUsers)} usuario(s)` : ''),
+      `${formatCount(entry.totalReports)} ${entry.totalReports === 1 ? 'reporte' : 'reportes'}` +
+        (entry.distinctUsers !== null
+          ? ` de ${formatCount(entry.distinctUsers)} ${entry.distinctUsers === 1 ? 'usuario' : 'usuarios'}`
+          : ''),
     );
   }
   if (entry.countryCode) parts.push(entry.countryCode);
@@ -860,7 +979,7 @@ export function AiUsageView({ run }: { run: AiRunDetail }) {
           <span className="b89Ai__tier" data-tier="none">
             {AI_INFERENCE_LABEL.none}
           </span>{' '}
-          Resuelta con reglas deterministas, sin llamada al modelo: no generó costo de inferencia.
+          Resuelta con reglas automáticas, sin usar IA (sin costo).
         </p>
       </Section>
     );
@@ -870,21 +989,21 @@ export function AiUsageView({ run }: { run: AiRunDetail }) {
       <dl className="b89AiFile">
         <dt>Costo</dt>
         <dd className="b89Tabular">{runCostText(run)}</dd>
-        <dt>Nivel de inferencia</dt>
+        <dt>Uso de IA</dt>
         <dd>{inferenceLabel(run.inference)}</dd>
-        <dt>Tokens (entrada / salida)</dt>
+        <dt>Volumen de texto enviado / recibido (tokens)</dt>
         <dd className="b89Tabular">
           {formatCount(run.usage ? run.usage.inputTokens : null)} /{' '}
           {formatCount(run.usage ? run.usage.outputTokens : null)}
         </dd>
-        <dt>Caché (lectura / escritura)</dt>
+        <dt>Texto reutilizado / guardado para reutilizar (tokens)</dt>
         <dd className="b89Tabular">
           {formatCount(run.usage ? run.usage.cacheReadTokens : null)} /{' '}
           {formatCount(run.usage ? run.usage.cacheWriteTokens : null)}
         </dd>
       </dl>
       {run.invocations.length > 0 && (
-        <ul className="b89AiInvocations" aria-label="Llamadas al modelo">
+        <ul className="b89AiInvocations" aria-label="Llamadas a la IA">
           {run.invocations.map((item, index) => (
             <li key={index}>
               <span className="b89AiInvocations__head">
@@ -903,8 +1022,8 @@ export function AiUsageView({ run }: { run: AiRunDetail }) {
         </ul>
       )}
       <p className="b89Ai__note">
-        {unknownUsage && 'Hay llamadas con uso por conciliar: el costo real puede diferir. '}
-        Costo estimado según el tarifario; facturación no conectada.
+        {unknownUsage && 'Hay llamadas con costo pendiente de confirmar. '}
+        Costo aproximado; puede diferir de la factura.
       </p>
     </Section>
   );
@@ -981,50 +1100,60 @@ export function AiCaseFile({
   basePath,
   now,
   mode = null,
+  review = null,
 }: {
   run: AiRunDetail;
   basePath: string;
   now: number;
   /** Modo vigente del analista (no el de la corrida, que el contrato no informa). */
   mode?: string | null;
+  /** «Tu revisión»: va justo después de la conclusión, para decidir con ella a la vista. */
+  review?: React.ReactNode;
 }) {
   const active = isActive(run.status);
   return (
     <div className="b89AiCase">
       <AiRunStatusCallout run={run} />
       <AiConclusion run={run} />
-      <div className="b89AiCase__layout">
-        <div className="b89AiCase__main">
-          {run.result ? (
-            <AiResultView
-              result={run.result}
-              partial={run.status === 'partial'}
-              basePath={basePath}
-              alertChanged={changedAlert(run.actions)}
-            />
-          ) : (
-            <Section id="b89AiSummary" title="Resultado">
-              <p className="b89Muted">
-                {active
-                  ? 'Aún no hay resultado: la investigación sigue en curso.'
-                  : 'Esta investigación no produjo un resultado.'}
-              </p>
-            </Section>
-          )}
-          <AiRunActions actions={run.actions} basePath={basePath} mode={mode} active={active} />
+      {review}
+      <div className="b89AiCase__main">
+        {run.result && (
+          <AiResultView
+            result={run.result}
+            partial={run.status === 'partial'}
+            basePath={basePath}
+            alertChanged={changedAlert(run.actions)}
+          />
+        )}
+        <AiRunActions actions={run.actions} basePath={basePath} mode={mode} active={active} />
+        <AiIpReputationView evidence={run.evidence} />
+        {/* En curso, la cronología es lo que importa: se ve sin desplegar nada. */}
+        {active && <AiProgress run={run} now={now} />}
+        <AiTechnicalDetails>
+          {!active && <AiProgress run={run} now={now} />}
           <AiEvidenceCoverage evidence={run.evidence} />
-          <AiIpReputationView evidence={run.evidence} />
-          <AiProgress run={run} now={now} />
-        </div>
-        <aside className="b89AiCase__aside" aria-label="Ficha del expediente">
-          <AiCaseFacts run={run} basePath={basePath} />
           <AiUsageView run={run} />
-        </aside>
+          <AiCaseFacts run={run} basePath={basePath} />
+        </AiTechnicalDetails>
       </div>
     </div>
   );
 }
 
+/** Todo lo técnico (cronología, cobertura, uso y costo, datos del expediente) bajo un solo pliegue. */
+export function AiTechnicalDetails({ children }: { children: React.ReactNode }) {
+  return (
+    <details className="b89AiDetails b89AiTechnical">
+      <summary id={TECHNICAL_ID}>
+        Detalles técnicos
+        <span className="b89CellMeta"> · cronología, evidencia examinada, uso y costo, datos del expediente</span>
+      </summary>
+      <div className="b89AiTechnical__body">{children}</div>
+    </details>
+  );
+}
+
+export const TECHNICAL_ID = 'b89AiTechnical';
 /** Acciones del expediente. Detener y reintentar solo con `investigations.run`. */
 export function AiCaseFileActions({
   run,

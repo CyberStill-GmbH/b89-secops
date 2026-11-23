@@ -86,8 +86,13 @@ export function B89Page({
   actions?: React.ReactNode;
   children: React.ReactNode;
 }) {
+  // `lang`/`translate`: OSD declara la página en inglés y el traductor del navegador deformaba los
+  // textos («Tokens de Slack» → «Accede a una holgura»). El enlace de salto lleva al contenido.
   return (
-    <main className="b89Page">
+    <main className="b89Page" id="b89-main" tabIndex={-1} lang="es-PE" translate="no">
+      <a className="b89SkipLink" href="#b89-content">
+        Saltar al contenido
+      </a>
       <EuiFlexGroup
         className="b89Page__header"
         alignItems="center"
@@ -97,7 +102,6 @@ export function B89Page({
         wrap
       >
         <EuiFlexItem grow>
-          <p className="b89Eyebrow">B89 SOC</p>
           <EuiTitle size="m">
             <h1>{title}</h1>
           </EuiTitle>
@@ -114,7 +118,9 @@ export function B89Page({
         )}
       </EuiFlexGroup>
       <EuiHorizontalRule margin="m" />
-      {children}
+      <div id="b89-content" tabIndex={-1} className="b89Page__content">
+        {children}
+      </div>
       <EuiSpacer size="xl" />
     </main>
   );

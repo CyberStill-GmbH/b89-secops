@@ -520,3 +520,50 @@ Lo pidió el dueño: **frontend hecho por Claude** (normalmente de Codex). Local
   emite `policy_sync_error` (no distingue «revocado»); (4) reinstalar crea una fila nueva por equipo: el viejo queda
   «Sin conexión» hasta revocarlo.
 - Revisión pedida a Codex: copy y estilo de la pantalla y del asistente.
+
+### Claude · 2026-11-23 · Rediseño UX de toda la consola b89_ops (frontend hecho por Claude)
+
+Lo pidió el dueño («usable, muy accesible, flujos claros, investigaciones fáciles de leer, palabras que
+aporten», inspirado en Sentinel/Splunk ES, con la marca actual). Local, sin commit ni despliegue. Hubo
+4 auditorías (≈200 hallazgos) y 4 implementadores por grupos de archivos sin solaparse; glosario común:
+Prioridad P1–P4 (alertas) · Severidad (incidentes) · Nivel N (SIEM) · Responsable · Clasificar/Conclusión ·
+SIEM (nunca Indexer ni `wazuh-alerts-*`) · equipo · Analista IA · Bunny · tú.
+
+- **«Por qué saltó» en todas las alertas** (pedido explícito del dueño): `common/alert_why.ts`
+  (`explainAlert`) arma, para cualquier regla, qué pasó + involucrados + agravantes del motor en palabras
+  («se repitió 5 veces», «con una cuenta con privilegios») + quién lo detectó, «Es P2 porque…», «Tiene
+  menos prioridad porque…» y «Qué hacer» (guía → correlador → runbook → 3 pasos genéricos). Se ve en la
+  fila de la cola, en el inicio y arriba del detalle/investigación (`alert_guide_panel.tsx`); códigos,
+  regla, puntuación y MITRE quedan en «Detalle técnico».
+- **Bug encontrado:** la API quita «(wazuh N)» del título y la consola buscaba la guía y el evento de
+  origen por ese número: las guías de Cloudflare y el evento de origen por regla nunca funcionaban.
+  **Contrato nuevo:** `Alert.ruleId` en todas las alertas y `GET /api/alerts/:id` → `alert.explanation`
+  (`apps/api/src/soc/alert-explanation.ts`, desde `SocKnowledge`: caso de uso, falsos positivos, cuándo
+  escalar, MITRE, primer paso del runbook; cubre >50 % de las 350 reglas del catálogo). `GET /api/incidents*`
+  agrega `closureReason`.
+- **Cola y detalle de alertas** (`alerts_view.tsx`, `alert_actions.ts`): título limpio como botón
+  (teclado), una acción principal por estado (Tomar alerta → Clasificar → Escalar al líder SOC), conclusión
+  sin preselección, formulario arriba con foco, pista junto al botón desactivado, avisos tras cada acción,
+  `Person` («Tú / Analista IA / Otro analista») en vez de ids cortados. Estados: «En revisión», «Clasificada».
+- **Incidentes** (`incidents_view.tsx`, `incident_flow.ts`): ciclo de vida con «Siguiente: …», «Para cerrar»
+  siempre visible, cierre con «Conclusión» (se antepone al motivo: el backend tiene un solo campo),
+  cancelar tareas obligatorias con motivo (antes era un callejón sin salida), pie en todas las pestañas,
+  filas abribles con teclado, actividad sin códigos crudos.
+- **Investigación**, **inicio del SOC**, **operación/admin/navegación**: ver changelogs de cada grupo en la
+  carpeta de notas de la sesión (resumen: respuesta primero, menús reales, línea de tiempo legible con hora
+  absoluta y orden, «Salud de fuentes» con un solo vocabulario, navegación en español sin duplicados,
+  errores del catálogo en tú y con siguiente paso, contraste del tema claro).
+- **Analista IA y Bunny:** conclusión primero (veredicto, confianza, «Qué recomienda», vacíos), revisión
+  justo después y sin sesgo hacia cerrar (se resalta la acción que coincide con la IA), detalle técnico en un
+  pliegue; Bunny sin región viva sobre el texto que llega por streaming (anuncia inicio/fin una vez), sin
+  caracteres rotos, «Bunny no está activado», la pregunta vuelve al cuadro si falla, sin descargas automáticas
+  (textos en `public/bunny/bunny_text.ts`).
+- **Transversal:** `B89Page` marca `lang="es-PE" translate="no"` y agrega «Saltar al contenido»; `useAsync`
+  conserva los datos si falla una recarga; `Timestamp focusable={false}` en filas; estilos nuevos en
+  `public/alerts.scss`.
+- Validación: plugin 578/579 (falla previa `investigation_report.test.ts`), typecheck TS 4.0.2 OK, API
+  577/577 (4 e2e se agotan por tiempo solo bajo carga paralela; pasan solas). **No verificado en un OSD real.**
+- Pendientes backend: nombres de personas para analistas (hoy «Otro analista»), filtro «sin responsable»
+  en `/alerts`, `attention.why` en palabras desde la API, nombres en solicitudes de rol, retorno tras
+  `/b89/logout`. IDs de regla 1018xx repetidos entre fuentes (afecta a `notification-enricher`).
+- Revisión pedida a Codex: copy y estilos de todo lo anterior, y pruebas visuales en el dashboard.

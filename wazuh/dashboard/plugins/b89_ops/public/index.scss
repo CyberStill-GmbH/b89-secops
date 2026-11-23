@@ -441,6 +441,67 @@ $b89BreakpointTablet: 1023px;
   height: 100%;
 }
 
+// «Salud de fuentes»: la respuesta arriba, con el tono de la peor fuente en el borde.
+.b89SourcesAnswer {
+  padding: $ouiSizeM $ouiSize;
+  border: 1px solid $ouiBorderColor;
+  border-left: 4px solid var(--b89-tone-neutral, #8f8f95);
+  border-radius: 8px;
+
+  &[data-tone='ok'] {
+    border-left-color: var(--b89-tone-ok, #5fb98a);
+  }
+
+  &[data-tone='warn'] {
+    border-left-color: var(--b89-tone-warn, #d8c35c);
+  }
+
+  &[data-tone='fail'] {
+    border-left-color: var(--b89-tone-fail, #ff5f57);
+  }
+
+  .b89List {
+    margin-top: $ouiSizeS;
+  }
+}
+
+.b89SourcesAnswer__headline {
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.b89SourcesActions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: $ouiSizeS;
+}
+
+.b89TechSection + .b89TechSection {
+  margin-top: $ouiSizeL;
+}
+
+// Salud operativa: una línea por área (Detección, Envío de avisos, Correlador, Base de datos).
+.b89OpsSummary {
+  display: grid;
+  gap: $ouiSizeS;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.b89OpsSummary__row {
+  display: grid;
+  grid-template-columns: minmax(140px, auto) minmax(140px, auto) minmax(0, 1fr);
+  align-items: baseline;
+  gap: $ouiSizeM;
+
+  @media (max-width: $b89BreakpointMobile) {
+    grid-template-columns: 1fr;
+    gap: $ouiSizeXS;
+  }
+}
+
 .b89Modal {
   @media (max-width: $b89BreakpointMobile) {
     width: 100vw;
@@ -525,6 +586,18 @@ $b89BreakpointTablet: 1023px;
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .b89RespondSpinner {
+    animation: none;
+  }
+}
+
+// Los avisos de la bandeja conservan el anillo de foco global (investigation.scss lo quita).
+.b89Notif.b89Notif:focus-visible {
+  outline: 2px solid var(--b89-focus-ring, #119cff);
+  outline-offset: 2px;
+}
+
 .b89RenderFailure {
   padding: 24px;
   margin: 16px;
@@ -546,4 +619,17 @@ $b89BreakpointTablet: 1023px;
   border: 1px solid #119cff;
   border-radius: 6px;
   cursor: pointer;
+}
+
+// Filtro de dos posiciones («Pendientes / Todas»): el estado activo se marca con subrayado y peso.
+.b89Segmented {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: $ouiSizeXS;
+
+  [aria-pressed='true'] {
+    font-weight: 700;
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
 }

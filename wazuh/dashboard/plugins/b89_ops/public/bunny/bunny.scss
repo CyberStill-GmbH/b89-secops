@@ -449,7 +449,7 @@ html.b89-bunny-docked {
   table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 11px;
+    font-size: 12px;
     text-align: left;
   }
   th,
@@ -818,7 +818,7 @@ html.b89-bunny-docked {
   border-radius: 999px;
   background: var(--bn-raised);
   color: var(--bn-text);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   line-height: 18px;
   white-space: nowrap;
@@ -1025,7 +1025,7 @@ html.b89-bunny-docked {
   border-radius: 10px;
   background: var(--bn-raised);
   color: var(--bn-text2);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.04em;
 
@@ -1196,7 +1196,7 @@ html.b89-bunny-docked {
   }
   &:disabled {
     cursor: default;
-    opacity: 0.4;
+    opacity: 0.6;
   }
 }
 .b89Bunny__feedback {
@@ -1288,7 +1288,7 @@ html.b89-bunny-docked {
   }
 }
 .b89Bunny__reportHint {
-  font-size: 11px;
+  font-size: 12px;
 }
 .b89Bunny__reportPreview {
   margin-top: 10px;
@@ -1314,7 +1314,7 @@ html.b89-bunny-docked {
   grid-template-columns: minmax(75px, 1fr) 2fr auto;
   align-items: center;
   gap: 8px;
-  font-size: 10px;
+  font-size: 12px;
 
   span {
     overflow: hidden;
@@ -1671,5 +1671,90 @@ html.b89-bunny-docked {
   .b89Bunny__chevron,
   .b89Bunny__actions {
     transition: none;
+  }
+}
+
+// ------------------------------------------------------------------ Accesibilidad y acciones
+// Única región viva del panel (inicio y final de cada respuesta): invisible, pero leída.
+.b89Bunny__srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.b89Bunny__header h2:focus {
+  outline: none;
+}
+
+.b89Bunny__warnText {
+  color: var(--bn-warn);
+  font-weight: 600;
+}
+
+.b89Bunny__counter {
+  font-variant-numeric: tabular-nums;
+
+  &[data-full='true'] {
+    color: var(--bn-warn);
+    font-weight: 600;
+  }
+}
+
+.b89Bunny__suggestionsHint {
+  margin: 0 0 6px;
+  color: var(--bn-muted);
+  font-size: 12px;
+}
+
+// «Más acciones» de cada respuesta: Crear informe y Guardar en incidente, plegados.
+.b89Bunny__moreActions {
+  > summary {
+    min-height: 28px;
+    padding: 4px 9px;
+    border-radius: 7px;
+    color: var(--bn-muted);
+    cursor: pointer;
+    font-size: 12px;
+    list-style-position: inside;
+
+    &:hover {
+      background: var(--bn-hover);
+      color: var(--bn-text);
+    }
+    &:focus-visible {
+      outline: 2px solid var(--bn-link);
+      outline-offset: 1px;
+    }
+  }
+
+  &[open] {
+    flex-basis: 100%;
+  }
+}
+
+.b89Bunny__moreBody {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0 0 6px;
+}
+
+.b89Bunny__moreBody > button {
+  min-height: 28px;
+  padding: 3px 9px;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  color: var(--bn-muted);
+  cursor: pointer;
+  font-size: 12px;
+
+  &:hover:not(:disabled) {
+    background: var(--bn-hover);
+    color: var(--bn-text);
   }
 }

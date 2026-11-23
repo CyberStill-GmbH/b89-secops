@@ -82,9 +82,10 @@ describe('mascota', () => {
     const html = renderToStaticMarkup(<AiAnalystMascot basePath={BASE} />);
     expect(html).toContain('src="/osd/ui/b89/b89-ai-analyst-bunny-160.webp"');
     expect(html).toContain('/osd/ui/b89/b89-ai-analyst-bunny-160.webp 1x, /osd/ui/b89/b89-ai-analyst-bunny.webp 2x');
-    expect(html).toContain('alt="Analista IA"');
-    expect(html).toContain('width="142"');
-    expect(html).toContain('height="160"');
+    // Decorativa: el estado ya está en texto al lado.
+    expect(html).toContain('alt=""');
+    expect(html).toContain('width="43"');
+    expect(html).toContain('height="48"');
     expect(html).not.toContain('loading="lazy"');
   });
 });
@@ -96,7 +97,7 @@ describe('cabecera', () => {
     expect(html).toContain('modo Autónomo');
     expect(html).toContain('data-pulse="true"');
     expect(html).toContain('hace 30 segundos');
-    expect(html).toContain('1 / 2');
+    expect(html).toContain('1 de 2 posibles');
   });
 
   it('detenido y apagado no laten y dicen por qué; el fallo vigente va en mono', () => {
@@ -121,7 +122,7 @@ describe('KPI del día', () => {
     const html = renderToStaticMarkup(<AiActivityKpis today={activity().today} />);
     expect(html).toContain('75,0 %');
     expect(html).toContain('(estimado)');
-    expect(html).toContain('día de Lima');
+    expect(html).toContain('hora de Lima');
     const empty = renderToStaticMarkup(
       <AiActivityKpis today={{ ...activity().today, estimatedMicroUsd: null, runs: null }} />,
     );
@@ -134,8 +135,8 @@ describe('feed', () => {
     const html = renderToStaticMarkup(
       <AiActivityFeed feed={activity().feed} basePath={BASE} onSelect={() => undefined} />,
     );
-    expect(html).toContain('role="log"');
-    expect(html).toContain('aria-live="polite"');
+    expect(html).not.toContain('role="log"');
+    expect(html).not.toContain('aria-live');
     expect(html).toContain('Escaló a incidente nuevo');
     expect(html).toContain('Resolvió sin IA: patrón benigno conocido');
     expect(html).toContain('href="/osd/app/b89-ai-analyst?id=job-1"');
@@ -154,7 +155,9 @@ describe('feed', () => {
     const html = renderToStaticMarkup(
       <AiActivityPanel activity={activity()} basePath={BASE} now={NOW} onSelect={() => undefined} />,
     );
-    expect(html).toContain('Alertas abiertas sin expediente');
+    expect(html).toContain('Alertas abiertas aún sin investigar');
+    // Primero lo que espera a una persona; después el estado del analista.
+    expect(html.indexOf('Necesita tu atención')).toBeLessThan(html.indexOf('Estado del Analista IA'));
     expect(html).toContain('Sin dato');
     expect(html).toContain('hace 1 hora');
   });

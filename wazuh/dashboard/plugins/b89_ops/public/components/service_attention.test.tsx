@@ -42,7 +42,7 @@ it('shows event context without opening cards, escapes source text and states tr
   expect(html).toContain('critical-1');
   expect(html).toContain('&lt;script&gt;critical&lt;/script&gt;');
   expect(html).toContain('server-a');
-  expect(html).toContain('100 eventos');
+  expect(html).toContain('Se muestran los 100 de nivel más alto');
   expect(html).toContain('Investigar evento');
   expect(html).toContain('/base/app/data-explorer/discover');
 });

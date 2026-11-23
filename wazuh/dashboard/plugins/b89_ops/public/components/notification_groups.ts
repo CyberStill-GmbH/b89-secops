@@ -30,10 +30,10 @@ export type DeliveryKind =
 
 export const DELIVERY: Record<DeliveryKind, { label: string; tone: HealthTone }> = {
   pending: { label: 'Pendiente', tone: 'neutral' },
-  sent: { label: 'Aceptado por el canal', tone: 'info' },
-  delivered: { label: 'Entregado', tone: 'ok' },
+  sent: { label: 'Entregado al canal', tone: 'info' },
+  delivered: { label: 'Entrega confirmada', tone: 'ok' },
   failed: { label: 'Fallido', tone: 'fail' },
-  acknowledged: { label: 'Reconocido', tone: 'ok' },
+  acknowledged: { label: 'Visto por el SOC', tone: 'ok' },
   uncertain: { label: 'Entrega sin confirmar', tone: 'warn' },
   suppressed: { label: 'Agrupado o en resumen', tone: 'neutral' },
   superseded: { label: 'Sustituido', tone: 'neutral' },

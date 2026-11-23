@@ -116,9 +116,8 @@ function settingsForm(overrides: Partial<React.ComponentProps<typeof AiSettingsF
 
 describe('avisos por estado del expediente', () => {
   const cases: Array<[string, Record<string, unknown>, string]> = [
-    ['requires_review', {}, 'Requiere revisión humana'],
     ['budget_exhausted', {}, 'Presupuesto diario agotado'],
-    ['usage_unreconciled', {}, 'Uso por conciliar'],
+    ['usage_unreconciled', {}, 'Costo pendiente de confirmar'],
     ['partial', {}, 'Resultado parcial'],
     ['cancelled', {}, 'Investigación detenida'],
     ['failed', { lastErrorCode: 'MODEL_TIMEOUT' }, 'La investigación falló'],
@@ -127,6 +126,11 @@ describe('avisos por estado del expediente', () => {
     it(`muestra un aviso propio para ${status}`, () => {
       const markup = renderToStaticMarkup(<AiRunStatusCallout run={run({ status, ...extra })} />);
       expect(markup).toContain(title);
+    });
+  }
+  {
+    it('«requiere revisión» no repite un tercer aviso: lo cubren «Tu revisión» y la conclusión', () => {
+      expect(renderToStaticMarkup(<AiRunStatusCallout run={run({ status: 'requires_review' })} />)).toBe('');
     });
   }
 
@@ -155,15 +159,15 @@ describe('expediente', () => {
   it('una corrida determinista dice «Sin IA» y no muestra costo', () => {
     const markup = renderToStaticMarkup(<AiCaseFile run={run()} basePath="" now={NOW} />);
     expect(markup).toContain('Sin IA');
-    expect(markup).toContain('sin llamada al modelo');
+    expect(markup).toContain('sin usar IA (sin costo)');
     expect(markup).not.toContain('US$');
-    expect(runCostText(run())).toBe('Sin llamada al modelo');
+    expect(runCostText(run())).toBe('Sin costo (no usó IA)');
     expect(runCostText(run({ inference: 'economy' }))).toBe('Sin dato');
   });
 
   it('separa hechos, inferencias, vacíos y pasos; motivos deterministas con código crudo si es nuevo', () => {
     const markup = renderToStaticMarkup(<AiCaseFile run={run()} basePath="/b" now={NOW} />);
-    for (const title of ['Hechos observados', 'Inferencias', 'Vacíos de evidencia', 'Siguientes pasos']) {
+    for (const title of ['Hechos observados', 'Hipótesis', 'Vacíos de evidencia', 'Qué recomienda', 'Detalles técnicos']) {
       expect(markup).toContain(title);
     }
     expect(markup).toContain('Coincide con un patrón benigno conocido');
@@ -182,7 +186,9 @@ describe('expediente', () => {
         now={NOW}
       />,
     );
-    expect(markup).toContain('Sin citas verificadas: requiere revisión humana');
+    // Una sola línea de advertencia dentro de la conclusión, no un aviso aparte.
+    expect(markup).toContain('Sin verificar: las afirmaciones no se pudieron comprobar');
+    expect(markup).not.toContain('Sin citas verificadas');
   });
 
   it('escapa el texto del modelo y lo marca como zona de datos', () => {
@@ -223,12 +229,14 @@ describe('expediente', () => {
         now={NOW}
       />,
     );
-    expect(markup).toContain('role="log"');
-    expect(markup).toContain('aria-live="polite"');
-    expect(markup).toContain('Triaje determinista');
+    // La cronología no es región viva (cambiaba cada segundo); la etapa se anuncia en la conclusión.
+    expect(markup).not.toContain('role="log"');
+    expect(markup).not.toContain('aria-live');
+    expect(markup).toContain('role="status"');
+    expect(markup).toContain('Revisión con reglas');
     expect(markup).toContain('1 min 00 s');
     expect(markup).not.toContain('%');
-    expect(markup).not.toContain('Validación de citas');
+    expect(markup).not.toContain('Comprobación de la evidencia');
   });
 
   it('la cobertura parcial no se presenta como completa', () => {
@@ -250,7 +258,7 @@ describe('expediente', () => {
     );
     expect(markup).toContain('Evidencia parcial');
     expect(markup).toContain('Truncada');
-    expect(markup).toContain('Degradada');
+    expect(markup).toContain('Con problemas');
     expect(markup).toContain('datos desactualizados');
     expect(markup).not.toContain('Evidencia completa');
   });
@@ -270,9 +278,9 @@ describe('expediente', () => {
         now={NOW}
       />,
     );
-    expect(markup).toContain('Uso por conciliar');
+    expect(markup).toContain('Costo por confirmar');
     expect(markup).toContain('US$ 0,0123 (estimado)');
-    expect(markup).toContain('facturación no conectada');
+    expect(markup).toContain('puede diferir de la factura');
     expect(markup).toContain((12000).toLocaleString('es-PE'));
   });
 });
@@ -419,12 +427,12 @@ describe('franja de modo y presupuesto', () => {
       />,
     );
     expect(markup).toContain('Sin techo configurado');
-    expect(markup).toContain('la inferencia está apagada');
-    expect(markup).toContain('solo con reglas deterministas');
+    expect(markup).toContain('la IA está apagada');
+    expect(markup).toContain('solo con reglas automáticas');
     expect(markup).toContain('100 % del día');
     expect(markup).toContain('Sin dato');
-    expect(markup).toContain('Costo estimado; facturación no conectada');
-    expect(markup).not.toContain('Uso por conciliar');
+    expect(markup).toContain('Costo aproximado; puede diferir de la factura');
+    expect(markup).not.toContain('Costo por confirmar');
   });
 
   it('avisa del uso por conciliar', () => {
@@ -437,8 +445,8 @@ describe('franja de modo y presupuesto', () => {
         })}
       />,
     );
-    expect(markup).toContain('Uso por conciliar: 2 llamadas');
-    expect(markup).not.toContain('la inferencia está apagada');
+    expect(markup).toContain('Costo por confirmar: 2 llamadas');
+    expect(markup).not.toContain('la IA está apagada');
   });
 });
 
@@ -478,7 +486,9 @@ describe('lista de investigaciones', () => {
         empty="vacío"
       />,
     );
-    expect(markup).toContain('IA: económico · Sin dato');
+    expect(markup).toContain('IA estándar · Sin dato');
+    // La fila se anuncia como una frase con contexto, no como columnas sueltas.
+    expect(markup).toMatch(/aria-label="[^"]*prioridad P\d, conclusión de la IA: /u);
   });
 
   it('vacía muestra el mensaje que explica qué hacer', () => {
@@ -522,7 +532,7 @@ describe('formulario de configuración', () => {
       errors: { 'closeBenign.minHistory': 'Escribe un número entero entre 3 y 50.' },
     });
     expect(markup).toContain('Escribe un número entero entre 3 y 50.');
-    expect(markup).toContain('Hay campos por corregir.');
+    expect(markup).toContain('Corrige: Historial mínimo del patrón.');
     expect(markup).toContain(`${1000 - SETTINGS.instructions.length} caracteres disponibles`);
   });
 
@@ -582,7 +592,8 @@ import { DeploymentOffCallout } from './ai_analyst_settings';
 describe('DeploymentOffCallout', () => {
   it('explica que lo guardado no se aplica mientras el despliegue tenga el analista apagado', () => {
     const html = renderToStaticMarkup(<DeploymentOffCallout />);
-    expect(html).toContain('apagado en este despliegue');
+    expect(html).toContain('no está activado en este entorno');
+    expect(html).toContain('Para administradores');
     expect(html).toContain('B89_ANALYST_ENABLED=true');
   });
 });

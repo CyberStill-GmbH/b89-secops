@@ -185,7 +185,7 @@ describe('renderLoginPage', () => {
       },
     });
     expect(html).toContain('role="alert"');
-    expect(html).toContain('No fue posible iniciar sesión con esas credenciales.');
+    expect(html).toContain('No pudimos iniciar tu sesión con esas credenciales.');
     expect(html).toContain(`Referencia: ${CORRELATION}`);
     expect(html).not.toContain('AUTH_FAILED');
   });

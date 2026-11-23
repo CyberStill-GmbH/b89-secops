@@ -85,14 +85,24 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
 
 function IdLink({ id, options }: { id: string; options: MarkdownOptions }) {
   const cited = options.citations?.find((citation) => citation.id === id);
-  const kind = cited?.kind === 'incident' ? 'incident' : 'alert';
-  const path = citationPath({ kind, id, label: cited?.label ?? id });
-  const short = `${id.slice(0, 8)}…`;
-  const title = `${kind === 'incident' ? 'Incidente' : 'Alerta'} ${id}${cited?.label ? ` · ${cited.label}` : ''}`;
+  // Un id que Bunny no citó no se enlaza: no se sabe si es una alerta o un incidente.
+  if (!cited || (cited.kind !== 'alert' && cited.kind !== 'incident')) {
+    return (
+      <code className="b89Bunny__id" title={id}>
+        {id}
+      </code>
+    );
+  }
+  const kind = cited.kind;
+  const path = citationPath({ kind, id, label: cited.label || id });
+  const noun = kind === 'incident' ? 'Incidente' : 'Alerta';
+  const name = cited.label && cited.label !== id ? cited.label : null;
+  const visible = name ? (name.length > 48 ? `${name.slice(0, 47)}…` : name) : `${id.slice(0, 8)}…`;
+  const title = `${noun} ${id}${name ? ` · ${name}` : ''}`;
   if (!path || !options.onOpen) {
     return (
       <code className="b89Bunny__id" title={title}>
-        {short}
+        {visible}
       </code>
     );
   }
@@ -101,13 +111,14 @@ function IdLink({ id, options }: { id: string; options: MarkdownOptions }) {
       className={`b89Bunny__id b89Bunny__id--${kind}`}
       href={path}
       title={title}
+      aria-label={`Abrir ${noun.toLowerCase()}: ${name ?? id}`}
       onClick={(event) => {
         event.preventDefault();
         options.onOpen?.(path);
       }}
     >
       {kind === 'incident' ? 'INC ' : ''}
-      {short}
+      {visible}
     </a>
   );
 }

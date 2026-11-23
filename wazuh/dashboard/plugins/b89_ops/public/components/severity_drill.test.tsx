@@ -60,7 +60,7 @@ describe('cola de alertas filtrada por prioridad', () => {
     expect(select).toMatch(/<option value="P1" selected/);
   });
 
-  it('cada chip P1–P3 de «Alertas abiertas» abre la cola filtrada por esa prioridad', () => {
+  it('cada chip P1–P4 de «Alertas abiertas» abre la cola filtrada por esa prioridad', () => {
     const data = {
       overview: { data: null, loading: false, error: null, reload: () => undefined },
     } as unknown as PlatformData;
@@ -71,17 +71,20 @@ describe('cola de alertas filtrada por prioridad', () => {
           open: 9,
           byPriority: { P1: 2, P2: 3, P3: 4, P4: 0 },
           top: [],
+          unassigned: 0,
+          unassignedPartial: false,
           activeIncidents: 0,
+          incidentsAccess: 'ok',
         }}
         queueLoading={false}
         basePath="/base"
       />,
     );
-    for (const priority of ['P1', 'P2', 'P3'] as const) {
+    // P4 también: los chips suman el total de «Alertas abiertas».
+    for (const priority of ['P1', 'P2', 'P3', 'P4'] as const) {
       expect(html).toContain(`href="/base/app/b89-alerts?priority=${priority}"`);
       expect(html).toContain(PRIORITY_NAME[priority]);
     }
-    expect(html).not.toContain('priority=P4');
     // Sin enlaces anidados: la tarjeta «Alertas abiertas» ya no es un <a> que envuelve los chips.
     expect(html.startsWith('<div class="b89KpiRow"><div class="b89Kpi">')).toBe(true);
   });
@@ -106,15 +109,17 @@ describe('bandas de severidad', () => {
       <SeverityBar levels={levels} label="Eventos" hrefFor={hrefFor} />,
     );
     expect(bar).toContain('href="#critical"');
-    expect(bar).toContain('Ver solo 3 críticas');
+    expect(bar).toContain('Ver solo los 3 eventos de nivel 12–15');
     const legend = renderToStaticMarkup(<LevelLegend levels={levels} hrefFor={hrefFor} />);
-    expect(legend).toMatch(/href="#critical"[^>]*>.*?3<\/strong> críticas →/);
-    expect(legend).toMatch(/href="#high"[^>]*>.*?20<\/strong> altas →/);
+    expect(legend).toMatch(/href="#critical"[^>]*>.*?3<\/strong> de nivel 12–15 →/);
+    expect(legend).toMatch(/href="#high"[^>]*>.*?20<\/strong> de nivel 8–11 →/);
+    // Niveles del SIEM: nunca las palabras de la prioridad de las alertas.
+    expect(`${bar}${legend}`).not.toMatch(/[Cc]rítica|[Aa]ltas?/);
     // Sin enlaces, la barra sigue siendo una imagen accesible.
     expect(renderToStaticMarkup(<SeverityBar levels={levels} label="x" />)).toContain('role="img"');
   });
 
-  it('«Eventos SIEM · 24 h» ofrece críticas y altas por separado', () => {
+  it('«Eventos SIEM · 24 h» ofrece nivel 12–15 y 8–11 por separado', () => {
     const data = {
       overview: {
         data: {
@@ -139,16 +144,18 @@ describe('bandas de severidad', () => {
     const high = /<a class="b89Legend__link" href="([^"]+)" data-band="high"/.exec(html);
     expect(attr(critical![1])).toContain("query:'rule.level >= 12'");
     expect(attr(high![1])).toContain("query:'rule.level >= 8 and rule.level <= 11'");
-    expect(html).toContain('críticas →');
-    expect(html).toContain('altas →');
-    expect(html).not.toContain('altas o críticas');
+    expect(html).toContain('de nivel 12–15 →');
+    expect(html).toContain('de nivel 8–11 →');
+    expect(html).not.toContain('críticas');
+    expect(html).not.toContain('wazuh-monitoring');
   });
 });
 
 describe('tarjetas de servicio', () => {
-  it('«Críticas» y «Altas y críticas» cuentan y filtran cosas distintas', () => {
+  it('«Nivel 12+» y «Nivel 8+» cuentan y filtran cosas distintas', () => {
     const [critical, highAndCritical] = severityMetrics('aws', levels);
-    expect(critical.label).toBe('Críticas 24 h');
+    expect(critical.label).toBe('Nivel 12+ · 24 h');
+    expect(highAndCritical.label).toBe('Nivel 8+ · 24 h');
     expect(critical.value).toBe('3');
     expect(critical.focus).toBe('critical');
     expect(critical.drill?.kql).toBe('rule.level >= 12 and rule.groups: "aws"');
@@ -170,7 +177,7 @@ describe('tarjetas de servicio', () => {
     { id: 'h1', level: 9, description: 'Alto', agent: 'b', ruleId: '2', at: '', provider: 'aws' },
   ];
 
-  it('tras pulsar «Críticas» la lista muestra solo críticas y el filtro es visible', () => {
+  it('tras pulsar «Nivel 12+» la lista muestra solo ese nivel y el filtro es visible', () => {
     const html = renderToStaticMarkup(
       <ServiceAttentionList
         service="aws"
@@ -183,14 +190,15 @@ describe('tarjetas de servicio', () => {
     );
     expect(html).toContain('data-filter="critical"');
     expect(html).toMatch(/<input type="checkbox" checked=""/);
-    expect(html).toContain('Mostrando solo críticas (nivel ≥ 12)');
+    expect(html).toContain('Mostrando solo nivel 12 o más');
     expect(html).toContain('Quitar filtro');
-    expect(html).toContain('1 críticas en 24 h');
+    expect(html).toContain('1 de nivel 12 o más en 24 h');
+    expect(html).toContain('Nivel 13');
     expect(html).toContain('Crítico');
     expect(html).not.toContain('Alto<');
   });
 
-  it('sin foco muestra altas y críticas sin aviso de filtro', () => {
+  it('sin foco muestra nivel 8 o más sin aviso de filtro', () => {
     const html = renderToStaticMarkup(
       <ServiceAttentionList
         service="aws"
@@ -199,7 +207,7 @@ describe('tarjetas de servicio', () => {
         data={{ access: 'ok', total: 2, events }}
       />,
     );
-    expect(html).toContain('Mostrando altas y críticas (nivel ≥ 8)');
+    expect(html).toContain('Mostrando nivel 8 o más');
     expect(html).not.toContain('Quitar filtro');
     expect(html).toContain('Alto<');
   });

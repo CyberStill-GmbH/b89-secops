@@ -38,4 +38,33 @@ describe('exportacion de investigacion cargada', () => {
     expect(csv).toContain('event-204');
     expect(csv).not.toContain('event-205');
   });
+
+  it('usa rótulos en español y nombres de fuente legibles', () => {
+    const csv = investigationCsv({
+      alert: {
+        id: 'alert-1',
+        title: 'Prueba',
+        priority: 'P2',
+        score: 50,
+        status: 'escalated',
+        assigneeId: null,
+        verdict: null,
+        incidentId: null,
+        occurredAt: '2026-11-08T12:00:00.000Z',
+        revision: 1,
+        reasons: [],
+        entities: [],
+      },
+      title: 'Prueba',
+      entities: [],
+      events: [event(1)],
+    });
+    expect(csv).toContain('"Tipo";"Fecha UTC";"Prioridad / nivel"');
+    expect(csv).toContain('"Escalada"');
+    expect(csv).not.toContain('"office365"');
+    expect(csv).toContain('"Actividad agrupada"');
+    expect(csv).toContain('"Desde (UTC)"');
+    expect(csv).not.toContain('Interpretación');
+    expect(csv).not.toContain('hilo de correo');
+  });
 });

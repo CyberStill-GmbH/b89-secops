@@ -16,6 +16,7 @@ import {
 } from './overview_parts';
 import { STATUS_LABEL } from './service_status';
 import { ServiceMark } from './vendor_logo';
+import { B89Page } from './console_context';
 import { ErrorCallout } from './primitives';
 import { linkedMetrics, ProviderSeverity, ServiceModel, serviceModels } from './service_cards';
 
@@ -29,17 +30,14 @@ export function IntegrationsView({ basePath }: { basePath: string }) {
   // Solo lo que hoy reporta un error de permisos (monitor, collector o override explícito).
   const blocked = models.filter((model) => model.status.label === STATUS_LABEL.permission);
   return (
-    <main className="b89Page b89Overview">
-      <header className="b89Hero">
-        <div className="b89Hero__text">
-          <span className="b89Hero__eyebrow">B89 SOC</span>
-          <h1>Integraciones</h1>
-          <p>
-            Servicios conectados al SIEM, qué recoge cada uno, la política que se les aplica y los
-            permisos pendientes.
-          </p>
-        </div>
-        <div className="b89Hero__actions">
+    <B89Page
+      title="Integraciones"
+      description="Qué recoge cada servicio, con qué permisos y qué falta para conectarlo. El estado en vivo de cada fuente está en «Salud de fuentes»."
+      actions={
+        <>
+          <EuiButtonEmpty size="s" href={`${basePath}/app/b89-sources`}>
+            Ver salud de fuentes
+          </EuiButtonEmpty>
           <EuiButtonEmpty size="s" href={`${basePath}/app/b89-policies`}>
             Ver políticas
           </EuiButtonEmpty>
@@ -51,8 +49,10 @@ export function IntegrationsView({ basePath }: { basePath: string }) {
           >
             Actualizar
           </EuiButtonEmpty>
-        </div>
-      </header>
+        </>
+      }
+    >
+      <div className="b89Overview" lang="es-PE" translate="no">
       {data.overview.error != null && !data.overview.data && (
         <ErrorCallout error={data.overview.error} onRetry={data.overview.reload} />
       )}
@@ -85,7 +85,8 @@ export function IntegrationsView({ basePath }: { basePath: string }) {
           ),
         )}
       </div>
-    </main>
+      </div>
+    </B89Page>
   );
 }
 
@@ -142,12 +143,6 @@ function IntegrationRow({
           <dt>Intervalo</dt>
           <dd>{spec.interval}</dd>
         </div>
-        {spec.ruleRange && (
-          <div>
-            <dt>Reglas Wazuh</dt>
-            <dd className="b89Tabular">{spec.ruleRange}</dd>
-          </div>
-        )}
         <div>
           <dt>Política aplicada</dt>
           <dd>{spec.policy}</dd>
@@ -165,19 +160,19 @@ function IntegrationRow({
           </div>
         )}
       </dl>
-      {spec.flow && (
-        <section className="b89Integration__flow" aria-label={`Recorrido de ${spec.name}`}>
-          <h3>Cómo llegan los eventos a B89</h3>
-          <ol>
-            {spec.flow.steps.map((step) => (
-              <li key={step}>{step}</li>
-            ))}
-          </ol>
-          <p>{spec.flow.coverageNote}</p>
-        </section>
-      )}
       <details className="b89Integration__technical">
         <summary>Detalles técnicos para soporte</summary>
+        {spec.flow && (
+          <section className="b89Integration__flow" aria-labelledby={`${id}-flow`}>
+            <h3 id={`${id}-flow`}>Cómo llegan los eventos a B89</h3>
+            <ol>
+              {spec.flow.steps.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+            <p>{spec.flow.coverageNote}</p>
+          </section>
+        )}
         <dl className="b89Integration__facts">
           {spec.ruleRange && (
             <div>

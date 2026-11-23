@@ -39,7 +39,7 @@ export function bunnyProgressTimeline(events: readonly BunnyProgressEvent[]): Bu
       if (activeModel >= 0) setStatus(activeModel, 'complete');
       steps.push({
         key: `model:${event.round}:${index}`,
-        label: `Consulta al modelo · ronda ${event.round}`,
+        label: `Analizando (paso ${event.round})`,
         status: 'running',
       });
       return;
@@ -127,17 +127,20 @@ function StepList({ steps, label }: { steps: readonly BunnyProgressStep[]; label
 }
 
 /**
- * Actividad en vivo como una línea plegable (al estilo ChatGPT/Codex). Se muestra desplegada
- * mientras Bunny trabaja; al llegar la respuesta se sustituye por `BunnyActivity`, ya plegada.
+ * Actividad en vivo como una línea plegable (al estilo ChatGPT/Codex), plegada por defecto: la
+ * línea «Trabajando… · 2 herramientas · 8 s» basta. Sin regiones vivas: el panel anuncia una sola
+ * vez el inicio y el final. Al llegar la respuesta se sustituye por `BunnyActivity`.
  */
 export function BunnyThinking({
   events,
   elapsedSeconds,
+  initiallyExpanded = false,
 }: {
   readonly events: readonly BunnyProgressEvent[];
   readonly elapsedSeconds: number;
+  readonly initiallyExpanded?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(initiallyExpanded);
   const steps = bunnyProgressTimeline(events);
   const jsonFallback = events.some((event) => event.type === 'transport_fallback');
   return (
@@ -160,19 +163,12 @@ export function BunnyThinking({
       {expanded && (
         <div id="b89-bunny-live-activity" className="b89Bunny__thinkingBody">
           {steps.length === 0 ? (
-            <p className="b89Bunny__thinkingWaiting" role="status" aria-live="polite">
-              {jsonFallback
-                ? 'El proxy no admite el canal de actividad; esperando la respuesta completa del servicio.'
-                : 'Esperando la primera actualización de actividad del servidor…'}
+            <p className="b89Bunny__thinkingWaiting">
+              {jsonFallback ? 'Preparando la respuesta…' : 'Pensando…'}
             </p>
           ) : (
-            <div role="log" aria-live="polite" aria-relevant="additions text">
-              <StepList steps={steps} label="Actividad recibida del servidor" />
-            </div>
+            <StepList steps={steps} label="Actividad de Bunny" />
           )}
-          <p className="b89Bunny__thinkingNote">
-            Solo se muestran las actualizaciones que envía Bunny; no se estima el avance.
-          </p>
         </div>
       )}
     </div>

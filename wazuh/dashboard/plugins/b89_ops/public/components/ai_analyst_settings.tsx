@@ -2,7 +2,7 @@
  * Copyright B89. SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   EuiButton,
   EuiButtonEmpty,
@@ -53,6 +53,7 @@ import {
 } from '../../common';
 import { getAiSettings, isAnalystUnavailable, saveAiSettings } from '../api/ai_investigations';
 import { B89ApiError } from '../api/client';
+import { ANALYST_UNAVAILABLE_TEXT, ANALYST_UNAVAILABLE_TITLE } from './ai_analyst_model';
 import { RiskFlag } from './ai_analyst_parts';
 import { useConsole } from './console_context';
 import { ErrorCallout, Mono, Timestamp, useAsync } from './primitives';
@@ -192,7 +193,7 @@ export function AiSettingsSummary({ saved }: { saved: AnalystSettings }) {
     <section className="b89AiSetSummary" aria-label="Configuración vigente">
       <span className="b89AiSetSummary__label">Vigente</span>
       <span className="b89AiSetSummary__chip" data-tone={saved.enabled ? 'ok' : 'neutral'}>
-        {saved.enabled ? 'Analista activado' : 'Analista desactivado'}
+        {saved.enabled ? 'Analista activo' : 'Analista pausado'}
       </span>
       <span
         className="b89AiSetSummary__chip"
@@ -216,6 +217,24 @@ export function AiSettingsSummary({ saved }: { saved: AnalystSettings }) {
   );
 }
 
+/** Nombre visible de cada campo con error, para el resumen junto a «Guardar». */
+const FIELD_LABEL: Readonly<Record<string, string>> = {
+  'scope.priorities': 'Prioridades que investiga',
+  'escalation.priorities': 'Prioridades que puede escalar',
+  'closeBenign.minHistory': 'Historial mínimo del patrón',
+  'budget.dailyCeilingMicroUsd': 'Techo diario',
+  'budget.maxOutputTokens': 'Largo máximo de cada respuesta',
+  'reports.digestHourLima': 'Hora del resumen',
+  instructions: 'Indicaciones',
+};
+
+export function settingsErrorSummary(errors: AiSettingsErrors): string | null {
+  const keys = Object.keys(errors);
+  if (keys.length === 0) return null;
+  const names = keys.map((key) => FIELD_LABEL[key] ?? 'Otro campo');
+  return `Corrige: ${Array.from(new Set(names)).join(', ')}.`;
+}
+
 export function AiSettingsForm({
   saved,
   draft,
@@ -226,6 +245,7 @@ export function AiSettingsForm({
   onChange,
   onSave,
   onDiscard,
+  notice = null,
 }: {
   saved: AnalystSettings;
   draft: AiSettingsDraft;
@@ -236,6 +256,8 @@ export function AiSettingsForm({
   onChange: Patch;
   onSave: () => void;
   onDiscard: () => void;
+  /** Aviso de guardado: va junto al botón «Guardar», donde la persona está mirando. */
+  notice?: React.ReactNode;
 }) {
   const locked = !canEdit || busy;
   const autonomous = draft.mode === 'autonomous';
@@ -272,7 +294,7 @@ export function AiSettingsForm({
         description="Si el analista toma alertas nuevas y cuánto puede hacer sin una persona. Empieza en sombra y sube de modo cuando confíes en sus conclusiones."
       >
         <EuiSwitch
-          label={draft.enabled ? 'Analista activado' : 'Analista desactivado'}
+          label="Analista activo"
           checked={draft.enabled}
           disabled={locked}
           onChange={(event) => onChange({ enabled: event.target.checked })}
@@ -312,7 +334,7 @@ export function AiSettingsForm({
       <Group
         id="b89AiSetScope"
         title="Qué investiga"
-        description="Qué alertas toma el analista y desde qué prioridad usa el modelo de IA. Por debajo del umbral solo aplica reglas deterministas, sin costo."
+        description="Qué alertas toma el analista y desde qué prioridad usa IA. Por debajo de ese umbral solo aplica reglas automáticas, sin costo."
       >
         <PriorityChecks
           idPrefix="b89AiScope"
@@ -324,7 +346,7 @@ export function AiSettingsForm({
         />
         <EuiFormRow
           label="Prioridad mínima para usar IA"
-          helpText="Las alertas menos prioritarias se resuelven solo con reglas deterministas."
+          helpText="Las alertas menos prioritarias se resuelven solo con reglas automáticas, sin usar IA."
         >
           <EuiSelect
             compressed
@@ -484,10 +506,10 @@ export function AiSettingsForm({
       <Group
         id="b89AiSetBudget"
         title="Presupuesto de IA"
-        description="Cuánto puede gastar al día en llamadas al modelo. Sin techo diario no se llama al modelo: las investigaciones se resuelven solo con reglas deterministas."
+        description="Cuánto puede gastar al día en IA. Sin techo diario no se usa IA: las investigaciones se resuelven solo con reglas automáticas."
       >
         <EuiSwitch
-          label={draft.inferenceOn ? 'IA activada con techo diario' : 'IA desactivada'}
+          label="Usar IA (con techo diario)"
           checked={draft.inferenceOn}
           disabled={locked}
           onChange={(event) => onChange({ inferenceOn: event.target.checked })}
@@ -495,7 +517,7 @@ export function AiSettingsForm({
         <div className="b89AiSetGroup__fields">
           <EuiFormRow
             label="Techo diario (US$)"
-            helpText="Gasto estimado máximo por día. Es una estimación del tarifario, no facturación."
+            helpText="Gasto máximo por día. Costo aproximado; puede diferir de la factura."
             isInvalid={Boolean(errors['budget.dailyCeilingMicroUsd'])}
             error={errors['budget.dailyCeilingMicroUsd']}
           >
@@ -510,8 +532,8 @@ export function AiSettingsForm({
             />
           </EuiFormRow>
           <EuiFormRow
-            label="Máximo de tokens de salida por llamada"
-            helpText="Limita el largo (y el costo) de cada respuesta del modelo."
+            label="Largo máximo de cada respuesta de la IA (tokens)"
+            helpText="Opción avanzada: limita el largo y el costo de cada respuesta. Si no sabes qué valor usar, deja el actual."
             isInvalid={Boolean(errors['budget.maxOutputTokens'])}
             error={errors['budget.maxOutputTokens']}
           >
@@ -607,7 +629,7 @@ export function AiSettingsForm({
 
       <div className="b89AiSettings__foot" data-dirty={dirty ? 'true' : 'false'}>
         <p className="b89CellMeta">
-          Revisión <Mono>{String(saved.revision)}</Mono> · última modificación{' '}
+          Versión <Mono>{String(saved.revision)}</Mono> · última modificación{' '}
           <Timestamp iso={saved.updatedAt} />
           {saved.updatedBy && (
             <>
@@ -616,11 +638,12 @@ export function AiSettingsForm({
             </>
           )}
         </p>
+        {notice}
         {canEdit && (
           <div className="b89Ai__actions">
             {dirty && (
               <span className="b89AiSettings__dirty" role="status">
-                {hasErrors ? 'Hay campos por corregir.' : 'Hay cambios sin guardar.'}
+                {hasErrors ? settingsErrorSummary(errors) : 'Hay cambios sin guardar.'}
               </span>
             )}
             <EuiButtonEmpty size="s" isDisabled={!dirty || busy} onClick={onDiscard}>
@@ -658,18 +681,18 @@ export function serverFieldErrors(fields: readonly string[]): Record<string, str
 /** El interruptor del despliegue manda sobre esta pantalla: sin él, nada de lo guardado corre. */
 export function DeploymentOffCallout() {
   return (
-    <EuiCallOut
-      size="s"
-      color="warning"
-      iconType="alert"
-      title="El analista está apagado en este despliegue"
-    >
+    <EuiCallOut size="s" color="warning" iconType="alert" title={ANALYST_UNAVAILABLE_TITLE}>
       <p>
-        El servicio del analista no se está ejecutando en este entorno, así que lo que guardes aquí
-        se conserva pero no se aplica. Para encenderlo, quien opera la plataforma debe desplegar con{' '}
-        <code>B89_ANALYST_ENABLED=true</code> (es el valor por defecto del script de despliegue) y
-        reiniciar el API.
+        Lo que guardes aquí se conserva, pero no se aplica hasta que se active.{' '}
+        {ANALYST_UNAVAILABLE_TEXT}
       </p>
+      <details className="b89AiDetails">
+        <summary>Para administradores</summary>
+        <p>
+          Despliega con <code>B89_ANALYST_ENABLED=true</code> (valor por defecto del script de
+          despliegue) y reinicia el servicio de la API.
+        </p>
+      </details>
     </EuiCallOut>
   );
 }
@@ -686,6 +709,11 @@ export function AiSettingsTab({ onSaved }: { onSaved?: () => void }) {
   const [rejected, setRejected] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<'saved' | 'conflict' | null>(null);
   const [confirm, setConfirm] = useState<AiSettingsRisk | null>(null);
+  // El aviso de guardado está junto al botón; recibe el foco para que se anuncie y se vea.
+  const savedRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (notice === 'saved' && savedRef.current) savedRef.current.focus();
+  }, [notice]);
 
   useEffect(() => {
     if (!loaded.data) return;
@@ -700,11 +728,8 @@ export function AiSettingsTab({ onSaved }: { onSaved?: () => void }) {
   if (!saved || !draft) {
     if (isAnalystUnavailable(loaded.error)) {
       return (
-        <EuiCallOut
-          color="warning"
-          iconType="offline"
-          title="La configuración del analista no está publicada en este entorno"
-        >
+        <EuiCallOut color="warning" iconType="offline" title={ANALYST_UNAVAILABLE_TITLE}>
+          <p>{ANALYST_UNAVAILABLE_TEXT}</p>
           <EuiButtonEmpty size="xs" flush="left" onClick={loaded.reload}>
             Volver a comprobar
           </EuiButtonEmpty>
@@ -776,18 +801,6 @@ export function AiSettingsTab({ onSaved }: { onSaved?: () => void }) {
           <EuiSpacer size="m" />
         </>
       )}
-      {notice === 'saved' && (
-        <>
-          <EuiCallOut size="s" color="success" iconType="check" title="Configuración guardada">
-            <p role="status">
-              {deploymentEnabled === false
-                ? 'Quedó guardada, pero no se aplicará hasta que el despliegue encienda el analista.'
-                : 'Se aplica a las investigaciones que empiecen desde ahora.'}
-            </p>
-          </EuiCallOut>
-          <EuiSpacer size="m" />
-        </>
-      )}
       {notice === 'conflict' && (
         <>
           <EuiCallOut
@@ -838,6 +851,20 @@ export function AiSettingsTab({ onSaved }: { onSaved?: () => void }) {
           setRejected({});
           setError(null);
         }}
+        notice={
+          notice === 'saved' ? (
+            <div ref={savedRef} tabIndex={-1} className="b89AiSettings__saved">
+              <EuiCallOut size="s" color="success" iconType="check" title="Configuración guardada">
+                <p role="status">
+                  <span className="b89AiSrOnly">Configuración guardada. </span>
+                  {deploymentEnabled === false
+                    ? 'Quedó guardada, pero no se aplicará hasta que el Analista IA se active en este entorno.'
+                    : 'Se aplica a las investigaciones que empiecen desde ahora.'}
+                </p>
+              </EuiCallOut>
+            </div>
+          ) : null
+        }
       />
       {confirm && (
         <EuiConfirmModal

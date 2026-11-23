@@ -200,7 +200,7 @@ describe('reportes de investigación', () => {
     });
     expect(attempts).toBe(2);
     expect(report.events.map((item) => item.id)).toEqual(['recovered']);
-    expect(messages).toContain('El Indexer no respondió; reintentando la página (1/2)');
+    expect(messages).toContain('El SIEM no respondió; reintentando (1/2)');
   });
 
   it('tras agotar los reintentos rechaza la exportación sin devolver un resultado parcial', async () => {

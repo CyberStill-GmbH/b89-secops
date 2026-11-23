@@ -37,11 +37,11 @@ export interface ServiceStatus {
 }
 
 export const STATUS_LABEL = {
-  operational: 'Operativo',
+  operational: 'Funciona',
   receiving: 'Recibiendo datos',
-  silent: 'Silencioso',
-  failing: 'Fallando',
-  disabled: 'Deshabilitado',
+  silent: 'Sin eventos',
+  failing: 'Con problemas',
+  disabled: 'Desactivada',
   permission: 'Requiere permiso',
 } as const;
 
@@ -111,7 +111,7 @@ export function monitorStatus(
     return {
       tone: 'fail',
       label: STATUS_LABEL.failing,
-      detail: item.summary || `${who}: el collector falla.`,
+      detail: item.summary || `${who}: el conector falla.`,
     };
   }
   if (item.state === 'silent') {
@@ -139,7 +139,7 @@ export function providerStatus(
     return {
       tone: 'neutral',
       label: 'Sin permiso de lectura',
-      detail: 'Tu rol no puede leer wazuh-alerts-*.',
+      detail: 'Tu rol no tiene permiso para ver los eventos del SIEM.',
     };
   }
   const monitored = monitorStatus(id, overview, now);
@@ -158,7 +158,7 @@ export function providerStatus(
   }
   if (monitored) return monitored;
   if (!stats) {
-    return { tone: 'fail', label: 'Sin respuesta del Indexer', detail: null };
+    return { tone: 'fail', label: 'El SIEM no responde', detail: null };
   }
   if (!stats.lastEventAt) {
     const permission = permissionProblem(id, overview);
@@ -186,7 +186,7 @@ export function wazuhStatus(
   if (declared) return declared;
   if (!overview) return { tone: 'neutral', label: 'Consultando…', detail: null };
   if (overview.alertsAccess === 'error') {
-    return { tone: 'fail', label: 'Indexer sin respuesta', detail: null };
+    return { tone: 'fail', label: 'El SIEM no responde', detail: null };
   }
   if (source && (source.state === 'failed' || source.state === 'degraded')) {
     return {

@@ -21,10 +21,8 @@ import { DlpView } from './components/dlp_view';
 import { IntegrationsView } from './components/integrations_view';
 import { InvestigationView } from './components/investigation_view';
 import { OverviewView } from './components/overview_view';
-import { PlatformHealthSection } from './components/platform_health_view';
 import { PoliciesView } from './components/policies_view';
 import { NotificationsView } from './components/notifications_view';
-import { OperationsView } from './components/operations_view';
 import { SessionView } from './components/session_view';
 import { SourcesView } from './components/sources_view';
 
@@ -126,14 +124,9 @@ function Console({
     case 'notifications':
       return <NotificationsView />;
     case 'sources':
-      // «Salud de fuentes» incluye la salud operativa de la plataforma (una sola entrada de menú).
-      return (
-        <>
-          <SourcesView />
-          <PlatformHealthSection basePath={basePath} />
-          <OperationsView embedded />
-        </>
-      );
+      // «Salud de fuentes» incluye, plegada, la salud operativa de la plataforma (una sola
+      // entrada de menú, un solo botón «Actualizar»).
+      return <SourcesView basePath={basePath} />;
     case 'audit':
       return <AuditView />;
     case 'access':

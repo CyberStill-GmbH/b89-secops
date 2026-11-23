@@ -66,7 +66,7 @@ describe('B89ApiClient', () => {
       code: 'STATE_CONFLICT',
       status: 409,
       correlationId: 'corr-9',
-      message: 'El elemento cambió mientras trabajaba en él. Vuelva a cargarlo.',
+      message: 'Alguien cambió este elemento mientras trabajabas. Recárgalo y repite el cambio.',
     });
   });
 

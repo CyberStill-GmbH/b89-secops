@@ -54,9 +54,32 @@ export function VerdictBadge({
   );
 }
 
-/** Confianza en tres escalones; el rótulo siempre acompaña a las barras. */
-export function ConfidenceMeter({ confidence }: { confidence: AiRunSummary['confidence'] }) {
+const CONFIDENCE_SHORT: Readonly<Record<string, string>> = {
+  low: 'Baja',
+  medium: 'Media',
+  high: 'Alta',
+  unknown: 'Desconocida',
+};
+
+/**
+ * Confianza en tres escalones; el rótulo siempre acompaña a las barras. `short` deja solo «Media»
+ * cuando ya hay un rótulo «Confianza» al lado (evita «Confianza: Confianza media»).
+ */
+export function ConfidenceMeter({
+  confidence,
+  short = false,
+}: {
+  confidence: AiRunSummary['confidence'];
+  short?: boolean;
+}) {
   const step = confidenceStep(confidence);
+  const text = short
+    ? confidence === null
+      ? 'Sin dato'
+      : CONFIDENCE_SHORT[confidence]
+    : confidence === 'unknown'
+      ? AI_CONFIDENCE_LABEL.unknown
+      : confidenceLabel(confidence);
   return (
     <span className="b89AiConfidence" data-step={step}>
       <span className="b89AiConfidence__bars" aria-hidden="true">
@@ -64,9 +87,7 @@ export function ConfidenceMeter({ confidence }: { confidence: AiRunSummary['conf
         <span />
         <span />
       </span>
-      <span>
-        {confidence === 'unknown' ? AI_CONFIDENCE_LABEL.unknown : confidenceLabel(confidence)}
-      </span>
+      <span>{text}</span>
     </span>
   );
 }

@@ -2,13 +2,14 @@
  * Copyright B89. SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   EuiBasicTable,
   EuiButtonEmpty,
   EuiDescriptionList,
   EuiFlexGrid,
   EuiFlexItem,
+  EuiLoadingContent,
   EuiPanel,
   EuiSpacer,
   EuiText,
@@ -25,9 +26,14 @@ import {
   SourceHealth,
   SourceHealthModelInfo,
   SourceVerdictView,
+  sortVerdicts,
+  summarizeVerdicts,
+  verdictNeedsAttention,
   verdictReasonLabel,
 } from '../../common';
 import { B89Page, useChanges, useConsole } from './console_context';
+import { OperationsView } from './operations_view';
+import { PlatformHealthSection } from './platform_health_view';
 import { EmptyLine, ErrorCallout, HealthMark, Mono, Timestamp, useAsync } from './primitives';
 
 /** Streams medidos por la API: suscripciones de Office 365 y proveedores por grupo de regla. */
@@ -53,20 +59,30 @@ function lag(value: number | null): string {
   return `${(value / 1_000).toFixed(1)} s`;
 }
 
-export function SourcesView() {
+/**
+ * «Salud de fuentes»: la respuesta primero («X de Y fuentes funcionan; estas fallan y por qué»),
+ * las fuentes con problemas abiertas y ordenadas por gravedad, las que funcionan plegadas, y el
+ * detalle técnico (historial por conexión, monitor de plataforma y salud operativa) al final,
+ * plegado. Un solo botón «Actualizar» recarga todo (`refreshKey`).
+ */
+export function SourcesView({ basePath = '' }: { basePath?: string }) {
   const { can } = useConsole();
   if (!can(CAPABILITIES.sourcesRead)) {
     return (
       <B89Page title="Salud de fuentes">
-        <EmptyLine>Tu rol no incluye la lectura de la salud de las fuentes.</EmptyLine>
+        <EmptyLine>
+          Tu rol no incluye la salud de las fuentes. Pídela a un Administrador de plataforma si la
+          necesitas.
+        </EmptyLine>
       </B89Page>
     );
   }
-  return <SourcesContent />;
+  return <SourcesContent basePath={basePath} />;
 }
 
-function SourcesContent() {
+function SourcesContent({ basePath }: { basePath: string }) {
   const { api } = useConsole();
+  const [refreshKey, setRefreshKey] = useState(0);
   const health = useAsync(
     () =>
       api.get<{
@@ -75,56 +91,75 @@ function SourcesContent() {
         verdicts?: unknown;
         healthModel?: SourceHealthModelInfo;
       }>('/sources/health'),
-    [api],
+    [api, refreshKey],
   );
   useChanges(['source'], () => health.reload());
+  const refresh = () => setRefreshKey((value) => value + 1);
 
   return (
     <B89Page
       title="Salud de fuentes"
-      description="Estado de la ingesta que alimenta la cola: cuándo se leyó por última vez y por qué está así."
+      description="¿Llegan los datos de cada fuente? Lo que falla aparece primero."
       actions={
-        <EuiButtonEmpty
-          size="s"
-          iconType="refresh"
-          onClick={health.reload}
-          isLoading={health.loading}
-        >
-          Actualizar
-        </EuiButtonEmpty>
+        <span className="b89SourcesActions">
+          {health.data && (
+            <span className="b89Muted">
+              Actualizado <Timestamp iso={health.data.checkedAt} />
+            </span>
+          )}
+          <EuiButtonEmpty size="s" iconType="refresh" onClick={refresh} isLoading={health.loading}>
+            Actualizar
+          </EuiButtonEmpty>
+        </span>
       }
     >
-      {health.error != null && <ErrorCallout error={health.error} onRetry={health.reload} />}
-      {health.data && (
-        <>
-          <EuiText size="xs" color="subdued">
-            <p>
-              Comprobado <Timestamp iso={health.data.checkedAt} />
+      <div lang="es-PE" translate="no">
+        {health.error != null && <ErrorCallout error={health.error} onRetry={refresh} />}
+        {health.loading && !health.data && health.error == null && (
+          <EuiLoadingContent lines={4} />
+        )}
+        {health.data && (
+          <>
+            <SourceVerdicts
+              verdicts={parseVerdicts(health.data.verdicts)}
+              model={health.data.healthModel ?? null}
+            />
+            <EuiSpacer size="l" />
+            <p className="b89Muted">
+              Para conectar una fuente o revisar sus permisos, ve a{' '}
+              <a href={`${basePath}/app/b89-integrations`}>Integraciones</a>.
             </p>
-          </EuiText>
-          <EuiSpacer size="m" />
-          <SourceVerdicts
-            verdicts={parseVerdicts(health.data.verdicts)}
-            model={health.data.healthModel ?? null}
-          />
+          </>
+        )}
+        <EuiSpacer size="l" />
+        <details className="b89Guide__details">
+          <summary>Detalle técnico de la plataforma</summary>
+          <EuiSpacer size="s" />
+          {health.data && (
+            <section aria-labelledby="b89-source-history-title" className="b89TechSection">
+              <EuiTitle size="xs">
+                <h3 id="b89-source-history-title">Historial de cada conexión</h3>
+              </EuiTitle>
+              <EuiSpacer size="s" />
+              {health.data.sources.length === 0 ? (
+                <EmptyLine>No hay conexiones configuradas para esta organización.</EmptyLine>
+              ) : (
+                <EuiFlexGrid columns={2} gutterSize="m" responsive>
+                  {health.data.sources.map((source) => (
+                    <EuiFlexItem key={`${source.sourceId}:${source.dataset}`}>
+                      <SourceCard source={source} />
+                    </EuiFlexItem>
+                  ))}
+                </EuiFlexGrid>
+              )}
+            </section>
+          )}
           <EuiSpacer size="l" />
-          <details>
-            <summary>Ver historial y datos técnicos de cada conexión</summary>
-            <EuiSpacer size="s" />
-            {health.data.sources.length === 0 ? (
-              <EmptyLine>No hay fuentes configuradas para este tenant.</EmptyLine>
-            ) : (
-              <EuiFlexGrid columns={2} gutterSize="m" responsive>
-                {health.data.sources.map((source) => (
-                  <EuiFlexItem key={`${source.sourceId}:${source.dataset}`}>
-                    <SourceCard source={source} />
-                  </EuiFlexItem>
-                ))}
-              </EuiFlexGrid>
-            )}
-          </details>
-        </>
-      )}
+          <PlatformHealthSection basePath={basePath} refreshKey={refreshKey} />
+          <EuiSpacer size="l" />
+          <OperationsView embedded refreshKey={refreshKey} />
+        </details>
+      </div>
     </B89Page>
   );
 }
@@ -159,7 +194,7 @@ export function ingestLagText(lag: SourceVerdictView['ingestLag']): string {
   }`;
 }
 
-/** Salud por fuente: veredicto, motivos y la línea de tiempo de cada señal. */
+/** Salud por fuente: la respuesta, las fuentes con problemas abiertas y las que funcionan plegadas. */
 export function SourceVerdicts({
   verdicts,
   model,
@@ -167,38 +202,76 @@ export function SourceVerdicts({
   verdicts: readonly SourceVerdictView[];
   model: SourceHealthModelInfo | null;
 }) {
+  const summary = summarizeVerdicts(verdicts);
+  const sorted = sortVerdicts(verdicts);
+  const attention = sorted.filter((item) => verdictNeedsAttention(item.verdict));
+  const working = sorted.filter((item) => !verdictNeedsAttention(item.verdict));
   return (
-    <section aria-label="Salud por fuente">
+    <section aria-labelledby="b89-source-verdicts-title">
       <EuiTitle size="xs">
-        <h2>Salud por fuente</h2>
+        <h2 id="b89-source-verdicts-title">Salud por fuente</h2>
       </EuiTitle>
-      <EuiText size="xs" color="subdued">
-        <p>
-          Aquí puedes saber si los datos están llegando, aunque no haya alertas. «Sin actividad»
-          puede ser normal; «Sin información» significa que B89 no pudo comprobar la fuente.
-          {model?.stale
-            ? ' Estos datos podrían estar desactualizados porque B89 no pudo consultar el indexador.'
-            : ''}
-        </p>
-      </EuiText>
-      {model?.measuredAt && (
-        <EuiText size="xs" color="subdued">
-          <p>
-            Medido <Timestamp iso={model.measuredAt} />
-          </p>
-        </EuiText>
-      )}
       <EuiSpacer size="s" />
       {verdicts.length === 0 ? (
-        <EmptyLine>La API no informó la salud por fuente (versión anterior o sin permiso).</EmptyLine>
+        <EmptyLine>
+          No se pudo medir la salud por fuente. Pulsa Actualizar; si persiste, avisa a plataforma.
+        </EmptyLine>
       ) : (
-        <EuiFlexGrid columns={3} gutterSize="m" responsive>
-          {verdicts.map((item) => (
-            <EuiFlexItem key={item.id}>
-              <SourceVerdictCard item={item} />
-            </EuiFlexItem>
-          ))}
-        </EuiFlexGrid>
+        <>
+          <div className="b89SourcesAnswer" data-tone={summary.tone}>
+            <p className="b89SourcesAnswer__headline">
+              <HealthMark tone={summary.tone} label={summary.headline} />
+            </p>
+            {summary.details.length > 0 && (
+              <ul className="b89List" aria-label="Fuentes que necesitan atención">
+                {summary.details.map((detail) => (
+                  <li key={detail}>{detail}</li>
+                ))}
+              </ul>
+            )}
+            {model?.stale && (
+              <p className="b89Muted">
+                Esta medición es de <Timestamp iso={model.measuredAt} />: B89 no pudo consultar el
+                SIEM en la última comprobación.
+              </p>
+            )}
+          </div>
+          <EuiSpacer size="m" />
+          {attention.length > 0 && (
+            <EuiFlexGrid columns={3} gutterSize="m" responsive>
+              {attention.map((item) => (
+                <EuiFlexItem key={item.id}>
+                  <SourceVerdictCard item={item} />
+                </EuiFlexItem>
+              ))}
+            </EuiFlexGrid>
+          )}
+          {working.length > 0 && (
+            <>
+              <EuiSpacer size="m" />
+              <details className="b89Guide__details">
+                <summary>
+                  {working.length === 1
+                    ? 'Ver la fuente que funciona'
+                    : `Ver las ${working.length} fuentes que funcionan`}
+                </summary>
+                <EuiSpacer size="s" />
+                <p className="b89Muted">
+                  «Sin eventos (normal)» significa que la conexión funciona pero no hubo eventos
+                  nuevos en el periodo revisado.
+                </p>
+                <EuiSpacer size="s" />
+                <EuiFlexGrid columns={3} gutterSize="m" responsive>
+                  {working.map((item) => (
+                    <EuiFlexItem key={item.id}>
+                      <SourceVerdictCard item={item} />
+                    </EuiFlexItem>
+                  ))}
+                </EuiFlexGrid>
+              </details>
+            </>
+          )}
+        </>
       )}
     </section>
   );
@@ -211,45 +284,42 @@ export function SourceVerdictCard({ item }: { item: SourceVerdictView }) {
     item.verdict === 'healthy'
       ? 'La última comprobación confirma que los datos están llegando.'
       : item.verdict === 'quiet'
-        ? 'La conexión está activa; no se han visto eventos nuevos en el periodo revisado.'
+        ? 'La conexión funciona; no hubo eventos nuevos en el periodo revisado.'
         : item.verdict === 'degraded'
-          ? `Los datos llegan con una incidencia${firstReason ? `: ${firstReason}` : '.'}`
+          ? `Los datos llegan, pero con un problema${firstReason ? `: ${firstReason}.` : '.'}`
           : item.verdict === 'failing'
-            ? `No se pudo confirmar la llegada de datos${firstReason ? `: ${firstReason}` : '.'}`
-            : 'Todavía no hay información suficiente para confirmar si los datos están llegando.';
+            ? `No se puede confirmar que lleguen datos${firstReason ? `: ${firstReason}.` : '.'}`
+            : 'B89 todavía no pudo comprobar si los datos están llegando.';
+  const titleId = `b89-source-${item.id}`;
   return (
-    <EuiPanel
-      hasBorder
-      paddingSize="m"
-      className="b89SourceCard"
-      data-verdict={item.verdict}
-      aria-label={`${item.label}: ${verdict}`}
-    >
-      <EuiTitle size="xxs">
-        <h3>{item.label}</h3>
-      </EuiTitle>
-      <EuiSpacer size="xs" />
-      <HealthMark tone={SOURCE_VERDICT_TONE[item.verdict]} label={verdict} />
-      <p>{summary}</p>
-      <EuiSpacer size="s" />
-      <details>
-        <summary>Ver comprobaciones y tiempos</summary>
+    <section aria-labelledby={titleId}>
+      <EuiPanel hasBorder paddingSize="m" className="b89SourceCard" data-verdict={item.verdict}>
+        <EuiTitle size="xxs">
+          <h3 id={titleId}>{item.label}</h3>
+        </EuiTitle>
+        <EuiSpacer size="xs" />
+        <HealthMark tone={SOURCE_VERDICT_TONE[item.verdict]} label={verdict} />
+        <p>{summary}</p>
         <EuiSpacer size="s" />
-        {item.reasons.length > 0 && (
-          <ul className="b89List" aria-label="Motivos detectados">
-            {item.reasons.map((reason) => (
-              <li key={reason}>{verdictReasonLabel(reason)}</li>
-            ))}
-          </ul>
-        )}
-        <EuiDescriptionList
-          type="responsiveColumn"
-          compressed
-          className="b89Facts"
-          listItems={verdictSignalItems(item)}
-        />
-      </details>
-    </EuiPanel>
+        <details className="b89Guide__details">
+          <summary>Ver comprobaciones y tiempos</summary>
+          <EuiSpacer size="s" />
+          {item.reasons.length > 0 && (
+            <ul className="b89List" aria-label="Motivos detectados">
+              {item.reasons.map((reason) => (
+                <li key={reason}>{verdictReasonLabel(reason)}</li>
+              ))}
+            </ul>
+          )}
+          <EuiDescriptionList
+            type="responsiveColumn"
+            compressed
+            className="b89Facts"
+            listItems={verdictSignalItems(item)}
+          />
+        </details>
+      </EuiPanel>
+    </section>
   );
 }
 
@@ -260,7 +330,7 @@ export function verdictSignalItems(
   const run = item.heartbeat;
   return [
           {
-            title: 'Último latido del colector',
+            title: 'Último reporte del colector',
             description:
               item.expectedHeartbeatMs === null && item.id !== 'wazuh-indexer' ? (
                 <span className="b89Muted">No aplica (sin colector propio)</span>
@@ -268,15 +338,15 @@ export function verdictSignalItems(
                 <Timestamp iso={item.lastHeartbeatAt} />
               ),
           },
-          { title: 'Última corrida correcta', description: <Timestamp iso={item.lastSuccessfulRunAt} /> },
+          { title: 'Última lectura correcta', description: <Timestamp iso={item.lastSuccessfulRunAt} /> },
           { title: 'Última autenticación correcta', description: <Timestamp iso={item.lastAuthOkAt} /> },
           { title: 'Último evento', description: <Timestamp iso={item.lastEventAt} /> },
           { title: 'Volumen vs lo esperado', description: volumeText(item.volume) },
-          { title: 'Retraso de ingesta', description: ingestLagText(item.ingestLag) },
+          { title: 'Retraso hasta el SIEM', description: ingestLagText(item.ingestLag) },
           { title: 'Atraso del proveedor', description: seconds(item.providerLagSeconds) },
-          { title: 'Canario sintético', description: <Timestamp iso={item.canaryAt} /> },
+          { title: 'Evento de prueba automático', description: <Timestamp iso={item.canaryAt} /> },
           {
-            title: 'Última corrida',
+            title: 'Última lectura',
             description: run ? (
               <span>
                 <Mono>{`${run.outcome ?? '?'} · auth ${run.auth ?? '?'} · HTTP ${
@@ -300,8 +370,8 @@ export function verdictSignalItems(
 function SourceCard({ source }: { source: SourceHealth }) {
   return (
     <EuiPanel hasBorder paddingSize="m" className="b89SourceCard">
-      <EuiTitle size="xs">
-        <h2>{source.displayName}</h2>
+      <EuiTitle size="xxs">
+        <h4>{source.displayName}</h4>
       </EuiTitle>
       <EuiSpacer size="xs" />
       <HealthMark tone={SOURCE_TONE[source.state]} label={SOURCE_STATE_LABEL[source.state]} />
@@ -322,7 +392,7 @@ function SourceCard({ source }: { source: SourceHealth }) {
           },
           { title: 'Último evento de fuente', description: <Timestamp iso={source.lastEventAt} /> },
           {
-            title: 'Lag evento → fin de lectura',
+            title: 'Retraso evento → fin de lectura',
             description: (
               <>
                 <span className="b89Tabular">
@@ -330,7 +400,7 @@ function SourceCard({ source }: { source: SourceHealth }) {
                   {lag(source.eventLag.p99Ms)} · muestras {source.eventLag.sampleCount}/
                   {source.eventLag.sampleWindow}
                   {source.eventLag.clockSkewSamples > 0
-                    ? ` · skew ${source.eventLag.clockSkewSamples}`
+                    ? ` · ${source.eventLag.clockSkewSamples} con reloj desfasado`
                     : ''}
                 </span>
                 <br />
@@ -361,7 +431,7 @@ function SourceCard({ source }: { source: SourceHealth }) {
         <>
           <EuiSpacer size="m" />
           <EuiTitle size="xxs">
-            <h3>Cambios recientes</h3>
+            <h5>Cambios recientes</h5>
           </EuiTitle>
           <EuiSpacer size="s" />
           <ol className="b89Timeline">
@@ -393,7 +463,7 @@ export function ProcessingSummary({ processing }: { processing: SourceHealth['pr
     <>
       <EuiSpacer size="m" />
       <EuiTitle size="xxs">
-        <h3>Último sondeo y procesamiento</h3>
+        <h5>Último sondeo y procesamiento</h5>
       </EuiTitle>
       {processing ? (
         <>
@@ -477,7 +547,7 @@ export function SubscriptionActivity({
     <>
       <EuiSpacer size="m" />
       <EuiTitle size="xxs">
-        <h3>Actividad por flujo (últimas {subscriptions.windowHours} h)</h3>
+        <h5>Actividad por flujo (últimas {subscriptions.windowHours} h)</h5>
       </EuiTitle>
       <EuiText size="xs" color="subdued">
         <p>

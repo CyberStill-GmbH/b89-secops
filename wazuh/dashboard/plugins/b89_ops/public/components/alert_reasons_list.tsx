@@ -17,7 +17,7 @@ export function AlertReasonsList({
   reasons: ReadonlyArray<{ readonly code: string; readonly detail: string }>;
 }) {
   if (reasons.length === 0) {
-    return <EmptyLine>El motor de priorización no registró motivos.</EmptyLine>;
+    return <EmptyLine>No hay más detalle sobre la prioridad.</EmptyLine>;
   }
   const { scope, groups } = groupAlertReasons(reasons);
   const single = groups.length === 1 && groups[0]?.id === 'priority' && !scope;
@@ -29,7 +29,7 @@ export function AlertReasonsList({
             size="s"
             color="primary"
             iconType="iInCircle"
-            title="Candidato del correlador"
+            title="Posible ataque en varios pasos (por confirmar)"
           >
             <p>{scope}</p>
           </EuiCallOut>
@@ -51,11 +51,6 @@ export function AlertReasonsList({
           <ul className="b89List">
             {group.items.map((item, index) => (
               <li key={`${group.id}-${index}`}>
-                {group.id === 'priority' && (
-                  <>
-                    <Mono>{item.code}</Mono>{' '}
-                  </>
-                )}
                 {item.met !== undefined && (
                   <>
                     <HealthMark
@@ -65,6 +60,12 @@ export function AlertReasonsList({
                   </>
                 )}
                 <span>{item.text}</span>
+                {group.id === 'priority' && (
+                  <>
+                    {' '}
+                    <Mono title="Código interno del motor de priorización">{item.code}</Mono>
+                  </>
+                )}
               </li>
             ))}
           </ul>

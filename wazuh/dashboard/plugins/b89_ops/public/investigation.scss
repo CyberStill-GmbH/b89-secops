@@ -129,23 +129,66 @@ $b89InvGradient: linear-gradient(110deg, #ff5899 0%, #ff5841 55%, #ffc136 100%);
   }
 }
 
+.b89Investigation__leadText {
+  min-width: 0;
+}
+
 .b89Investigation__facts {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 14px;
-  margin-top: $ouiSizeS;
-  color: $ouiTextSubduedColor;
+  gap: 6px 16px;
+  margin: $ouiSizeS 0 0;
+  padding: 0;
+  color: $ouiTextColor;
   font-size: $ouiFontSizeS;
+  list-style: none;
+
+  > li {
+    margin: 0;
+  }
+
+  &--compact {
+    margin-top: 4px;
+    gap: 4px 12px;
+  }
+}
+
+.b89Investigation__factLabel {
+  color: $ouiTextSubduedColor;
+}
+
+.b89Investigation__tech {
+  margin-top: $ouiSizeS;
+}
+
+.b89Investigation__techBody {
+  margin: 0;
+  color: $ouiTextSubduedColor;
+  font-size: $ouiFontSizeXS;
+  overflow-wrap: anywhere;
+}
+
+.b89Investigation__note {
+  margin: $ouiSizeS 0;
+  color: $ouiTextSubduedColor;
+  font-size: $ouiFontSizeXS;
+}
+
+.b89Investigation__incidentTitle {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .b89Investigation__actions {
   display: flex;
   flex-shrink: 0;
   flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
   gap: $ouiSizeS;
-  max-width: 460px;
+  max-width: 560px;
 
   @media (max-width: $b89InvTablet) {
     max-width: none;
@@ -153,10 +196,110 @@ $b89InvGradient: linear-gradient(110deg, #ff5899 0%, #ff5841 55%, #ffc136 100%);
   }
 
   @media (max-width: $b89InvMobile) {
-    .euiButton {
+    > .euiButton,
+    > .euiPopover,
+    > .euiPopover .euiButton {
       flex: 1 1 100%;
+      width: 100%;
     }
   }
+}
+
+// Exportar / Buscar en el SIEM: nota bajo el menú y estado de la exportación.
+.b89ExportMenu__hint {
+  margin: 0;
+  padding: $ouiSizeS $ouiSizeM;
+  border-top: 1px solid $ouiBorderColor;
+  color: $ouiTextSubduedColor;
+  font-size: $ouiFontSizeXS;
+  max-width: 320px;
+}
+
+.b89ExportStatus {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px $ouiSizeS;
+  color: $ouiTextSubduedColor;
+  font-size: $ouiFontSizeXS;
+  text-align: right;
+
+  progress {
+    width: 120px;
+    height: 8px;
+    accent-color: #ff5899;
+  }
+
+  // Vacío: fuera del flujo pero presente para el lector de pantalla.
+  &:empty {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  @media (max-width: $b89InvTablet) {
+    justify-content: flex-start;
+    text-align: left;
+  }
+}
+
+// Quiénes están involucrados: una fila de tarjetas por entidad.
+.b89EntityCards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: $ouiSizeS;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.b89EntityCard {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  padding: $ouiSizeS $ouiSizeM;
+  border: 1px solid $ouiBorderColor;
+  border-radius: 12px;
+  background: $ouiColorEmptyShade;
+
+  &--on {
+    border-color: rgba(#ff5899, 0.7);
+  }
+
+  .euiSwitch {
+    margin-top: 2px;
+  }
+}
+
+.b89Entity__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 $ouiSizeS;
+}
+
+// Controles de la línea de tiempo (ventana · vista · orden).
+.b89TimelineControls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $ouiSizeS $ouiSize;
+}
+
+.b89TimelineControls__group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.b89TimelineControls__label {
+  color: $ouiTextSubduedColor;
+  font-size: $ouiFontSizeXS;
+  font-weight: 600;
 }
 
 .b89Investigation__main,
@@ -194,8 +337,12 @@ $b89InvGradient: linear-gradient(110deg, #ff5899 0%, #ff5841 55%, #ffc136 100%);
 
   .b89Investigation__back,
   .b89Investigation__actions,
-  .b89Chip,
-  .b89Timeline__title button {
+  .b89Investigation__tech,
+  .b89TimelineControls,
+  .b89Entity__actions,
+  .b89EntityCard .euiSwitch,
+  .b89Timeline__body > .euiButtonEmpty,
+  .b89Investigation__pagination {
     display: none !important;
   }
 
@@ -241,7 +388,7 @@ $b89InvGradient: linear-gradient(110deg, #ff5899 0%, #ff5841 55%, #ffc136 100%);
   }
 
   .b89Timeline__item,
-  .b89Entity,
+  .b89EntityCard,
   .b89Card li {
     break-inside: avoid;
   }
@@ -270,6 +417,7 @@ $b89InvGradient: linear-gradient(110deg, #ff5899 0%, #ff5841 55%, #ffc136 100%);
   max-width: 100%;
   align-items: center;
   gap: 6px;
+  min-height: 28px;
   padding: 3px 10px;
   border: 1px solid $ouiBorderColor;
   border-radius: 999px;
@@ -291,6 +439,7 @@ $b89InvGradient: linear-gradient(110deg, #ff5899 0%, #ff5841 55%, #ffc136 100%);
   }
 
   &--static {
+    min-height: 0;
     cursor: default;
     padding: 1px 8px;
   }
@@ -349,15 +498,15 @@ $b89InvGradient: linear-gradient(110deg, #ff5899 0%, #ff5841 55%, #ffc136 100%);
   gap: $ouiSize;
   padding: 0 0 $ouiSize;
 
-  &[data-level='Crítica'] .b89Timeline__dot {
+  &[data-tone='very-high'] .b89Timeline__dot {
     background: #ff5841;
   }
 
-  &[data-level='Alta'] .b89Timeline__dot {
+  &[data-tone='high'] .b89Timeline__dot {
     background: #f5a35c;
   }
 
-  &[data-level='Media'] .b89Timeline__dot {
+  &[data-tone='medium'] .b89Timeline__dot {
     background: #ffc136;
   }
 }
@@ -389,39 +538,68 @@ $b89InvGradient: linear-gradient(110deg, #ff5899 0%, #ff5841 55%, #ffc136 100%);
 }
 
 .b89Timeline__title {
-  display: block;
-  margin: 4px 0;
-  padding: 0;
-  border: 0;
-  background: none;
+  margin: 4px 0 2px;
   color: $ouiTitleColor;
-  cursor: pointer;
   font-size: $ouiFontSizeS;
   font-weight: 500;
   overflow-wrap: anywhere;
-  text-align: left;
+}
 
-  &:hover,
-  &:focus-visible {
-    text-decoration: underline;
+.b89Timeline__clock {
+  color: $ouiTextColor;
+  font-weight: 700;
+}
+
+// Nivel de la regla de Wazuh: palabra + número, el color solo acompaña.
+.b89Level {
+  padding: 0 6px;
+  border: 1px solid $ouiBorderColor;
+  border-radius: 4px;
+  color: $ouiTextColor;
+
+  &[data-tone='very-high'] {
+    border-color: #ff5841;
   }
 
-  &::after {
-    margin-left: 6px;
-    color: $ouiTextSubduedColor;
-    content: '▸';
+  &[data-tone='high'] {
+    border-color: #f5a35c;
   }
 
-  &[aria-expanded='true']::after {
-    content: '▾';
+  &[data-tone='medium'] {
+    border-color: #ffc136;
   }
 }
 
-.b89Timeline__matched {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-bottom: 4px;
+// «Coincide con: IP 10.0.0.4»: texto, no un chip (no parece un filtro).
+.b89Match {
+  margin: 0;
+  color: $ouiTextSubduedColor;
+  font-size: $ouiFontSizeXS;
+  overflow-wrap: anywhere;
+}
+
+.b89EventDetail {
+  margin-top: 4px;
+  padding: $ouiSizeS $ouiSizeM;
+  border: 1px solid $ouiBorderColor;
+  border-radius: 8px;
+}
+
+// Separador de día dentro de la línea de tiempo.
+.b89Timeline__day {
+  position: relative;
+  margin: 0 0 $ouiSizeS;
+  padding-left: 30px;
+
+  span {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: $ouiColorLightShade;
+    color: $ouiTextColor;
+    font-size: $ouiFontSizeXS;
+    font-weight: 700;
+  }
 }
 
 .b89Timeline__anchor {
@@ -475,21 +653,6 @@ $b89InvGradient: linear-gradient(110deg, #ff5899 0%, #ff5841 55%, #ffc136 100%);
 }
 
 // Entidades con pivotes.
-.b89Entities {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.b89Entity {
-  padding: 10px 0;
-  border-bottom: 1px solid $ouiBorderColor;
-
-  &:last-child {
-    border-bottom: 0;
-  }
-}
-
 .b89Entity__head {
   display: flex;
   align-items: center;
@@ -507,26 +670,11 @@ $b89InvGradient: linear-gradient(110deg, #ff5899 0%, #ff5841 55%, #ffc136 100%);
 
 .b89Entity__value {
   display: block;
-  margin-top: 2px;
   font-family: $ouiCodeFontFamily;
   font-size: $ouiFontSizeS;
   overflow-wrap: anywhere;
 }
 
-.b89Entity__field {
-  display: block;
-  color: $ouiTextSubduedColor;
-  font-family: $ouiCodeFontFamily;
-  font-size: 10px;
-}
-
-.b89Entity__links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  margin-top: 4px;
-  font-size: $ouiFontSizeXS;
-}
 
 // Chip «Riesgo» (motor de correlación).
 .b89Risk {
@@ -535,7 +683,13 @@ $b89InvGradient: linear-gradient(110deg, #ff5899 0%, #ff5841 55%, #ffc136 100%);
   gap: 4px;
   padding: 1px 8px;
   border-radius: 999px;
+  color: $ouiTextColor;
   font-size: 11px;
+
+  &:focus-visible {
+    outline: 2px solid #ff5899;
+    outline-offset: 2px;
+  }
 
   &--low {
     background: rgba(#7f95aa, 0.2);
@@ -767,4 +921,31 @@ $b89InvGradient: linear-gradient(110deg, #ff5899 0%, #ff5841 55%, #ffc136 100%);
   flex-wrap: wrap;
   gap: $ouiSizeS;
   margin-top: $ouiSizeM;
+}
+
+// Resumen en lenguaje llano de una alerta (alert_guide_panel.tsx): qué pasó, ¿es real?, qué hacer.
+.b89Guide__list {
+  ul,
+  ol {
+    margin: 0;
+    padding-left: $ouiSizeL;
+  }
+
+  li + li {
+    margin-top: $ouiSizeXS;
+  }
+}
+
+// Detalle plegable (motivos técnicos, actividad agrupada, tablas de análisis, gráficos).
+.b89Guide__details {
+  > summary {
+    cursor: pointer;
+    color: $ouiLinkColor;
+    font-size: $ouiFontSizeS;
+    font-weight: $ouiFontWeightMedium;
+  }
+
+  &[open] > summary {
+    margin-bottom: $ouiSizeS;
+  }
 }

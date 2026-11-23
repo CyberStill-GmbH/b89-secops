@@ -9,13 +9,7 @@ import type {
   Plugin,
   PluginInitializerContext,
 } from '../../../src/core/public';
-import {
-  BRAND_ASSETS_PATH,
-  MONITORING_CATEGORY_NAME,
-  NAV_CATEGORY_NAME,
-  B89_APPS,
-  RESPOND_APP,
-} from '../common';
+import { BRAND_ASSETS_PATH, B89_APPS, NAV_CATEGORIES, NAV_PLACEMENT, RESPOND_APP } from '../common';
 import type { PublicConfigSchema } from '../config';
 import { ChangeFeed } from './api/change_feed';
 import { B89ApiClient } from './api/client';
@@ -27,7 +21,7 @@ import { BunnyState, mountBunnyPanel, registerBunnyLauncher } from './bunny/bunn
 /**
  * Plugin público de B89 SecOps para OSD 2.19.6.
  *
- * - Registra la categoría «B89 SOC» primera en el menú.
+ * - Registra cada app en su categoría del menú (common/navigation.ts).
  * - Un único cliente de API y un único long-poll de `/api/changes` por página del dashboard,
  *   compartidos por todas las apps B89 y por el aviso de P1 de la cabecera.
  * - No importa valores del core en tiempo de ejecución (solo tipos): el plugin no depende de
@@ -58,26 +52,23 @@ export class B89OpsPublicPlugin implements Plugin<void, void> {
   }
 
   public setup(core: CoreSetup) {
-    const category = {
-      id: 'b89-secops',
-      label: NAV_CATEGORY_NAME,
-      order: -1000,
-      euiIconType: core.http.basePath.prepend(`${BRAND_ASSETS_PATH}/b89-observability.svg`),
-    };
-    // «Monitoreo» justo debajo de «B89 SOC»: la vigilancia en vivo (cola de alertas) separada
-    // del resumen, que es la portada tras iniciar sesión.
-    const monitoring = {
-      id: 'b89-monitoring',
-      label: MONITORING_CATEGORY_NAME,
-      order: -999,
-      euiIconType: core.http.basePath.prepend(`${BRAND_ASSETS_PATH}/b89-alerts.svg`),
+    // Categoría y orden iniciales iguales a los de `registerNavigation` (common/navigation.ts),
+    // que es quien decide el menú: aquí no queda una segunda configuración que pueda divergir.
+    const categoryOf = (appId: string) => {
+      const spec = NAV_CATEGORIES[NAV_PLACEMENT[appId]?.category ?? 'summary'];
+      return {
+        id: spec.id,
+        label: spec.label,
+        order: spec.order,
+        euiIconType: core.http.basePath.prepend(`${BRAND_ASSETS_PATH}/${spec.icon}`),
+      };
     };
     for (const app of B89_APPS) {
       core.application.register({
         id: app.id,
         title: app.title,
-        category: app.category === 'monitoring' ? monitoring : category,
-        order: app.order,
+        category: categoryOf(app.id),
+        order: NAV_PLACEMENT[app.id]?.order ?? app.order,
         euiIconType: core.http.basePath.prepend(`${BRAND_ASSETS_PATH}/${app.icon}`),
         mount: async (params: AppMountParameters) => {
           try {
@@ -106,8 +97,8 @@ export class B89OpsPublicPlugin implements Plugin<void, void> {
     core.application.register({
       id: RESPOND_APP.id,
       title: RESPOND_APP.title,
-      category,
-      order: RESPOND_APP.order,
+      category: categoryOf(RESPOND_APP.id),
+      order: NAV_PLACEMENT[RESPOND_APP.id]?.order ?? RESPOND_APP.order,
       euiIconType: core.http.basePath.prepend(`${BRAND_ASSETS_PATH}/${RESPOND_APP.icon}`),
       mount: async (params: AppMountParameters) => {
         try {

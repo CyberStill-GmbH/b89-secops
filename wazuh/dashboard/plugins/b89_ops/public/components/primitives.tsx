@@ -88,9 +88,25 @@ export function relativeTime(iso: string, now: number = Date.now()): string {
 }
 
 /** Instante relativo con la marca absoluta y la zona horaria siempre disponibles. */
-export function Timestamp({ iso }: { iso: string | null | undefined }) {
-  if (!iso) return <span className="b89Muted">Sin dato</span>;
+export function Timestamp({
+  iso,
+  focusable = true,
+  emptyLabel = 'Sin dato',
+}: {
+  iso: string | null | undefined;
+  /** `false` en filas de tablas y listas: la fecha absoluta va en `title` y no suma una parada de Tab por fila. */
+  focusable?: boolean;
+  emptyLabel?: string;
+}) {
+  if (!iso) return <span className="b89Muted">{emptyLabel}</span>;
   const absolute = ABSOLUTE.format(new Date(iso));
+  if (!focusable) {
+    return (
+      <time dateTime={iso} className="b89Tabular" title={absolute} data-b89-no-translate="">
+        {relativeTime(iso)}
+      </time>
+    );
+  }
   return (
     <EuiToolTip content={absolute}>
       <time dateTime={iso} className="b89Tabular" tabIndex={0} data-b89-no-translate="">
@@ -98,6 +114,11 @@ export function Timestamp({ iso }: { iso: string | null | undefined }) {
       </time>
     </EuiToolTip>
   );
+}
+
+/** Fecha y hora absolutas, legibles («22 nov 2026, 14:32:05 GMT-5»). */
+export function absoluteTime(iso: string): string {
+  return ABSOLUTE.format(new Date(iso));
 }
 
 /** Estado vacío: una línea que explica por qué y qué hacer (A10, sin ilustraciones). */
@@ -116,7 +137,7 @@ export function ErrorCallout({ error, onRetry }: { error: unknown; onRetry?: () 
     <EuiCallOut
       color={degraded ? 'warning' : 'danger'}
       iconType={degraded ? 'alert' : 'cross'}
-      title={apiError?.message ?? 'Ocurrió un problema inesperado. El equipo ya fue notificado.'}
+      title={apiError?.message ?? 'Algo falló de forma inesperada. Reintenta; si se repite, avisa al equipo de plataforma con la referencia.'}
       size="s"
     >
       {apiError?.correlationId && (
@@ -149,17 +170,26 @@ export function useAsync<T>(load: () => Promise<T>, deps: React.DependencyList):
   });
   const [tick, setTick] = useState(0);
   const generation = useRef(0);
-  const reload = useCallback(() => setTick((value) => value + 1), []);
+  const reloading = useRef(false);
+  const reload = useCallback(() => {
+    reloading.current = true;
+    setTick((value) => value + 1);
+  }, []);
 
   useEffect(() => {
     const current = ++generation.current;
+    // Una recarga (refresco en vivo, «Reintentar») que falla conserva los datos que ya se veían:
+    // la vista muestra el error sin vaciarse. Una consulta nueva (otros filtros) no los conserva.
+    const keepOnError = reloading.current;
+    reloading.current = false;
     setState((previous) => ({ ...previous, loading: true, error: null }));
     load().then(
       (data) => {
         if (generation.current === current) setState({ data, error: null, loading: false });
       },
       (error) => {
-        if (generation.current === current) setState({ data: null, error, loading: false });
+        if (generation.current === current)
+          setState((previous) => ({ data: keepOnError ? previous.data : null, error, loading: false }));
       },
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -183,6 +213,35 @@ export function DataZone({
     <div className={className} data-b89-no-translate="">
       {children}
     </div>
+  );
+}
+
+/** Actor de servicio del Analista IA (`apps/api`), que también asigna y comenta. */
+export const AI_ANALYST_ACTOR = 'svc:b89-ai-analyst';
+
+/**
+ * Persona detrás de un id de sujeto, en palabras: «Tú», «Analista IA» u «Otro analista». Nunca un
+ * id cortado: el id completo queda en el tooltip para quien necesite rastrearlo en Auditoría.
+ * (La API no expone hoy nombres de otras personas a un analista.)
+ */
+export function Person({
+  id,
+  viewerId,
+  emptyLabel = 'Sin responsable',
+}: {
+  id: string | null | undefined;
+  viewerId: string;
+  emptyLabel?: string;
+}) {
+  if (!id) return <span className="b89Muted">{emptyLabel}</span>;
+  if (id === viewerId) return <strong>Tú</strong>;
+  if (id === AI_ANALYST_ACTOR) return <span>Analista IA</span>;
+  return (
+    <EuiToolTip content={`Identificador: ${id}`}>
+      <span tabIndex={0} className="b89Person" data-b89-no-translate="">
+        Otro analista
+      </span>
+    </EuiToolTip>
   );
 }
 

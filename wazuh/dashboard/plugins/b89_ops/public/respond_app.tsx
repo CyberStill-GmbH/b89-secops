@@ -65,9 +65,13 @@ function RespondView({ api, basePath }: { api: B89ApiClient; basePath: string })
 
   if (state === 'forbidden') {
     return (
-      <div className="b89RespondNotice" role="status">
-        <h2>B89 Respond</h2>
-        <p>Tu rol no incluye la respuesta a incidentes. Pide acceso a tu Líder SOC.</p>
+      <div className="b89RespondNotice" role="status" lang="es-PE">
+        <h2>Respuesta automática (SOAR)</h2>
+        <p>
+          B89 Respond requiere un rol con gestión de incidentes, y el tuyo no la incluye. Revisa tu
+          rol en <a href={`${basePath}/app/b89-session`}>Mi sesión</a> y pide el cambio a tu Líder
+          SOC.
+        </p>
       </div>
     );
   }
@@ -88,7 +92,10 @@ function RespondView({ api, basePath }: { api: B89ApiClient; basePath: string })
       {state === 'unavailable' && (
         <div className="b89RespondNotice" role="alert">
           <h2>B89 Respond no está disponible</h2>
-          <p>El servicio no respondió. Puedes reintentar o abrirlo en una pestaña aparte.</p>
+          <p>
+            El servicio no respondió. Reintenta o ábrelo en una pestaña aparte; si sigue sin
+            cargar, avisa a plataforma.
+          </p>
           <p>
             <button type="button" className="b89RespondRetry" onClick={() => setAttempt((n) => n + 1)}>
               Reintentar

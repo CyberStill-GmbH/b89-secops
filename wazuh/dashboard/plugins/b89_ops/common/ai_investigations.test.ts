@@ -253,10 +253,10 @@ describe('rótulos y reglas puras', () => {
   it('cada estado del contrato tiene rótulo en español', () => {
     for (const status of AI_RUN_STATUSES) expect(AI_RUN_STATUS_LABEL[status]).toBeTruthy();
     expect(inferenceLabel('none')).toBe('Sin IA');
-    expect(inferenceLabel('economy')).toBe('Económico');
-    expect(inferenceLabel('advanced')).toBe('Avanzado');
+    expect(inferenceLabel('economy')).toBe('IA estándar');
+    expect(inferenceLabel('advanced')).toBe('IA avanzada');
     expect(inferenceLabel(null)).toBe('Sin dato');
-    expect(verdictLabel(null)).toBe('Sin veredicto');
+    expect(verdictLabel(null)).toBe('Sin conclusión');
     expect(stageLabel('acting')).toBe('Acciones del analista');
     expect(stageLabel('warp')).toBeNull();
     expect(deterministicReasonLabel('NOT_ELIGIBLE')).toBeTruthy();
@@ -266,7 +266,7 @@ describe('rótulos y reglas puras', () => {
     expect(actionReasonLabel('SOMETHING_NEW')).toBeNull();
     expect(actionKindShort('escalate')).toBe('Escaló');
     expect(actionKindShort('teleport')).toBeNull();
-    expect(evidenceSourceStateLabel('healthy')).toBe('Operativa');
+    expect(evidenceSourceStateLabel('healthy')).toBe('Funciona');
     expect(evidenceSourceStateLabel('odd')).toBeNull();
   });
 

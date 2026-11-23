@@ -3,8 +3,8 @@
  *
  * «Tu revisión» y la «Bandeja de revisión» del Analista IA. Cuando un expediente pide revisión
  * humana, la persona decide aquí sobre la alerta con las acciones de alertas que ya existen
- * (asignar, triar y cerrar, abrir incidente, reconocer): mismos endpoints, mismas capacidades,
- * compare-and-set, auditoría y outbox del backend. Nada de esto cambia la lógica del analista.
+ * (asignar, clasificar y cerrar, abrir incidente, reconocer): mismos endpoints, mismas
+ * capacidades, compare-and-set y auditoría del backend. Nada de esto cambia la lógica del analista.
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -17,6 +17,7 @@ import {
   EuiTextArea,
 } from '@elastic/eui';
 import {
+  AiResult,
   AiRunAlert,
   AiRunDetail,
   AiRunPage,
@@ -24,14 +25,17 @@ import {
   Alert,
   ALERT_STATUS_LABEL,
   CAPABILITIES,
+  confidenceLabel,
+  formatCount,
   mergeRuns,
   NO_DATA,
+  verdictLabel,
   VERDICT_LABEL,
 } from '../../common';
 import { AlertStepError, getAlert, runAlertCommand, runAlertSteps } from '../api/alert_review';
 import { getAiRun, listAiRuns } from '../api/ai_investigations';
 import { B89ApiError } from '../api/client';
-import { alertHref } from './ai_analyst_case_file';
+import { alertHref, clipText } from './ai_analyst_case_file';
 import {
   alertStateText,
   falsePositiveNote,
@@ -51,10 +55,7 @@ import { ConfidenceMeter, VerdictBadge } from './ai_analyst_parts';
 import { openInPlace, runHref, RunTime } from './ai_analyst_runs';
 import { OpenIncidentForm } from './alerts_view';
 import { useChanges, useConsole } from './console_context';
-import { ErrorCallout, Mono, PriorityMark } from './primitives';
-
-/** Cuenta de servicio del analista (`apps/api/src/assistant/analyst-actions.ts`). */
-const ANALYST_ACTOR = 'svc:b89-ai-analyst';
+import { DataZone, ErrorCallout, HealthMark, Mono, Person, PriorityMark } from './primitives';
 
 /** Alerta que se revisa: la del sujeto o la única vinculada. */
 export function reviewAlertId(run: Pick<AiRunSummary, 'subject'> & { alertIds?: readonly string[] }): string | null {
@@ -62,21 +63,100 @@ export function reviewAlertId(run: Pick<AiRunSummary, 'subject'> & { alertIds?: 
   return run.alertIds && run.alertIds.length === 1 ? run.alertIds[0] : null;
 }
 
-function Assignee({ id, viewerId }: { id: string | null; viewerId: string }) {
-  if (!id) return <span className="b89Muted">Sin asignar</span>;
-  if (id === viewerId) return <strong>Tú</strong>;
-  if (id === ANALYST_ACTOR) return <span>Analista IA</span>;
-  return <Mono>{id}</Mono>;
-}
-
 export type ReviewMode = 'idle' | 'close' | 'incident';
 
+/** El botón inicial no confirma nada: abre el formulario donde se confirma. */
 const ACTION_LABEL: Readonly<Record<ReviewActionId, string>> = {
   assign: 'Asignármela',
-  close_false_positive: 'Confirmar: falso positivo y cerrar',
-  open_incident: 'Confirmar amenaza: abrir incidente',
+  close_false_positive: 'Es falso positivo…',
+  open_incident: 'Es una amenaza…',
   acknowledge: 'Marcar revisada sin cambios',
 };
+
+/**
+ * Qué acción destacar según la conclusión de la IA: la que coincide con ella. Sin conclusión clara
+ * no se destaca ninguna, para no empujar a cerrar.
+ */
+export function emphasizedAction(verdict: AiRunSummary['verdict']): ReviewActionId | null {
+  if (verdict === 'likely_true_positive') return 'open_incident';
+  if (verdict === 'likely_false_positive') return 'close_false_positive';
+  return null;
+}
+
+/**
+ * Lo mínimo para decidir desde la bandeja sin abrir el expediente: resumen, vacíos y estado de las
+ * citas. `result === undefined` mientras se lee el expediente.
+ */
+export function ReviewBriefing({
+  run,
+  result,
+  failed = false,
+  basePath,
+  onOpen,
+}: {
+  run: AiRunSummary;
+  result: AiResult | null | undefined;
+  failed?: boolean;
+  basePath: string;
+  onOpen?: () => void;
+}) {
+  const link = (
+    <a
+      href={runHref(basePath, run.id)}
+      onClick={onOpen ? (event) => openInPlace(event, onOpen) : undefined}
+      data-test-subj="b89AiReviewOpenCase"
+    >
+      Ver expediente completo
+    </a>
+  );
+  if (result === undefined) {
+    return (
+      <div className="b89AiReview__briefing" aria-busy={!failed}>
+        <p className="b89Muted">
+          {failed
+            ? 'No se pudo leer el expediente. Ábrelo antes de decidir. '
+            : 'Leyendo el expediente…'}
+          {failed && link}
+        </p>
+      </div>
+    );
+  }
+  const summary = result ? clipText(result.summary, 280) : null;
+  const gaps = result ? result.gaps.length : 0;
+  return (
+    <div className="b89AiReview__briefing">
+      <p className="b89AiReview__briefingVerdict">
+        <strong>Conclusión de la IA:</strong> {verdictLabel(run.verdict)}
+        {run.confidence !== null && ` · ${confidenceLabel(run.confidence).toLowerCase()}`}
+      </p>
+      {summary && summary.text ? (
+        <DataZone className="b89Prose">{summary.text}</DataZone>
+      ) : (
+        <p className="b89Muted">El analista no dejó un resumen.</p>
+      )}
+      <ul className="b89AiReview__briefingFacts">
+        <li>
+          {gaps > 0 ? (
+            <HealthMark
+              tone="warn"
+              label={gaps === 1 ? 'Vacíos: 1 punto sin verificar' : `Vacíos: ${formatCount(gaps)} puntos sin verificar`}
+            />
+          ) : (
+            <HealthMark tone="ok" label="Sin vacíos declarados" />
+          )}
+        </li>
+        <li>
+          {result && result.verified ? (
+            <HealthMark tone="ok" label="Citas verificadas" />
+          ) : (
+            <HealthMark tone="warn" label="Citas sin verificar" />
+          )}
+        </li>
+      </ul>
+      <p>{link}</p>
+    </div>
+  );
+}
 
 const ACTION_ORDER: readonly ReviewActionId[] = [
   'close_false_positive',
@@ -104,6 +184,8 @@ export function AiReviewPanelView({
   error = null,
   done = null,
   compact = false,
+  briefing = null,
+  briefingReady = true,
   incidentForm = null,
   onAction = () => undefined,
   onNoteChange = () => undefined,
@@ -125,6 +207,10 @@ export function AiReviewPanelView({
   error?: unknown;
   done?: string | null;
   compact?: boolean;
+  /** En la bandeja: resumen, vacíos y citas antes de los botones. */
+  briefing?: React.ReactNode;
+  /** `false` mientras se lee el expediente: no se puede cerrar sin haberlo visto. */
+  briefingReady?: boolean;
   incidentForm?: React.ReactNode;
   onAction?: (id: ReviewActionId) => void;
   onNoteChange?: (note: string) => void;
@@ -149,6 +235,12 @@ export function AiReviewPanelView({
   const actions = alert ? reviewActions(alert, viewer) : null;
   const noteLength = note.trim().length;
   const noteInvalid = note.length > 0 && !reviewNoteValid(note);
+  const emphasis = emphasizedAction(run.verdict);
+  // Tras actuar, el foco va al aviso de éxito (el formulario que lo tenía desapareció).
+  const doneRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (done && doneRef.current) doneRef.current.focus();
+  }, [done]);
   return (
     <section
       className="b89Panel b89AiReview"
@@ -172,10 +264,12 @@ export function AiReviewPanelView({
             : 'Una persona ya cerró la alerta o la vinculó a un incidente: esta revisión dejó de estar pendiente.'}
         </p>
       )}
+      {compact && briefing}
       {done && (
-        <div className="b89AiReview__feedback">
+        <div className="b89AiReview__feedback" ref={doneRef} tabIndex={-1}>
           <EuiCallOut size="s" color="success" iconType="check" title={done}>
             <p role="status">
+              <span className="b89AiSrOnly">{done}. </span>
               El expediente y la bandeja ya reflejan el cambio.
               {alertId && (
                 <>
@@ -192,7 +286,8 @@ export function AiReviewPanelView({
           <ErrorCallout error={error} />
           {error instanceof AlertStepError && alert && (
             <p className="b89Ai__note" role="status">
-              Se aplicaron {error.completed} paso(s) antes del fallo: la alerta quedó «
+              {error.completed === 1 ? 'Se aplicó 1 paso' : `Se aplicaron ${error.completed} pasos`}{' '}
+              antes del fallo: la alerta quedó «
               {ALERT_STATUS_LABEL[alert.status]}». Revisa su estado y vuelve a intentarlo.
             </p>
           )}
@@ -219,12 +314,18 @@ export function AiReviewPanelView({
           <dl className="b89AiFile b89AiReview__alert" aria-label="Estado actual de la alerta">
             <dt>Estado de la alerta</dt>
             <dd>{ALERT_STATUS_LABEL[alert.status] ?? <Mono>{alert.status}</Mono>}</dd>
-            <dt>Asignada a</dt>
+            <dt>Responsable</dt>
             <dd>
-              <Assignee id={alert.assigneeId} viewerId={viewer.subjectId} />
+              <Person id={alert.assigneeId} viewerId={viewer.subjectId} />
             </dd>
-            <dt>Veredicto</dt>
-            <dd>{alert.verdict ? VERDICT_LABEL[alert.verdict] : <span className="b89Muted">Sin veredicto</span>}</dd>
+            <dt>Decisión del SOC</dt>
+            <dd>
+              {alert.verdict ? (
+                VERDICT_LABEL[alert.verdict]
+              ) : (
+                <span className="b89Muted">Aún sin clasificar</span>
+              )}
+            </dd>
             <dt>Incidente</dt>
             <dd>
               {alert.incidentId ? (
@@ -279,17 +380,20 @@ export function AiReviewPanelView({
                 {ACTION_ORDER.filter((id) => actions[id].visible).map((id) => {
                   const action = actions[id];
                   const primary = id === 'close_false_positive' || id === 'open_incident';
+                  // Desde la bandeja no se cierra sin haber visto resumen, vacíos y citas.
+                  const waiting = id === 'close_false_positive' && !briefingReady;
                   return (
                     <li key={id} className="b89AiReview__action" data-action={id}>
                       {primary ? (
                         <EuiButton
                           size="s"
-                          fill={id === 'close_false_positive'}
-                          color={id === 'open_incident' ? 'danger' : 'primary'}
-                          isDisabled={!action.enabled || busy !== null}
+                          fill={emphasis === id}
+                          color="primary"
+                          isDisabled={!action.enabled || busy !== null || waiting}
                           isLoading={busy === id}
                           onClick={() => onAction(id)}
                           data-test-subj={`b89AiReview-${id}`}
+                          data-emphasis={emphasis === id ? 'true' : 'false'}
                         >
                           {ACTION_LABEL[id]}
                         </EuiButton>
@@ -304,7 +408,11 @@ export function AiReviewPanelView({
                           {ACTION_LABEL[id]}
                         </EuiButton>
                       )}
-                      {action.reason && <span className="b89AiReview__reason">{action.reason}</span>}
+                      {action.reason ? (
+                        <span className="b89AiReview__reason">{action.reason}</span>
+                      ) : waiting && action.enabled ? (
+                        <span className="b89AiReview__reason">Disponible al terminar de leer el expediente.</span>
+                      ) : null}
                     </li>
                   );
                 })}
@@ -323,8 +431,8 @@ export function AiReviewPanelView({
           )}
           {actions && mode === 'idle' && ACTION_ORDER.every((id) => !actions[id].visible) && (
             <p className="b89Ai__note">
-              Tu cuenta solo puede ver esta alerta: las acciones de revisión exigen permisos de
-              triaje, asignación o incidentes.
+              Tu cuenta solo puede ver esta alerta: para decidir hacen falta permisos para
+              clasificar alertas, asignarlas o abrir incidentes.
             </p>
           )}
         </>
@@ -343,12 +451,16 @@ export function AiReviewPanel({
   basePath,
   headingId = 'b89AiReviewTitle',
   compact = false,
+  briefing = null,
+  briefingReady = true,
   onChanged,
 }: {
   run: AiRunSummary & Partial<Pick<AiRunDetail, 'result' | 'alertIds'>>;
   basePath: string;
   headingId?: string;
   compact?: boolean;
+  briefing?: React.ReactNode;
+  briefingReady?: boolean;
   onChanged?: (message: string, alert: Alert) => void;
 }) {
   const { api, session, can } = useConsole();
@@ -477,6 +589,8 @@ export function AiReviewPanel({
       error={error}
       done={done}
       compact={compact}
+      briefing={briefing}
+      briefingReady={briefingReady}
       onAction={onAction}
       onNoteChange={setNote}
       onCancelForm={() => setMode('idle')}
@@ -486,7 +600,7 @@ export function AiReviewPanel({
         alert && mode === 'incident' ? (
           <OpenIncidentForm
             alert={alert}
-            heading="Confirmar amenaza: abrir incidente"
+            heading="Es una amenaza: abrir incidente"
             initialSummary={threatSummary(run)}
             onCancel={() => setMode('idle')}
             onOpened={(incidentId) => {
@@ -598,21 +712,26 @@ export function useReviewInbox(visible: boolean): ReviewInboxState {
 function InboxReview({
   run,
   basePath,
+  onSelect,
   onChanged,
 }: {
   run: AiRunSummary;
   basePath: string;
+  onSelect: (id: string) => void;
   onChanged: (message: string) => void;
 }) {
   const { api } = useConsole();
   const [detail, setDetail] = useState<AiRunDetail | null>(null);
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
     let cancelled = false;
     getAiRun(api, run.id).then(
       (next) => {
         if (!cancelled) setDetail(next);
       },
-      () => undefined,
+      () => {
+        if (!cancelled) setFailed(true);
+      },
     );
     return () => {
       cancelled = true;
@@ -625,6 +744,16 @@ function InboxReview({
         basePath={basePath}
         headingId={`b89AiReviewTitle-${run.id}`}
         compact
+        briefingReady={detail !== null}
+        briefing={
+          <ReviewBriefing
+            run={detail ?? run}
+            result={detail ? detail.result : undefined}
+            failed={failed}
+            basePath={basePath}
+            onOpen={() => onSelect(run.id)}
+          />
+        }
         onChanged={(message) => onChanged(message)}
       />
     </div>
@@ -669,13 +798,14 @@ export function AiReviewInboxRow({
           <span className="b89AiInbox__meta">
             <span>{alertStateText(run.alert)}</span>
             <span>
-              Esperando desde <RunTime iso={run.finishedAt ?? run.updatedAt ?? run.createdAt} now={now} />
+              En espera desde <RunTime iso={run.finishedAt ?? run.updatedAt ?? run.createdAt} now={now} />
             </span>
           </span>
         </span>
         <span className="b89AiInbox__verdict">
+          <span className="b89AiSrOnly">Conclusión de la IA: </span>
           {run.verdict === null ? (
-            <span className="b89Muted">Sin veredicto</span>
+            <span className="b89Muted">Sin conclusión</span>
           ) : (
             <>
               <VerdictBadge verdict={run.verdict} />
@@ -702,7 +832,7 @@ export function AiReviewInboxRow({
             onClick={(event) => openInPlace(event, () => onSelect(run.id))}
             data-test-subj="b89AiInboxInvestigate"
           >
-            Investigar
+            Ver expediente
           </a>
         </span>
       </div>
@@ -713,7 +843,7 @@ export function AiReviewInboxRow({
 
 /**
  * Bandeja de revisión: solo revisiones pendientes, de mayor prioridad y más antiguas primero; cada
- * una se decide aquí mismo («Revisar aquí») o en su expediente («Investigar»).
+ * una se decide aquí mismo («Revisar aquí») o en su expediente («Ver expediente»).
  */
 export function AiReviewInbox({
   items,
@@ -740,12 +870,18 @@ export function AiReviewInbox({
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<InboxOutcome | null>(null);
+  // La fila decidida sale de la bandeja (y con ella el foco): se lleva al aviso de lo hecho.
+  const outcomeRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (outcome && outcomeRef.current) outcomeRef.current.focus();
+  }, [outcome]);
   return (
     <div className="b89AiInbox">
       {outcome && (
-        <div className="b89AiReview__feedback">
+        <div className="b89AiReview__feedback" ref={outcomeRef} tabIndex={-1}>
           <EuiCallOut size="s" color="success" iconType="check" title={outcome.message}>
             <p role="status">
+              <span className="b89AiSrOnly">{outcome.message}: </span>
               <span data-b89-no-translate="">{outcome.title || outcome.jobId}</span>
               {' · '}
               <a
@@ -782,6 +918,7 @@ export function AiReviewInbox({
               <InboxReview
                 run={run}
                 basePath={basePath}
+                onSelect={onSelect}
                 onChanged={(message) => {
                   setOutcome({ jobId: run.id, title: run.subject.title, message });
                   onChanged();

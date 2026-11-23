@@ -42,6 +42,20 @@ export interface Alert {
   readonly signal?: unknown;
   readonly relatedAlertIds?: readonly string[];
   readonly rawRef?: string;
+  /** Regla del SIEM (APIs anteriores la dejaban solo en el título como «(wazuh N)»). */
+  readonly ruleId?: string | null;
+  /** Solo en `GET /alerts/:id`: lo que el catálogo de detección sabe de la regla. */
+  readonly explanation?: AlertExplanation | null;
+}
+
+/** `apps/api/src/soc/alert-explanation.ts`. */
+export interface AlertExplanation {
+  readonly useCase: string | null;
+  readonly level: number | null;
+  readonly falsePositives: readonly string[];
+  readonly escalateWhen: readonly string[];
+  readonly mitre: ReadonlyArray<{ readonly id: string; readonly name: string | null }>;
+  readonly runbook: { readonly title: string; readonly path: string; readonly firstStep: string | null } | null;
 }
 
 export const INCIDENT_STATUSES = ['open', 'contained', 'eradicated', 'resolved', 'closed'] as const;
@@ -63,6 +77,8 @@ export interface Incident {
   readonly summary: string;
   readonly openedAt: string;
   readonly closedAt: string | null;
+  /** Motivo y conclusión del cierre (APIs anteriores no lo envían). */
+  readonly closureReason?: string | null;
   readonly revision: number;
 }
 

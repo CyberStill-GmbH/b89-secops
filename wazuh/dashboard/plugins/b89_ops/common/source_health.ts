@@ -60,15 +60,19 @@ export interface SourceHealthModelInfo {
   readonly stale: boolean;
 }
 
+/**
+ * Escala única de salud (fuentes, monitor de plataforma y salud operativa):
+ * «Funciona» / «Sin eventos» / «Con problemas» / «Caída» / «Sin comprobar» / «Desactivada».
+ */
 export const SOURCE_VERDICT_LABEL: Record<SourceVerdict, string> = {
-  healthy: 'Sana',
-  quiet: 'Silenciosa',
-  degraded: 'Degradada',
-  failing: 'Fallando',
-  unknown: 'Desconocida',
+  healthy: 'Funciona',
+  quiet: 'Sin eventos (normal)',
+  degraded: 'Con problemas',
+  failing: 'Caída',
+  unknown: 'Sin comprobar',
 };
 
-/** Silenciosa ≠ fallando: tono informativo, no de alerta. */
+/** «Sin eventos» ≠ caída: tono informativo, no de alerta (igual en el monitor de plataforma). */
 export const SOURCE_VERDICT_TONE: Record<SourceVerdict, HealthTone> = {
   healthy: 'ok',
   quiet: 'info',
@@ -78,29 +82,29 @@ export const SOURCE_VERDICT_TONE: Record<SourceVerdict, HealthTone> = {
 };
 
 export const SOURCE_VERDICT_REASON_LABEL: Record<string, string> = {
-  HEARTBEAT_MISSING: 'El colector dejó de latir (sin latido en más de 2 ciclos)',
-  AUTH_DENIED: 'Credencial o permiso rechazado por el proveedor',
+  HEARTBEAT_MISSING: 'El colector dejó de reportar (más de 2 ciclos sin señal)',
+  AUTH_DENIED: 'El proveedor rechazó la credencial o el permiso',
   AUTH_EXPIRED: 'Credencial vencida',
-  CONSECUTIVE_FAILURES: 'Varias corridas seguidas del colector fallaron',
+  CONSECUTIVE_FAILURES: 'El colector falló varias veces seguidas',
   CONTENT_DISABLED: 'Suscripción del proveedor deshabilitada',
-  INGESTION_FAILED: 'La lectura de Wazuh hacia B89 está caída',
-  RUN_FAILED: 'La última corrida del colector falló',
-  RUN_PARTIAL: 'La última corrida quedó a medias (atraso pendiente)',
+  INGESTION_FAILED: 'B89 no puede leer los eventos de Wazuh',
+  RUN_FAILED: 'La última lectura del colector falló',
+  RUN_PARTIAL: 'La última lectura quedó a medias (hay eventos pendientes)',
   PROVIDER_LAG: 'El proveedor entrega con atraso',
-  INGEST_LAG: 'Retraso alto del colector al indexador',
-  VOLUME_DROP: 'Sin eventos esperados: el volumen cayó frente a semanas anteriores',
-  CANARY_STALE: 'El canario sintético no llegó en las últimas 26 h',
-  INGESTION_DEGRADED: 'La lectura de Wazuh hacia B89 tiene fallos',
-  HEARTBEAT_OK: 'Colector latiendo y autenticado',
-  CANARY_OK: 'Canario sintético recibido',
+  INGEST_LAG: 'Los eventos tardan en llegar al SIEM',
+  VOLUME_DROP: 'Llegan menos eventos de lo habitual frente a semanas anteriores',
+  CANARY_STALE: 'El evento de prueba automático no llegó en las últimas 26 h',
+  INGESTION_DEGRADED: 'La lectura de eventos de Wazuh tiene fallos',
+  HEARTBEAT_OK: 'El colector reporta y se autentica bien',
+  CANARY_OK: 'Evento de prueba automático recibido',
   EVENTS_RECENT: 'Eventos recientes',
-  NO_RECENT_EVENTS: 'Sin eventos nuevos; colector OK',
+  NO_RECENT_EVENTS: 'Sin eventos nuevos; el colector funciona',
   INGESTION_OK: 'Lectura correcta reciente',
-  HEARTBEAT_NEVER_SEEN: 'El colector nunca reportó un latido (no desplegado o sin actualizar)',
-  EVENTS_WITHOUT_HEARTBEAT: 'Llegan eventos, pero falta el latido del colector',
-  CANARY_NEVER_SEEN: 'Sin canario sintético registrado',
+  HEARTBEAT_NEVER_SEEN: 'El colector nunca reportó (no está instalado o falta actualizarlo)',
+  EVENTS_WITHOUT_HEARTBEAT: 'Llegan eventos, pero el colector no reporta su estado',
+  CANARY_NEVER_SEEN: 'Sin evento de prueba automático registrado',
   SIGNALS_NOT_CONFIGURED: 'Este despliegue no mide la salud por fuente',
-  SIGNALS_UNAVAILABLE: 'No se pudo leer el indexador para medir la salud',
+  SIGNALS_UNAVAILABLE: 'No se pudo leer el SIEM para medir la salud',
   INGESTION_DISABLED: 'Ingesta desactivada por configuración',
   INGESTION_NO_DATA: 'Todavía no hay lecturas registradas',
 };
@@ -108,12 +112,12 @@ export const SOURCE_VERDICT_REASON_LABEL: Record<string, string> = {
 /** Problemas operativos `SOURCE_*` (sección `sources` de `/api/operations/health`). */
 export const SOURCE_ISSUE_LABEL: Record<string, string> = {
   SOURCE_AUTH_FAILED: 'Una fuente tiene la credencial vencida o rechazada',
-  SOURCE_COLLECTOR_SILENT: 'Un colector dejó de latir',
-  SOURCE_RUNS_FAILING: 'Una fuente falla en varias corridas seguidas',
+  SOURCE_COLLECTOR_SILENT: 'Un colector dejó de reportar',
+  SOURCE_RUNS_FAILING: 'Una fuente falló varias veces seguidas',
   SOURCE_SUBSCRIPTION_DISABLED: 'Una suscripción del proveedor está deshabilitada',
   SOURCE_VOLUME_DROP: 'Una fuente no trae los eventos esperados',
   SOURCE_LAGGING: 'Una fuente llega con atraso',
-  SOURCE_CANARY_STALE: 'Un canario sintético no llegó',
+  SOURCE_CANARY_STALE: 'Un evento de prueba automático no llegó',
   SOURCE_SIGNALS_UNAVAILABLE: 'No se pudo medir la salud de las fuentes',
   SOURCE_SIGNALS_STALE: 'La salud de las fuentes es de una medición anterior',
 };
@@ -160,6 +164,80 @@ export const SERVICE_VERDICT_SOURCES: Readonly<Record<string, readonly string[]>
   aws: ['aws'],
   wazuh: ['wazuh-indexer', 'wazuh-agents'],
 };
+
+/** Orden de lectura en pantalla: primero lo que necesita acción. */
+const DISPLAY_ORDER: Record<SourceVerdict, number> = {
+  failing: 0,
+  degraded: 1,
+  unknown: 2,
+  quiet: 3,
+  healthy: 4,
+};
+
+/** Ordena por gravedad (caída, con problemas, sin comprobar, sin eventos, funciona) y nombre. */
+export function sortVerdicts(verdicts: readonly SourceVerdictView[]): SourceVerdictView[] {
+  return [...verdicts].sort(
+    (a, b) =>
+      DISPLAY_ORDER[a.verdict] - DISPLAY_ORDER[b.verdict] ||
+      a.label.localeCompare(b.label, 'es'),
+  );
+}
+
+/** Un veredicto que pide atención: caída, con problemas o sin comprobar. */
+export function verdictNeedsAttention(verdict: SourceVerdict): boolean {
+  return verdict === 'failing' || verdict === 'degraded' || verdict === 'unknown';
+}
+
+export interface VerdictSummary {
+  readonly total: number;
+  /** Funciona o sin eventos (la conexión responde). */
+  readonly working: number;
+  readonly problems: readonly SourceVerdictView[];
+  readonly unchecked: readonly SourceVerdictView[];
+  readonly tone: HealthTone;
+  /** La respuesta de la página en una frase. */
+  readonly headline: string;
+  /** Qué falla y por qué, una fuente por elemento («Bitdefender: credencial vencida»). */
+  readonly details: readonly string[];
+}
+
+function lowerFirst(text: string): string {
+  return text ? text.charAt(0).toLowerCase() + text.slice(1) : text;
+}
+
+/** Respuesta principal de «Salud de fuentes»: cuántas funcionan, cuáles fallan y por qué. */
+export function summarizeVerdicts(verdicts: readonly SourceVerdictView[]): VerdictSummary {
+  const sorted = sortVerdicts(verdicts);
+  const problems = sorted.filter((item) => item.verdict === 'failing' || item.verdict === 'degraded');
+  const unchecked = sorted.filter((item) => item.verdict === 'unknown');
+  const total = sorted.length;
+  const working = total - problems.length - unchecked.length;
+  const tone: HealthTone = problems.some((item) => item.verdict === 'failing')
+    ? 'fail'
+    : problems.length > 0
+      ? 'warn'
+      : unchecked.length > 0
+        ? 'neutral'
+        : 'ok';
+  const parts: string[] = [];
+  if (total === 0) parts.push('No hay fuentes medidas todavía.');
+  else if (working === total) parts.push(total === 1 ? 'La fuente funciona.' : `Las ${total} fuentes funcionan.`);
+  else parts.push(`${working} de ${total} fuentes funcionan.`);
+  if (problems.length > 0) {
+    parts.push(problems.length === 1 ? '1 tiene problemas.' : `${problems.length} tienen problemas.`);
+  }
+  if (unchecked.length > 0) {
+    parts.push(
+      unchecked.length === 1 ? '1 no se pudo comprobar.' : `${unchecked.length} no se pudieron comprobar.`,
+    );
+  }
+  const details = [...problems, ...unchecked].map((item) => {
+    const first = item.reasons[0];
+    const why = first ? lowerFirst(verdictReasonLabel(first)) : lowerFirst(SOURCE_VERDICT_LABEL[item.verdict]);
+    return `${item.label}: ${why}`;
+  });
+  return { total, working, problems, unchecked, tone, headline: parts.join(' '), details };
+}
 
 const RANK: Record<SourceVerdict, number> = {
   failing: 4,

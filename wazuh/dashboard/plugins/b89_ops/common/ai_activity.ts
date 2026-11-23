@@ -275,7 +275,7 @@ export function hostState(host: AiActivityHost): AiHostState {
     return {
       state: 'off',
       label: 'Apagado',
-      detail: 'El despliegue no habilita el analista en este entorno.',
+      detail: 'El Analista IA no está activado en este entorno. Pídele a quien administra la plataforma que lo active.',
       tone: 'neutral',
       pulsing: false,
     };
@@ -284,7 +284,7 @@ export function hostState(host: AiActivityHost): AiHostState {
     return {
       state: 'stopped',
       label: 'Detenido',
-      detail: 'El proceso que respondió no tiene el analista en marcha (arranque o apagado).',
+      detail: 'El servicio está arrancando o apagándose. Vuelve a mirar en un minuto.',
       tone: 'warn',
       pulsing: false,
     };
@@ -332,7 +332,7 @@ export const AI_FEED_REASON_SHORT: Record<string, string> = {
   DUPLICATE_OF_OPEN_INCIDENT: 'duplica un incidente abierto',
   ISOLATED_LOW_SIGNAL: 'señal aislada de baja relevancia',
   EVIDENCE_INCOMPLETE: 'evidencia incompleta',
-  NOT_ELIGIBLE: 'no elegible para análisis con modelo',
+  NOT_ELIGIBLE: 'no corresponde analizarla con IA',
   OUT_OF_SCOPE: 'fuera del alcance configurado',
   BELOW_INFERENCE_PRIORITY: 'prioridad por debajo del umbral de IA',
 };
@@ -344,13 +344,13 @@ const FINISHED_SENTENCE: Record<AiRunStatusView, string> = {
   requires_review: 'Terminó: requiere revisión humana',
   partial: 'Terminó con evidencia incompleta',
   budget_exhausted: 'Se detuvo: presupuesto diario de IA agotado',
-  usage_unreconciled: 'Terminó con uso del modelo por conciliar',
+  usage_unreconciled: 'Terminó con el costo de IA por confirmar',
   cancelled: 'Investigación detenida',
   failed: 'La investigación falló',
   unknown: 'Terminó (estado desconocido)',
 };
 
-const INFERENCE_NAME: Record<string, string> = { economy: 'modelo económico', advanced: 'modelo avanzado' };
+const INFERENCE_NAME: Record<string, string> = { economy: 'IA estándar', advanced: 'IA avanzada' };
 
 export interface AiFeedSentence {
   readonly text: string;

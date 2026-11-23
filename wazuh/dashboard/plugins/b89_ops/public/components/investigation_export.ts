@@ -3,8 +3,11 @@
  */
 
 import type { Alert, InvestigationEventSummary } from '../../common';
+import { ALERT_STATUS_LABEL, VENDORS } from '../../common';
 import {
+  ACTIVITY_GROUPS_LABEL,
   groupInvestigationActivity,
+  INVESTIGATION_ACTIVITY_CSV_HEADER,
   investigationActivityCsvRows,
 } from './investigation_activity_grouping';
 
@@ -45,9 +48,9 @@ function investigationCsvRows(input: InvestigationExport): unknown[][] {
       '',
     ],
     [
-      'Alerta',
+      'Tipo',
       'Fecha UTC',
-      'Prioridad',
+      'Prioridad / nivel',
       'Estado',
       'Origen',
       'Regla',
@@ -61,7 +64,7 @@ function investigationCsvRows(input: InvestigationExport): unknown[][] {
       'Alerta B89',
       input.alert.occurredAt,
       input.alert.priority,
-      input.alert.status,
+      ALERT_STATUS_LABEL[input.alert.status] ?? input.alert.status,
       'B89 SOC',
       '',
       input.alert.title,
@@ -75,7 +78,7 @@ function investigationCsvRows(input: InvestigationExport): unknown[][] {
       event.at,
       `Nivel ${event.level}`,
       '',
-      event.vendor,
+      VENDORS[event.vendor]?.name ?? event.vendor,
       event.ruleId,
       event.description,
       event.matched.join(' | '),
@@ -86,22 +89,9 @@ function investigationCsvRows(input: InvestigationExport): unknown[][] {
   const groups = groupInvestigationActivity(input.events);
   rows.push(
     [],
-    ['Bloques temporales de actividad', '', '', '', '', '', '', '', ''],
-    [
-      'Tipo',
-      'Entidad coincidente',
-      'Primera actividad UTC',
-      'Última actividad UTC',
-      'Eventos',
-      'Orígenes',
-      'Reglas',
-      'IDs de evento',
-      'Interpretación',
-    ],
-    ...investigationActivityCsvRows(groups).map((row) => [
-      ...row,
-      'Proximidad temporal; no determina causalidad ni hilo de correo',
-    ]),
+    [ACTIVITY_GROUPS_LABEL, '', '', '', '', '', '', ''],
+    [...INVESTIGATION_ACTIVITY_CSV_HEADER],
+    ...investigationActivityCsvRows(groups).map((row) => [...row]),
   );
   return rows;
 }

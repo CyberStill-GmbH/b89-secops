@@ -288,10 +288,10 @@ export function BunnyReportActions({
             'no-citation':
               'Esta respuesta no tiene una alerta o evento citado para iniciar una investigación.',
             forbidden:
-              'Tu sesión no tiene acceso a la evidencia citada; no se generó un expediente parcial.',
+              'Tu sesión no tiene acceso a la evidencia citada; no se generó un informe incompleto.',
             'not-found': 'La evidencia citada ya no está disponible para tu sesión.',
             unavailable:
-              'Wazuh Indexer o la API de investigación no respondió. No se generó un expediente parcial; reintenta y, si persiste, revisa Salud de fuentes.',
+              'No se pudo consultar la evidencia; reintenta en unos minutos. Si persiste, revisa Salud de fuentes.',
             'no-entities':
               'La evidencia no contiene entidades consultables; no se inventaron filtros.',
           };
@@ -299,9 +299,9 @@ export function BunnyReportActions({
         } else if (error instanceof ReportCollectionError) {
           const messages = {
             forbidden:
-              'Tu sesión no tiene acceso a todos los eventos relacionados. No se generó un expediente parcial.',
+              'Tu sesión no tiene acceso a todos los eventos relacionados. No se generó un informe incompleto.',
             unavailable:
-              'La consulta de eventos no se pudo completar. Reintenta o revisa Salud de fuentes; no se generó un expediente parcial.',
+              'No se pudieron leer los eventos relacionados; reintenta en unos minutos. No se generó un informe incompleto.',
             invalid:
               'Los resultados de investigación no fueron consistentes. Vuelve a consultar la evidencia antes de generar el informe.',
             rejected:
@@ -331,8 +331,8 @@ export function BunnyReportActions({
         <section className="b89Bunny__reportPanel" aria-label="Exportar análisis de Bunny">
           <h4>Informe para revisión SOC</h4>
           <p>
-            El expediente profesional consulta la alerta/evento citado y reúne los eventos
-            relacionados que tu sesión puede ver. Exportar respuesta conserva solo el texto de
+            El informe con evidencia consulta la alerta o el evento citado y reúne los eventos
+            relacionados que tu sesión puede ver. «Exportar respuesta» conserva solo el texto de
             Bunny.
           </p>
           <fieldset disabled={busy}>
@@ -395,7 +395,7 @@ export function BunnyReportActions({
           {evidenceCitations.length === 0 && (
             <p className="b89Bunny__reportHint">
               Bunny no citó una alerta o evento en esta respuesta. Puedes exportar el texto; para un
-              expediente de investigación, abre Bunny desde una alerta o evento.
+              informe con evidencia, abre Bunny desde una alerta o un evento.
             </p>
           )}
           <fieldset disabled={busy}>
@@ -442,12 +442,13 @@ export function BunnyReportActions({
               {text.length > 360 ? '…' : ''}
             </p>
             <small>
-              {citations.length} fuente(s) citada(s) · {new Date().toLocaleString('es-PE')}
+              {citations.length === 1 ? '1 fuente citada' : `${citations.length} fuentes citadas`} ·{' '}
+              {new Date().toLocaleString('es-PE')}
             </small>
             {chart && includeChart && series && (
               <>
                 <label>
-                  M?trica del gr?fico
+                  Métrica del gráfico
                   <select
                     disabled={busy}
                     value={series.column}
@@ -463,7 +464,7 @@ export function BunnyReportActions({
                 <div
                   className="b89Bunny__chartPreview"
                   role="img"
-                  aria-label={`Gr?fico de ${series.label}`}
+                  aria-label={`Gráfico de ${series.label}`}
                 >
                   {series.rows.map((row, index) => (
                     <div className="b89Bunny__chartRow" key={`${row.label}-${index}`}>
@@ -485,8 +486,8 @@ export function BunnyReportActions({
               ? 'Generando…'
               : kind === 'investigation'
                 ? format === 'pdf'
-                  ? 'Generar expediente PDF'
-                  : 'Generar expediente Excel'
+                  ? 'Generar informe con evidencia (PDF)'
+                  : 'Generar informe con evidencia (Excel)'
                 : format === 'pdf'
                   ? 'Exportar respuesta a PDF'
                   : 'Exportar respuesta a Excel'}
@@ -497,7 +498,7 @@ export function BunnyReportActions({
                 {progress}
               </p>
               <progress
-                aria-label="Avance de generacion del informe"
+                aria-label="Avance de la generación del informe"
                 max={100}
                 value={progressPercent}
               />{' '}

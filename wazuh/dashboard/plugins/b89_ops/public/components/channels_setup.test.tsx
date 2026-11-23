@@ -81,7 +81,7 @@ describe('puesta en marcha de Teams', () => {
       }),
     );
     expect(html).toContain('Microsoft aceptó la última solicitud registrada');
-    expect(html).toContain('no confirma la publicación ni la lectura');
+    expect(html).toContain('no confirma que la tarjeta se publicó ni que alguien la leyó');
     expect(html).not.toContain('SECRET');
     expect(html).not.toContain('logic.azure.com');
   });
@@ -89,7 +89,7 @@ describe('puesta en marcha de Teams', () => {
   it('sin permiso de administración solo permite actualizar el estado', () => {
     const html = guide(teams(), false);
     expect(html).not.toContain('Configurar Microsoft Teams');
-    expect(html).toContain('Un administrador de la plataforma');
+    expect(html).toContain('Pide a un Administrador de plataforma');
     expect(html).toContain('Actualizar estado');
   });
 });
@@ -99,8 +99,8 @@ describe('gestión de canales no disponible', () => {
     const forbidden = renderToStaticMarkup(<ChannelsUnavailable problem="forbidden" />);
     const unavailable = renderToStaticMarkup(<ChannelsUnavailable problem="unavailable" />);
     expect(forbidden).toContain('no tiene permiso');
-    expect(forbidden).not.toContain('no está sirviendo');
-    expect(unavailable).toContain('no está sirviendo la gestión de canales');
+    expect(forbidden).not.toContain('No se pudo cargar la configuración');
+    expect(unavailable).toContain('No se pudo cargar la configuración de canales');
     expect(unavailable).toContain('no es un problema de permisos');
   });
 });

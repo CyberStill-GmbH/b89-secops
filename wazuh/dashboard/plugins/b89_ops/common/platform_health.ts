@@ -16,7 +16,7 @@ export const PLATFORM_HEALTH_GROUP = 'b89_platform_health';
 export const PLATFORM_HEALTH_VENDOR = 'b89-platform';
 export const PLATFORM_HEALTH_STALE_MS = 2 * 3600000;
 export const PLATFORM_HEALTH_DOC =
-  'https://github.com/CyberStill-GmbH/b89-secops/blob/b89/rebrand-serverless/docs/20-monitoreo-de-plataforma-y-priorizacion.md';
+  'https://github.com/CyberStill-GmbH/b89-secops/blob/main/docs/20-monitoreo-de-plataforma-y-priorizacion.md';
 
 export type PlatformSourceState = 'ok' | 'silent' | 'failing' | 'disabled' | 'unknown';
 export type PlatformSeverity = 'info' | 'warning' | 'critical';
@@ -77,17 +77,27 @@ export const PLATFORM_SOURCE_LABEL: Readonly<Record<string, string>> = {
   wazuh: 'Wazuh',
   b89: 'API B89',
   host: 'Servidor',
-  edge: 'Edge (nginx)',
+  edge: 'Puerta de entrada web (nginx)',
   vulnprio: 'Priorización de vulnerabilidades',
-  canary: 'Canarios sintéticos',
+  canary: 'Eventos de prueba automáticos',
 };
 
+/** Misma escala que `SOURCE_VERDICT_LABEL` (salud por fuente). */
 export const PLATFORM_STATE_LABEL: Readonly<Record<PlatformSourceState, string>> = {
-  ok: 'Operativa',
-  silent: 'En silencio',
-  failing: 'Con fallos',
+  ok: 'Funciona',
+  silent: 'Sin eventos',
+  failing: 'Caída',
   disabled: 'Desactivada',
-  unknown: 'Sin dato reciente',
+  unknown: 'Sin comprobar',
+};
+
+/** Tono de cada estado del monitor: «Sin eventos» es informativo, igual que en la salud por fuente. */
+export const PLATFORM_STATE_TONE: Readonly<Record<PlatformSourceState, 'ok' | 'info' | 'fail' | 'neutral'>> = {
+  ok: 'ok',
+  silent: 'info',
+  failing: 'fail',
+  disabled: 'neutral',
+  unknown: 'neutral',
 };
 
 const STATES: readonly PlatformSourceState[] = ['ok', 'silent', 'failing', 'disabled'];

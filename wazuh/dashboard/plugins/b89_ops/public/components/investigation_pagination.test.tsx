@@ -3,6 +3,7 @@
  */
 
 import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { EuiButton } from '@elastic/eui';
 import { InvestigationPagination } from './investigation_pagination';
 
@@ -62,5 +63,20 @@ describe('paginación de investigación', () => {
     retry.props.onClick?.();
 
     expect(calls).toBe(1);
+  });
+
+  it('dice cuántos eventos trae y si son anteriores', () => {
+    const html = renderToStaticMarkup(
+      <InvestigationPagination
+        loading={false}
+        error={false}
+        remaining={212}
+        pageSize={100}
+        older
+        onLoadMore={async () => undefined}
+        onReset={() => undefined}
+      />,
+    );
+    expect(html).toContain('Ver 100 eventos anteriores (quedan 212)');
   });
 });

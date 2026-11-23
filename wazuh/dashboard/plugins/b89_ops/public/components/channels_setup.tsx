@@ -69,11 +69,13 @@ export function TeamsSetupGuide({
           </li>
           <li aria-current={step === 'verify' ? 'step' : undefined}>
             <strong>Verificar en Teams.</strong> Abre el canal y comprueba que aparece la tarjeta.
-            La aceptación de Microsoft no confirma la publicación ni la lectura de una persona.
-            Si no aparece, revisa el historial de ejecuciones del Workflow.
+            Que Microsoft acepte el envío no confirma que la tarjeta se publicó ni que alguien la
+            leyó. Si no aparece, revisa el historial de ejecuciones del Workflow.
           </li>
         </ol>
-        {!canManage && <p>Un administrador de la plataforma debe configurar, activar y probar el canal.</p>}
+        {!canManage && (
+          <p>Pide a un Administrador de plataforma que configure, active y pruebe el canal.</p>
+        )}
       </EuiText>
       <EuiSpacer size="m" />
       <div className="b89Channel__actions">

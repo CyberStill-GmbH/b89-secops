@@ -168,7 +168,7 @@ export const AI_IP_REPUTATION_BAND_LABEL: Record<AiIpReputationBand, string> = {
   suspicious: 'Sospechosa',
   low: 'Pocos reportes',
   clean: 'Sin reportes en 90 días',
-  whitelisted: 'En lista blanca',
+  whitelisted: 'En lista de confianza',
 };
 
 export interface AiEvidence {
@@ -599,7 +599,7 @@ export const AI_RUN_STATUS_LABEL: Record<AiRunStatusView, string> = {
   requires_review: 'Requiere revisión',
   partial: 'Parcial',
   budget_exhausted: 'Presupuesto agotado',
-  usage_unreconciled: 'Uso por conciliar',
+  usage_unreconciled: 'Costo por confirmar',
   cancelled: 'Detenida',
   failed: 'Fallida',
   unknown: 'Estado desconocido',
@@ -620,11 +620,11 @@ export const AI_RUN_STATUS_TONE: Record<AiRunStatusView, HealthTone> = {
 
 export const AI_STAGE_LABEL: Record<AiRunStage, string> = {
   fetching_evidence: 'Recolección de evidencia',
-  triage: 'Triaje determinista',
-  model: 'Consulta al modelo',
-  validating: 'Validación de citas',
+  triage: 'Revisión con reglas',
+  model: 'Consulta a la IA',
+  validating: 'Comprobación de la evidencia',
   acting: 'Acciones del analista',
-  writing: 'Registro del resultado',
+  writing: 'Guardado del resultado',
 };
 
 /** Etapa conocida → rótulo; desconocida → `null` (la UI muestra el código crudo en mono). */
@@ -636,8 +636,8 @@ export function stageLabel(stage: string | null): string | null {
 
 export const AI_INFERENCE_LABEL: Record<AiInference | 'unknown', string> = {
   none: 'Sin IA',
-  economy: 'Económico',
-  advanced: 'Avanzado',
+  economy: 'IA estándar',
+  advanced: 'IA avanzada',
   unknown: 'Nivel desconocido',
 };
 
@@ -649,11 +649,11 @@ export const AI_VERDICT_LABEL: Record<AiVerdict | 'unknown', string> = {
   likely_true_positive: 'Probable verdadero positivo',
   likely_false_positive: 'Probable falso positivo',
   inconclusive: 'No concluyente',
-  unknown: 'Veredicto desconocido',
+  unknown: 'Conclusión desconocida',
 };
 
 export function verdictLabel(verdict: AiRunSummary['verdict']): string {
-  return verdict === null ? 'Sin veredicto' : AI_VERDICT_LABEL[verdict];
+  return verdict === null ? 'Sin conclusión' : AI_VERDICT_LABEL[verdict];
 }
 
 export const AI_CONFIDENCE_LABEL: Record<AiConfidence | 'unknown', string> = {
@@ -674,11 +674,11 @@ export const AI_TRIGGER_LABEL: Record<AiRunSummary['trigger'], string> = {
 };
 
 export const AI_INVOCATION_STATE_LABEL: Record<AiInvocationState | 'unknown', string> = {
-  reserved: 'Presupuesto reservado',
-  dispatching: 'Llamada en envío',
-  settled: 'Uso confirmado',
-  released: 'Reserva liberada',
-  usage_unknown: 'Uso por conciliar',
+  reserved: 'Costo apartado',
+  dispatching: 'Enviando a la IA',
+  settled: 'Costo confirmado',
+  released: 'Costo devuelto',
+  usage_unknown: 'Costo por confirmar',
   unknown: 'Estado desconocido',
 };
 

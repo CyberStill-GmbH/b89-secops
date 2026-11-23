@@ -4,7 +4,7 @@
 
 export const PLUGIN_ID = 'b89Ops';
 export const PLUGIN_NAME = 'B89 SecOps';
-/** Nombre descriptivo del grupo de navegación en el menú lateral. */
+/** Obsoleto: el menú usa `NAV_CATEGORIES` (common/navigation.ts). Se conserva por compatibilidad. */
 export const NAV_CATEGORY_NAME = 'B89 SOC';
 
 /** Rutas propias del dashboard (servidas por este plugin, sin sesión de OSD). */
@@ -82,7 +82,7 @@ export const B89_APPS = [
   {
     id: 'b89-cloudflare-traffic',
     view: 'cloudflare_traffic',
-    title: 'Tráfico de Cloudflare',
+    title: 'Cloudflare: actividad y tráfico',
     icon: 'b89-sources.svg',
     order: 36,
     category: 'soc',
@@ -98,7 +98,7 @@ export const B89_APPS = [
   {
     id: 'b89-dlp',
     view: 'dlp',
-    title: 'DLP de endpoints',
+    title: 'DLP en equipos',
     icon: 'b89-audit.svg',
     order: 38,
     category: 'soc',
@@ -145,8 +145,8 @@ export type B89View = (typeof B89_APPS)[number]['view'];
  */
 export const RESPOND_APP = {
   id: 'b89-respond',
-  /** Nombre de producto en el menú; «SOAR» queda como descripción (`tooltip`). */
-  title: 'B89 Respond',
+  /** Título del menú y de la pestaña; el nombre de producto «B89 Respond» va en el tooltip. */
+  title: 'Respuesta automática (SOAR)',
   subtitle: 'SOAR',
   icon: 'b89-respond.svg',
   order: 5,

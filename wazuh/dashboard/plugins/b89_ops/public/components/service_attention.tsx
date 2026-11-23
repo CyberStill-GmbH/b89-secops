@@ -23,14 +23,13 @@ function withGroup(range: string, service?: ServiceId): string {
   return group ? `${range} and rule.groups: "${group}"` : range;
 }
 
-/** Eventos de nivel ≥ 8 (altas y críticas) o solo ≥ 12 (críticas) de un servicio. */
+/** Eventos de nivel 8 o más, o solo de nivel 12 o más, de un servicio. */
 export function attentionQuery(service: ServiceId, criticalOnly: boolean): string {
   return withGroup(`rule.level >= ${criticalOnly ? 12 : 8}`, service);
 }
 
 /**
- * KQL de exactamente una banda de severidad (Crítica = nivel ≥ 12, Alta = 8–11, Media = 4–7,
- * Baja = 0–3), opcionalmente de un servicio. La lista que abre cuenta lo mismo que la cifra.
+ * KQL de exactamente una banda de nivel (12–15, 8–11, 4–7 o 0–3), opcionalmente de un servicio. La lista que abre cuenta lo mismo que la cifra.
  */
 export function levelBandQuery(band: LevelBand, service?: ServiceId): string {
   const { from, to } = LEVEL_BAND_RANGES[band];
@@ -66,7 +65,7 @@ export function filterAttention(events: readonly TopEvent[], criticalOnly: boole
 
 /**
  * Pulsación de una cifra de la tarjeta sobre la lista «Atención prioritaria»: `critical` deja solo
- * las críticas; `all`, altas y críticas. `seq` cambia en cada pulsación (aunque se repita la
+ * el nivel 12 o más; `all`, el nivel 8 o más. `seq` cambia en cada pulsación (aunque se repita la
  * cifra) para volver a aplicar el filtro y limpiar la búsqueda.
  */
 export interface AttentionFocus {
@@ -87,7 +86,7 @@ export function ServiceAttentionList({
   data?: ServiceAttention;
   basePath: string;
   focus?: AttentionFocus;
-  /** Total de críticas en 24 h (de la tarjeta), para el resumen cuando solo se ven críticas. */
+  /** Total de nivel 12 o más en 24 h (de la tarjeta), para el resumen cuando solo se ven esos. */
   criticalTotal?: number;
 }) {
   const [criticalOnly, setCriticalOnly] = useState(focus?.band === 'critical');
@@ -115,7 +114,7 @@ export function ServiceAttentionList({
     >
       <header>
         <strong>Atención prioritaria</strong>
-        <span>24 h · críticas primero</span>
+        <span>24 h · nivel más alto primero</span>
       </header>
       {!data || data.access !== 'ok' ? (
         <p role="status">
@@ -132,12 +131,12 @@ export function ServiceAttentionList({
                 checked={criticalOnly}
                 onChange={(e) => setCriticalOnly(e.target.checked)}
               />{' '}
-              Solo críticas (nivel ≥ 12)
+              Solo nivel 12 o más
             </label>
             <input
               type="search"
               aria-label={`Buscar en eventos visibles de ${name}`}
-              placeholder="Buscar título, regla o equipo"
+              placeholder="Buscar por nombre, regla o equipo"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -151,8 +150,8 @@ export function ServiceAttentionList({
           >
             <span>
               {criticalOnly
-                ? 'Mostrando solo críticas (nivel ≥ 12)'
-                : 'Mostrando altas y críticas (nivel ≥ 8)'}
+                ? 'Mostrando solo nivel 12 o más'
+                : 'Mostrando nivel 8 o más'}
               {query.trim() ? ` que contienen «${query.trim()}»` : ''}
             </span>
             {filtered && (
@@ -171,17 +170,17 @@ export function ServiceAttentionList({
           <p className="b89Attention__scope">
             {events.length} visibles ·{' '}
             {criticalOnly && criticalTotal !== undefined
-              ? `${criticalTotal} críticas en 24 h.`
-              : `${data.total} altas y críticas.`}
+              ? `${criticalTotal} de nivel 12 o más en 24 h.`
+              : `${data.total} de nivel 8 o más.`}
             {(data.total ?? 0) > data.events.length &&
-              ' Vista limitada a los 100 eventos de mayor severidad; abre la lista completa para revisar el resto.'}
+              ' Se muestran los 100 de nivel más alto; abre la lista completa para ver el resto.'}
           </p>
           {events.length === 0 ? (
             <p>
               {data.total === 0
-                ? 'Sin eventos altos o críticos en esta ventana.'
+                ? 'Sin eventos de nivel 8 o más en las últimas 24 h.'
                 : criticalOnly && !query.trim()
-                  ? 'Sin eventos críticos entre los cargados.'
+                  ? 'Ninguno de nivel 12 o más entre los cargados.'
                   : 'Sin coincidencias en los eventos cargados.'}
             </p>
           ) : (
@@ -190,16 +189,17 @@ export function ServiceAttentionList({
                 <li key={event.id}>
                   <div className="b89Attention__row">
                     <span className="b89Attention__severity" data-critical={event.level >= 12}>
-                      {event.level >= 12 ? 'Crítica' : 'Alta'} · {event.level}
+                      <span aria-hidden="true">{event.level >= 12 ? '▲' : '△'}</span> Nivel{' '}
+                      {event.level}
                     </span>
-                    <Timestamp iso={event.at || null} />
+                    <Timestamp iso={event.at || null} focusable={false} />
                   </div>
                   <DataZone>
                     <strong>{event.description}</strong>
                   </DataZone>
                   <div className="b89Attention__row">
-                    Regla {event.ruleId} ·{' '}
-                    <DataZone>{event.agent ?? 'Equipo no informado'}</DataZone>
+                    <span data-b89-no-translate="">{event.agent ?? 'Equipo no informado'}</span>
+                    <span className="b89Attention__rule">Regla {event.ruleId}</span>
                   </div>
                   <a
                     href={discoverUrlForQuery(
@@ -216,12 +216,8 @@ export function ServiceAttentionList({
             </ol>
           )}
           <a className="b89Attention__all" href={allHref}>
-            Ver todos los eventos {criticalOnly ? 'críticos' : 'altos y críticos'} →
+            Ver todos los eventos de nivel {criticalOnly ? '12' : '8'} o más →
           </a>
-          <small>
-            Severidad del SIEM; el estado de respuesta se gestiona en la cola B89. Las fuentes
-            pueden compartir eventos.
-          </small>
         </>
       )}
     </section>

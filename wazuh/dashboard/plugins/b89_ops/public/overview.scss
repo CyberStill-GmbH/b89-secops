@@ -102,6 +102,55 @@ $b89OvEase: cubic-bezier(0.16, 1, 0.3, 1);
   font-size: 12px;
 }
 
+// La respuesta del inicio: qué hay abierto y por dónde empezar.
+.b89Hero p.b89Answer {
+  max-width: 80ch;
+  color: $ouiTextColor;
+  font-size: 16px;
+  line-height: 1.45;
+
+  a {
+    font-weight: 700;
+    overflow-wrap: anywhere;
+  }
+}
+
+.b89Services__summary {
+  margin: 0 0 $ouiSize;
+  color: $ouiTextSubduedColor;
+}
+
+// Tendencia y eventos del SIEM, plegados: contexto, no trabajo pendiente.
+.b89Panel--fold {
+  padding-top: $ouiSize;
+
+  > details > summary {
+    display: flex;
+    align-items: center;
+    min-height: 32px;
+    font-size: 15px;
+  }
+}
+
+.b89Fold {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: $ouiSizeL;
+  margin-top: $ouiSizeS;
+
+  h3 {
+    font-size: 15px;
+  }
+
+  @media (max-width: $b89OvTablet) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.b89Fold__block {
+  min-width: 0;
+}
+
 // ------------------------------------------------------------------------- KPIs
 .b89KpiRow {
   display: grid;
@@ -174,6 +223,7 @@ $b89OvEase: cubic-bezier(0.16, 1, 0.3, 1);
   display: inline-flex;
   align-items: center;
   gap: $ouiSizeXS;
+  min-height: 24px;
 
   strong {
     color: $ouiTextColor;
@@ -649,11 +699,11 @@ a.b89Kpi__chip {
 }
 
 .b89Metrics__item[data-emphasis='danger'] dd {
-  color: #ff5f57;
+  color: $ouiColorDangerText;
 }
 
 .b89Metrics__item[data-emphasis='warning'] dd {
-  color: #f0904a;
+  color: $ouiColorWarningText;
 }
 
 // ------------------------------------------------------------------ Listados
@@ -697,7 +747,7 @@ a.b89Kpi__chip {
   @media (max-width: $b89OvMobile) {
     grid-template-columns: auto minmax(0, 1fr);
 
-    .b89Feed__time {
+    > .b89Feed__time {
       grid-column: 2;
     }
   }
@@ -723,6 +773,49 @@ a.b89Kpi__chip {
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.b89Feed__line {
+  overflow: hidden;
+  color: $ouiTextColor;
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+// Lista de atención del inicio: a todo el ancho, el título puede ocupar dos líneas.
+.b89Feed--attention .b89Feed__title {
+  display: -webkit-box;
+  font-weight: 600;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.b89Feed__side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  text-align: right;
+
+  @media (max-width: $b89OvMobile) {
+    grid-column: 2;
+    flex-direction: row;
+    gap: $ouiSizeS;
+    align-items: baseline;
+  }
+}
+
+.b89Feed__owner {
+  color: $ouiTextSubduedColor;
+  font-size: 12px;
+  white-space: nowrap;
+
+  &[data-unassigned='true'] {
+    color: $ouiColorWarningText;
+    font-weight: 600;
+  }
 }
 
 .b89Feed__meta,
@@ -1334,7 +1427,7 @@ a.b89Kpi__chip {
 
 .b89Attention {
   margin-top: 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  border-top: 1px solid $ouiBorderColor;
   padding-top: 14px;
   header,
   &__row {
@@ -1347,7 +1440,7 @@ a.b89Kpi__chip {
   &__scope,
   small {
     font-size: 12px;
-    color: #aeb4bf;
+    color: $ouiTextSubduedColor;
   }
   &__controls {
     display: grid;
@@ -1358,7 +1451,7 @@ a.b89Kpi__chip {
     font-size: 13px;
   }
   &__toggle[data-active='true'] {
-    color: #ff9595;
+    color: $ouiColorDangerText;
     font-weight: 700;
   }
   &__filter {
@@ -1371,19 +1464,20 @@ a.b89Kpi__chip {
     padding: 6px 10px;
     border-radius: 6px;
     font-size: 12px;
-    background: rgba(255, 255, 255, 0.04);
+    background: $ouiColorLightestShade;
   }
   &__filter[data-active='true'] {
-    border: 1px solid rgba(255, 95, 87, 0.55);
-    background: rgba(255, 95, 87, 0.1);
+    border: 1px solid $ouiColorDanger;
+    background: transparentize($ouiColorDanger, 0.9);
     font-weight: 600;
   }
   &__filter:focus {
-    outline: 2px solid #e8af54;
+    outline: 2px solid $ouiFocusRingColor;
     outline-offset: 2px;
   }
   &__clear {
-    padding: 2px 8px;
+    min-height: 24px;
+    padding: 2px 10px;
     border: 1px solid currentColor;
     border-radius: 999px;
     background: none;
@@ -1394,8 +1488,8 @@ a.b89Kpi__chip {
   input[type='search'] {
     width: 100%;
     color: inherit;
-    background: rgba(0, 0, 0, 0.2);
-    border: 1px solid #626873;
+    background: $ouiFormBackgroundColor;
+    border: 1px solid $ouiFormBorderColor;
     padding: 8px;
     border-radius: 6px;
   }
@@ -1409,7 +1503,7 @@ a.b89Kpi__chip {
   }
   &__list li {
     padding: 12px 4px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid $ouiBorderColor;
     overflow-wrap: anywhere;
   }
   &__list p,
@@ -1418,11 +1512,14 @@ a.b89Kpi__chip {
     margin: 6px 0;
   }
   &__severity {
-    color: #f4bd73;
+    color: $ouiColorWarningText;
     font-weight: 700;
   }
   &__severity[data-critical='true'] {
-    color: #ff9595;
+    color: $ouiColorDangerText;
+  }
+  &__rule {
+    color: $ouiTextSubduedColor;
   }
   &__all,
   small {
@@ -1432,7 +1529,7 @@ a.b89Kpi__chip {
   a:focus-visible,
   input:focus-visible,
   &__list:focus-visible {
-    outline: 2px solid #e8af54;
+    outline: 2px solid $ouiFocusRingColor;
     outline-offset: 3px;
   }
 }

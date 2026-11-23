@@ -34,22 +34,22 @@ export interface GroupedReasons {
 }
 
 const GROUPS: ReadonlyArray<{ id: ReasonGroupId; title: string; hint?: string }> = [
-  { id: 'priority', title: 'Motivos de la prioridad' },
+  { id: 'priority', title: 'Motivos de la prioridad (motor)' },
   {
     id: 'chain',
     title: 'Secuencia observada',
-    hint: 'El orden temporal eleva la sospecha; no demuestra causalidad por sí solo.',
+    hint: 'Que pasen en este orden aumenta la sospecha, pero no lo prueba.',
   },
   { id: 'thresholds', title: 'Umbrales de la regla' },
   {
     id: 'contradictions',
     title: 'Contradicciones',
-    hint: 'Evidencia que debilita la correlación. Revísela antes de escalar.',
+    hint: 'Datos que debilitan la sospecha. Revísalos antes de escalar.',
   },
   {
     id: 'missing',
     title: 'Datos faltantes',
-    hint: 'Lo que no se pudo verificar. Una cobertura incompleta no equivale a ausencia de actividad.',
+    hint: 'Lo que no se pudo verificar. Que falte un dato no significa que no haya pasado nada.',
   },
   { id: 'evidence', title: 'Evidencia citada' },
   { id: 'nextSteps', title: 'Siguientes pasos' },

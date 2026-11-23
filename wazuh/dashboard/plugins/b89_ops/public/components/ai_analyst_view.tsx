@@ -42,9 +42,17 @@ import {
 import { B89ApiError } from '../api/client';
 import { askBunny } from '../bunny_bridge';
 import { AiActivityTab } from './ai_analyst_activity';
-import { AiCaseFile, AiCaseFileActions, primaryAlertId, runQuestion } from './ai_analyst_case_file';
+import {
+  AiCaseFile,
+  AiCaseFileActions,
+  primaryAlertId,
+  runQuestion,
+  TECHNICAL_ID,
+} from './ai_analyst_case_file';
 import { openReportWindow, printAnalystReport } from './ai_analyst_download';
 import {
+  ANALYST_UNAVAILABLE_TEXT,
+  ANALYST_UNAVAILABLE_TITLE,
   EMPTY_FILTERS,
   filterRuns,
   hasFilters,
@@ -100,15 +108,8 @@ function useTabVisible(): boolean {
 
 function UnavailableCallout({ onRetry }: { onRetry: () => void }) {
   return (
-    <EuiCallOut
-      color="warning"
-      iconType="offline"
-      title="El analista no está habilitado o publicado en este entorno"
-    >
-      <p>
-        El servicio respondió que el recurso no existe. No hay investigaciones que mostrar hasta que
-        el Analista IA se publique y se habilite aquí.
-      </p>
+    <EuiCallOut color="warning" iconType="offline" title={ANALYST_UNAVAILABLE_TITLE}>
+      <p>{ANALYST_UNAVAILABLE_TEXT} Mientras tanto no hay investigaciones que mostrar.</p>
       <EuiButtonEmpty size="xs" flush="left" onClick={onRetry}>
         Volver a comprobar
       </EuiButtonEmpty>
@@ -285,10 +286,7 @@ function AiAnalystConsole({
 
   if (selectedId)
     return (
-      <B89Page
-        title="Expediente de investigación"
-        description="Conclusión del analista, la evidencia que la respalda y lo que hizo, en un solo documento."
-      >
+      <B89Page title="Expediente del Analista IA">
         <RunDocument
           key={selectedId}
           runId={selectedId}
@@ -331,12 +329,18 @@ function AiAnalystConsole({
               >
                 {item.label}
                 {item.id === 'runs' && counts.attention + counts.failed > 0 && (
-                  <span
-                    className="b89AiTabBadge b89Tabular"
-                    title={`Requieren atención: ${counts.attention} en revisión y ${counts.failed} fallidas`}
-                  >
-                    {counts.attention + counts.failed}
-                  </span>
+                  <>
+                    <span
+                      className="b89AiTabBadge b89Tabular"
+                      aria-hidden="true"
+                      title={`Requieren atención: ${counts.attention} en revisión y ${counts.failed} fallidas`}
+                    >
+                      {counts.attention + counts.failed}
+                    </span>
+                    <span className="b89AiSrOnly">
+                      , {counts.attention + counts.failed} requieren atención
+                    </span>
+                  </>
                 )}
               </EuiTab>
             ))}
@@ -373,14 +377,17 @@ function AiAnalystConsole({
                     <h2 id="b89AiRunsTitle">
                       {reviewMode ? 'Bandeja de revisión' : 'Investigaciones'}
                     </h2>
-                    <span className="b89Panel__meta" role="status">
-                      {reviewMode
-                        ? inbox.runs === null
-                          ? 'Cargando…'
-                          : `${inboxShown.length} pendientes · primero la mayor prioridad y la que más espera`
-                        : page.loading && items.length === 0
-                          ? 'Cargando…'
-                          : `${shown.length} de ${items.length} cargadas${cursor ? ' · hay más' : ''}`}
+                    <span className="b89Panel__meta">
+                      <span role="status">
+                        {reviewMode
+                          ? inbox.runs === null
+                            ? 'Cargando…'
+                            : `${inboxShown.length} pendientes · primero la mayor prioridad y la que más espera`
+                          : page.loading && items.length === 0
+                            ? 'Cargando…'
+                            : `${shown.length} de ${items.length} cargadas${cursor ? ' · hay más' : ''}`}
+                      </span>
+                      {/* Fuera de la región viva: el aviso de refresco no se anuncia cada vez. */}
                       {!reviewMode &&
                         hasActive &&
                         (visible
@@ -593,6 +600,7 @@ function StartControl({
           display="rowCompressed"
           isInvalid={invalid}
           error={invalid ? 'Usa el identificador de la alerta, sin espacios.' : undefined}
+          helpText="Cópialo del detalle de la alerta; por ejemplo, 7f3c2a9e-41b0-4c6d-9a51-0e2f8d1b6c44."
           fullWidth
         >
           <EuiFieldText
@@ -601,8 +609,6 @@ function StartControl({
             value={alertId}
             maxLength={128}
             isInvalid={invalid}
-            placeholder="ID de la alerta"
-            aria-label="Identificador de la alerta a investigar"
             data-b89-no-translate=""
             onChange={(event) => setAlertId(event.target.value)}
           />
@@ -632,7 +638,7 @@ function StartControl({
           >
             <p role="status">
               {outcome.created === false
-                ? 'No se inició una corrida nueva ni se consumió presupuesto adicional. '
+                ? 'No se inició una investigación nueva ni se consumió presupuesto adicional. '
                 : ''}
               Expediente <Mono>{outcome.id}</Mono>.
             </p>
@@ -654,8 +660,8 @@ function StartControl({
             Se investigará la alerta <Mono>{trimmed}</Mono>. {modeConsequence(mode)}
           </p>
           <p>
-            Puede consumir presupuesto de inferencia del día si las reglas deterministas no la
-            resuelven. Si ya existe una investigación idéntica, se reutiliza sin costo adicional.
+            Si las reglas automáticas no bastan, usará IA y consumirá parte del presupuesto diario.
+            Si ya existe una investigación idéntica, se reutiliza sin costo adicional.
           </p>
         </EuiConfirmModal>
       )}
@@ -671,23 +677,18 @@ const REVIEW_HEADING = 'b89AiReviewTitle';
 function CaseNav({ run }: { run: AiRunDetail }) {
   const result = run.result;
   const links: Array<{ id: string; label: string; count?: number }> = [
-    ...(run.status === 'requires_review' ? [{ id: REVIEW_HEADING, label: 'Tu revisión' }] : []),
     { id: 'b89AiConclusion', label: 'Conclusión' },
-    { id: 'b89AiSummary', label: 'Resumen' },
+    ...(run.status === 'requires_review' ? [{ id: REVIEW_HEADING, label: 'Tu revisión' }] : []),
   ];
   if (result) {
     links.push(
-      { id: 'b89AiFacts', label: 'Hechos', count: result.facts.length },
-      { id: 'b89AiInferences', label: 'Inferencias', count: result.inferences.length },
+      { id: 'b89AiFacts', label: 'Evidencia', count: result.facts.length },
       { id: 'b89AiGaps', label: 'Vacíos', count: result.gaps.length },
-      { id: 'b89AiNextSteps', label: 'Siguientes pasos', count: result.nextSteps.length },
     );
   }
   links.push(
     { id: 'b89AiActions', label: 'Acciones', count: run.actions.length },
-    { id: 'b89AiEvidence', label: 'Evidencia' },
-    { id: 'b89AiProgress', label: 'Cronología' },
-    { id: 'b89AiUsage', label: 'Uso y costo' },
+    { id: TECHNICAL_ID, label: 'Detalles técnicos' },
   );
   return (
     <nav className="b89AiDocument__navigation" aria-label="Secciones del expediente">
@@ -699,8 +700,13 @@ function CaseNav({ run }: { run: AiRunDetail }) {
             const target = document.getElementById(link.id);
             if (!target) return;
             event.preventDefault();
+            // «Detalles técnicos» es el resumen de un pliegue: se abre antes de saltar.
+            const fold = target.parentElement;
+            if (target.tagName === 'SUMMARY' && fold instanceof HTMLDetailsElement) fold.open = true;
             target.scrollIntoView({ block: 'start' });
-            if (target.hasAttribute('tabindex')) target.focus({ preventScroll: true });
+            if (target.hasAttribute('tabindex') || target.tagName === 'SUMMARY') {
+              target.focus({ preventScroll: true });
+            }
           }}
         >
           {link.label}
@@ -795,6 +801,9 @@ function RunDocument({
           : await retryAiRun(api, run.id, run.revision);
       setRun(result.run);
       changed.current(result.run);
+      notifications.toasts.addSuccess({
+        title: kind === 'cancel' ? 'Detención solicitada' : 'Investigación reanudada',
+      });
     } catch (failure) {
       setError(failure);
       // Otra persona o el propio trabajador cambió la corrida: se recarga antes de reintentar.
@@ -822,6 +831,15 @@ function RunDocument({
     }
   };
 
+  // Un error de Detener, Reintentar o PDF se ve aunque la persona haya bajado: foco y desplazamiento.
+  const errorRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const node = errorRef.current;
+    if (error == null || !node) return;
+    node.scrollIntoView({ block: 'center' });
+    node.focus({ preventScroll: true });
+  }, [error]);
+
   const ask = () => {
     if (!run) return;
     const alertId = primaryAlertId(run);
@@ -831,7 +849,8 @@ function RunDocument({
     });
     if (!opened) {
       notifications.toasts.addWarning({
-        title: 'Bunny no está disponible en esta página',
+        title: 'No se pudo abrir Bunny',
+        text: 'Ábrelo con el botón de Bunny de la barra superior (Alt+Shift+B).',
       });
     }
   };
@@ -867,14 +886,17 @@ function RunDocument({
         </div>
       </div>
       <header className="b89AiDocument__header">
-        <p className="b89Eyebrow">Expediente · Analista IA</p>
         <h2 id="b89AiRunTitle" className="b89AiDocument__title" tabIndex={-1} data-b89-no-translate="">
           {run ? run.subject.title || run.id : 'Investigación'}
         </h2>
         {run && (
           <p className="b89AiDocument__meta">
             <RunStatusMark status={run.status} />
-            {run.priority && <PriorityMark priority={run.priority} />}
+            {run.priority && (
+              <span className="b89AiDocument__priority">
+                Prioridad de la alerta: <PriorityMark priority={run.priority} />
+              </span>
+            )}
             <span>{AI_TRIGGER_LABEL[run.trigger]}</span>
             <span>
               Creada <RunTime iso={run.createdAt} />
@@ -902,24 +924,30 @@ function RunDocument({
           <ErrorCallout error={loaded.error} onRetry={loaded.reload} />
         )}
         {error != null && (
-          <>
+          <div ref={errorRef} tabIndex={-1} className="b89AiDocument__error">
             <ErrorCallout error={error} />
             <EuiSpacer size="m" />
-          </>
+          </div>
         )}
-        {run && run.status === 'requires_review' && (
-          <>
-            <AiReviewPanel
-              run={run}
-              basePath={basePath}
-              headingId={REVIEW_HEADING}
-              // Tras actuar se relee el expediente: trae el estado nuevo de la alerta.
-              onChanged={() => loaded.reload()}
-            />
-            <EuiSpacer size="m" />
-          </>
+        {run && (
+          <AiCaseFile
+            run={run}
+            basePath={basePath}
+            now={now}
+            mode={mode}
+            review={
+              run.status === 'requires_review' ? (
+                <AiReviewPanel
+                  run={run}
+                  basePath={basePath}
+                  headingId={REVIEW_HEADING}
+                  // Tras actuar se relee el expediente: trae el estado nuevo de la alerta.
+                  onChanged={() => loaded.reload()}
+                />
+              ) : null
+            }
+          />
         )}
-        {run && <AiCaseFile run={run} basePath={basePath} now={now} mode={mode} />}
       </div>
       {confirm === 'cancel' && (
         <EuiConfirmModal
@@ -954,11 +982,11 @@ function RunDocument({
           defaultFocusedButton="confirm"
         >
           <p>
-            El reintento es idempotente: retoma la misma investigación y no repite las fases que ya
-            quedaron confirmadas.
+            Retoma la misma investigación desde donde se quedó; lo ya hecho no se repite ni se cobra
+            otra vez.
           </p>
           <p>
-            Las fases pendientes pueden consumir presupuesto de inferencia del día.{' '}
+            Lo que falta puede usar IA y consumir parte del presupuesto diario.{' '}
             {modeConsequence(mode)}
           </p>
         </EuiConfirmModal>

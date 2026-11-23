@@ -14,6 +14,7 @@ import {
 } from '../../common';
 import { getAiDigest, isAnalystUnavailable } from '../api/ai_investigations';
 import { digestFilename, printAnalystReport } from './ai_analyst_download';
+import { ANALYST_UNAVAILABLE_TITLE } from './ai_analyst_model';
 import { AiTile } from './ai_analyst_parts';
 import { useConsole } from './console_context';
 import { ErrorCallout, Mono, PriorityMark } from './primitives';
@@ -67,7 +68,7 @@ export function AiDigestView({
         <AiTile
           label="Costo del periodo"
           value={formatMicroUsd(digest.estimatedMicroUsd)}
-          hint="facturación no conectada"
+          hint="Costo aproximado; puede diferir de la factura."
         />
       </div>
       <div className="b89Split">
@@ -162,6 +163,7 @@ export function AiReportsTab() {
               type="button"
               className="b89AiChip"
               disabled={busy}
+              aria-pressed={from === localDay(new Date(), -item.days) && to === localDay(new Date())}
               onClick={() => preset(item.days)}
             >
               {item.label}
@@ -210,16 +212,22 @@ export function AiReportsTab() {
       </section>
       {error != null &&
         (isAnalystUnavailable(error) ? (
-          <EuiCallOut
-            size="s"
-            color="warning"
-            iconType="offline"
-            title="Los informes del analista no están publicados en este entorno"
-          />
+          <EuiCallOut size="s" color="warning" iconType="offline" title={ANALYST_UNAVAILABLE_TITLE}>
+            <p>
+              Sin el Analista IA no hay informes que generar. Pídele a quien administra la plataforma
+              que lo active.
+            </p>
+          </EuiCallOut>
         ) : (
           <ErrorCallout error={error} onRetry={() => void load()} />
         ))}
       {busy && !digest && <EuiLoadingContent lines={4} />}
+      {digest && loaded && (loaded.from !== from || loaded.to !== to) && (
+        <p className="b89Ai__note" role="status">
+          Cambiaste el periodo: el resumen de abajo sigue siendo del {loaded.from} al {loaded.to}.
+          Pulsa «Generar resumen» para actualizarlo.
+        </p>
+      )}
       {digest && loaded && (
         <AiDigestView
           digest={digest}

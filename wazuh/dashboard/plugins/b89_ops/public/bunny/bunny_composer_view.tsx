@@ -6,6 +6,9 @@ import React, { useLayoutEffect } from 'react';
 import { canSendDraft, composerHeight, composerKeyAction } from './bunny_composer';
 import { Icon } from './bunny_icons';
 
+/** El contador de caracteres aparece al acercarse al límite (antes solo estorba). */
+const COUNTER_FROM = 3500;
+
 /**
  * Cuadro de mensaje redondeado al pie: textarea que crece hasta 8 líneas, Enter envía,
  * Shift+Enter inserta salto, y el botón de enviar pasa a «Detener» mientras Bunny responde.
@@ -82,13 +85,22 @@ export function BunnyComposer({
           }}
         />
         <div className="b89Bunny__composerFoot">
-          <span className="b89Bunny__composerHint">Enter envía · Shift+Enter nueva línea</span>
+          <span className="b89Bunny__composerHint">
+            Enter envía · Shift+Enter nueva línea
+            {draft.length >= COUNTER_FROM && (
+              <span className="b89Bunny__counter" data-full={draft.length >= maxChars ? 'true' : 'false'}>
+                {' · '}
+                {draft.length.toLocaleString('es-PE')} / {maxChars.toLocaleString('es-PE')}
+                {draft.length >= maxChars && ' (límite alcanzado: lo que pegues de más se corta)'}
+              </span>
+            )}
+          </span>
           {pending ? (
             <button
               type="button"
               className="b89Bunny__send is-stop"
-              aria-label="Detener la consulta"
-              title="Cancelar consulta"
+              aria-label="Detener respuesta"
+              title="Detener respuesta"
               onClick={onStop}
             >
               <Icon name="stop" size={14} />

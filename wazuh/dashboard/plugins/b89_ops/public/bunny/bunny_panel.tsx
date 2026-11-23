@@ -37,7 +37,7 @@ import {
   suggestionsFor,
 } from './chat_client';
 import { BunnyArtifactCard, BunnyArtifactList } from './bunny_artifact_card';
-import { autoDownloadOnce } from './bunny_artifacts';
+
 import { BunnyComposer } from './bunny_composer_view';
 import { Icon } from './bunny_icons';
 import type { IconName } from './bunny_icons';
@@ -57,6 +57,7 @@ import {
   PANEL_WIDE_WIDTH,
 } from './bunny_layout';
 import { renderMarkdown } from './markdown';
+import { citationKindLabel, finishedAnnouncement, reportNoteBody } from './bunny_text';
 import { BunnyReportActions } from './bunny_report_actions';
 import { BunnyActivity, BunnyThinking } from './bunny_thinking';
 
@@ -65,8 +66,11 @@ import { BunnyActivity, BunnyThinking } from './bunny_thinking';
  * pantallas anchas EMPUJA la consola a la izquierda (acoplado, con ancho ajustable); en las
  * estrechas es un cajón con fondo. Saluda con ejemplos de la página, muestra la actividad como una
  * línea plegable, cita lo que afirma con enlaces a la consola, entrega informes (PDF/Excel/CSV)
- * como tarjetas de archivo y guarda las conversaciones en un historial. Es de solo lectura y
- * responde con los permisos de la persona.
+ * como tarjetas de archivo y guarda las conversaciones en un historial. Responde con los permisos
+ * de la persona y solo cambia algo si se lo pide (por ejemplo, guardar una nota en un incidente).
+ *
+ * Lector de pantalla: la conversación NO es una región viva (el texto en streaming se leería a
+ * trozos). Una región `aria-live` aparte anuncia una sola vez el inicio y el final de cada respuesta.
  */
 
 const MAX_CHARS = 4000;
@@ -86,7 +90,10 @@ interface Message {
   readonly feedback?: BunnyFeedback;
   /** Segundos que tardó Bunny (solo respuestas de esta sesión). */
   readonly seconds?: number;
+  /** Pregunta que falló: el mensaje de error ofrece «Reintentar» con ella. */
+  readonly retryPrompt?: string;
 }
+
 
 /** Página de contexto para una pregunta abierta desde una vista («Preguntar a Bunny»). */
 export function contextPage(context: BunnyAskDetail['context']): string | null {
@@ -184,23 +191,6 @@ function errorText(error: unknown): string {
   return 'No pude responder. Inténtalo de nuevo.';
 }
 
-function reportNoteBody(message: Message): string {
-  const citations = (message.citations ?? [])
-    .map((citation) => `- ${citation.kind}: ${citation.label} (ID ${citation.id})`)
-    .join('\n');
-  const body = [
-    'BORRADOR PRELIMINAR ASISTIDO POR IA. Requiere revisión humana antes de compartir o decidir.',
-    `Generado: ${new Date().toISOString()}`,
-    '',
-    message.text,
-    '',
-    'Fuentes citadas',
-    citations || 'Sin fuentes citadas; verificar antes de utilizar.',
-  ].join('\n');
-  return body.length <= 10000
-    ? body
-    : `${body.slice(0, 9950)}\n[Truncado al límite de notas del incidente]`;
-}
 
 export function BunnyLauncher({ state, imageUrl }: { state: BunnyState; imageUrl: string }) {
   const open = useBunnyOpen(state);
@@ -221,7 +211,7 @@ export function BunnyLauncher({ state, imageUrl }: { state: BunnyState; imageUrl
       aria-label={`${NAME}, asistente de IA. ${open ? 'Cerrar' : 'Abrir'} el panel`}
       aria-expanded={open}
       aria-controls="b89-bunny-panel"
-      title={`${NAME}, asistente de IA`}
+      title={`${NAME}, asistente de IA (Alt+Shift+B)`}
       data-test-subj="b89BunnyLauncher"
       ref={buttonRef}
     >
@@ -240,22 +230,27 @@ function Sources({
 }) {
   if (citations.length === 0) return null;
   return (
-    <div className="b89Bunny__sources" aria-label="Fuentes">
+    <div className="b89Bunny__sources" role="group" aria-label="Fuentes">
       <span>Fuentes</span>
       {citations.slice(0, 8).map((citation) => {
         const path = citationPath(citation);
-        const label = `${citation.kind === 'alert' ? 'Alerta' : citation.kind === 'incident' ? 'Incidente' : 'SOC'} ${citation.id}`;
+        const kind = citationKindLabel(citation.kind);
+        const name = citation.label || citation.id;
+        const visible = `${kind}: ${name.length > 40 ? `${name.slice(0, 39)}…` : name}`;
         return path ? (
           <button
             type="button"
             key={`${citation.kind}:${citation.id}`}
-            title={citation.label}
+            title={`${kind} ${citation.id}`}
+            aria-label={`Abrir ${kind.toLowerCase()}: ${name}`}
             onClick={() => open(path)}
           >
-            {label}
+            {visible}
           </button>
         ) : (
-          <em key={`${citation.kind}:${citation.id}`}>{label}</em>
+          <em key={`${citation.kind}:${citation.id}`} title={`${kind} ${citation.id}`}>
+            {visible}
+          </em>
         );
       })}
     </div>
@@ -321,11 +316,16 @@ function HistoryView({
   const [items, setItems] = useState<readonly ConversationSummary[] | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  const [deleteFailed, setDeleteFailed] = useState(false);
   const [confirming, setConfirming] = useState<string | 'all' | null>(null);
   const [busy, setBusy] = useState(false);
+  /** Al abrir «¿Borrar?» el foco va a «Sí»; al cerrarlo vuelve a la papelera. */
+  const confirmRef = useRef<HTMLButtonElement | null>(null);
+  const returnFocus = useRef<string | null>(null);
 
   const load = useCallback(
     (next?: string) => {
+      setFailed(false);
       listConversations(api, next).then(
         (page) => {
           setItems((current) => (next && current ? [...current, ...page.items] : page.items));
@@ -339,8 +339,27 @@ function HistoryView({
   );
   useEffect(() => load(), [load]);
 
+  useEffect(() => {
+    if (confirming !== null) {
+      confirmRef.current?.focus();
+    } else if (returnFocus.current) {
+      document.getElementById(returnFocus.current)?.focus();
+      returnFocus.current = null;
+    }
+  }, [confirming]);
+
+  const ask = (target: string | 'all') => {
+    setDeleteFailed(false);
+    setConfirming(target);
+  };
+  const cancel = (target: string | 'all') => {
+    returnFocus.current = target === 'all' ? 'b89-bunny-delete-all' : `b89-bunny-delete-${target}`;
+    setConfirming(null);
+  };
+
   const remove = async (target: string | 'all') => {
     setBusy(true);
+    setDeleteFailed(false);
     try {
       if (target === 'all') await deleteAllConversations(api);
       else await deleteConversation(api, target);
@@ -349,7 +368,8 @@ function HistoryView({
       );
       onDeleted(target === 'all' ? null : target);
     } catch {
-      setFailed(true);
+      setDeleteFailed(true);
+      returnFocus.current = target === 'all' ? 'b89-bunny-delete-all' : `b89-bunny-delete-${target}`;
     } finally {
       setBusy(false);
       setConfirming(null);
@@ -366,7 +386,15 @@ function HistoryView({
       </div>
       {failed && (
         <p className="b89Bunny__historyNote" role="alert">
-          No pude cargar el historial. Inténtalo de nuevo.
+          No pude cargar el historial.{' '}
+          <button type="button" className="b89Bunny__more" onClick={() => load()}>
+            Reintentar
+          </button>
+        </p>
+      )}
+      {deleteFailed && (
+        <p className="b89Bunny__historyNote" role="alert">
+          No se pudo borrar la conversación. Sigue en el historial; vuelve a intentarlo en un momento.
         </p>
       )}
       {items === null && !failed && <p className="b89Bunny__historyNote">Cargando…</p>}
@@ -386,22 +414,28 @@ function HistoryView({
               </span>
             </button>
             {confirming === item.id ? (
-              <span className="b89Bunny__confirm">
-                ¿Borrar?
-                <button type="button" disabled={busy} onClick={() => remove(item.id)}>
-                  Sí
+              <span className="b89Bunny__confirm" role="alert">
+                ¿Borrar esta conversación?
+                <button
+                  type="button"
+                  ref={confirmRef}
+                  disabled={busy}
+                  onClick={() => remove(item.id)}
+                >
+                  Sí, borrar
                 </button>
-                <button type="button" onClick={() => setConfirming(null)}>
+                <button type="button" onClick={() => cancel(item.id)}>
                   No
                 </button>
               </span>
             ) : (
               <button
                 type="button"
+                id={`b89-bunny-delete-${item.id}`}
                 className="b89Bunny__iconButton"
                 title="Borrar conversación"
-                aria-label={`Borrar la conversación ${item.title}`}
-                onClick={() => setConfirming(item.id)}
+                aria-label={`Borrar la conversación ${item.title || 'sin título'}`}
+                onClick={() => ask(item.id)}
               >
                 <Icon name="trash" size={15} />
               </button>
@@ -417,17 +451,17 @@ function HistoryView({
       {items !== null && items.length > 0 && (
         <div className="b89Bunny__historyFoot">
           {confirming === 'all' ? (
-            <span className="b89Bunny__confirm">
+            <span className="b89Bunny__confirm" role="alert">
               ¿Borrar todo el historial? No se puede deshacer.
-              <button type="button" disabled={busy} onClick={() => remove('all')}>
+              <button type="button" ref={confirmRef} disabled={busy} onClick={() => remove('all')}>
                 Sí, borrar
               </button>
-              <button type="button" onClick={() => setConfirming(null)}>
+              <button type="button" onClick={() => cancel('all')}>
                 Cancelar
               </button>
             </span>
           ) : (
-            <button type="button" onClick={() => setConfirming('all')}>
+            <button type="button" id="b89-bunny-delete-all" onClick={() => ask('all')}>
               Borrar todo el historial
             </button>
           )}
@@ -512,7 +546,7 @@ function BunnyUsageView({
             <dd>{configState.config.model ?? 'Sin dato'}</dd>
           </div>
           <div>
-            <dt>Esfuerzo</dt>
+            <dt>Nivel de razonamiento</dt>
             <dd>{configState.config.effort ?? 'Sin dato'}</dd>
           </div>
           <div>
@@ -522,7 +556,13 @@ function BunnyUsageView({
           <div>
             <dt>Datos personales</dt>
             <dd>
-              {configState.config.redactsPersonalData ? 'Seudonimizados' : 'Redacción desactivada'}
+              {configState.config.redactsPersonalData ? (
+                'Se ocultan antes de enviarlos al modelo'
+              ) : (
+                <span className="b89Bunny__warnText">
+                  <span aria-hidden="true">⚠ </span>Se envían sin ocultar
+                </span>
+              )}
             </dd>
           </div>
         </dl>
@@ -638,12 +678,16 @@ interface MenuEntry {
   readonly onSelect: () => void;
 }
 
-/** Menú «⋯» de la cabecera (Archivos, Uso y configuración). */
+/**
+ * Menú «⋯» de la cabecera (Archivos, Uso y configuración). Es un popover de botones normales (no
+ * un `role="menu"`): al abrirse enfoca la primera opción, Esc lo cierra y salir con Tab también.
+ */
 function HeaderMenu({ entries }: { entries: readonly MenuEntry[] }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!open) return undefined;
+    rootRef.current?.querySelector<HTMLButtonElement>('.b89Bunny__menu button')?.focus();
     const onPointer = (event: MouseEvent) => {
       if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false);
     };
@@ -655,6 +699,10 @@ function HeaderMenu({ entries }: { entries: readonly MenuEntry[] }) {
     <div
       className="b89Bunny__menuRoot"
       ref={rootRef}
+      onBlur={(event) => {
+        const next = event.relatedTarget as Node | null;
+        if (open && next && rootRef.current && !rootRef.current.contains(next)) setOpen(false);
+      }}
       onKeyDown={(event) => {
         if (event.key === 'Escape' && open) {
           event.preventDefault();
@@ -669,18 +717,16 @@ function HeaderMenu({ entries }: { entries: readonly MenuEntry[] }) {
         className="b89Bunny__iconButton"
         title="Más opciones"
         aria-label="Más opciones"
-        aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
         <Icon name="more" size={18} />
       </button>
       {open && (
-        <div className="b89Bunny__menu" role="menu">
+        <div className="b89Bunny__menu">
           {entries.map((entry) => (
             <button
               type="button"
-              role="menuitem"
               key={entry.key}
               onClick={() => {
                 setOpen(false);
@@ -754,8 +800,17 @@ export function BunnyPanel({
   const dragging = useRef(false);
   const stickToBottom = useRef(true);
   const wasOpen = useRef(false);
-  /** Archivos ya descargados automáticamente en esta sesión (evento SSE + respuesta final). */
-  const downloaded = useRef<Set<string>>(new Set());
+  /**
+   * Única región viva del panel: «Bunny está trabajando» al enviar, «Respuesta lista…», el error o
+   * «Archivo listo». Nunca el texto en streaming.
+   */
+  const [announcement, setAnnouncement] = useState('');
+  const announce = useCallback((text: string) => {
+    // Vaciar y volver a escribir hace que el mismo texto se anuncie otra vez.
+    setAnnouncement('');
+    window.setTimeout(() => setAnnouncement(text), 50);
+  }, []);
+  const headingRef = useRef<HTMLHeadingElement | null>(null);
 
   const mode = layoutMode(viewport);
   const renderWidth = effectivePanelWidth(panelWidth, viewport);
@@ -801,9 +856,14 @@ export function BunnyPanel({
     };
   }, [api, loadConfig]);
 
+  const enabled = configState.status === 'ready' && configState.config.enabled;
+  // Al abrir (o cambiar de vista), el foco entra al panel: el cuadro de texto si se puede escribir;
+  // si no (comprobando, no activado, historial…), el título del panel.
   useEffect(() => {
-    if (open && view === 'chat') inputRef.current?.focus();
-  }, [open, view]);
+    if (!open) return;
+    if (view === 'chat' && enabled) inputRef.current?.focus();
+    else if (view !== 'history') headingRef.current?.focus();
+  }, [open, view, enabled]);
 
   // Al cerrar, el foco vuelve al botón de la cabecera (lo que abrió el panel).
   useEffect(() => {
@@ -826,7 +886,10 @@ export function BunnyPanel({
         !event.defaultPrevented &&
         state.isOpen() &&
         // Un modal o flyout de OSD abierto atiende primero su propio Esc.
-        !document.querySelector('.euiOverlayMask')
+        !document.querySelector('.euiOverlayMask') &&
+        // Acoplado, la consola sigue en uso: Esc cierra Bunny solo si el foco está en el panel.
+        (layoutMode(window.innerWidth) === 'overlay' ||
+          (panelRef.current !== null && panelRef.current.contains(document.activeElement)))
       ) {
         state.set(false);
       }
@@ -890,6 +953,7 @@ export function BunnyPanel({
       append({ role: 'user', text });
       stickToBottom.current = true;
       const startedAt = Date.now();
+      announce(`${NAME} está trabajando en tu pregunta…`);
       setPending(true);
       setThinkingStartedAt(startedAt);
       setElapsedSeconds(0);
@@ -912,8 +976,8 @@ export function BunnyPanel({
             onArtifact: (artifact) => {
               received.push(artifact);
               setLiveArtifacts((current) => mergeArtifacts(current, [artifact]));
-              // El archivo ya está guardado: se descarga una sola vez, en cuanto llega.
-              autoDownloadOnce(downloaded.current, artifact, api.apiPrefix);
+              // Sin descarga automática: la tarjeta trae «Descargar» y se anuncia una vez.
+              announce(`Archivo listo: ${artifact.filename}`);
             },
             onDelta: (chunk) => setStreamText((current) => current + chunk),
           },
@@ -921,9 +985,12 @@ export function BunnyPanel({
         setAskContext(null);
         if (reply.conversationId) setConversationId(reply.conversationId);
         setNotSaved(reply.saved === false);
-        // Camino JSON (sin SSE): los archivos llegan solo en la respuesta final.
-        (reply.artifacts ?? []).forEach((artifact) =>
-          autoDownloadOnce(downloaded.current, artifact, api.apiPrefix),
+        const files = (reply.artifacts ?? []).filter(
+          (artifact) => !received.some((item) => item.id === artifact.id),
+        );
+        announce(
+          finishedAnnouncement(reply.reply) +
+            (files.length > 0 ? ` Archivo listo: ${files.map((file) => file.filename).join(', ')}.` : ''),
         );
         append({
           role: 'assistant',
@@ -946,14 +1013,16 @@ export function BunnyPanel({
               message.id === userMessageId ? { ...message, tone: 'notice' } : message,
             ),
           );
-          append({
-            role: 'assistant',
-            text: 'Consulta cancelada. No se reintentó automáticamente; revisa la actividad antes de volver a enviarla.',
-            tone: 'notice',
-            ...files,
-          });
+          const cancelled =
+            'Cancelaste la pregunta. Está de nuevo en el cuadro de texto por si quieres enviarla.';
+          announce(cancelled);
+          append({ role: 'assistant', text: cancelled, tone: 'notice', ...files });
         } else {
-          append({ role: 'assistant', text: errorText(error), tone: 'error', ...files });
+          // La pregunta no se pierde: vuelve al cuadro de texto y el error ofrece «Reintentar».
+          setDraft(text);
+          const message = errorText(error);
+          announce(`${message} Tu pregunta sigue en el cuadro de texto.`);
+          append({ role: 'assistant', text: message, tone: 'error', retryPrompt: text, ...files });
         }
       } finally {
         if (activeChatRun.current === controller) activeChatRun.current = null;
@@ -963,7 +1032,7 @@ export function BunnyPanel({
         inputRef.current?.focus();
       }
     },
-    [api, append, askContext, conversationId, messages, pending],
+    [announce, api, append, askContext, conversationId, messages, pending],
   );
 
   // API pública del panel: `window.dispatchEvent(new CustomEvent(BUNNY_ASK_EVENT, …))` (ver
@@ -1082,7 +1151,8 @@ export function BunnyPanel({
         ref={panelRef}
         className={`b89Bunny__panel b89Bunny__panel--${mode}${resizing ? ' is-resizing' : ''}`}
         style={{ width: renderWidth }}
-        role="dialog"
+        // Cajón: diálogo modal. Acoplado: un panel complementario, la consola sigue usable.
+        role={mode === 'overlay' ? 'dialog' : 'complementary'}
         aria-modal={mode === 'overlay' ? true : undefined}
         aria-label={`${NAME}, asistente de IA de B89 SOC`}
         data-test-subj="b89BunnyPanel"
@@ -1128,14 +1198,16 @@ export function BunnyPanel({
         />
         <header className="b89Bunny__header">
           <img src={imageUrl} alt="" width={28} height={28} />
-          <h2>{NAME}</h2>
+          <h2 ref={headingRef} tabIndex={-1}>
+            {NAME}
+          </h2>
           <span className="b89Bunny__spacer" />
           <button
             type="button"
             className="b89Bunny__iconButton"
             title="Nueva conversación"
             aria-label="Nueva conversación"
-            disabled={pending || (messages.length === 0 && view === 'chat')}
+            disabled={!enabled || pending || (messages.length === 0 && view === 'chat')}
             onClick={newConversation}
           >
             <Icon name="plus" size={18} />
@@ -1146,6 +1218,7 @@ export function BunnyPanel({
             title="Historial de conversaciones"
             aria-label="Historial de conversaciones"
             aria-pressed={view === 'history'}
+            disabled={!enabled}
             onClick={() => setView(view === 'history' ? 'chat' : 'history')}
           >
             <Icon name="history" size={18} />
@@ -1179,26 +1252,22 @@ export function BunnyPanel({
           />
         ) : configState.status === 'loading' ? (
           <div className="b89Bunny__unavailable" role="status">
-            Comprobando disponibilidad del asistente...
+            Comprobando si {NAME} está disponible…
           </div>
         ) : configState.status === 'unavailable' ? (
           <section className="b89Bunny__unavailable" role="alert">
-            <h3>No se pudo comprobar la disponibilidad</h3>
-            <p>El servicio de configuración no respondió. El estado de Bunny es desconocido.</p>
+            <h3>No pudimos comprobar si {NAME} está disponible</h3>
+            <p>Reintenta en unos segundos.</p>
             <button type="button" onClick={() => void loadConfig()}>
               Reintentar
             </button>
           </section>
         ) : configState.status === 'ready' && !configState.config.enabled ? (
           <section className="b89Bunny__unavailable" role="status">
-            <h3>Bunny está instalado</h3>
+            <h3>{NAME} no está activado</h3>
             <p>
-              La interfaz del asistente está lista. Para activar las respuestas, un administrador
-              debe habilitar y configurar el proveedor de IA en el servicio B89. Con Bedrock, la API
-              usa el rol de AWS.
-            </p>
-            <p>
-              El envío de mensajes está deshabilitado hasta que el servicio confirme la conexión.
+              Un administrador debe activarlo en la configuración del asistente. Mientras tanto no
+              puedes enviar preguntas.
             </p>
           </section>
         ) : view === 'history' ? (
@@ -1216,11 +1285,13 @@ export function BunnyPanel({
           <FilesView api={api} onBack={() => setView('chat')} />
         ) : (
           <>
+            {/* La conversación NO es una región viva: ver `announcement`. */}
             <div
               className="b89Bunny__list"
               ref={listRef}
-              role="log"
-              aria-live="polite"
+              role="region"
+              aria-label={`Conversación con ${NAME}`}
+              aria-live="off"
               onScroll={() => {
                 const el = listRef.current;
                 if (el) {
@@ -1237,10 +1308,19 @@ export function BunnyPanel({
                       ¿En qué te ayudo hoy? Veo lo mismo que tú: lo que tu rol no puede ver, yo
                       tampoco.
                     </p>
+                    <p className="b89Bunny__suggestionsHint">
+                      Elige un ejemplo para ponerlo en el cuadro de texto; lo revisas y lo envías.
+                    </p>
                     <ul className="b89Bunny__suggestions">
                       {suggestions.slice(0, 4).map((suggestion) => (
                         <li key={suggestion.title}>
-                          <button type="button" onClick={() => send(suggestion.prompt)}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDraft(suggestion.prompt.slice(0, MAX_CHARS));
+                              inputRef.current?.focus();
+                            }}
+                          >
                             <strong>{suggestion.title}</strong>
                             <span>{suggestion.prompt}</span>
                           </button>
@@ -1273,6 +1353,17 @@ export function BunnyPanel({
                       {message.citations && (
                         <Sources citations={message.citations} open={navigate} />
                       )}
+                      {message.tone === 'error' && message.retryPrompt && (
+                        <div className="b89Bunny__actions">
+                          <button
+                            type="button"
+                            disabled={pending}
+                            onClick={() => void send(message.retryPrompt ?? '')}
+                          >
+                            Reintentar
+                          </button>
+                        </div>
+                      )}
                       {!message.tone && (
                         <div className="b89Bunny__actions">
                           <button
@@ -1299,6 +1390,9 @@ export function BunnyPanel({
                               onRate={(rating) => void rate(message, rating)}
                             />
                           )}
+                          <details className="b89Bunny__moreActions">
+                            <summary>Más acciones</summary>
+                            <div className="b89Bunny__moreBody">
                           <BunnyReportActions
                             api={api}
                             basePath={core.http.basePath.get()}
@@ -1374,9 +1468,8 @@ export function BunnyPanel({
                                 </button>
                               </>
                             )}
-                          <button type="button" onClick={() => navigate('/app/b89-respond')}>
-                            Abrir B89 Respond
-                          </button>
+                            </div>
+                          </details>
                         </div>
                       )}
                       {noteStatus?.id === message.id && (
@@ -1425,8 +1518,12 @@ export function BunnyPanel({
             />
           </>
         )}
+        <p className="b89Bunny__srOnly" aria-live="polite" aria-atomic="true">
+          {announcement}
+        </p>
         <p className="b89Bunny__disclaimer">
-          IA: verifica antes de actuar. Solo lectura, con tus permisos.
+          {NAME} puede equivocarse: verifica antes de actuar. Solo hace cambios si se lo pides (por
+          ejemplo, guardar una nota).
         </p>
       </aside>
     </>

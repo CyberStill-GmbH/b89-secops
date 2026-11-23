@@ -3,6 +3,8 @@
  */
 
 import React, { useRef, useState } from 'react';
+import { EuiButton, EuiButtonEmpty, EuiContextMenu, EuiPopover } from '@elastic/eui';
+import type { EuiContextMenuPanelDescriptor } from '@elastic/eui';
 import type { Alert, BunnyReportFormat } from '../../common';
 import { BUNNY_REPORT_FORMAT_LABEL, bunnyReportPrompt } from '../../common';
 import { askBunny } from '../bunny_bridge';
@@ -80,7 +82,7 @@ export function InvestigationReportActions({
 
   /** Informe profesional con Bunny (PDF/Excel/CSV): abre el panel y envía la petición. */
   const askForReport = (format: BunnyReportFormat) => {
-    setMenuOpen(false);
+    if (entities.length === 0) return;
     const opened = askBunny({
       prompt: bunnyReportPrompt({
         format,
@@ -93,8 +95,8 @@ export function InvestigationReportActions({
     });
     setMessage(
       opened
-        ? `Pedí a Bunny el informe ${BUNNY_REPORT_FORMAT_LABEL[format]}; el archivo se descargará solo cuando esté listo.`
-        : 'Bunny no está activo para tu sesión. Usa la exportación directa.',
+        ? `Pedido a Bunny el informe en ${BUNNY_REPORT_FORMAT_LABEL[format]}. Se descargará cuando esté listo.`
+        : 'Bunny no está activo para tu cuenta. Usa «Solo datos» o pide a un administrador que lo active.',
     );
   };
 
@@ -104,7 +106,7 @@ export function InvestigationReportActions({
     setBusy(action);
     setProgress(null);
     setMessage('');
-    const filename = `b89-investigacion-${(alert?.id ?? 'grupo').replace(/[^A-Za-z0-9_-]/gu, '_')}.xlsx`;
+    const filename = `b89-investigacion-${(alert?.id ?? 'entidad').replace(/[^A-Za-z0-9_-]/gu, '_')}.xlsx`;
     let outputHandle: ReportFileHandle | null = null;
     const picker =
       action === 'xlsx' && typeof (window as SavePickerWindow).showSaveFilePicker === 'function';
@@ -124,7 +126,7 @@ export function InvestigationReportActions({
       } catch (error) {
         setMessage(
           error instanceof Error && error.name === 'AbortError'
-            ? 'Selección del destino cancelada. No se generó ningún archivo.'
+            ? 'Exportación cancelada: no elegiste dónde guardar el archivo.'
             : 'No se pudo abrir el selector de archivos del navegador.',
         );
         startingExport.current = false;
@@ -136,7 +138,7 @@ export function InvestigationReportActions({
     // the authorized pages are collected. It is closed on cancel/failure.
     const opened = action === 'print' ? windowOpen() : null;
     if (action === 'print' && !opened) {
-      setMessage('Permite la ventana emergente para preparar el PDF imprimible.');
+      setMessage('El navegador bloqueó la pestaña nueva. Permite ventanas emergentes para este sitio y vuelve a intentarlo.');
       startingExport.current = false;
       setBusy(null);
       return;
@@ -145,7 +147,7 @@ export function InvestigationReportActions({
     if (opened) {
       opened.document.open();
       opened.document.write(
-        '<!doctype html><html lang="es"><meta charset="utf-8"><title>B89 SOC · Preparando informe</title><body style="font:16px Arial;padding:32px;color:#263444"><h1>B89 SOC · Preparando informe</h1><p>Consultando el historial autorizado de la investigación…</p><p>Esta ventana mostrará la opción de imprimir o guardar como PDF cuando termine.</p></body></html>',
+        '<!doctype html><html lang="es"><meta charset="utf-8"><title>B89 SOC · Preparando informe</title><body style="font:16px Arial;padding:32px;color:#263444"><h1>B89 SOC · Preparando informe</h1><p>Buscando los eventos de la investigación…</p><p>Esta ventana mostrará la opción de imprimir o guardar como PDF cuando termine.</p></body></html>',
       );
       opened.document.close();
     }
@@ -183,12 +185,12 @@ export function InvestigationReportActions({
           highestProgress.current = percent;
           setProgress({ ...next, percent });
           if (next.phase === 'query' && printWindow.current && !printWindow.current.closed) {
-            printWindow.current.document.body.innerHTML = `<h1>B89 SOC · Preparando informe</h1><p>${escapeHtml(next.message)}</p>`;
+            printWindow.current.document.body.innerHTML = `<h1>B89 SOC · Preparando informe</h1><p>Buscando eventos… ${escapeHtml(String(percent))} %</p>`;
           }
         },
       });
       if (controller.signal.aborted) {
-        setMessage('Preparación cancelada.');
+        setMessage('Exportación cancelada.');
         return;
       }
       if (action === 'xlsx' && outputHandle) {
@@ -214,7 +216,7 @@ export function InvestigationReportActions({
           controller.signal,
         );
         if (controller.signal.aborted) {
-          setMessage('Preparación cancelada.');
+          setMessage('Exportación cancelada.');
           return;
         }
         const url = URL.createObjectURL(blob);
@@ -240,14 +242,14 @@ export function InvestigationReportActions({
           });
         });
         if (controller.signal.aborted) {
-          setMessage('Preparación cancelada.');
+          setMessage('Exportación cancelada.');
           return;
         }
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         const anchor = document.createElement('a');
         anchor.href = url;
-        anchor.download = `b89-investigacion-${(alert?.id ?? 'grupo').replace(/[^A-Za-z0-9_-]/gu, '_')}.csv`;
+        anchor.download = `b89-investigacion-${(alert?.id ?? 'entidad').replace(/[^A-Za-z0-9_-]/gu, '_')}.csv`;
         document.body.appendChild(anchor);
         anchor.click();
         anchor.remove();
@@ -267,12 +269,12 @@ export function InvestigationReportActions({
       highestProgress.current = 100;
       const completionMessage =
         action === 'print'
-          ? 'Vista imprimible lista; revisa el contenido y elige Guardar como PDF en el navegador.'
+          ? 'Vista imprimible lista en otra pestaña: elige «Guardar como PDF» al imprimir.'
           : action === 'xlsx'
             ? outputHandle
-              ? 'Libro Excel escrito por partes en el archivo elegido.'
-              : 'Libro Excel listo para revisar y compartir; este navegador lo preparó en memoria (límite: 50 MiB).'
-            : 'Archivo CSV listo para revisar y compartir.';
+              ? 'Libro Excel guardado en el archivo elegido.'
+              : 'Libro Excel descargado.'
+            : 'CSV descargado.';
       setProgress({
         phase: 'package',
         completed: 1,
@@ -281,12 +283,12 @@ export function InvestigationReportActions({
         message: completionMessage,
       });
       const rowSummary = report.truncated
-        ? `Incluye ${report.events.length.toLocaleString('es-PE')} de ${report.totalEvents.toLocaleString('es-PE')} eventos (límite de seguridad). Refina los filtros para completar.`
+        ? `Incluye ${report.events.length.toLocaleString('es-PE')} de ${report.totalEvents.toLocaleString('es-PE')} eventos (máximo por archivo). Acorta la ventana o quita entidades para incluir el resto.`
         : `${report.events.length.toLocaleString('es-PE')} eventos incluidos.`;
       setMessage(`${completionMessage} ${rowSummary}`);
     } catch (error) {
       if (controller.signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
-        setMessage('Preparación cancelada.');
+        setMessage('Exportación cancelada.');
       } else {
         const failure =
           error instanceof ReportCollectionError
@@ -296,14 +298,14 @@ export function InvestigationReportActions({
               : null;
         setMessage(
           failure === 'forbidden'
-            ? 'Tu sesión no puede consultar toda la evidencia; no se generó un informe parcial. Revisa los permisos de la alerta e inténtalo de nuevo.'
+            ? 'Tu cuenta no puede ver todos los eventos de esta investigación, así que no se creó el archivo. Pide acceso a un administrador del SOC.'
             : failure === 'unavailable'
-              ? 'Wazuh Indexer no respondió a la consulta. No se generó el archivo; reintenta y, si persiste, revisa Salud de fuentes.'
+              ? 'El SIEM no respondió y no se creó el archivo. Reintenta; si sigue fallando, revisa Salud de fuentes.'
               : failure === 'invalid'
-                ? 'Wazuh Indexer devolvió páginas inconsistentes. No se generó un informe parcial; vuelve a intentarlo con una ventana menor.'
+                ? 'Los datos cambiaron mientras se preparaba el informe. Vuelve a intentarlo con una ventana más corta.'
                 : failure === 'rejected'
-                  ? 'El endpoint rechazó la consulta del informe. Revisa los filtros y la compatibilidad de versiones del dashboard y del plugin.'
-                  : 'No se pudo completar el informe. No se generó un archivo parcial; revisa la conexión e inténtalo de nuevo.',
+                  ? 'El servidor rechazó el informe. Reduce la ventana de tiempo o las entidades y reintenta; si sigue, avisa al administrador.'
+                  : 'No se pudo crear el archivo. Revisa la conexión y vuelve a intentarlo.',
         );
       }
       if (printWindow.current && !printWindow.current.closed) printWindow.current.close();
@@ -317,112 +319,109 @@ export function InvestigationReportActions({
 
   const stop = () => cancel.current?.abort();
 
+  const noEntities = entities.length === 0;
+  const blockedTip = noEntities
+    ? 'Activa al menos una entidad en «Quiénes están involucrados» para exportar.'
+    : undefined;
+  const pick = (run: () => void) => () => {
+    setMenuOpen(false);
+    run();
+  };
+  const panels: EuiContextMenuPanelDescriptor[] = [
+    {
+      id: 0,
+      title: 'Exportar la investigación',
+      items: [
+        ...(['pdf', 'xlsx', 'csv'] as const).map((format) => ({
+          key: `bunny-${format}`,
+          name: `Informe redactado por Bunny · ${BUNNY_REPORT_FORMAT_LABEL[format]}`,
+          icon: 'discuss',
+          disabled: Boolean(busy) || noEntities,
+          toolTipContent: blockedTip,
+          onClick: pick(() => askForReport(format)),
+        })),
+        { key: 'sep', isSeparator: true as const },
+        {
+          key: 'csv',
+          name: 'Solo datos · CSV',
+          icon: 'document',
+          disabled: Boolean(busy) || noEntities,
+          toolTipContent: blockedTip,
+          onClick: pick(() => void start('csv')),
+        },
+        {
+          key: 'xlsx',
+          name: 'Solo datos · Excel (.xlsx)',
+          icon: 'visTable',
+          disabled: Boolean(busy) || noEntities,
+          toolTipContent: blockedTip,
+          onClick: pick(() => void start('xlsx')),
+        },
+        {
+          key: 'print',
+          name: 'Solo datos · Imprimir o guardar PDF',
+          icon: 'printer',
+          disabled: Boolean(busy) || noEntities,
+          toolTipContent: blockedTip,
+          onClick: pick(() => void start('print')),
+        },
+      ],
+    },
+  ];
+
   return (
-    <section className="b89ReportActions" aria-labelledby="b89ReportActionsTitle">
-      <div className="b89ReportActions__copy">
-        <h3 id="b89ReportActionsTitle">Informe de investigación con eventos relacionados</h3>
-        <p>
-          Bunny redacta el resumen y B89 arma las tablas con los eventos de la ventana; la
-          correlación temporal no demuestra causalidad ni hilo de correo.
-        </p>
-      </div>
-      <div
-        className="b89ReportActions__primary"
-        onKeyDown={(event) => {
-          if (event.key === 'Escape' && menuOpen) {
-            event.stopPropagation();
-            setMenuOpen(false);
-          }
-        }}
-      >
-        <div className="b89ReportActions__split">
-          <button
-            type="button"
-            className="b89ReportActions__bunny"
-            disabled={Boolean(busy)}
-            onClick={() => askForReport('pdf')}
-          >
-            Generar informe con Bunny
-          </button>
-          <button
-            type="button"
-            className="b89ReportActions__bunnyMenu"
-            aria-haspopup="menu"
+    <>
+      <EuiPopover
+        id="b89ExportMenu"
+        isOpen={menuOpen}
+        closePopover={() => setMenuOpen(false)}
+        panelPaddingSize="none"
+        anchorPosition="downRight"
+        button={
+          <EuiButton
+            size="s"
+            iconType="arrowDown"
+            iconSide="right"
+            isLoading={Boolean(busy)}
+            aria-haspopup="true"
             aria-expanded={menuOpen}
-            aria-label="Elegir formato del informe"
-            disabled={Boolean(busy)}
             onClick={() => setMenuOpen((value) => !value)}
+            data-test-subj="b89ExportMenuButton"
           >
-            ▾
-          </button>
-        </div>
-        {menuOpen && (
-          <div className="b89ReportActions__menu" role="menu">
-            {(['pdf', 'xlsx', 'csv'] as const).map((format) => (
-              <button
-                type="button"
-                role="menuitem"
-                key={format}
-                onClick={() => askForReport(format)}
-              >
-                {BUNNY_REPORT_FORMAT_LABEL[format]}
-                {format === 'xlsx' ? ' (.xlsx)' : ''}
-              </button>
-            ))}
-          </div>
-        )}
+            {busy ? 'Exportando…' : 'Exportar'}
+          </EuiButton>
+        }
+      >
+        <EuiContextMenu initialPanelId={0} panels={panels} />
+        <p className="b89ExportMenu__hint">Bunny redacta el resumen; B89 añade los eventos.</p>
+      </EuiPopover>
+      {/* Siempre montado para que el lector de pantalla anuncie también el primer mensaje. */}
+      <div className="b89ExportStatus" role="status" aria-live="polite" aria-atomic="true">
+        {busy ? (
+          <>
+            <span>
+              {!progress
+                ? 'Preparando la exportación…'
+                : progress.phase === 'query'
+                  ? 'Buscando eventos…'
+                  : 'Creando el archivo…'}
+            </span>
+            {progress && (
+              <progress
+                max={100}
+                value={progressPercent(progress)}
+                aria-label="Progreso de la exportación"
+              />
+            )}
+            <EuiButtonEmpty size="xs" onClick={stop}>
+              Cancelar exportación
+            </EuiButtonEmpty>
+          </>
+        ) : message ? (
+          <span>{message}</span>
+        ) : null}
       </div>
-      <div className="b89ReportActions__direct" role="group" aria-label="Exportación directa">
-        <span className="b89ReportActions__directLabel">Exportación directa</span>
-        <div className="b89ReportActions__buttons">
-          <button
-            type="button"
-            disabled={Boolean(busy) || entities.length === 0}
-            onClick={() => void start('csv')}
-          >
-            {busy === 'csv' ? 'Preparando CSV…' : 'Descargar CSV completo'}
-          </button>
-          <button
-            type="button"
-            disabled={Boolean(busy) || entities.length === 0}
-            onClick={() => void start('xlsx')}
-          >
-            {busy === 'xlsx' ? 'Preparando Excel…' : 'Descargar Excel (.xlsx)'}
-          </button>
-          <button
-            type="button"
-            disabled={Boolean(busy) || entities.length === 0}
-            onClick={() => void start('print')}
-          >
-            {busy === 'print' ? 'Preparando PDF…' : 'Imprimir / guardar PDF'}
-          </button>
-          {busy && (
-            <button type="button" className="b89ReportActions__cancel" onClick={stop}>
-              Cancelar
-            </button>
-          )}
-        </div>
-      </div>
-      {busy && progress && (
-        <div className="b89ReportActions__progress" aria-live="polite" aria-atomic="true">
-          <label htmlFor="b89ReportProgress">{progress.message}</label>
-          <progress id="b89ReportProgress" max={100} value={progressPercent(progress)} />
-          <span>
-            {progress.phase === 'query' ? 'Consulta de páginas' : 'Generación del archivo'}
-          </span>
-        </div>
-      )}
-      {message && (
-        <p className="b89ReportActions__message" role="status">
-          {message}
-        </p>
-      )}
-      {entities.length === 0 && (
-        <p className="b89ReportActions__message">
-          Añade una entidad a la investigación antes de exportar.
-        </p>
-      )}
-    </section>
+    </>
   );
 }
 

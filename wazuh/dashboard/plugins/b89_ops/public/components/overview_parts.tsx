@@ -9,7 +9,6 @@ import {
   dashboardHref,
   HEALTH_TONE,
   IntegrationSpec,
-  LEVEL_BAND_LABEL,
   LEVEL_BANDS,
   LevelBand,
   LevelCounts,
@@ -132,7 +131,7 @@ export interface Metric {
   readonly href?: string;
   /**
    * El valor filtra la lista «Atención prioritaria» de la misma tarjeta (sin salir):
-   * `critical` deja solo las críticas; `all`, altas y críticas.
+   * `critical` deja solo el nivel 12 o más; `all`, el nivel 8 o más.
    */
   readonly focus?: 'critical' | 'all';
   /** Acción en la tarjeta; tiene prioridad sobre `href`. */
@@ -154,8 +153,8 @@ export function MetricList({ metrics }: { metrics: readonly Metric[] }) {
                 onClick={metric.onSelect}
                 aria-label={`${metric.label}: ${
                   metric.focus === 'all'
-                    ? 'mostrar altas y críticas en esta tarjeta'
-                    : 'mostrar solo las críticas en esta tarjeta'
+                    ? 'mostrar los eventos de nivel 8 o más en esta tarjeta'
+                    : 'mostrar solo los eventos de nivel 12 o más en esta tarjeta'
                 }`}
               >
                 {metric.value}
@@ -178,12 +177,23 @@ export function MetricList({ metrics }: { metrics: readonly Metric[] }) {
   );
 }
 
-/** Nombre en plural de cada banda, para enlaces del tipo «3 críticas →». */
+/**
+ * Nombre de cada banda del SIEM por su rango de nivel («Nivel 12–15»). Nunca «Crítica/Alta»: esas
+ * palabras son de la prioridad de las alertas (P1–P4) y de la severidad de los incidentes.
+ */
+export const LEVEL_BAND_NAME: Readonly<Record<LevelBand, string>> = {
+  low: 'Nivel 0–3',
+  medium: 'Nivel 4–7',
+  high: 'Nivel 8–11',
+  critical: 'Nivel 12–15',
+};
+
+/** Complemento de una cifra, para enlaces del tipo «3 de nivel 12–15 →». */
 export const LEVEL_BAND_PLURAL: Readonly<Record<LevelBand, string>> = {
-  low: 'bajas',
-  medium: 'medias',
-  high: 'altas',
-  critical: 'críticas',
+  low: 'de nivel 0–3',
+  medium: 'de nivel 4–7',
+  high: 'de nivel 8–11',
+  critical: 'de nivel 12–15',
 };
 
 /** Destino de una banda (p. ej. Discover con solo esa banda); sin él, la pieza no es enlace. */
@@ -200,7 +210,7 @@ export function SeverityBar({
 }) {
   const total = LEVEL_BANDS.reduce((sum, band) => sum + levels[band], 0);
   const summary = LEVEL_BANDS.map(
-    (band) => `${LEVEL_BAND_LABEL[band]} ${formatNumber(levels[band])}`,
+    (band) => `${LEVEL_BAND_NAME[band]}: ${formatNumber(levels[band])}`,
   ).join(', ');
   const segments =
     total === 0 ? (
@@ -209,7 +219,7 @@ export function SeverityBar({
       LEVEL_BANDS.map((band) => {
         if (levels[band] === 0) return null;
         const style = { flexGrow: levels[band], backgroundColor: LEVEL_COLOR[band] };
-        const title = `${LEVEL_BAND_LABEL[band]}: ${formatNumber(levels[band])}`;
+        const title = `${LEVEL_BAND_NAME[band]}: ${formatNumber(levels[band])}`;
         return hrefFor ? (
           <a
             key={band}
@@ -217,7 +227,7 @@ export function SeverityBar({
             style={style}
             href={hrefFor(band)}
             title={`${title} · ver solo estos`}
-            aria-label={`Ver solo ${formatNumber(levels[band])} ${LEVEL_BAND_PLURAL[band]}`}
+            aria-label={`Ver solo los ${formatNumber(levels[band])} eventos ${LEVEL_BAND_PLURAL[band]}`}
             data-band={band}
           />
         ) : (
@@ -237,8 +247,8 @@ export function SeverityBar({
 }
 
 /**
- * Leyenda de severidad. Con `hrefFor`, cada banda es un enlace a solo esa banda y con conteos
- * dice exactamente lo que filtra («3 críticas →»).
+ * Leyenda de niveles del SIEM. Con `hrefFor`, cada banda es un enlace a solo esa banda y con
+ * conteos dice exactamente lo que filtra («3 de nivel 12–15 →»).
  */
 export function LevelLegend({ levels, hrefFor }: { levels?: LevelCounts; hrefFor?: BandHref }) {
   return (
@@ -262,7 +272,7 @@ export function LevelLegend({ levels, hrefFor }: { levels?: LevelCounts; hrefFor
                     {LEVEL_BAND_PLURAL[band]} →
                   </span>
                 ) : (
-                  <span>{LEVEL_BAND_LABEL[band]} →</span>
+                  <span>{LEVEL_BAND_NAME[band]} →</span>
                 )}
               </a>
             </li>
@@ -271,7 +281,7 @@ export function LevelLegend({ levels, hrefFor }: { levels?: LevelCounts; hrefFor
         return (
           <li key={band}>
             {swatch}
-            <span>{LEVEL_BAND_LABEL[band]}</span>
+            <span>{LEVEL_BAND_NAME[band]}</span>
             {levels && <strong className="b89Tabular">{formatNumber(levels[band])}</strong>}
           </li>
         );
@@ -284,7 +294,7 @@ const HOUR = new Intl.DateTimeFormat('es-PE', { hour: '2-digit', minute: '2-digi
 const DAY = new Intl.DateTimeFormat('es-PE', { weekday: 'short', day: '2-digit' });
 
 /**
- * Barras apiladas por severidad, en HTML (columnas flex): escala con el contenedor sin
+ * Barras apiladas por nivel del SIEM, en HTML (columnas flex): escala con el contenedor sin
  * deformar el texto y se lee en un teléfono. Cada columna lleva su resumen accesible.
  */
 export function TrendChart({
@@ -327,7 +337,7 @@ export function TrendChart({
       {totals.every((value) => value === 0) ? (
         <p className="b89Trend__empty">Sin eventos en este rango.</p>
       ) : (
-        <div className="b89Trend__plot" role="list" aria-label="Eventos por severidad">
+        <div className="b89Trend__plot" role="list" aria-label="Eventos por nivel">
           <span className="b89Trend__max b89Tabular" aria-hidden="true">
             {formatNumber(max)}
           </span>
@@ -336,7 +346,7 @@ export function TrendChart({
               ...LEVEL_BANDS,
             ]
               .reverse()
-              .map((band) => `${LEVEL_BAND_LABEL[band]} ${bucket.levels[band]}`)
+              .map((band) => `${LEVEL_BAND_NAME[band]}: ${bucket.levels[band]}`)
               .join(', ')})`;
             return (
               <div key={bucket.at} className="b89Trend__column" role="listitem">

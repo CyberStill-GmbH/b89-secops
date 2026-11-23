@@ -14,6 +14,8 @@ import {
   AI_VERDICTS,
   AiRunStatusView,
   AiRunSummary,
+  confidenceLabel,
+  verdictLabel,
   formatCount,
   formatMicroUsd,
   inferenceLabel,
@@ -49,7 +51,7 @@ export function runCostText(
   run: Pick<AiRunSummary, 'inference' | 'estimatedCostMicroUsd'>,
 ): string {
   const cost = run.estimatedCostMicroUsd;
-  if (run.inference === 'none' && (cost === null || cost === 0)) return 'Sin llamada al modelo';
+  if (run.inference === 'none' && (cost === null || cost === 0)) return 'Sin costo (no usó IA)';
   return formatMicroUsd(cost);
 }
 
@@ -103,7 +105,7 @@ function RunMeta({ run }: { run: AiRunSummary }) {
   if (run.inference === 'none') {
     parts.push(inferenceLabel('none'));
   } else if (run.inference !== null) {
-    parts.push(`IA: ${inferenceLabel(run.inference).toLowerCase()} · ${runCostText(run)}`);
+    parts.push(`${inferenceLabel(run.inference)} · ${runCostText(run)}`);
   }
   if (run.initiatedBy) {
     parts.push(
@@ -122,6 +124,29 @@ function RunMeta({ run }: { run: AiRunSummary }) {
       ))}
     </span>
   );
+}
+
+/**
+ * Lo que un lector de pantalla oye de la fila: una frase con contexto, en vez de todas las
+ * columnas seguidas sin rótulo.
+ */
+export function runRowLabel(run: AiRunSummary, now?: number): string {
+  const parts: string[] = [run.subject.title || 'Sin título'];
+  if (run.priority) parts.push(`prioridad ${run.priority}`);
+  parts.push(
+    run.verdict === null
+      ? isActive(run.status)
+        ? 'analizando'
+        : 'sin conclusión'
+      : `conclusión de la IA: ${verdictLabel(run.verdict).toLowerCase()}, ${confidenceLabel(run.confidence).toLowerCase()}`,
+  );
+  parts.push(AI_RUN_STATUS_LABEL[run.status].toLowerCase());
+  if (run.status === 'requires_review') {
+    parts.push(isPendingReview(run) ? 'revisión pendiente' : 'alerta ya atendida');
+  }
+  const when = run.updatedAt ?? run.createdAt;
+  if (when && !Number.isNaN(new Date(when).getTime())) parts.push(`actualizada ${relativeTime(when, now)}`);
+  return parts.join(', ');
 }
 
 /** Una investigación por fila: prioridad, alerta, conclusión, estado y hora; sin scroll lateral. */
@@ -146,6 +171,7 @@ export function AiRunRow({
         data-priority={run.priority ? run.priority.toLowerCase() : 'none'}
         data-attention={needsAttention(run) ? 'true' : 'false'}
         aria-current={selected ? 'true' : undefined}
+        aria-label={runRowLabel(run, now)}
         onClick={(event) => openInPlace(event, () => onSelect(run.id))}
       >
         <span className="b89AiRun__priority">
@@ -174,7 +200,7 @@ export function AiRunRow({
         <span className="b89AiRun__verdict">
           {run.verdict === null ? (
             <span className="b89Muted">
-              {isActive(run.status) ? 'Analizando…' : 'Sin veredicto'}
+              {isActive(run.status) ? 'Analizando…' : 'Sin conclusión'}
             </span>
           ) : (
             <>
@@ -231,7 +257,7 @@ export function AiRunList({
       <div className="b89AiRuns__head" aria-hidden="true">
         <span>Prioridad</span>
         <span>Alerta investigada</span>
-        <span>Conclusión</span>
+        <span>Conclusión de la IA</span>
         <span>Estado</span>
         <span>Actualizada</span>
       </div>
@@ -280,7 +306,14 @@ export function AiRunFiltersBar({
           >
             {RUN_VIEW_LABEL[view]}
             {view !== 'all' && (
-              <span className="b89AiSegment__count b89Tabular">{counts[view]}</span>
+              <span
+                className="b89AiSegment__count b89Tabular"
+                // La bandeja cuenta todas las pendientes; el resto, solo las ya cargadas.
+                title={view === 'attention' ? undefined : `${counts[view]} de las cargadas`}
+              >
+                {counts[view]}
+                {view !== 'attention' && <span className="b89AiSrOnly"> de las cargadas</span>}
+              </span>
             )}
           </button>
         ))}
@@ -320,7 +353,7 @@ export function AiRunFiltersBar({
             ]}
           />
         </EuiFormRow>
-        <EuiFormRow label="Conclusión" display="rowCompressed">
+        <EuiFormRow label="Conclusión de la IA" display="rowCompressed">
           <EuiSelect
             compressed
             aria-label="Filtrar por conclusión"
@@ -332,7 +365,7 @@ export function AiRunFiltersBar({
                 value: verdict,
                 text: AI_VERDICT_LABEL[verdict],
               })),
-              { value: 'none', text: 'Sin veredicto' },
+              { value: 'none', text: 'Sin conclusión' },
             ]}
           />
         </EuiFormRow>
