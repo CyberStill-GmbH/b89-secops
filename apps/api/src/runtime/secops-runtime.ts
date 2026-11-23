@@ -114,6 +114,7 @@ import type { ProcessInfo } from '../soc/operations-health.js';
 import type { EventsReader } from './events-reader.js';
 import type { SourceHealthMonitor } from './source-health.js';
 import type { DlpPolicyStore } from './dlp-policy-store.js';
+import { InMemoryAllowlistStore, type AllowlistStore } from './allowlist-store.js';
 import type { SourceSignalsService } from './source-signals.js';
 import type { RoleGrantsConfig } from '@b89/configuration';
 import type { DirectoryDiagnostic, DirectoryStore, RoleAdministration } from '@b89/access';
@@ -312,6 +313,10 @@ export interface RuntimeOptions {
   /** Salud multiseñal por fuente (latido, autenticación, volumen y retraso). */
   readonly sourceSignals?: SourceSignalsService;
   readonly dlpPolicyStore?: DlpPolicyStore;
+  /** Lista blanca de la API de pagos; sin PostgreSQL se usa una en memoria. */
+  readonly allowlistStore?: AllowlistStore;
+  /** Token con el que el sincronizador del colector de Cloudflare lee la lista (`B89_ALLOWLIST_FEED_TOKEN`). */
+  readonly allowlistFeedToken?: string;
   /** Padrón del grupo de admisión (fase 3); sin él, la sincronización está deshabilitada. */
   /** Una función si el padrón puede activarse después del arranque (grupo resuelto tarde). */
   readonly directory?: RuntimeDirectory | (() => RuntimeDirectory);
@@ -624,6 +629,18 @@ export class SecOpsRuntime {
   public get push(): RuntimeOptions['push'] {
     return this.options.push;
   }
+  private fallbackAllowlist: AllowlistStore | undefined;
+
+  public get allowlistStore(): AllowlistStore {
+    if (this.options.allowlistStore) return this.options.allowlistStore;
+    this.fallbackAllowlist ??= new InMemoryAllowlistStore();
+    return this.fallbackAllowlist;
+  }
+
+  public get allowlistFeedToken(): string | undefined {
+    return this.options.allowlistFeedToken;
+  }
+
   public get dlpPolicyStore(): DlpPolicyStore | undefined {
     return this.options.dlpPolicyStore;
   }

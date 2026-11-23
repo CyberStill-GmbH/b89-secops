@@ -264,7 +264,56 @@ const DLP_AGENT_HEALTH: AlertGuide = {
   ],
 };
 
+// Lista blanca de la API de pagos (reglas 101547-101549; se edita en Cloudflare → Lista blanca).
+const ALLOWLIST_CLIENT_FOREIGN_IP: AlertGuide = {
+  urgency: 'act',
+  headline: 'Un cliente con IPs autorizadas llamó a la API de pagos desde otra IP.',
+  whatHappened:
+    'La petición trae el identificador de un cliente que solo debería llamar desde sus IPs registradas, pero llegó desde una IP distinta. Puede ser una credencial robada o un servidor nuevo del cliente que no avisó.',
+  isItReal: [
+    'Abre «Investigar» y revisa qué más hizo esa IP: logins, pagos o retiros.',
+    'Pregunta al cliente si cambió de servidor o de proveedor de nube.',
+  ],
+  whatToDo: [
+    'Si el cliente no lo reconoce, bloquea la IP en Cloudflare y rota sus credenciales de API.',
+    'Si es un servidor nuevo del cliente, agrega la IP en Cloudflare → Lista blanca.',
+    'Clasifica la alerta con lo que confirmó el cliente.',
+  ],
+};
+
+const ALLOWLIST_UNKNOWN_SENSITIVE: AlertGuide = {
+  urgency: 'act',
+  headline: 'Hubo un login o un pago en la API de pagos desde una IP que no está en la lista blanca.',
+  whatHappened:
+    'La IP no pertenece a ningún cliente, proveedor ni a la infraestructura de B89 registrados, y la petición fue a un inicio de sesión, pago, payin o payout.',
+  isItReal: [
+    'Mira si el login tuvo éxito y si después hubo movimientos de dinero.',
+    'Busca la IP en Cloudflare → Lista blanca: quizá es de un cliente que aún no la registró.',
+  ],
+  whatToDo: [
+    'Si nadie la reconoce, bloquea la IP en Cloudflare y revoca la sesión o la credencial usada.',
+    'Si es legítima, agrégala a la lista blanca con el cliente que corresponde.',
+    'Clasifica la alerta con la conclusión.',
+  ],
+};
+
+const ALLOWLIST_UNKNOWN: AlertGuide = {
+  urgency: 'review',
+  headline: 'Una IP fuera de la lista blanca usó la API de pagos.',
+  whatHappened:
+    'La petición no fue a login ni a pagos, pero la IP no está registrada para ningún cliente ni proveedor.',
+  isItReal: ['Es común en escaneos de Internet. Importa si la misma IP intenta después un login o un pago.'],
+  whatToDo: [
+    'Revisa si la IP aparece en otras alertas.',
+    'Si es de un cliente, agrégala a la lista blanca para no volver a verla.',
+  ],
+};
+
 const RULE_GUIDES: Readonly<Record<string, AlertGuide>> = {
+  // Lista blanca de la API de pagos
+  '101547': ALLOWLIST_CLIENT_FOREIGN_IP,
+  '101548': ALLOWLIST_UNKNOWN_SENSITIVE,
+  '101549': ALLOWLIST_UNKNOWN,
   // DLP de endpoints
   '101110': DLP_SENSITIVE,
   '101111': DLP_CREDENTIAL,

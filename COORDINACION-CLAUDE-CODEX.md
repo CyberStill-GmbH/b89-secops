@@ -612,3 +612,25 @@ Lo pidió el dueño. Local, sin commit al escribir esta nota.
   regenerado (`soc-knowledge.generated.ts`, incluye también los casos de Cloudflare ya integrados).
 - Validación: plugin 587/588 (falla previa), typecheck OK, suite raíz 1534/1536 (`provider-coupling` falla
   desde e6d0a3c, OpenSearch en `promotion.ts`), lint 0 errores. **No verificado en un OSD real.**
+
+### Claude · 2026-11-23 · Lista blanca de la API de pagos (Cloudflare): consola, API, colector y reglas
+
+Lo pidió el dueño con el Excel «Whitelist_IPs_Clientes_B89». Regla: sobre `apipayments.b89.io`, cliente o
+proveedor **con IPs** que llama desde otra IP = alerta crítica (sobre todo login, pagos, payins y payouts);
+cliente **sin IPs** = sin alerta.
+
+- **API:** `GET/PUT /api/cloudflare/allowlist` (permisos nuevos `allowlist.read` para analista, líder y
+  admin; `allowlist.manage` solo admin de plataforma, sesión reciente como canales/DLP), revisión CAS,
+  auditoría `cloudflare.allowlist.updated`; `GET /api/cloudflare/allowlist/feed` con
+  `B89_ALLOWLIST_FEED_TOKEN` para el colector. Tabla `cloudflare_allowlists` (migración
+  `20261123120000`). Lista inicial importada del Excel (`allowlist.seed.ts`): 50 entradas; IPs sin puntos
+  quedan como «por reconfirmar» en la nota. Edge: prefijo `/api/cloudflare` agregado a los tres edges.
+- **Colector:** `cloudflare/allowlist.py` marca `cloudflare.http.allowlist_*` (allowed, client_without_ip,
+  outside, unknown); `sync_allowlist.py` descarga la lista (timer en el host, pendiente de instalar).
+- **Reglas:** 101546–101549 (`b89_cloudflare_rules.xml`), caso de uso
+  `detections/cloudflare/payments-api-allowlist`, guías en lenguaje llano. Pendiente `wazuh-logtest`.
+- **Consola:** Tráfico de Cloudflare → pestaña «Lista blanca» (`cloudflare_allowlist_view.tsx`): respuesta
+  primero, «¿Esta IP es de alguien?», filtros, edición en panel lateral con pegado desde Excel, barra de
+  cambios, conflicto/sesión reciente/validación.
+- Validación: plugin 621/622 (falla previa), typecheck OK, suite raíz 1540/1542 (`provider-coupling`
+  previa), API 6/6 nuevas, pytest colector 80/82 (2 de aprovisionamiento Logpush fallan igual en `main`).

@@ -91,3 +91,30 @@ Fuera de alcance del log HTTP: A02, A04, A08 y A09 (no dejan huella en la URL).
 `bash detections/tools/test-in-container.sh` (Wazuh 4.14.8 desechable): `analysisd -t`, suite `collectors`
 (87 casos, 14 nuevos de backoffice) y los paquetes `noise-tuning` (+1) y `web-attacks-owasp` (74 casos, 5 FP).
 `python -m pytest wazuh/provider-ingestion/tests/test_cloudflare_logpush.py` cubre `request_target`.
+
+## Lista blanca de la API de pagos (2026-11-23)
+
+Regla del dueño: sobre `apipayments.b89.io`, un cliente o proveedor **con IPs registradas** que llama
+desde otra IP es alerta crítica (sobre todo login, pagos, payins y payouts); un cliente **sin IPs**
+(«No requiere», «Pendiente»…) no genera alerta, venga de donde venga.
+
+- **Dónde se edita:** consola → Tráfico de Cloudflare → pestaña «Lista blanca» (permiso
+  `allowlist.manage`, solo administración de plataforma; `allowlist.read` para el SOC). La lista inicial
+  es la del Excel «Whitelist_IPs_Clientes_B89» (40 clientes y 10 proveedores); las IPs que perdieron
+  los puntos quedan en la nota «por reconfirmar» y no se vigilan hasta corregirlas.
+- **Identificadores:** texto que aparece en las peticiones de un cliente (p. ej. su código de comercio
+  en la ruta). Permiten reconocerlo cuando llama desde una IP que no es suya (→ 101547) y eximir a los
+  clientes sin IP (→ sin alerta).
+- **Cómo llega al colector:** la API expone `GET /api/cloudflare/allowlist/feed` con
+  `Authorization: Bearer $B89_ALLOWLIST_FEED_TOKEN` (≥ 32 caracteres, en el entorno de la API).
+  En el host de Wazuh, un timer cada 2 minutos ejecuta
+  `B89_API_URL=… B89_ALLOWLIST_FEED_TOKEN_FILE=/etc/b89/allowlist-feed.token python3 wazuh/provider-ingestion/cloudflare/sync_allowlist.py`,
+  que escribe `/var/ossec/etc/b89/cloudflare-allowlist.json` de forma atómica y conserva la última
+  versión buena si la API no responde. El colector lo relee cuando cambia.
+- **Veredicto del colector** (`cloudflare.http.allowlist_verdict`): `allowed`, `client_without_ip`,
+  `outside` o `unknown`, más `allowlist_client`, `allowlist_sensitive` y `allowlist_revision`. Sin
+  archivo no hay veredicto ni alerta. `B89_CF_ALLOWLIST_HOSTS` cambia los hosts vigilados.
+- **Reglas:** 101546 (base, 0), 101547 (cliente con IP desde otra IP, 13), 101548 (login o pago desde
+  IP fuera de la lista, 12), 101549 (resto de la API desde IP fuera de la lista, 5). Caso de uso
+  `detections/cloudflare/payments-api-allowlist`. Pruebas: `tests/test_cloudflare_allowlist.py`.
+  Pendiente: `wazuh-logtest` en contenedor.

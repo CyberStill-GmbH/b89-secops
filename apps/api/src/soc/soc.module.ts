@@ -23,6 +23,7 @@ import { RiskController } from './risk.controller.js';
 import { LocalAuthController } from './local-auth.controller.js';
 import { NotificationChannelsController } from './notification-channels.controller.js';
 import { DlpPolicyController } from './dlp-policy.controller.js';
+import { AllowlistController } from './allowlist.controller.js';
 import { OperationsController } from './operations.controller.js';
 import { SocController } from './soc.controller.js';
 import { WazuhPushController } from './wazuh-push.controller.js';
@@ -41,6 +42,7 @@ export class SocModule {
         // Antes que OperationsController: `notifications/channels` no debe caer en `notifications/:id`.
         NotificationChannelsController,
         DlpPolicyController,
+    AllowlistController,
         OperationsController,
         AdminSessionsController,
         IncidentWorkController,

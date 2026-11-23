@@ -19,6 +19,8 @@ import urllib.parse
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "common"))
 from b89_collector import ProviderError, commit_batch, iso, read_state, recover_pending, utc_now
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import allowlist as payments_allowlist  # noqa: E402
 
 MAX_INPUT_BYTES = 16 * 1024 * 1024
 MAX_RECORD_BYTES = 60_000
@@ -104,6 +106,11 @@ def normalize(record: dict, dataset: str, scope: str, batch: str, now: str) -> d
             target = request_target(event["cloudflare"][section])
             if target:
                 event["cloudflare"][section]["request_target"] = target
+            # Lista blanca de la API de pagos (reglas 101546-101549): sin archivo, sin veredicto.
+            verdict = payments_allowlist.classify(
+                event["cloudflare"][section], payments_allowlist.load(), payments_allowlist.hosts())
+            if verdict:
+                event["cloudflare"][section].update(verdict)
     return event
 
 

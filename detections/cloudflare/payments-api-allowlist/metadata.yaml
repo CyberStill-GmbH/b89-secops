@@ -1,0 +1,51 @@
+# B89 SOC · metadatos de detección (estándar: docs/detection-engineering/01-ciclo-de-vida.md#metadatos)
+# Referencia: las reglas viven en su ruta canónica y no se mueven.
+id: B89-DET-CF-004
+title: API de pagos · peticiones desde IPs fuera de la lista blanca de clientes y proveedores
+source: cloudflare
+use_case: payments-api-allowlist
+status: experimental
+version: 1.0.0
+owner: soc-detection-engineering
+reviewers:
+- b89.soc.lead
+created: '2026-11-23'
+updated: '2026-11-23'
+hypothesis: >-
+  Un cliente o proveedor con IPs registradas solo llama a apipayments.b89.io desde esas IPs; una
+  llamada suya (o un login o pago) desde otra IP indica credenciales robadas o una integración no
+  autorizada.
+data_sources:
+- Cloudflare Logpush (http_requests) enriquecido por el colector con la lista blanca de la consola
+rules:
+  file: wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml
+  ids:
+  - 101546
+  - 101547
+  - 101548
+  - 101549
+mitre:
+- technique: T1078
+  tactic: initial-access
+severity:
+  levels: '0, 5, 12, 13'
+  priority_hint: P1
+  rationale: >-
+    Cliente con IP desde otra IP (13) y login o pago desde una IP desconocida (12) son críticas por
+    decisión del dueño (2026-11-23); el resto de la API desde IP desconocida es informativo (5).
+false_positives:
+- Un cliente cambió de IP o agregó un servidor y no lo avisó (agrega la IP en Cloudflare → Lista blanca).
+- IPs de monitoreo o pruebas de B89 que no están cargadas como «Infraestructura B89».
+- Un cliente «No requiere» que sí llama a la API sin identificador configurado.
+escalate_when:
+- La IP no pertenece a ningún proveedor de nube que el cliente use, o el login fue exitoso.
+- Hay pagos o retiros después de la llamada desde la IP desconocida.
+- El cliente confirma que no fue su sistema.
+tuning: []
+tests:
+  runner: validator
+  script: wazuh/provider-ingestion/tests/test_cloudflare_allowlist.py
+  fixtures: wazuh/provider-ingestion/tests/test_cloudflare_allowlist.py
+  expected: wazuh/provider-ingestion/tests/test_cloudflare_allowlist.py
+runbook: docs/detection-engineering/runbooks/credenciales.md
+notes: 'La lista se edita en la consola (Cloudflare → Lista blanca) y llega al colector con sync_allowlist.py.'

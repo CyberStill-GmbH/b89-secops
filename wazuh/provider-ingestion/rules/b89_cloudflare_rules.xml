@@ -398,4 +398,42 @@
     <mitre><id>T1190</id></mitre>
     <group>b89_waf,b89_web_attack,b89_attack,</group>
   </rule>
+  <!-- Lista blanca de la API de pagos (doc detection-engineering/17). El colector agrega
+       cloudflare.http.allowlist_verdict con la lista de la consola (Cloudflare → Lista blanca):
+       allowed | client_without_ip | outside | unknown. Sin archivo de lista no hay veredicto ni alerta.
+       Regla del dueño 2026-11-23: cliente con IPs desde otra IP = crítica; cliente sin IPs = sin alerta. -->
+  <rule id="101546" level="0">
+    <if_sid>101515</if_sid>
+    <field name="cloudflare.http.allowlist_verdict" type="pcre2">^(allowed|client_without_ip|outside|unknown)$</field>
+    <description>B89 Cloudflare: API de pagos, lista blanca: $(cloudflare.http.allowlist_verdict).</description>
+    <options>no_full_log</options>
+    <group>b89_http,b89_allowlist,</group>
+  </rule>
+
+  <rule id="101547" level="13">
+    <if_sid>101546</if_sid>
+    <field name="cloudflare.http.allowlist_verdict">^outside$</field>
+    <description>B89 Cloudflare: el cliente $(cloudflare.http.allowlist_client) llamó a la API de pagos desde una IP que no es suya ($(cloudflare.http.client_ip)): $(cloudflare.http.method) $(cloudflare.http.path).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1078</id></mitre>
+    <group>b89_http,b89_allowlist,b89_attack,</group>
+  </rule>
+
+  <rule id="101548" level="12">
+    <if_sid>101546</if_sid>
+    <field name="cloudflare.http.allowlist_verdict">^unknown$</field>
+    <field name="cloudflare.http.allowlist_sensitive">^true$</field>
+    <description>B89 Cloudflare: login o pago en la API de pagos desde una IP fuera de la lista blanca ($(cloudflare.http.client_ip)): $(cloudflare.http.method) $(cloudflare.http.path).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1078</id></mitre>
+    <group>b89_http,b89_allowlist,b89_attack,</group>
+  </rule>
+
+  <rule id="101549" level="5">
+    <if_sid>101546</if_sid>
+    <field name="cloudflare.http.allowlist_verdict">^unknown$</field>
+    <description>B89 Cloudflare: petición a la API de pagos desde una IP fuera de la lista blanca ($(cloudflare.http.client_ip)): $(cloudflare.http.method) $(cloudflare.http.path).</description>
+    <options>no_full_log</options>
+    <group>b89_http,b89_allowlist,</group>
+  </rule>
 </group>

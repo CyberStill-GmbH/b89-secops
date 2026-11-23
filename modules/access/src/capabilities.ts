@@ -71,6 +71,10 @@ export const CAPABILITIES = [
   'dlp.read',
   /** Administrar reglas Ferrispector, fingerprints y equipos; solo administración de plataforma. */
   'dlp.configure',
+  /** Ver la lista blanca de la API de pagos (clientes, proveedores e IPs autorizadas). */
+  'allowlist.read',
+  /** Agregar o cambiar clientes e IPs de la lista blanca; solo administración de plataforma. */
+  'allowlist.manage',
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
@@ -107,6 +111,7 @@ export const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> 
     'investigations.read',
     'investigations.run',
     'dlp.read',
+    'allowlist.read',
   ],
   'b89.soc.lead': [
     'events.read',
@@ -126,6 +131,7 @@ export const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> 
     'audit.read',
     'investigations.read',
     'investigations.run',
+    'allowlist.read',
   ],
   'b89.auditor': [
     'audit.read',
@@ -169,7 +175,9 @@ export const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> 
     // así que no se autoconcede nada por esta vía).
     'investigations.configure',
     'dlp.read',
+    'allowlist.read',
     'dlp.configure',
+    'allowlist.manage',
   ],
   // Aprobadores de cambios de rol. No son asignables desde la consola ni por `B89_ROLE_BINDINGS`:
   // solo los reciben los OID declarados en `B89_ACCESS_APPROVER_OIDS` y
@@ -196,6 +204,7 @@ const SCOPE_CAPABILITIES: Readonly<Record<Scope, readonly Capability[]>> = Objec
     'sessions.read',
     'investigations.read',
     'dlp.read',
+    'allowlist.read',
   ],
   'soc.write': [
     'alerts.triage',
@@ -213,6 +222,7 @@ const SCOPE_CAPABILITIES: Readonly<Record<Scope, readonly Capability[]>> = Objec
     'investigations.run',
     'investigations.configure',
     'dlp.configure',
+    'allowlist.manage',
   ],
   'audit.read': ['audit.read', 'audit.read_sensitive', 'audit.verify'],
 });

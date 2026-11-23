@@ -47,6 +47,7 @@ import { entityRefFactory } from './runtime/entity-refs.js';
 import { deriveCsrfKey } from './http/csrf.js';
 import type { ProcessInfo } from './soc/operations-health.js';
 import type { DlpPolicyStore } from './runtime/dlp-policy-store.js';
+import type { AllowlistStore } from './runtime/allowlist-store.js';
 import {
   SecOpsRuntime,
   type RuntimeDirectory,
@@ -159,6 +160,7 @@ interface DurableStores {
   readonly roleAdministration: RoleAdministration & { close(): Promise<void> };
   readonly wazuhPushInbox?: WazuhPushInboxStore & { close(): Promise<void> };
   readonly dlpPolicy: DlpPolicyStore & { close(): Promise<void> };
+  readonly allowlist: AllowlistStore & { close(): Promise<void> };
 }
 
 /**
@@ -177,7 +179,7 @@ async function durableStoresFor(
   const [
     { PostgresSocPersistence, PostgresWazuhPushInboxStore },
     { PostgresNotificationAttemptStore, PostgresPushSubscriptionStore },
-    { PostgresSessionStore, PostgresDirectoryStore, PostgresRoleAdministration, PrismaDlpPolicyStore },
+    { PostgresSessionStore, PostgresDirectoryStore, PostgresRoleAdministration, PrismaDlpPolicyStore, PrismaAllowlistStore },
   ] = await Promise.all([
     import('@b89/soc/postgres'),
     import('@b89/soar/postgres'),
@@ -241,11 +243,18 @@ async function durableStoresFor(
     statementTimeoutMs: postgres.statementTimeoutMs,
     maxConnections: 2,
   });
+  const allowlist = PrismaAllowlistStore.connect({
+    connectionString,
+    connectionTimeoutMs: postgres.connectionTimeoutMs,
+    statementTimeoutMs: postgres.statementTimeoutMs,
+    maxConnections: 2,
+  });
   try {
     // Falla al arrancar, no en la primera alerta: sin base o con esquema viejo no se sirve.
     await soc.ready();
     await wazuhPushInbox?.ready();
     await dlpPolicy.ready();
+    await allowlist.ready();
   } catch (error) {
     await Promise.allSettled([
       soc.close(),
@@ -255,6 +264,7 @@ async function durableStoresFor(
       push.close(),
       roleAdministration.close(),
       dlpPolicy.close(),
+      allowlist.close(),
       ...(wazuhPushInbox ? [wazuhPushInbox.close()] : []),
     ]);
     throw error;
@@ -267,6 +277,7 @@ async function durableStoresFor(
     push,
     roleAdministration,
     dlpPolicy,
+    allowlist,
     ...(wazuhPushInbox ? { wazuhPushInbox } : {}),
   };
 }
@@ -518,7 +529,10 @@ export async function buildApi(
       ? { soc: durable.soc, notifications: durable.notifications, sessions: durable.sessions }
       : {}),
     ...(durable?.wazuhPushInbox ? { wazuhPushInbox: durable.wazuhPushInbox } : {}),
-    ...(durable ? { dlpPolicyStore: durable.dlpPolicy } : {}),
+    ...(durable ? { dlpPolicyStore: durable.dlpPolicy, allowlistStore: durable.allowlist } : {}),
+    ...(environment['B89_ALLOWLIST_FEED_TOKEN'] && environment['B89_ALLOWLIST_FEED_TOKEN'].length >= 32
+      ? { allowlistFeedToken: environment['B89_ALLOWLIST_FEED_TOKEN'] }
+      : {}),
     ...(onDispatchError ? { onDispatchError } : {}),
     ...(onSignInDenied ? { onSignInDenied } : {}),
     ...(processInfo ? { processInfo } : {}),
@@ -849,6 +863,7 @@ export async function buildApi(
       await durable?.push.close();
       await durable?.roleAdministration.close();
       await durable?.dlpPolicy.close();
+      await durable?.allowlist.close();
       await durable?.wazuhPushInbox?.close();
       stopArtifactPurge?.();
       await assistantConversations?.close();
