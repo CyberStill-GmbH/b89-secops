@@ -34,7 +34,7 @@ Detectores versionados en `wazuh/indexer/anomaly-detection/`, aplicados por `app
 | Otros detectores `b89-cf-*` | `client.ip` (alta cardinalidad) | Exportaciones y operaciones de pago | 5 min |
 | `b89-waf-blocks-per-zone` | `data.cloudflare.zone_name` | Bloqueos y desafíos WAF | 5 min |
 
-**Integración con B89 [implementada en código, pendiente de despliegue y evidencia]:**
+**Integración con B89 [desplegada en AWS; evidencia operativa inicial]:**
 1. La API consulta cada 5 s el endpoint interno fijo del gateway para resultados recientes. La
    cuenta `b89_reader` solo lee `wazuh-alerts-*`, `b89-cloudflare-traffic-*` y
    `.opendistro-anomaly-results*`; el gateway no expone el Indexer públicamente ni permite elegir

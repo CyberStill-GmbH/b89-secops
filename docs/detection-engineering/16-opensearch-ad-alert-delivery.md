@@ -1,6 +1,6 @@
 # OpenSearch ML: cobertura y entrega profesional de alertas
 
-Estado: diseño e implementación en código; el estado del despliegue y la evidencia operativa se registrarán tras publicar esta versión (2026-11-22).
+Estado: implementado y desplegado en AWS (2026-11-22, hora local de Lima; release registrado en UTC).
 
 ## Objetivo y límites
 
@@ -145,6 +145,24 @@ sin datos se marca «sin muestra suficiente», no como healthy ni como incidenci
 6. Documentar runbook, política anti-ruido y capacidad/rollback. Tras publicar, comprobar roles
    efectivos, estado de detectores y llegada de un resultado al SOC antes de declarar medidos los
    objetivos de latencia; hasta entonces son metas, no mediciones.
+
+## Evidencia del despliegue
+
+- `main` publicado en `fc13b1dc69d7241d36dfea430665febb0e6518fb`; release EC2
+  `20261123T024915-1e35` completado en `i-042136f7d23a8ccf2`.
+- La compilación de producción de API/dashboard/migrador/correlador/informes terminó correctamente.
+  Las migraciones no tenían pendientes. API, PostgreSQL, Indexer, gateway y correlador quedaron
+  saludables al terminar el despliegue; la comprobación del usuario `b89_reader` dio búsqueda
+  `200` y escritura `403`.
+- Los 12 detectores pasaron validación antes de modificar los existentes; 8 se crearon y 4 se
+  actualizaron. Todos aceptaron `_start`. Se crearon 12 monitores técnicos de Alerting sin acciones.
+- El API consultó ambos endpoints internos del gateway con TLS validado: detector search `200`
+  con 12 detectores, y anomaly-results search `200`. La respuesta de resultados aún tenía cero
+  coincidencias en esa comprobación; no se generó una detección real para medir latencia ni falsos
+  positivos. Esos resultados quedan pendientes de observación con tráfico real.
+- El canal Teams está configurado en el host; el respaldo por correo no está configurado. Las
+  notificaciones externas siguen las reglas de prioridad del canal; toda alerta ML cualificada
+  se persiste primero en la bandeja SOC/outbox B89.
 
 ## Evidencia y fuentes técnicas
 
