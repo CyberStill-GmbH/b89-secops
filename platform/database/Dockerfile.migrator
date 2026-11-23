@@ -33,7 +33,7 @@ RUN pnpm --filter @b89/database exec prisma generate \
 
 # Runtime distroless como el API: sin shell, apt ni npm (la imagen slim traía CVEs HIGH del SO y
 # del npm empaquetado). Prisma se invoca con `process.execPath`, sin shell.
-FROM --platform=linux/amd64 gcr.io/distroless/nodejs24-debian13:nonroot@sha256:9eeb7f5887d0e239e78264b06f7f11d2e14be534050481803a9e4728fcdd278e AS runtime
+FROM --platform=linux/amd64 gcr.io/distroless/nodejs24-debian13:nonroot@sha256:088a01637f22908632ba09018be2e0b516f2fa6f7869c191d29491139db43c78 AS runtime
 
 # Bundle CA de RDS con permisos ya fijados en la etapa de build (C-1).
 COPY --from=build /b89-certs/ /etc/b89/
