@@ -165,7 +165,9 @@ export class DlpPolicyController {
 
   private store(correlationId: string) {
     const store = this.runtime.dlpPolicyStore;
-    if (!store) throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
+    // Authorization is checked before the store is accessed, so an authorized operator
+    // can distinguish a missing DLP service from an account that cannot use the module.
+    if (!store) throw new ApiError('DEPENDENCY_DEGRADED', correlationId);
     return store;
   }
 

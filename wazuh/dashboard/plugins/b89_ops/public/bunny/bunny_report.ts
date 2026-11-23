@@ -160,7 +160,7 @@ async function collectCloudflareSignals(input: {
       phase: 'query',
       completed: Math.min(offset + page.length, details.length),
       total: details.length,
-      message: `Revisando seÃ±ales Cloudflare: ${Math.min(offset + page.length, details.length)} de ${details.length}`,
+      message: `Revisando señales Cloudflare: ${Math.min(offset + page.length, details.length)} de ${details.length}`,
     });
   }
   const items = [...byId.values()]
@@ -169,7 +169,7 @@ async function collectCloudflareSignals(input: {
   const omitted = summaries.length - details.length - (input.sourceEvent && byId.has(input.sourceEvent.id) ? 1 : 0);
   const notes: string[] = [];
   if (unavailable > 0) notes.push(`${unavailable} detalle(s) no disponibles`);
-  if (omitted > 0) notes.push(`lÃ­mite de consulta: ${MAX_CLOUDFLARE_DETAILS} de ${summaries.length} eventos relacionados`);
+  if (omitted > 0) notes.push(`límite de consulta: ${MAX_CLOUDFLARE_DETAILS} de ${summaries.length} eventos relacionados`);
   return { items, ...(notes.length ? { note: notes.join('; ') } : {}) };
 }
 
@@ -460,7 +460,7 @@ export async function collectBunnyInvestigationReport(input: {
     onProgress: input.onProgress,
   });
   const observationNotes = [
-    ...(ips.truncated ? [`se muestran ${MAX_REPORT_IPS} de mÃ¡s IP observadas`] : []),
+    ...(ips.truncated ? [`se muestran ${MAX_REPORT_IPS} de más IP observadas`] : []),
     ...(cloudflare.note ? [cloudflare.note] : []),
   ];
   return {

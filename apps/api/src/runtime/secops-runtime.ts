@@ -1716,16 +1716,22 @@ export class SecOpsRuntime {
       await this.sessions.update(revokeSession(stored!, 'identity_revoked', now), stored!.revision);
       return { ok: false, reason: 'SESSION_EXPIRED' };
     }
-    await this.sessions.update(evaluation.session, stored!.revision);
+    // Capabilities are a projection of the session's already-approved roles and the BFF's
+    // fixed scope ceiling. Recompute that projection on each request so newly deployed
+    // capability mappings (for example, DLP read access for SOC analysts) take effect
+    // without asking every active user to sign out. This does not add roles or scopes.
+    const capabilities = effectiveCapabilities(evaluation.session.roles, BFF_SCOPES);
+    const session = { ...evaluation.session, capabilities };
+    await this.sessions.update(session, stored!.revision);
     return {
       ok: true,
-      session: evaluation.session,
+      session,
       actor: {
-        subjectId: evaluation.session.subjectId,
-        tenantId: evaluation.session.tenantId,
-        sessionId: evaluation.session.id,
-        capabilities: evaluation.session.capabilities,
-        roles: evaluation.session.roles,
+        subjectId: session.subjectId,
+        tenantId: session.tenantId,
+        sessionId: session.id,
+        capabilities: session.capabilities,
+        roles: session.roles,
       },
     };
   }

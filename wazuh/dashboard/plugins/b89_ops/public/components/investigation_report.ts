@@ -529,7 +529,7 @@ async function buildInvestigationSheets(
         ['Eventos exportados', input.events.length],
         ['Eventos encontrados', input.totalEvents],
         ['Direcciones IP observadas', ipObservations.length],
-        ['SeÃ±ales Cloudflare detalladas', cloudflareSignals.length],
+        ['Señales Cloudflare detalladas', cloudflareSignals.length],
         ...(input.observationsNote ? [['Cobertura adicional', input.observationsNote] as const] : []),
         ['Grupos con identificador de mensaje exacto', exactEmailGroups.length],
         [
@@ -631,7 +631,7 @@ async function buildInvestigationSheets(
       name: 'IPs observadas',
       autoFilter: true,
       rows: [
-        ['DirecciÃ³n IP', 'Eventos en la ventana', 'Primera observaciÃ³n UTC', 'Ãšltima observaciÃ³n UTC', 'OrÃ­genes XDR'],
+        ['Dirección IP', 'Eventos en la ventana', 'Primera observación UTC', 'Última observación UTC', 'Orígenes XDR'],
         ...ipObservations.map((item) => [
           item.ip,
           item.eventCount,
@@ -647,7 +647,7 @@ async function buildInvestigationSheets(
       name: 'Cloudflare',
       autoFilter: true,
       rows: [
-        ['Tipo', 'Fecha UTC', 'AcciÃ³n', 'Origen', 'Zona', 'IP', 'Host', 'Ruta', 'Estado HTTP', 'ID de regla', 'Regla', 'Ray ID', 'Tipo de actor', 'Resultado', 'Tipo de recurso', 'ID de recurso', 'ID de evento'],
+        ['Tipo', 'Fecha UTC', 'Acción', 'Origen', 'Zona', 'IP', 'Host', 'Ruta', 'Estado HTTP', 'ID de regla', 'Regla', 'Ray ID', 'Tipo de actor', 'Resultado', 'Tipo de recurso', 'ID de recurso', 'ID de evento'],
         ...cloudflareSignals.map((item) => [
           item.kind,
           item.at,

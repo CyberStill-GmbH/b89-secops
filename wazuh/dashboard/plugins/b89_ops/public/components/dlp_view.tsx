@@ -61,8 +61,9 @@ import {
 } from './dlp_model';
 import { ErrorCallout, Mono, Timestamp } from './primitives';
 
-const ENDPOINT_POLL_MS = 30_000;
-const ROLLOUT_POLL_MS = 10_000;
+// La lista se refresca cada 5 s (decisión del dueño, 9e3b05a): un equipo recién instalado aparece solo.
+const ENDPOINT_POLL_MS = 5_000;
+const ROLLOUT_POLL_MS = 5_000;
 const ENROLLMENT_POLL_MS = 5_000;
 const INSTALL_PREFS_KEY = 'b89.dlp.install';
 
