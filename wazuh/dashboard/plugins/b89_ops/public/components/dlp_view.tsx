@@ -174,7 +174,7 @@ export function DlpView() {
   useEffect(() => {
     void loadPolicy();
     void loadEndpoints();
-    const timer = window.setInterval(() => void loadEndpoints(), 30000);
+    const timer = window.setInterval(() => void loadEndpoints(), 5000);
     return () => window.clearInterval(timer);
   }, [loadPolicy, loadEndpoints]);
 
@@ -396,12 +396,12 @@ export function DlpView() {
           <section className="b89Panel" aria-labelledby="b89-dlp-endpoints">
             <div className="b89Panel__header">
               <h2 id="b89-dlp-endpoints">Equipos y distribución</h2>
-              <span className="b89Panel__meta">Consulta de equipos cada 30 segundos</span>
+              <span className="b89Panel__meta">Actualizado automáticamente cada 5 segundos</span>
             </div>
             {endpointError ? (
               <ErrorCallOutCompact error={endpointError} retry={() => void loadEndpoints()} />
             ) : endpoints.length === 0 ? (
-              <p className="b89Panel__empty">Todavía no hay equipos registrados para recibir la política.</p>
+              <p className="b89Panel__empty">Todavía no hay equipos registrados. Crea una clave de instalación, instala Ferrispector en la otra PC con esa clave y aparecerá aquí automáticamente.</p>
             ) : (
               <div className="b89TableScroll">
                 <table className="b89Dlp__table">
@@ -423,7 +423,7 @@ export function DlpView() {
 
           {canConfigure && <section className="b89Panel" aria-labelledby="b89-dlp-install">
             <div className="b89Panel__header"><h2 id="b89-dlp-install">Agregar un equipo</h2></div>
-            <p className="b89Dlp__intro">Crea una clave de instalación para un solo equipo. Copia el valor y entrégalo por el canal de administración de PCs; solo se muestra una vez y vence en 30 minutos.</p>
+            <p className="b89Dlp__intro">Crea una clave de un solo uso para instalar Ferrispector en otro equipo. El instalador registra la PC con el SOC; después aparecerá aquí y recibirá la política. La clave solo se muestra una vez y vence en 30 minutos.</p>
             {enrollmentToken ? (
               <div className="b89Dlp__token" role="status">
                 <label htmlFor="b89-dlp-token">Clave de instalación de un solo uso</label>
