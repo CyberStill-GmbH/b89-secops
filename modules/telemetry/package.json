@@ -28,7 +28,7 @@
   "devDependencies": {
     "@b89/testing": "workspace:*",
     "@types/node": "24.13.6",
-    "typescript": "6.0.3",
+    "typescript": "7.0.2",
     "vitest": "5.1.0"
   }
 }
