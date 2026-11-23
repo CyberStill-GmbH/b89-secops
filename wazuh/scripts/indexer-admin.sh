@@ -4,7 +4,15 @@
 # all-in-one (o de B89_INDEXER_ADMIN_PASSWORD en pruebas locales) y viaja a curl por archivo,
 # nunca por argumentos visibles en `ps`. Se carga con `source`.
 
-INDEXER_URL="${B89_INDEXER_URL:-https://127.0.0.1:9200}"
+INDEXER_TLS_NAME="${B89_INDEXER_TLS_NAME:-}"
+INDEXER_URL="${B89_INDEXER_URL:-}"
+if [[ -z "$INDEXER_URL" ]]; then
+  if [[ -n "$INDEXER_TLS_NAME" ]]; then
+    INDEXER_URL="https://${INDEXER_TLS_NAME}:9200"
+  else
+    INDEXER_URL='https://127.0.0.1:9200'
+  fi
+fi
 INDEXER_CA="${B89_INDEXER_CA:-/etc/wazuh-indexer/certs/root-ca.pem}"
 _b89_work="$(mktemp -d)"
 trap 'rm -rf "$_b89_work"' EXIT
@@ -38,6 +46,9 @@ indexer() {
   local method="$1" path="$2" body="${3:-}"
   local args=(-sS -o "$_b89_work/out.json" -w '%{http_code}' -K "$_b89_work/curl.cfg" "${_b89_tls[@]}"
     -X "$method" -H 'content-type: application/json' "$INDEXER_URL$path")
+  if [[ -n "$INDEXER_TLS_NAME" ]]; then
+    args+=(--resolve "$INDEXER_TLS_NAME:9200:127.0.0.1")
+  fi
   [[ -n "$body" ]] && args+=(--data-binary "@$body")
   local code
   code="$(curl "${args[@]}")"
