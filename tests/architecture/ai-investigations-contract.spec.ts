@@ -346,7 +346,7 @@ describe('contrato del panel de actividad (API ↔ consola)', () => {
     const sentences = activity!.feed.map((item) => feedSentence(item).text);
     expect(sentences).toContain('Adjuntó a incidente existente');
     expect(sentences).toContain('Pidió revisión humana (inmediata)');
-    expect(sentences).toContain('Terminó la investigación con modelo económico');
+    expect(sentences).toContain('Terminó la investigación con IA estándar');
     expect(JSON.stringify(view)).not.toContain('Resumen');
   });
 });
