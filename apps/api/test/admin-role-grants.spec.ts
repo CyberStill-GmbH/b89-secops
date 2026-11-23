@@ -9,7 +9,7 @@
  * validación, SoD, padrón, step-up, auditoría y revocación de sesiones tras el cambio.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import {
@@ -22,6 +22,31 @@ import {
 } from '@b89/access';
 
 import { buildApi } from '../src/bootstrap.js';
+
+/**
+ * Hoy solo `b89.platform.admin` tiene `roles.request`, y ese rol concede directo: ningún rol de
+ * producción recorre la cadena de aprobación. Para probarla, este rol de prueba recibe
+ * `roles.request` en el mapeo rol → capability. Va en el mapeo y no inyectado en la sesión porque
+ * el runtime recalcula las capabilities desde los roles en cada petición (9e3b05a).
+ */
+const DELEGATED_REQUESTER_ROLE = 'b89.test.delegated-requester';
+vi.mock('@b89/access', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@b89/access')>();
+  const extra = (roles: readonly string[]) =>
+    roles.includes(DELEGATED_REQUESTER_ROLE) ? (['roles.request', 'users.read'] as const) : [];
+  return {
+    ...original,
+    capabilitiesForRoles: (roles: readonly string[]) =>
+      new Set([...original.capabilitiesForRoles(roles), ...extra(roles)]),
+    effectiveCapabilities: (roles: readonly string[], scopes: readonly string[]) => {
+      const byScope = original.capabilitiesForScopes(scopes);
+      return new Set([
+        ...original.effectiveCapabilities(roles, scopes),
+        ...extra(roles).filter((capability) => byScope.has(capability)),
+      ]);
+    },
+  };
+});
 import type { RuntimeDirectory, SecOpsRuntime } from '../src/runtime/secops-runtime.js';
 
 const GROUP = '99999999-9999-4999-8999-999999999999';
@@ -51,7 +76,10 @@ async function sessionFor(
   roles: readonly string[],
   oid: string,
   amr: readonly string[] = ['pwd'],
+  /** Solo para comprobar que el runtime ignora lo que ningún rol concede. */
   extraCapabilities: readonly string[] = [],
+  /** Sesión guardada sin capabilities, como una abierta antes de un mapeo nuevo. */
+  withoutCapabilities = false,
 ) {
   const { session } = openSession(
     {
@@ -60,7 +88,7 @@ async function sessionFor(
       tenantId: runtime.tenantIdForDirectory,
       roles,
       scopes: ['soc.read', 'soc.write'],
-      capabilities: [...capabilitiesForRoles(roles), ...extraCapabilities] as never,
+      capabilities: (withoutCapabilities ? [] : [...capabilitiesForRoles(roles), ...extraCapabilities]) as never,
       amr,
       clientIp: officeIp,
     },
@@ -186,7 +214,7 @@ beforeEach(() => {
  * aprobaciones. El admin de plataforma y el dueño del grupo conceden directo (decisión 2026-11-18).
  */
 function requesterSession() {
-  return sessionFor(['b89.soc.lead'], ADMIN_OID, ['pwd'], ['roles.request', 'users.read']);
+  return sessionFor(['b89.soc.lead', DELEGATED_REQUESTER_ROLE], ADMIN_OID, ['pwd']);
 }
 
 describe('administración de roles · solicitudes y aprobación', () => {
@@ -384,6 +412,19 @@ describe('administración de roles · solicitudes y aprobación', () => {
     const statuses = items.map((item) => item.status);
     expect(statuses).not.toContain('pending_access');
     expect(statuses).not.toContain('pending_security');
+  });
+});
+
+describe('capabilities recalculadas desde los roles en cada petición', () => {
+  it('una capability guardada en la sesión que ningún rol concede no sirve', async () => {
+    const forged = await sessionFor(['b89.soc.lead'], BETO, ['pwd'], ['roles.request', 'roles.approve']);
+    expect((await get(forged, '/api/admin/role-requests')).statusCode).toBe(404);
+  });
+
+  it('un mapeo nuevo se aplica sin volver a iniciar sesión', async () => {
+    const stale = await sessionFor([ACCESS_APPROVER_ROLE], ACCESS_OID, ['pwd'], [], true);
+    expect(stale.session.capabilities.size).toBe(0);
+    expect((await get(stale, '/api/admin/role-requests?status=all')).statusCode).toBe(200);
   });
 });
 
