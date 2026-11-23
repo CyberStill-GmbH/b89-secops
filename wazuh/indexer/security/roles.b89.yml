@@ -78,7 +78,13 @@ b89_auditor:
 
 # Lector de la API B89 (reconciliación más resultados de ML). Lo crea wazuh/access/apply-access.sh.
 b89_reader_role:
-  cluster_permissions: ['cluster_composite_ops_ro']
+  cluster_permissions:
+    [
+      'cluster_composite_ops_ro',
+      'cluster:admin/opendistro/ad/detector/info',
+      'cluster:admin/opendistro/ad/detectors/get',
+      'cluster:admin/opendistro/ad/detector/search',
+    ]
   index_permissions:
     - index_patterns: ['wazuh-alerts-*', '.opendistro-anomaly-results*']
       allowed_actions: ['read']

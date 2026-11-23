@@ -102,6 +102,9 @@ export function candidateId(key: string, occurredAt: Date): string {
 
 function titleFor(event: SecurityEvent): string {
   const rule = event.detection?.rule;
+  // El ID interno del detector no ayuda al analista: la razón visible ya conserva
+  // grado/confianza y la evidencia mantiene el identificador técnico completo.
+  if (rule?.provider === 'OpenSearch Anomaly Detection') return rule.name;
   if (rule) return `${rule.name} (${rule.provider} ${rule.id})`;
   return `${event.source.product} · ${event.action ?? event.category[0]}`;
 }

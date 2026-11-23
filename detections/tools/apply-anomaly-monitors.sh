@@ -4,10 +4,10 @@
 #   sudo bash wazuh/indexer/anomaly-detection/apply-detectors.sh     # crea y arranca los detectores b89-*
 #   sudo bash detections/tools/apply-anomaly-monitors.sh             # crea/actualiza un monitor por detector
 #
-# Cada monitor corre cada 10 min sobre .opendistro-anomaly-results* y dispara cuando el detector reporta
-# anomaly_grade > 0.7 con confidence > 0.7 en los últimos 20 min. Las alertas quedan en Alerting (OSD) y
-# en el índice de resultados que lee la API B89 (docs/07: señal ANOMALY_CORROBORATED). Idempotente por nombre.
+# Monitores de diagnostico: sin acciones ni entrega de avisos. El lector B89 API es el unico camino de notificacion.
 set -euo pipefail
+# Monitores tecnicos de referencia: sin acciones de entrega. El lector B89 API, cada 5 s,
+# es el unico responsable de convertir hallazgos cualificados en alertas y notificaciones SOC.
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../wazuh/manager/policy/lib.sh
 source "$here/../../wazuh/manager/policy/lib.sh"
@@ -15,7 +15,7 @@ log() { printf '[b89-anomaly] %s\n' "$*"; }
 AD=/_plugins/_anomaly_detection/detectors
 AL=/_plugins/_alerting/monitors
 
-for detector in ${B89_AD_MONITORS:-b89-logins-per-user b89-waf-blocks-per-zone b89-m365-login-failures}; do
+for detector in ${B89_AD_MONITORS:-b89-agent-alert-volume b89-cf-backoffice-exports b89-cf-backoffice-per-ip b89-cf-money-movement b89-cf-payments-errors b89-logins-per-user b89-m365-file-downloads b89-m365-login-failures b89-provider-aws-activity b89-provider-bitdefender-activity b89-provider-snyk-activity b89-waf-blocks-per-zone}; do
   printf '{"query":{"term":{"name.keyword":"%s"}}}' "$detector" >"$B89_WORK/q.json"
   b89_indexer POST "$AD/_search" "$B89_WORK/q.json"
   id="$(b89_json "$INDEXER_BODY" "(d.get('hits',{}).get('hits') or [{}])[0].get('_id','')")"
@@ -28,19 +28,21 @@ grade = "ctx.results[0].aggregations.max_grade.value"
 conf = "ctx.results[0].aggregations.max_confidence.value"
 print(json.dumps({
     "type": "monitor", "monitor_type": "query_level_monitor", "name": name, "enabled": True,
-    "schedule": {"period": {"interval": 10, "unit": "MINUTES"}},
+    "schedule": {"period": {"interval": 1, "unit": "MINUTES"}},
     "inputs": [{"search": {"indices": [".opendistro-anomaly-results*"], "query": {
         "size": 0,
         "query": {"bool": {"filter": [
-            {"range": {"execution_end_time": {"from": "{{period_end}}||-20m", "to": "{{period_end}}",
+            {"range": {"execution_end_time": {"from": "{{period_end}}||-5m", "to": "{{period_end}}",
                                               "include_lower": True, "include_upper": True}}},
-            {"term": {"detector_id": {"value": detector_id}}}]}},
+            {"term": {"detector_id": {"value": detector_id}}},
+            {"range": {"anomaly_grade": {"gte": 0.80}}},
+            {"range": {"confidence": {"gte": 0.90}}}]}},
         "aggregations": {"max_grade": {"max": {"field": "anomaly_grade"}},
                          "max_confidence": {"max": {"field": "confidence"}}}}}}],
-    "triggers": [{"name": "Anomalía B89 (grado > 0.7)", "severity": "2", "actions": [],
+    "triggers": [{"name": "Hallazgo ML cualificado (grado >= 0.80; confianza >= 0.90)", "severity": "2", "actions": [],
                   "condition": {"script": {"lang": "painless", "source":
-                      f"return ctx.results != null && ctx.results.length > 0 && {grade} != null && {grade} > 0.7 "
-                      f"&& {conf} != null && {conf} > 0.7"}}}],
+                      f"return ctx.results != null && ctx.results.length > 0 && {grade} != null && {grade} >= 0.80 "
+                      f"&& {conf} != null && {conf} >= 0.90"}}}],
     "ui_metadata": {"monitor_type": "query_level_monitor", "search": {"searchType": "ad"}},
 }))
 PY

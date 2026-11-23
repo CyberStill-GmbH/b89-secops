@@ -13,6 +13,18 @@ info() { printf 'b89-ad: %s\n' "$1"; }
 # shellcheck source=../../scripts/indexer-admin.sh
 source "$here/../../scripts/indexer-admin.sh"
 AD=/_plugins/_anomaly_detection/detectors
+# B89 importa los resultados desde la API runtime/opensearch-anomaly-ingestion.ts.
+
+# Valida el lote completo antes de detener o reemplazar un detector ya activo. La API de
+# validación no cambia estado y evita dejar una mezcla de versiones ante un JSON incompatible.
+for file in "$here"/b89-*.json; do
+  name="$(jq -er '.name' "$file")" || fail "$(basename "$file") no es un detector válido"
+  indexer POST "$AD/_validate" "$file"
+  [[ "$INDEXER_STATUS" == 200 ]] || fail "$name: validación de configuración → HTTP $INDEXER_STATUS"
+  jq -e '((.detector // {}) | length) == 0' "$INDEXER_BODY" >/dev/null \
+    || fail "$name: OpenSearch rechazó la configuración del detector"
+  info "$name configuración válida"
+done
 
 for file in "$here"/b89-*.json; do
   name="$(jq -er '.name' "$file")" || fail "$(basename "$file") no es un detector válido"

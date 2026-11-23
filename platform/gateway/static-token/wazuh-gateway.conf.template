@@ -32,6 +32,8 @@ server {
   # Nunca registrar peticiones: llevan el bearer.
   access_log off;
   client_max_body_size 64k;
+  # Fixed read-only routes also expose AD results and detector names to the API; callers cannot
+  # select an arbitrary index, and the gateway credential remains private to internal services.
 
   proxy_ssl_verify on;
   proxy_ssl_verify_depth 3;
@@ -64,6 +66,29 @@ server {
     proxy_set_header Content-Type "application/json";
     proxy_read_timeout 15s;
     proxy_pass https://${WAZUH_INDEXER_UPSTREAM}/b89-cloudflare-traffic-*/_search;
+  }
+
+  location = /wazuh/anomaly-results/_search {
+    # Ruta fija de solo lectura. B89 consulta resultados ML con filtro y rango acotados.
+    if ($http_authorization != "Bearer ${B89_WAZUH_GATEWAY_ACCESS_TOKEN}") { return 401; }
+    if ($args != "") { return 400; }
+    limit_except POST { deny all; }
+    proxy_set_header Authorization "Basic ${WAZUH_INDEXER_BASIC_AUTH_B64}";
+    proxy_set_header Cookie "";
+    proxy_set_header Content-Type "application/json";
+    proxy_read_timeout 5s;
+    proxy_pass https://${WAZUH_INDEXER_UPSTREAM}/.opendistro-anomaly-results*/_search;
+  }
+
+  location = /wazuh/anomaly-detectors/_search {
+    if ($http_authorization != "Bearer ${B89_WAZUH_GATEWAY_ACCESS_TOKEN}") { return 401; }
+    if ($args != "") { return 400; }
+    limit_except POST { deny all; }
+    proxy_set_header Authorization "Basic ${WAZUH_INDEXER_BASIC_AUTH_B64}";
+    proxy_set_header Cookie "";
+    proxy_set_header Content-Type "application/json";
+    proxy_read_timeout 5s;
+    proxy_pass https://${WAZUH_INDEXER_UPSTREAM}/_plugins/_anomaly_detection/detectors/_search;
   }
 
   location = /wazuh/_cluster/health {

@@ -154,9 +154,9 @@ json_file() { local file; file="$(mktemp -p "$work")"; cat >"$file"; printf '%s'
 
 info 'roles del Indexer'
 indexer PUT /_plugins/_security/api/roles/b89_alerts_read "$(json_file <<JSON
-{"description":"B89: lectura de alertas Wazuh para la ingesta (S5-D3)",
- "cluster_permissions":["cluster_monitor"],
- "index_permissions":[{"index_patterns":["$ALERTS_PATTERN"],"allowed_actions":["read"]}]}
+{"description":"B89: lectura de alertas Wazuh, Cloudflare y resultados ML (solo lectura)",
+ "cluster_permissions":["cluster_monitor","cluster:admin/opendistro/ad/detector/info","cluster:admin/opendistro/ad/detectors/get","cluster:admin/opendistro/ad/detector/search"],
+ "index_permissions":[{"index_patterns":["$ALERTS_PATTERN","b89-cloudflare-traffic-*",".opendistro-anomaly-results*"],"allowed_actions":["read"]}]}
 JSON
 )"
 indexer PUT /_plugins/_security/api/roles/b89_wazuh_readonly "$(json_file <<'JSON'

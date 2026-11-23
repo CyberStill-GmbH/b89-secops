@@ -44,7 +44,7 @@ fi
 # --- 2. rol y usuario del lector -------------------------------------------------
 log 'rol b89_alerts_read y usuario b89_reader'
 expect "$(idx PUT /_plugins/_security/api/roles/b89_alerts_read \
-  '{"description":"B89: lectura de alertas Wazuh para la ingesta (S5-D3)","cluster_permissions":["cluster_monitor"],"index_permissions":[{"index_patterns":["wazuh-alerts-*","b89-cloudflare-traffic-*"],"allowed_actions":["read"]}]}')" 'rol b89_alerts_read'
+  '{"description":"B89: lectura de alertas, Cloudflare y resultados ML (solo lectura)","cluster_permissions":["cluster_monitor","cluster:admin/opendistro/ad/detector/info","cluster:admin/opendistro/ad/detectors/get","cluster:admin/opendistro/ad/detector/search"],"index_permissions":[{"index_patterns":["wazuh-alerts-*","b89-cloudflare-traffic-*",".opendistro-anomaly-results*"],"allowed_actions":["read"]}]}')" 'rol b89_alerts_read'
 expect "$(python3 -c 'import json,os;print(json.dumps({"password":os.environ["B89_READER_PASSWORD"],"description":"B89: lector de alertas del gateway (solo lectura)"}))' \
   | curl -sk -o /dev/null -w '%{http_code}' -u "admin:$INDEXER_ADMIN_PASSWORD" -X PUT -H 'Content-Type: application/json' \
     --data-binary @- https://127.0.0.1:9200/_plugins/_security/api/internalusers/b89_reader)" 'usuario b89_reader'

@@ -23,18 +23,36 @@ Detectores versionados en `wazuh/indexer/anomaly-detection/`, aplicados por `app
 
 | Detector | Entidad (`category_field`) | Feature | Intervalo |
 | --- | --- | --- | --- |
-| `b89-m365-login-failures` | `data.office365.UserId` | Conteo de `UserLoginFailed` | 10 min |
-| `b89-m365-file-downloads` | `data.office365.UserId` | Conteo de `FileDownloaded` y `FileSyncDownloadedFull` | 15 min |
-| `b89-agent-alert-volume` | `agent.name` | Conteo de alertas con `rule.level ≥ 7` | 10 min |
+| `b89-logins-per-user` | `data.dstuser` | Conteo de accesos correctos y fallidos | 5 min |
+| `b89-m365-login-failures` | `data.office365.UserId` | Conteo de `UserLoginFailed` | 5 min |
+| `b89-m365-file-downloads` | `data.office365.UserId` | Conteo de `FileDownloaded` y `FileSyncDownloadedFull` | 5 min |
+| `b89-agent-alert-volume` | `agent.name` | Conteo de alertas con `rule.level ≥ 7` | 5 min |
+| `b89-provider-aws-activity` | Flujo AWS (`data.b89.vendor=aws`) | Conteo de actividad de nivel ≥ 7 | 5 min |
+| `b89-provider-bitdefender-activity` | Flujo Bitdefender (`data.b89.vendor=bitdefender`) | Conteo de eventos de nivel ≥ 8 | 5 min |
+| `b89-provider-snyk-activity` | Flujo Snyk (`data.b89.vendor=snyk`) | Conteo de vulnerabilidades abiertas de nivel ≥ 7 | 5 min |
+| `b89-cf-payments-errors` | `http.host` (3 hosts) | Errores de pago | 1 min |
+| Otros detectores `b89-cf-*` | `client.ip` (alta cardinalidad) | Exportaciones y operaciones de pago | 5 min |
+| `b89-waf-blocks-per-zone` | `data.cloudflare.zone_name` | Bloqueos y desafíos WAF | 5 min |
 
-**Integración con B89 [propuesto]:**
-1. `modules/connectors` lee `.opendistro-anomaly-results*` con `anomaly_grade ≥ 0.7`, con la misma
-   credencial de solo lectura ampliada a ese índice. El lector corre hoy dentro del API del perfil EC2; Lambda corresponde al perfil objetivo
-   (ruta privada al Indexer).
-2. `modules/telemetry` lo normaliza a `SecurityEvent` con `kind: anomaly`, conservando detector,
-   grado, confianza y entidad.
-3. `modules/detection` lo trata como una señal más. Una anomalía sola no crea un incidente: sube la
-   prioridad de un grupo de alertas de la misma entidad con la razón `ANOMALY_CORROBORATED`.
+**Integración con B89 [implementada en código, pendiente de despliegue y evidencia]:**
+1. La API consulta cada 5 s el endpoint interno fijo del gateway para resultados recientes. La
+   cuenta `b89_reader` solo lee `wazuh-alerts-*`, `b89-cloudflare-traffic-*` y
+   `.opendistro-anomaly-results*`; el gateway no expone el Indexer públicamente ni permite elegir
+   una ruta arbitraria.
+2. Se aceptan resultados B89 con `anomaly_grade ≥ 0.80` y `confidence ≥ 0.90`; esto excluye la
+   fase de baja confianza durante el aprendizaje inicial documentada por OpenSearch. El rango
+   incluye 15 min al arrancar y 2 min de solape en cada pasada. `search_after` evita saltarse
+   páginas; los resultados de la misma entidad/detector se agrupan por una ventana determinista
+   de 30 min para evitar alertas repetidas mientras persiste una anomalía.
+3. La normalización conserva detector, grado, confianza, entidad y features resumidas en el
+   namespace `b89.opensearch-ad`. Se crea una alerta de investigación P3 con el título legible
+   del catálogo. No crea un incidente ni una acción de respuesta por sí sola; la correlación B89
+   puede subir su prioridad con otras señales de la entidad.
+4. La alerta entra en el outbox común y se entrega a los canales B89 habilitados (Teams, correo o
+   push). OpenSearch Alerting no es el canal de notificación del SOC. El antiguo script de
+   monitores queda como observabilidad técnica y no es evidencia de entrega a una persona.
+
+Detalles, diagramas, umbrales y rollback: [16 · OpenSearch ML: cobertura y entrega profesional](detection-engineering/16-opensearch-ad-alert-delivery.md).
 
 Python queda descartado salvo que un caso medido supere a RCF (criterio de ADR-007).
 
