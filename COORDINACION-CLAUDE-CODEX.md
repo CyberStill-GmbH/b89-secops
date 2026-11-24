@@ -704,3 +704,60 @@ Lo pidió el dueño. Commits locales en `feat/soc-learning-stage-a` (sin push).
   El cierre en bloque de un grupo queda para cuando exista la UI (backend ya soporta `decisionGroupId`).
 - Validación: suite 1627/1630 (`provider-coupling` previa; `demo-admin-login` y `bff` pasan solas, fallan
   por tiempo bajo carga), gateway 14/14. Integración Postgres (concurrencia del grupo) **no corrida** (sin Docker).
+
+### Claude · 2026-11-24 · Aprendizaje SOC · cierre de pendientes B–C, registro de desvíos y traspaso a Codex
+
+Lo pidió el dueño. Commits locales en `feat/soc-learning-stage-a` (sin push). No se tocaron `01-diseno.md`,
+`05`–`07`, `10`–`13`, `adr/` ni `services/b89-reports/app/server.py` (otras sesiones).
+
+**Registro de desvíos respecto de `01-diseno.md`** (parche propuesto, sin aplicar:
+`docs/soc-learning/propuestas/01-diseno-desvios-etapas-a-c.patch`, aplica sobre la versión actual con
+`git apply`):
+
+| # | Diseño | Implementado | Motivo |
+|---|---|---|---|
+| D1 | Paquete nuevo `@b89/soc-learning` | Huella en `@b89/detection`, observables en `@b89/contracts`, cierre y grupos en `modules/soc` | Sin pnpm en la máquina para enlazar un workspace nuevo; el motor (D–F) sí irá en `modules/soc-learning` |
+| D2 | `cmdlineHmac` del original | Pospuesto | La línea original no se persiste en B89; el HMAC no minimiza nada hoy |
+| D3 | SHA-256 dentro de la normalización | Inyectado por quien llama (`Sha256Hex`) | El contrato no depende de Node; un hash no criptográfico permitiría fabricar colisiones |
+| D4 | `soc_alerts.rule_key` y `group_id` | `rule_key` en `soc_alert_fingerprints`/grupo; pertenencia en `soc_alert_group_members` | Agrupar no cambia la revisión de la alerta |
+| D5 | MITRE `[{technique,tactic}]` | `{techniques[], tactics[]}` | Wazuh no las empareja |
+| D6 | Agrupación en el paso 3 de `decide` | Al ingerir, misma transacción, fila del grupo con `FOR UPDATE` | Concurrencia correcta e independiente del modo del motor |
+| D7 | Sin tope de grupo | `B89_SOC_GROUPING_MAX_ALERTS` (500), `coarse`, `collapsible` | Grupos gruesos demasiado amplios |
+| D8 | `LEGACY_SIN_MOTIVO` | `closure_reason` NULL | No ampliar el catálogo con un valor que nadie elige |
+
+**Contradicciones con la versión de `01-diseno.md` editada por otra sesión** (afectan D–E, no A–C):
+D7 de ese texto («guarda → persona, sin bajar prioridad») anula `DEMOTE` como salida de una guarda; «dos
+aprobadores siempre» sustituye la regla A/A+B; la vigencia se comprueba con reloj del servidor en la decisión
+y en la escritura del efecto. Lo implementado en A–C no contradice nada de eso.
+
+**Traspaso a Codex (consola).** Contratos y criterios verificables. Las rutas backend las implementa Claude
+cuando Codex confirme el diseño de pantalla (son `/api/alerts/...` para no tocar los edges).
+
+1. **Filas agrupadas en la cola** (Codex). Fuente: `GET /api/alerts` ya devuelve por item
+   `"group": { "id": "0199…", "alertCount": 37, "coarse": true, "collapsible": true } | null`.
+   Criterios: (a) filas con el mismo `group.id` y `collapsible: true` se muestran como una fila «37 alertas
+   iguales · primera/última vez» desplegable; (b) toda fila con `collapsible: false` (P1/P2) se muestra
+   siempre suelta, aunque comparta grupo; (c) `coarse: true` muestra «agrupadas solo por regla y sujeto»;
+   (d) el total de la cola no cambia al agrupar; (e) prueba de componente con un P1 y tres P4 del mismo grupo.
+2. **Detalle y miembros** (Codex + proxy). `GET /api/alerts/:id/group` →
+   `{ "correlationId": "…", "group": { "id": "…", "status": "open", "level": "coarse", "coarse": true,
+   "ruleKey": "network:101830", "alertCount": 37, "firstSeenAt": "2026-11-24T08:00:00.000Z",
+   "lastSeenAt": "2026-11-24T11:42:10.000Z", "highestPriority": "P3", "primaryAlertId": "…" },
+   "alertIds": ["…"] }` (≤ 100). Criterio: el proxy del plugin (`wazuh/dashboard/plugins/b89_ops/server`)
+   reenvía `GET /alerts/:id/group` con la sesión del usuario; 404/`group: null` muestran «sin grupo».
+3. **Listado de grupos** (backend Claude, consola Codex). Propuesta: `GET /api/alerts/groups?status=open&limit=50`
+   → `{ "items": [<group>], "totalCount": 12 }`, orden `lastSeenAt` desc. Requiere declarar la ruta en
+   KrakenD **antes** de `/api/alerts/{id}` y probar que no choca (contrato del gateway). Criterio: misma
+   capacidad `alerts.read`, sin datos de entidad en la URL.
+4. **Cierre en bloque como una sola decisión** (backend Claude, consola Codex). Propuesta:
+   `POST /api/alerts/:id/group/close` con `{ "expectedAlertCount": 37, "verdict": "false_positive",
+   "closure": { "reason": "FP_ACTIVIDAD_LEGITIMA_CONOCIDA", "justification": {…}, "evidenceRefs": [ … ] } }`
+   → `{ "decisionGroupId": "…", "closed": 35, "skipped": [{ "alertId": "…", "reason": "PRIORITY_P1" }] }`.
+   Reglas: nunca cierra P1/P2 (van en `skipped`), ni alertas vinculadas a incidente, ni si `alertCount`
+   cambió (`409` con el conteo nuevo); cada alerta pasa por los comandos normales; todas comparten
+   `decisionGroupId` y cuentan **como una** confirmación. Criterio: prueba backend con 1 P1 + 3 P4 → 3
+   cerradas, 1 omitida, 3 filas en `soc_alert_closures` con el mismo `decisionGroupId`.
+
+**Verificación:** ver la tabla final del reporte al dueño. Lo de PostgreSQL real (migraciones, concurrencia de
+50 ingestas, rollback) queda **NO VERIFICADO** hasta que corra el job `soc-learning-postgres` en CI; en local
+se verificó parcialmente con PGlite (PG 17 WASM): 38 migraciones, 12/12 comprobaciones.
