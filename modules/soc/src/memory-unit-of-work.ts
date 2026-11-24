@@ -20,15 +20,17 @@ import type {
 } from '@b89/detection';
 
 import type { Alert } from './alert.js';
+import type { AlertClosureRecord } from './closure.js';
 import type { Incident } from './incident.js';
 import type { IncidentNote, IncidentTask } from './incident-work.js';
 import { InMemoryIngestionState } from './memory-ingestion.js';
 import type { OutboxMessageDraft } from './events.js';
-import type { OutboxLane } from './ports.js';
+import { DEFAULT_FALSE_POSITIVE_ORIGINS, type OutboxLane } from './ports.js';
 import type {
   AlertQuery,
   AlertStats,
   AlertStatsQuery,
+  AlertClosureStore,
   AlertStore,
   ClaimedOutboxMessage,
   OutboxHealth,
@@ -44,6 +46,7 @@ import type {
 
 interface Snapshot {
   readonly alerts: ReadonlyMap<string, Alert>;
+  readonly closures: readonly AlertClosureRecord[];
   readonly incidents: ReadonlyMap<string, Incident>;
   readonly tasks: ReadonlyMap<string, IncidentTask>;
   readonly notes: ReadonlyMap<string, IncidentNote>;
@@ -70,6 +73,8 @@ function newestFirst(left: { at: Date; id: string }, right: { at: Date; id: stri
 export class InMemorySoc implements SocPersistence {
   public readonly kind = 'memory' as const;
   public readonly alertRows = new Map<string, Alert>();
+  /** Bitácora append-only de cierres (aprendizaje SOC · etapa A). */
+  public readonly closureRows: AlertClosureRecord[] = [];
   public readonly incidentRows = new Map<string, Incident>();
   public readonly taskRows = new Map<string, IncidentTask>();
   public readonly noteRows = new Map<string, IncidentNote>();
@@ -104,6 +109,13 @@ export class InMemorySoc implements SocPersistence {
           (alert) => alert.tenantId === tenantId && alert.incidentId === incidentId,
         ),
       ),
+  };
+
+  private readonly closures: AlertClosureStore = {
+    append: (record) => {
+      this.closureRows.push(record);
+      return Promise.resolve();
+    },
   };
 
   private readonly incidents: IncidentStore = {
@@ -176,6 +188,7 @@ export class InMemorySoc implements SocPersistence {
   private snapshot(): Snapshot {
     return {
       alerts: new Map(this.alertRows),
+      closures: [...this.closureRows],
       incidents: new Map(this.incidentRows),
       tasks: new Map(this.taskRows),
       notes: new Map(this.noteRows),
@@ -199,6 +212,7 @@ export class InMemorySoc implements SocPersistence {
       for (const [key, value] of source) target.set(key, value);
     };
     replace(this.alertRows, snapshot.alerts);
+    this.closureRows.splice(0, this.closureRows.length, ...snapshot.closures);
     replace(this.incidentRows, snapshot.incidents);
     replace(this.taskRows, snapshot.tasks);
     replace(this.noteRows, snapshot.notes);
@@ -224,6 +238,7 @@ export class InMemorySoc implements SocPersistence {
     try {
       const result = await work({
         alerts: this.alerts,
+        closures: this.closures,
         incidents: this.incidents,
         tasks: this.tasks,
         notes: this.notes,
@@ -290,6 +305,7 @@ export class InMemorySoc implements SocPersistence {
 
   public alertStats(query: AlertStatsQuery): Promise<AlertStats> {
     const excluded = new Set(query.excludeIds ?? []);
+    const origins = new Set<string>(query.falsePositiveOrigins ?? DEFAULT_FALSE_POSITIVE_ORIGINS);
     const rows = [...this.alertRows.values()].filter(
       (alert) =>
         alert.tenantId === query.tenantId &&
@@ -300,7 +316,12 @@ export class InMemorySoc implements SocPersistence {
     );
     return Promise.resolve({
       total: rows.length,
-      falsePositive: rows.filter((alert) => alert.verdict === 'false_positive').length,
+      falsePositive: rows.filter(
+        (alert) =>
+          alert.verdict === 'false_positive' &&
+          alert.closureOrigin !== null &&
+          origins.has(alert.closureOrigin),
+      ).length,
       truePositive: rows.filter((alert) => alert.verdict === 'true_positive').length,
       open: rows.filter((alert) => alert.status !== 'closed').length,
       incidentIds: [

@@ -2,6 +2,7 @@ import {
   loadAccessConfig,
   loadApiConfig,
   loadDetectionContextConfig,
+  loadSocClosurePolicy,
   loadDirectoryConfig,
   loadEntityRefKey,
   loadIngestionConfig,
@@ -525,6 +526,7 @@ export async function buildApi(
     ...(demoAdminLogin ? { demoAdminLogin } : {}),
     profile: config.profile,
     detectionContext: detectionContextFrom(detection),
+    closureReasonRequired: loadSocClosurePolicy(environment).reasonRequired,
     ...(entityRefSecret
       ? {
           entityRefs: entityRefFactory(entityRefSecret),

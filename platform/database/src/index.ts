@@ -22,6 +22,7 @@ export {
 export { PrismaSecretMetadataStore, createUuidV7 } from './secret-metadata.store.js';
 export {
   PrismaAlertStore,
+  PrismaAlertClosureStore,
   PrismaAuditStore,
   PrismaCandidateStore,
   PrismaIncidentStore,
@@ -30,6 +31,7 @@ export {
   PrismaSocUnitOfWork,
   PrismaStandaloneAuditStore,
   SOC_QUERY_LIMITS,
+  type AlertClosureRow,
   type AlertListFilter,
   type AlertRow,
   type CandidateRow,

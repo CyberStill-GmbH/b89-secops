@@ -12,6 +12,15 @@
 
 import type { Priority, Reason, SignalClass } from '@b89/detection';
 
+import {
+  CLOSURE_REASON_VERDICTS,
+  closureOriginFor,
+  validateClosure,
+  type ClosureInput,
+  type ClosureOrigin,
+  type ClosureReason,
+} from './closure.js';
+
 export const ALERT_STATUSES = ['new', 'acknowledged', 'triaged', 'escalated', 'closed'] as const;
 export type AlertStatus = (typeof ALERT_STATUSES)[number];
 
@@ -61,6 +70,16 @@ export interface Alert {
   readonly signal: SignalClass | null;
   readonly ruleId: string | null;
   readonly relatedAlertIds: readonly string[];
+  /**
+   * Aprendizaje SOC · etapa A: último cierre vigente. `null` mientras la alerta está abierta
+   * (una reapertura los limpia; la historia completa vive en `soc_alert_closures`).
+   * `closureReason` es `null` en cierres anteriores al catálogo o sin motivo (modo heredado).
+   */
+  readonly closureReason: ClosureReason | null;
+  /** Derivado del actor autenticado, nunca del cliente. */
+  readonly closureOrigin: ClosureOrigin | null;
+  readonly closedBy: string | null;
+  readonly closedAt: Date | null;
 }
 
 /**
@@ -85,6 +104,10 @@ export const ALERT_ERROR_CODES = [
   'NOTE_REQUIRED',
   'ESCALATION_REQUIRES_TRUE_POSITIVE',
   'REVISION_STALE',
+  'CLOSURE_REASON_REQUIRED',
+  'CLOSURE_INVALID',
+  'CLOSURE_VERDICT_MISMATCH',
+  'CLOSURE_REQUIRES_TRIAGE',
 ] as const;
 export type AlertErrorCode = (typeof ALERT_ERROR_CODES)[number];
 
@@ -98,6 +121,13 @@ export interface AlertCommand {
   readonly assigneeId?: string;
   readonly verdict?: TriageVerdict;
   readonly note?: string;
+  /** Cierre estructurado (motivo, justificación y evidencia). Lo valida el dominio. */
+  readonly closure?: ClosureInput;
+  /**
+   * Política del ambiente (`B89_SOC_CLOSURE_REASON_REQUIRED`). Con `true`, `close` sin
+   * `closure` se rechaza; con `false` se acepta como cierre heredado sin motivo.
+   */
+  readonly closureReasonRequired?: boolean;
 }
 
 export type AlertTransition =
@@ -132,6 +162,10 @@ export function createAlert(input: {
     signal: input.signal ?? null,
     ruleId: input.ruleId ?? null,
     relatedAlertIds: input.relatedAlertIds ?? [],
+    closureReason: null,
+    closureOrigin: null,
+    closedBy: null,
+    closedAt: null,
     status: 'new',
     assigneeId: null,
     verdict: null,
@@ -199,13 +233,58 @@ export function applyAlertCommand(alert: Alert, command: AlertCommand): AlertTra
   }
   if (command.name === 'close') {
     const note = command.note?.trim() ?? '';
+    const closedFields = {
+      closureOrigin: closureOriginFor(command.actorId),
+      closedBy: command.actorId,
+      closedAt: command.at,
+      triageNote: note.length > 0 ? note : alert.triageNote,
+    };
+    if (command.closure !== undefined) {
+      const validation = validateClosure(command.closure);
+      if (!validation.ok) return fail(validation.code, validation.detail);
+      const { reason } = validation.closure;
+      let verdict = alert.verdict;
+      // Sin triaje solo se cierra una duplicada: cualquier otro motivo necesita veredicto
+      // explícito, porque un cierre sin etiqueta no se puede medir ni aprender.
+      if (verdict === null) {
+        if (reason !== 'DUPLICADA') {
+          return fail(
+            'CLOSURE_REQUIRES_TRIAGE',
+            'Clasifica la alerta antes de cerrarla; sin triaje solo se cierra una duplicada.',
+          );
+        }
+        verdict = 'duplicate';
+      }
+      if (!CLOSURE_REASON_VERDICTS[reason].includes(verdict)) {
+        return fail(
+          'CLOSURE_VERDICT_MISMATCH',
+          `El motivo ${reason} no corresponde al veredicto ${verdict}.`,
+        );
+      }
+      return {
+        ok: true,
+        from: alert.status,
+        alert: { ...base, ...closedFields, verdict, closureReason: reason },
+      };
+    }
+    if (command.closureReasonRequired === true) {
+      return fail('CLOSURE_REASON_REQUIRED', 'El cierre exige motivo, justificación y evidencia.');
+    }
     if (alert.status !== 'triaged' && note.length < TRIAGE_NOTE_LIMITS.minimumLength) {
       return fail('NOTE_REQUIRED', 'Cerrar sin triaje exige justificación escrita.');
     }
     return {
       ok: true,
       from: alert.status,
-      alert: { ...base, triageNote: note.length > 0 ? note : alert.triageNote },
+      alert: { ...base, ...closedFields, closureReason: null },
+    };
+  }
+  if (command.name === 'reopen') {
+    // El veredicto se conserva (es contexto para quien retoma); el cierre deja de estar vigente.
+    return {
+      ok: true,
+      from: alert.status,
+      alert: { ...base, closureReason: null, closureOrigin: null, closedBy: null, closedAt: null },
     };
   }
   return { ok: true, from: alert.status, alert: base };

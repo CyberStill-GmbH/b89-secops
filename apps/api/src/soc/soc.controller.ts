@@ -23,6 +23,7 @@ import {
   type AlertStatus,
   type Incident,
   type IncidentStatus,
+  type ClosureInput,
   type TriageVerdict,
 } from '@b89/soc';
 
@@ -48,6 +49,11 @@ export function alertView(alert: Alert, capabilities: ReadonlySet<string>) {
       status: alert.status,
       assigneeId: alert.assigneeId,
       verdict: alert.verdict,
+      // Aprendizaje SOC · etapa A: último cierre vigente (null mientras está abierta).
+      closureReason: alert.closureReason,
+      closureOrigin: alert.closureOrigin,
+      closedBy: alert.closedBy,
+      closedAt: alert.closedAt?.toISOString() ?? null,
       incidentId: alert.incidentId,
       occurredAt: alert.occurredAt.toISOString(),
       revision: alert.revision,
@@ -177,6 +183,8 @@ export class SocController {
       verdict?: TriageVerdict;
       note?: string;
       assigneeId?: string;
+      /** Cierre estructurado `{ reason, justification, evidenceRefs }`; lo valida el dominio. */
+      closure?: unknown;
     },
   ) {
     const { actor, correlationId } = await mutatingActor(this.runtime, request);
@@ -194,8 +202,14 @@ export class SocController {
         ...(body.verdict === undefined ? {} : { verdict: body.verdict }),
         ...(body.note === undefined ? {} : { note: body.note }),
         ...(body.assigneeId === undefined ? {} : { assigneeId: body.assigneeId }),
+        // La forma se valida en el dominio (`validateClosure`): aquí solo se reenvía.
+        ...(body.closure === undefined ? {} : { closure: body.closure as ClosureInput }),
       },
     });
+    if (!result.ok && result.reason.startsWith('CLOSURE_')) {
+      // La consola necesita saber que falló el cierre y por qué (motivo, veredicto o triaje).
+      throw new ApiError('VALIDATION_FAILED', correlationId, ['closure', result.reason]);
+    }
     if (!result.ok) throw fromSocFailure(result.code, correlationId);
     this.runtime.dispatcher.kick();
     return { correlationId, alert: alertView(result.value, actor.capabilities) };

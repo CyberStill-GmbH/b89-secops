@@ -48,6 +48,7 @@ import {
 } from '@b89/detection';
 
 import { ALERT_STATUSES, TRIAGE_VERDICTS, type Alert } from '../alert.js';
+import { CLOSURE_ORIGINS, CLOSURE_REASONS } from '../closure.js';
 import type {
   ClaimedWazuhPushHint,
   WazuhPushHint,
@@ -73,6 +74,7 @@ import type {
   AlertQuery,
   AlertStats,
   AlertStatsQuery,
+  AlertClosureStore,
   AlertStore,
   ClaimedOutboxMessage,
   OutboxHealth,
@@ -143,6 +145,20 @@ function toAlert(row: AlertRow): Alert {
     signal: optionalOneOf(SIGNAL_CLASSES, row.signal, 'soc_alerts', 'signal'),
     ruleId: row.ruleId,
     relatedAlertIds: [...row.relatedAlertIds],
+    closureReason: optionalOneOf(
+      CLOSURE_REASONS,
+      row.closureReason,
+      'soc_alerts',
+      'closure_reason',
+    ),
+    closureOrigin: optionalOneOf(
+      CLOSURE_ORIGINS,
+      row.closureOrigin,
+      'soc_alerts',
+      'closure_origin',
+    ),
+    closedBy: row.closedBy,
+    closedAt: row.closedAt,
   };
 }
 
@@ -315,6 +331,14 @@ export class PostgresSocPersistence implements SocPersistence {
         byIncident: async (tenantId, incidentId) =>
           (await stores.alerts.byIncident(tenantId, incidentId)).map(toAlert),
       };
+      const closures: AlertClosureStore = {
+        append: (record) =>
+          stores.closures.append({
+            ...record,
+            justification: record.justification,
+            evidenceRefs: [...record.evidenceRefs],
+          }),
+      };
       const incidents: IncidentStore = {
         byId: async (tenantId, incidentId) => {
           const row = await stores.incidents.byId(tenantId, incidentId);
@@ -355,6 +379,7 @@ export class PostgresSocPersistence implements SocPersistence {
       };
       return work({
         alerts,
+        closures,
         incidents,
         tasks,
         notes,

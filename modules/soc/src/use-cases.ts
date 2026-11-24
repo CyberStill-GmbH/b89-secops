@@ -23,6 +23,7 @@ import {
   type AlertErrorCode,
   type TriageVerdict,
 } from './alert.js';
+import { closureOriginFor } from './closure.js';
 import {
   applyIncidentCommand,
   openIncident,
@@ -126,6 +127,11 @@ export interface SocDependencies {
   readonly ids: IdFactory;
   /** Sin factory, la alerta no tiene referencias y no se puede pivotar por entidad. */
   readonly entityRefs?: EntityRefFactory;
+  /**
+   * Aprendizaje SOC · etapa A (`B89_SOC_CLOSURE_REASON_REQUIRED`). Sin política, el cierre sin
+   * motivo se acepta como heredado: es el comportamiento anterior.
+   */
+  readonly closurePolicy?: { readonly reasonRequired: boolean };
 }
 
 /** Materializa un candidato de C-16 como alerta. Repetirlo no crea una segunda. */
@@ -218,7 +224,9 @@ export interface AlertCommandRequest {
   readonly actor: Actor;
   readonly alertId: string;
   readonly correlationId: string;
-  readonly command: Omit<AlertCommand, 'actorId' | 'at'>;
+  readonly command: Omit<AlertCommand, 'actorId' | 'at' | 'closureReasonRequired'>;
+  /** Cierres en bloque (grupo o selección) comparten este id: cuentan como una decisión. */
+  readonly decisionGroupId?: string;
 }
 
 const COMMAND_CAPABILITY = {
@@ -274,6 +282,7 @@ export async function executeAlertCommand(
       ...request.command,
       actorId: request.actor.subjectId,
       at,
+      closureReasonRequired: dependencies.closurePolicy?.reasonRequired === true,
     });
     if (!transition.ok) {
       await recordAudit(
@@ -309,9 +318,34 @@ export async function executeAlertCommand(
           from: transition.from,
           to: transition.alert.status,
           verdict: transition.alert.verdict,
+          ...(request.command.name === 'close'
+            ? {
+                closureReason: transition.alert.closureReason,
+                closureOrigin: transition.alert.closureOrigin,
+                evidenceRefs: request.command.closure?.evidenceRefs.length ?? 0,
+              }
+            : {}),
         },
       }),
     );
+    if (request.command.name === 'close' || request.command.name === 'reopen') {
+      const closed = request.command.name === 'close';
+      await context.closures.append({
+        id: dependencies.ids.next(),
+        tenantId: alert.tenantId,
+        alertId: alert.id,
+        kind: closed ? 'close' : 'reopen',
+        verdict: transition.alert.verdict,
+        closureReason: closed ? transition.alert.closureReason : null,
+        origin: closureOriginFor(request.actor.subjectId),
+        actorId: request.actor.subjectId,
+        justification: closed ? (request.command.closure?.justification ?? null) : null,
+        evidenceRefs: closed ? (request.command.closure?.evidenceRefs ?? []) : [],
+        decisionGroupId: request.decisionGroupId ?? null,
+        correlationId: request.correlationId,
+        at,
+      });
+    }
     const type =
       request.command.name === 'triage'
         ? 'soc.alert.triaged'

@@ -20,6 +20,7 @@ export {
   loadNotificationPolicy,
   type NotificationPolicyEnvironment,
   loadVapidPrivateKey,
+  loadSocClosurePolicy,
   loadSocPersistenceConfig,
   loadLocalWorkerConfig,
   loadRuntimeConfig,
@@ -77,6 +78,7 @@ export type {
   WazuhGatewayAuthMode,
   RoleGrantsConfig,
   KnownBenignRule,
+  SocClosurePolicyConfig,
 } from './schema/index.js';
 export { CONFIGURATION_PROFILES } from './profiles/index.js';
 export { redactSecrets } from './redaction/index.js';

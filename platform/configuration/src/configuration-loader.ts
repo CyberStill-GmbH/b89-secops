@@ -15,6 +15,10 @@ import { rejectUnknownB89Variables } from './schema/environment.schema.js';
 import { validateAssistantEnvironment } from './schema/assistant.schema.js';
 import { parseAccess, type AccessConfig } from './schema/access.schema.js';
 import { parseDetectionContext, type DetectionContextConfig } from './schema/detection.schema.js';
+import {
+  parseSocClosurePolicy,
+  type SocClosurePolicyConfig,
+} from './schema/soc-learning.schema.js';
 import { parseIngestionConfig, type IngestionConfig } from './schema/ingestion.schema.js';
 import { parseRoleGrants, type RoleGrantsConfig } from './schema/role-grants.schema.js';
 import { parseDirectoryConfig, type DirectoryConfig } from './schema/directory.schema.js';
@@ -171,6 +175,12 @@ export function loadEntityRefKey(environment: EnvironmentInput): SecretValue | u
 export function loadDetectionContextConfig(environment: EnvironmentInput): DetectionContextConfig {
   const profile = profileFrom(environment);
   return deepFreeze(parseDetectionContext(environment, profile));
+}
+
+/** Aprendizaje SOC · etapa A — si el cierre de alertas exige motivo estructurado. */
+export function loadSocClosurePolicy(environment: EnvironmentInput): SocClosurePolicyConfig {
+  const profile = profileFrom(environment);
+  return deepFreeze(parseSocClosurePolicy(environment, profile));
 }
 
 /** Sprint 5 · fase 0 — fuente de ingesta del SOC; `disabled` si el ambiente no la declara. */

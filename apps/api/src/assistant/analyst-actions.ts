@@ -282,7 +282,22 @@ export class RuntimeSocActions implements SocActions {
       });
     }
     if (alert.status === 'triaged' && alert.verdict === 'false_positive') {
-      await step({ name: 'close', note, expectedRevision: alert.revision });
+      // Cierre estructurado (aprendizaje SOC · etapa A). El origen `ai_analyst` lo fija el
+      // backend por el actor: estos cierres nunca cuentan para patrones de falso positivo.
+      await step({
+        name: 'close',
+        note,
+        expectedRevision: alert.revision,
+        closure: {
+          reason: 'FP_ACTIVIDAD_LEGITIMA_CONOCIDA',
+          justification: {
+            evidenceType: 'log_correlation',
+            statement: note,
+            legitimacyField: 'history.false_positive',
+          },
+          evidenceRefs: [{ kind: 'investigation', ref: job.id }],
+        },
+      });
       return;
     }
     throw new AnalystActionError('ALERT_CHANGED');

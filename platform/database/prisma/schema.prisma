@@ -364,9 +364,15 @@ model SocAlert {
   signal          String?  @db.Text
   ruleId          String?  @map("rule_id") @db.Text
   relatedAlertIds String[] @default([]) @map("related_alert_ids") @db.Uuid
+  // Aprendizaje SOC · etapa A — último cierre vigente (historia en soc_alert_closures).
+  closureReason   String?   @map("closure_reason") @db.Text
+  closureOrigin   String?   @map("closure_origin") @db.Text
+  closedBy        String?   @map("closed_by") @db.Text
+  closedAt        DateTime? @map("closed_at") @db.Timestamptz(3)
 
   candidate DetectionCandidate @relation(fields: [candidateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "soc_alerts_candidate_fkey")
   incident  SocIncident?       @relation(fields: [incidentId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "soc_alerts_incident_fkey")
+  closures  SocAlertClosure[]
 
   @@index([tenantId, status, occurredAt], map: "soc_alerts_board_idx")
   @@index([tenantId, incidentId], map: "soc_alerts_incident_idx")
@@ -374,7 +380,33 @@ model SocAlert {
   @@index([entityRefs], map: "soc_alerts_entity_refs_idx", type: Gin)
   @@index([tenantId, occurredAt(sort: Desc), id], map: "soc_alerts_tenant_time_idx")
   @@index([tenantId, eventRecordId], map: "soc_alerts_event_record_idx")
+  @@index([tenantId, closureOrigin, closureReason, closedAt], map: "soc_alerts_closure_idx")
   @@map("soc_alerts")
+}
+
+// Aprendizaje SOC · etapa A — bitácora append-only de cierres y reaperturas. Triggers SQL
+// impiden UPDATE/DELETE/TRUNCATE: es la evidencia de la que aprende el SOC.
+model SocAlertClosure {
+  id              String   @id @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Text
+  alertId         String   @map("alert_id") @db.Uuid
+  kind            String   @db.Text
+  verdict         String?  @db.Text
+  closureReason   String?  @map("closure_reason") @db.Text
+  origin          String   @db.Text
+  actorId         String   @map("actor_id") @db.Text
+  justification   Json?    @db.JsonB
+  evidenceRefs    Json     @default("[]") @map("evidence_refs") @db.JsonB
+  decisionGroupId String?  @map("decision_group_id") @db.Uuid
+  correlationId   String   @map("correlation_id") @db.Text
+  at              DateTime @db.Timestamptz(3)
+  recordedAt      DateTime @default(now()) @map("recorded_at") @db.Timestamptz(3)
+
+  alert SocAlert @relation(fields: [alertId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "soc_alert_closures_alert_fkey")
+
+  @@index([tenantId, alertId, at], map: "soc_alert_closures_alert_idx")
+  @@index([tenantId, origin, closureReason, at], map: "soc_alert_closures_learning_idx")
+  @@map("soc_alert_closures")
 }
 
 // C-17/C-20 — outbox del SOC: cola durable con lease que el despacho reclama de forma

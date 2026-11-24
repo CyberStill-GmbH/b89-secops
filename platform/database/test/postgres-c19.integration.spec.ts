@@ -68,6 +68,10 @@ function alertRow(overrides: Partial<AlertRow> = {}): AlertRow {
     signal: 'credential_access',
     ruleId: '100502',
     relatedAlertIds: [],
+    closureReason: null,
+    closureOrigin: null,
+    closedBy: null,
+    closedAt: null,
     ...overrides,
   };
 }

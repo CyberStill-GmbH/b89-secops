@@ -16,6 +16,28 @@ export {
   type TriageVerdict,
 } from './alert.js';
 export {
+  CLOSURE_ERROR_CODES,
+  CLOSURE_LIMITS,
+  CLOSURE_ORIGINS,
+  CLOSURE_REASON_VERDICTS,
+  CLOSURE_REASONS,
+  closureOriginFor,
+  EVIDENCE_REF_KINDS,
+  EVIDENCE_TYPES,
+  LEARNABLE_CLOSURE_REASONS,
+  validateClosure,
+  type AlertClosureRecord,
+  type ClosureErrorCode,
+  type ClosureInput,
+  type ClosureJustification,
+  type ClosureOrigin,
+  type ClosureReason,
+  type ClosureValidation,
+  type EvidenceRef,
+  type EvidenceRefKind,
+  type EvidenceType,
+} from './closure.js';
+export {
   applyIncidentCommand,
   INCIDENT_COMMANDS,
   INCIDENT_ERROR_CODES,
@@ -124,6 +146,7 @@ export type {
   AlertQuery,
   AlertStats,
   AlertStatsQuery,
+  AlertClosureStore,
   AlertStore,
   ClaimedOutboxMessage,
   IncidentNoteStore,
@@ -141,3 +164,4 @@ export type {
   SocTransactionContext,
   SocUnitOfWork,
 } from './ports.js';
+export { DEFAULT_FALSE_POSITIVE_ORIGINS } from './ports.js';

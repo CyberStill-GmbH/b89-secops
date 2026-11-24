@@ -282,6 +282,8 @@ export interface RuntimeOptions {
   readonly signalCatalog?: SignalCatalog;
   /** Referencias opacas de entidad (D-10b). Sin ella, las alertas no se pueden pivotar. */
   readonly entityRefs?: EntityRefFactory;
+  /** Aprendizaje SOC · etapa A: `true` exige motivo estructurado al cerrar alertas. */
+  readonly closureReasonRequired?: boolean;
   /** Sesiones del BFF (C-18). Sin él, memoria: un reinicio cierra todas las sesiones. */
   readonly sessions?: SessionStore;
   /** Intentos de notificación de C-20. Sin él, memoria. */
@@ -700,6 +702,7 @@ export class SecOpsRuntime {
       clock: { now: () => this.now() },
       ids: { next: () => randomUUID() },
       ...(this.options.entityRefs ? { entityRefs: this.options.entityRefs } : {}),
+      closurePolicy: { reasonRequired: this.options.closureReasonRequired === true },
     };
   }
 

@@ -16,7 +16,7 @@
  * módulo SOC, de modo que `platform` no depende de `modules`.
  */
 
-import type { Prisma, PrismaClient } from '../generated/client/client.js';
+import { Prisma, type PrismaClient } from '../generated/client/client.js';
 import { PrismaIncidentNoteStore, PrismaIncidentTaskStore } from './incident-work-stores.js';
 import { runDatabaseTransaction } from './transaction.js';
 
@@ -214,6 +214,10 @@ export interface AlertRow {
   readonly signal: string | null;
   readonly ruleId: string | null;
   readonly relatedAlertIds: readonly string[];
+  readonly closureReason: string | null;
+  readonly closureOrigin: string | null;
+  readonly closedBy: string | null;
+  readonly closedAt: Date | null;
 }
 
 export class PrismaAlertStore {
@@ -250,6 +254,10 @@ export class PrismaAlertStore {
           signal: alert.signal,
           ruleId: alert.ruleId,
           relatedAlertIds: [...alert.relatedAlertIds],
+          closureReason: alert.closureReason,
+          closureOrigin: alert.closureOrigin,
+          closedBy: alert.closedBy,
+          closedAt: alert.closedAt,
         },
       ],
       skipDuplicates: true,
@@ -268,6 +276,10 @@ export class PrismaAlertStore {
         incidentId: alert.incidentId,
         updatedAt: alert.updatedAt,
         revision: alert.revision,
+        closureReason: alert.closureReason,
+        closureOrigin: alert.closureOrigin,
+        closedBy: alert.closedBy,
+        closedAt: alert.closedAt,
       },
     });
     return updated.count === 1;
@@ -276,6 +288,50 @@ export class PrismaAlertStore {
   public async byIncident(tenantId: string, incidentId: string): Promise<readonly AlertRow[]> {
     const rows = await this.tx.socAlert.findMany({ where: { tenantId, incidentId } });
     return rows as unknown as readonly AlertRow[];
+  }
+}
+
+/* ----------------------------------------------------- Cierres (aprendizaje SOC) */
+
+export interface AlertClosureRow {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly alertId: string;
+  readonly kind: string;
+  readonly verdict: string | null;
+  readonly closureReason: string | null;
+  readonly origin: string;
+  readonly actorId: string;
+  readonly justification: unknown;
+  readonly evidenceRefs: readonly unknown[];
+  readonly decisionGroupId: string | null;
+  readonly correlationId: string;
+  readonly at: Date;
+}
+
+/** Solo inserta: la tabla es append-only también en SQL (triggers). */
+export class PrismaAlertClosureStore {
+  public constructor(private readonly tx: Tx) {}
+
+  public async append(row: AlertClosureRow): Promise<void> {
+    await this.tx.socAlertClosure.create({
+      data: {
+        id: row.id,
+        tenantId: row.tenantId,
+        alertId: row.alertId,
+        kind: row.kind,
+        verdict: row.verdict,
+        closureReason: row.closureReason,
+        origin: row.origin,
+        actorId: row.actorId,
+        justification:
+          row.justification === null ? Prisma.DbNull : (row.justification as Prisma.InputJsonValue),
+        evidenceRefs: row.evidenceRefs as unknown as Prisma.InputJsonValue,
+        decisionGroupId: row.decisionGroupId,
+        correlationId: row.correlationId,
+        at: row.at,
+      },
+    });
   }
 }
 
@@ -443,6 +499,7 @@ export class PrismaSocOutboxStore {
 
 export interface SocStores {
   readonly alerts: PrismaAlertStore;
+  readonly closures: PrismaAlertClosureStore;
   readonly incidents: PrismaIncidentStore;
   readonly tasks: PrismaIncidentTaskStore;
   readonly notes: PrismaIncidentNoteStore;
@@ -459,6 +516,7 @@ export class PrismaSocUnitOfWork {
     return runDatabaseTransaction(this.client, (tx) =>
       work({
         alerts: new PrismaAlertStore(tx),
+        closures: new PrismaAlertClosureStore(tx),
         incidents: new PrismaIncidentStore(tx),
         tasks: new PrismaIncidentTaskStore(tx),
         notes: new PrismaIncidentNoteStore(tx),
@@ -599,6 +657,8 @@ export class PrismaSocQueries {
     readonly ruleId?: string;
     readonly since?: Date;
     readonly excludeIds?: readonly string[];
+    /** Orígenes de cierre que cuentan como FP; por defecto solo `human`. */
+    readonly falsePositiveOrigins?: readonly string[];
   }): Promise<{
     readonly total: number;
     readonly falsePositive: number;
@@ -616,7 +676,13 @@ export class PrismaSocQueries {
     };
     const [total, falsePositive, truePositive, open, incidents] = await Promise.all([
       this.client.socAlert.count({ where }),
-      this.client.socAlert.count({ where: { ...where, verdict: 'false_positive' } }),
+      this.client.socAlert.count({
+        where: {
+          ...where,
+          verdict: 'false_positive',
+          closureOrigin: { in: [...(filter.falsePositiveOrigins ?? ['human'])] },
+        },
+      }),
       this.client.socAlert.count({ where: { ...where, verdict: 'true_positive' } }),
       this.client.socAlert.count({ where: { ...where, status: { not: 'closed' } } }),
       this.client.socAlert.findMany({

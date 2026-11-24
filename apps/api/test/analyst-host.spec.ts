@@ -70,12 +70,17 @@ function putAlert(overrides: Partial<Alert> & { readonly id?: string } = {}): Al
   return alert;
 }
 
-/** Cinco cierres previos como falso positivo de la misma regla y entidad (patrón conocido). */
-function benignHistory(count = 5) {
+/**
+ * Cierres previos como falso positivo de la misma regla y entidad (patrón conocido). Por
+ * defecto los cerró una persona: solo eso cuenta como historial (aprendizaje SOC · etapa A).
+ */
+function benignHistory(count = 5, closureOrigin: Alert['closureOrigin'] = 'human') {
   for (let index = 0; index < count; index += 1) {
     putAlert({
       status: 'closed',
       verdict: 'false_positive',
+      closureOrigin,
+      closedBy: closureOrigin === 'human' ? 'analista-previo' : ANALYST_SERVICE_ACTOR_ID,
       createdAt: new Date(NOW.getTime() - (index + 1) * 86_400_000),
     });
   }
@@ -271,6 +276,29 @@ describe('acciones del analista sobre el SOC', () => {
     expect(actions.find((action) => action.kind === 'close_benign')?.state).toBe('executed');
     expect(closed?.triageNote).toContain('Cierre automático del Analista IA');
     expect(actions.find((action) => action.kind === 'request_review')).toBeUndefined();
+    // Cierre estructurado con origen de servicio: nunca alimenta el historial de FP.
+    expect(closed).toMatchObject({
+      closureReason: 'FP_ACTIVIDAD_LEGITIMA_CONOCIDA',
+      closureOrigin: 'ai_analyst',
+    });
+    expect(soc.closureRows.at(-1)).toMatchObject({
+      origin: 'ai_analyst',
+      evidenceRefs: [{ kind: 'investigation', ref: job.id }],
+    });
+  });
+
+  it('autónomo NO cierra sobre un historial que cerró el propio Analista IA (sin autorrefuerzo)', async () => {
+    benignHistory(5, 'ai_analyst');
+    const alert = putAlert({ priority: 'P4' });
+    const { host, store } = await harness({
+      mode: 'autonomous',
+      actions: { ...DEFAULT_ANALYST_SETTINGS.actions, closeBenign: true },
+    });
+    const { job } = await host.enqueueAlert(alert, { source: 'new_alert' });
+    await host.runOnce();
+    expect(await soc.alertById(T, alert.id)).toMatchObject({ status: 'new', verdict: null });
+    const actions = await store.actions(T, job.id);
+    expect(actions.find((action) => action.kind === 'close_benign')?.state).not.toBe('executed');
   });
 
   it('autónomo NO cierra un P3 con un verdadero positivo previo ni sin historial suficiente', async () => {

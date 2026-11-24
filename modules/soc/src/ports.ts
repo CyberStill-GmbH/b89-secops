@@ -16,6 +16,7 @@ import type { AuditStore } from '@b89/audit';
 import type { CorrelationWindowQuery, DetectionCandidateStore } from '@b89/detection';
 
 import type { Alert, AlertStatus } from './alert.js';
+import type { AlertClosureRecord, ClosureOrigin } from './closure.js';
 import type { Incident, IncidentStatus } from './incident.js';
 import type { IncidentNote, IncidentTask } from './incident-work.js';
 import type { OutboxMessageDraft } from './events.js';
@@ -27,6 +28,14 @@ export interface AlertStore {
   /** Compare-and-set sobre `revision`; `false` si otra escritura se adelantó. */
   update(alert: Alert, expectedRevision: number): Promise<boolean>;
   byIncident(tenantId: string, incidentId: string): Promise<readonly Alert[]>;
+}
+
+/**
+ * Bitácora append-only de cierres y reaperturas (`soc_alert_closures`). Sin `update` ni
+ * borrado por contrato: es la evidencia de la que aprende el SOC.
+ */
+export interface AlertClosureStore {
+  append(record: AlertClosureRecord): Promise<void>;
 }
 
 export interface IncidentStore {
@@ -56,6 +65,7 @@ export interface OutboxStore {
 
 export interface SocTransactionContext {
   readonly alerts: AlertStore;
+  readonly closures: AlertClosureStore;
   readonly incidents: IncidentStore;
   readonly tasks: IncidentTaskStore;
   readonly notes: IncidentNoteStore;
@@ -110,7 +120,15 @@ export interface AlertStatsQuery {
   readonly since?: Date;
   /** Alertas que no cuentan (las del propio trabajo). */
   readonly excludeIds?: readonly string[];
+  /**
+   * Orígenes de cierre que cuentan como falso positivo (aprendizaje SOC · etapa A). Por defecto
+   * solo `human`: los cierres del Analista IA, de scripts o del motor no se refuerzan a sí mismos.
+   */
+  readonly falsePositiveOrigins?: readonly ClosureOrigin[];
 }
+
+/** Por defecto solo cuentan los cierres humanos como historial de falso positivo. */
+export const DEFAULT_FALSE_POSITIVE_ORIGINS: readonly ClosureOrigin[] = Object.freeze(['human']);
 
 export interface AlertStats {
   readonly total: number;

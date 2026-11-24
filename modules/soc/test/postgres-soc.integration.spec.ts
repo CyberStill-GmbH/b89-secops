@@ -33,6 +33,7 @@ import { openIncident } from '../src/incident.js';
 import {
   addIncidentNote,
   createIncidentTask,
+  executeAlertCommand,
   executeIncidentCommand,
   executeTaskCommand,
   ingestCandidate,
@@ -576,6 +577,102 @@ describe.skipIf(!databaseUrl)('C-17 · persistencia SOC sobre PostgreSQL', () =>
       await admin.query(`UPDATE soc_alerts SET priority = 'P2' WHERE id = $1`, [target.id]);
       await admin.end();
     }
+  });
+
+  it('aprendizaje SOC · el cierre estructurado persiste, su bitácora es append-only y solo cuenta lo humano', async () => {
+    const target = candidate(41, { priority: 'P4', score: 30 });
+    const deps = dependencies(persistence);
+    await ingestCandidate(deps, target);
+    const analyst = {
+      subjectId: 'sub-analista-cierre',
+      tenantId: TENANT,
+      sessionId: 'session-cierre',
+      roles: ['b89.soc.analyst'],
+      capabilities: capabilitiesForRoles(['b89.soc.analyst']),
+    };
+    const run = async (command: Parameters<typeof executeAlertCommand>[1]['command']) => {
+      const result = await executeAlertCommand(deps, {
+        actor: analyst,
+        alertId: target.id,
+        correlationId: 'corr-cierre',
+        command,
+      });
+      if (!result.ok) throw new Error(`${command.name}:${result.reason}`);
+      return result.value;
+    };
+    let alert = await run({ name: 'acknowledge', expectedRevision: 1 });
+    alert = await run({
+      name: 'triage',
+      verdict: 'false_positive',
+      note: 'Respaldo programado conocido.',
+      expectedRevision: alert.revision,
+    });
+    alert = await run({
+      name: 'close',
+      expectedRevision: alert.revision,
+      closure: {
+        reason: 'FP_ACTIVIDAD_LEGITIMA_CONOCIDA',
+        justification: {
+          evidenceType: 'scheduled_job',
+          statement: 'Tarea de respaldo documentada en el runbook de backups.',
+          legitimacyField: 'process.image',
+        },
+        evidenceRefs: [{ kind: 'ticket', ref: 'CHG-1042' }],
+      },
+    });
+
+    const stored = await persistence.alertById(TENANT, target.id);
+    expect(stored).toMatchObject({
+      status: 'closed',
+      closureReason: 'FP_ACTIVIDAD_LEGITIMA_CONOCIDA',
+      closureOrigin: 'human',
+      closedBy: 'sub-analista-cierre',
+    });
+    const stats = await persistence.alertStats({
+      tenantId: TENANT,
+      entityRef: refOf(TENANT, USER_KEY),
+      ruleId: '100510',
+    });
+    expect(stats.falsePositive).toBeGreaterThanOrEqual(1);
+
+    const admin = new Client(database!.url);
+    await admin.connect();
+    try {
+      const rows = await admin.query(
+        `SELECT kind, origin, closure_reason, evidence_refs FROM soc_alert_closures WHERE alert_id = $1`,
+        [target.id],
+      );
+      expect(rows.rows).toEqual([
+        {
+          kind: 'close',
+          origin: 'human',
+          closure_reason: 'FP_ACTIVIDAD_LEGITIMA_CONOCIDA',
+          evidence_refs: [{ kind: 'ticket', ref: 'CHG-1042' }],
+        },
+      ]);
+      await expect(
+        admin.query(`UPDATE soc_alert_closures SET origin = 'ai_analyst' WHERE alert_id = $1`, [
+          target.id,
+        ]),
+      ).rejects.toThrow(/append-only/u);
+      await expect(
+        admin.query(`DELETE FROM soc_alert_closures WHERE alert_id = $1`, [target.id]),
+      ).rejects.toThrow(/append-only/u);
+      // Un cierre de servicio no cuenta como historial de falso positivo.
+      await admin.query(`UPDATE soc_alerts SET closure_origin = 'ai_analyst' WHERE id = $1`, [
+        target.id,
+      ]);
+      const afterAi = await persistence.alertStats({
+        tenantId: TENANT,
+        entityRef: refOf(TENANT, USER_KEY),
+        ruleId: '100510',
+        excludeIds: [],
+      });
+      expect(afterAi.falsePositive).toBe(stats.falsePositive - 1);
+    } finally {
+      await admin.end();
+    }
+    expect(alert.revision).toBeGreaterThan(1);
   });
 
   it('S5 · tareas con compare-and-set, cierre bloqueado y bitácora append-only', async () => {
