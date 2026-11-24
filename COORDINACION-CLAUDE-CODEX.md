@@ -833,3 +833,19 @@ Rama `feat/soc-learning-verify` (worktree `C:\projects\b89-wt-verify`). Detalle:
 - Cualquier tabla nueva append-only debe revocar UPDATE/DELETE/TRUNCATE al runtime en `post-migrate.sql`
   **y** en `roles.sql`.
 - `attention-ranking.ts` es suyo: la fase 3 (`AttentionPort`) necesita un contrato antes de tocarlo.
+
+## Fase 2 · sombra preparada, no lanzada (Claude, 2026-11-24)
+
+Detalle y veredicto: `docs/soc-learning/24-despliegue-sombra.md`; runbooks: `25-runbooks-motor.md`.
+
+- La ingesta ya no evalúa: escribe un trabajo en `soc_learning_jobs` (misma transacción) y un worker lo
+  consume. `apps/api/src/runtime/secops-runtime.ts` y `apps/api/src/bootstrap.ts` cambian **solo** en
+  líneas de aprendizaje (rama `feat/soc-learning-verify`); el merge sigue el orden de arriba.
+- **Consola (Codex), contratos nuevos** (lectura; sin mutaciones nuevas):
+  - `GET /api/learning/health` (`observability.read_soc`) → `{ status: OK|DEGRADED|CRITICAL|OFF,
+    alerts: [{ id, severity, summary, runbook }], metrics: {...} }`. Panel de salud del motor.
+  - `GET /api/learning/shadow-report?period=daily|weekly` (`learning.read`) → `{ report: { totals,
+    byRule[], byPattern[], unsafePatterns[], goldSet: "NOT_AVAILABLE", threshold } }`. Panel de sombra.
+- **Monitor de plataforma (dueño del monitor):** nuevo chequeo `learning` (lee la base); al reinstalar,
+  `b89_monitor` recibe SELECT en las tablas de aprendizaje si existen. Sin IDs de regla nuevos (usa la
+  genérica 101829); IDs propios con más nivel los asigna el dueño.
