@@ -782,3 +782,31 @@ Commits `fb759e0` `2d5ef89` `c45d44d` `7352cdc`. Regla de aprobación: **A / A+B
 - **Verificación:** unitarias en memoria (`modules/soc/test/learning-patterns.spec.ts`); migración y
   consulta de evidencia con PGlite (PG 17 WASM): 39 migraciones, 11/11. Las rutas Prisma del store
   (`createMany` con arreglos, CAS con `updateMany`) y la concurrencia: **NO VERIFICADO** sin PostgreSQL real.
+
+## Etapas D (resto) y E — motor de decisión (Claude, 2026-11-24)
+
+Commits `8321dcd` `4a07555` `dd3b574` `f1070e7` `5eb844c` `112d6f8`.
+
+- **Todo apagado por defecto.** `B89_LEARNING_ENABLED=false`; con `true`, techo `B89_LEARNING_MAX_MODE`
+  (por defecto `shadow`) y por encima de sombra solo las reglas de `B89_LEARNING_ACTIVE_RULES`. En
+  producción `dry_run`/`active` exigen `B89_LEARNING_PROMOTION_REF` y `B89_LEARNING_SAMPLING_KEY`.
+- **D:** reanudar (`paused → approved`, conserva el vencimiento) y renovar (`expired →` ciclo A o A+B,
+  90 días). Refresco periódico en el runtime (`B89_LEARNING_REFRESH_MINUTES`, 15).
+- **E:** el motor evalúa cada alerta nueva **después** del commit de la ingesta, en su propia
+  transacción (un fallo deja la alerta abierta y nunca bloquea la ingesta). Guardas del §7.1, todas
+  fail-closed; sin listas de activos/identidades, sin calendario de cambios confirmado
+  (`B89_LEARNING_CHANGE_CALENDAR_ACK_UNTIL`) o sin salud de fuente medida, escala. Topes: por hora
+  (pausa el patrón), diario, revisión forzada tras N; muestreo HMAC con clave.
+- **Consola (Codex):** `GET /api/learning/{readiness,patterns,patterns/:id,decisions,reviews}`;
+  `POST /api/learning/patterns/:id/{approve,reject,revoke,resume,renew}` `{expectedRevision, comment}`;
+  `POST /api/learning/decisions/:id/revert` `{reason}`; `POST /api/learning/reviews/:id/resolve`
+  `{expectedRevision, outcome: agree|disagree, truePositive, comment}`. Rutas declaradas en KrakenD.
+  Un rechazo por separación de funciones vuelve como 422 con `["learning", "<motivo>"]`.
+- **Pendiente:** `DEMOTE` sin efecto (falta `effective_priority`); `ESCALATE` no sube la alerta en
+  `attention-ranking.ts` (archivo de otra sesión); aviso inmediato por SOAR al pausar; ajustes por
+  tenant en base (`soc_learning_settings`) y entradas de contexto (`soc_context_entries`).
+- **F3a (laboratorio, sintético):** con orden de llegada aleatorio, el tope diario reduce poco la
+  supresión del atacante y casi nada si el atacante elige el orden. Los topes son defensa secundaria.
+- **Verificación:** 38 casos del contrato (doc 16) contra el motor en memoria; PGlite (PG 17) 40
+  migraciones, 17/17 comprobaciones D+E; contrato del gateway 14/14. **NO VERIFICADO** en PostgreSQL
+  real (stores Prisma, concurrencia) ni en sombra.
