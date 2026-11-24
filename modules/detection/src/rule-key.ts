@@ -4,11 +4,12 @@
  *
  * El ID de una regla no basta: el mismo número puede venir de fuentes distintas (p. ej. el rango
  * de red 1018xx agrupa conexiones Linux, SSH, Docker y edge). La fuente sale del rango declarado
- * en `detections/catalog.yaml#id_ranges`. Una spec compara esta tabla con el catálogo para que no
- * se desalineen en silencio.
+ * en `detections/catalog.yaml#id_ranges`, generado a `rule-sources.generated.ts`.
  */
 
 import type { SecurityEvent } from '@b89/contracts';
+
+import { RULE_SOURCE_RANGES } from './rule-sources.generated.js';
 
 export interface RuleSourceRange {
   readonly from: number;
@@ -16,32 +17,11 @@ export interface RuleSourceRange {
   readonly source: string;
 }
 
-/** Copia de `detections/catalog.yaml#id_ranges` (spec de deriva: `rule-key.spec.ts`). */
-export const RULE_SOURCE_RANGES: readonly RuleSourceRange[] = Object.freeze([
-  { from: 100500, to: 100549, source: 'm365' },
-  { from: 101100, to: 101109, source: 'windows' },
-  { from: 101110, to: 101139, source: 'dlp' },
-  { from: 101140, to: 101199, source: 'windows' },
-  { from: 101200, to: 101215, source: 'launch-pack' },
-  { from: 101216, to: 101299, source: 'platform' },
-  { from: 101300, to: 101399, source: 'ad' },
-  { from: 101400, to: 101449, source: 'bitdefender' },
-  { from: 101450, to: 101499, source: 'snyk' },
-  { from: 101500, to: 101549, source: 'cloudflare' },
-  { from: 101550, to: 101599, source: 'reserved' },
-  { from: 101600, to: 101699, source: 'aws' },
-  { from: 101700, to: 101709, source: 'm365' },
-  { from: 101710, to: 101719, source: 'aws' },
-  { from: 101720, to: 101729, source: 'bitdefender' },
-  { from: 101730, to: 101739, source: 'snyk' },
-  { from: 101740, to: 101749, source: 'cloudflare' },
-  { from: 101750, to: 101769, source: 'linux' },
-  { from: 101770, to: 101799, source: 'reserved' },
-  { from: 101800, to: 101899, source: 'network' },
-  { from: 101900, to: 101979, source: 'sharepoint' },
-  { from: 101980, to: 101989, source: 'platform' },
-  { from: 102000, to: 102029, source: 'cloudflare' },
-]);
+/**
+ * Rangos de `detections/catalog.yaml#id_ranges` (única fuente de verdad), generados por
+ * `scripts/soc-learning/generate-rule-sources.mjs`. Una spec falla si el generado se desalinea.
+ */
+export { RULE_SOURCE_RANGES };
 
 /** IDs reservados a las reglas de serie del SIEM; el overlay B89 usa 100000 en adelante. */
 const STOCK_RULE_MAXIMUM = 99_999;

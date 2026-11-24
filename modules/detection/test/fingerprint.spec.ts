@@ -1,6 +1,4 @@
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
@@ -201,16 +199,8 @@ describe('Aprendizaje SOC · etapa B · clave de regla', () => {
     ).toBe('wazuh-custom:109999');
   });
 
-  it('la tabla de rangos coincide con detections/catalog.yaml', () => {
-    const catalog = readFileSync(
-      fileURLToPath(new URL('../../../detections/catalog.yaml', import.meta.url)),
-      'utf8',
-    );
-    const block = catalog.slice(catalog.indexOf('id_ranges:'), catalog.indexOf('rule_files:'));
-    const ranges = [
-      ...block.matchAll(/from:\s*(\d+),\s*to:\s*(\d+),\s*source:\s*([a-z0-9-]+)/gu),
-    ].map((match) => ({ from: Number(match[1]), to: Number(match[2]), source: match[3] }));
-    expect(ranges.length).toBeGreaterThan(0);
-    expect(ranges).toEqual(RULE_SOURCE_RANGES);
+  it('la tabla de rangos viene del catálogo (generada y comprobada en tests/architecture/rule-ids.spec.ts)', () => {
+    expect(RULE_SOURCE_RANGES.length).toBeGreaterThan(0);
+    expect(RULE_SOURCE_RANGES.find((range) => range.from === 101500)?.source).toBe('cloudflare');
   });
 });
