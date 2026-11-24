@@ -784,6 +784,42 @@ export interface LearningJobRow {
   readonly finishedAt: Date | null;
 }
 
+export interface LearningEngineStateRow {
+  readonly tenantId: string;
+  readonly paused: boolean;
+  readonly reason: string | null;
+  readonly since: Date | null;
+  readonly revision: number;
+}
+
+/** Estado del motor: CAS por `revision` (`null` = primera fila). */
+export class PrismaLearningEngineStateStore {
+  public constructor(private readonly tx: Tx) {}
+
+  public async get(tenantId: string): Promise<LearningEngineStateRow | undefined> {
+    const row = await this.tx.socLearningEngineState.findUnique({ where: { tenantId } });
+    return row ?? undefined;
+  }
+
+  public async save(
+    row: LearningEngineStateRow,
+    expectedRevision: number | null,
+  ): Promise<boolean> {
+    if (expectedRevision === null) {
+      const created = await this.tx.socLearningEngineState.createMany({
+        data: [{ ...row }],
+        skipDuplicates: true,
+      });
+      return created.count === 1;
+    }
+    const updated = await this.tx.socLearningEngineState.updateMany({
+      where: { tenantId: row.tenantId, revision: expectedRevision },
+      data: { paused: row.paused, reason: row.reason, since: row.since, revision: row.revision },
+    });
+    return updated.count === 1;
+  }
+}
+
 /** Dentro de la transacción de la ingesta. */
 export class PrismaLearningJobStore {
   public constructor(private readonly tx: Tx) {}
@@ -1097,6 +1133,7 @@ export interface SocStores {
   readonly patterns: PrismaLearningPatternStore;
   readonly learning: PrismaLearningRecordStore;
   readonly learningJobs: PrismaLearningJobStore;
+  readonly learningState: PrismaLearningEngineStateStore;
   readonly incidents: PrismaIncidentStore;
   readonly tasks: PrismaIncidentTaskStore;
   readonly notes: PrismaIncidentNoteStore;
@@ -1119,6 +1156,7 @@ export class PrismaSocUnitOfWork {
         patterns: new PrismaLearningPatternStore(tx),
         learning: new PrismaLearningRecordStore(tx),
         learningJobs: new PrismaLearningJobStore(tx),
+        learningState: new PrismaLearningEngineStateStore(tx),
         incidents: new PrismaIncidentStore(tx),
         tasks: new PrismaIncidentTaskStore(tx),
         notes: new PrismaIncidentNoteStore(tx),
@@ -1326,6 +1364,24 @@ export class PrismaSocQueries {
       this.client.socLearningReview.count({ where }),
     ]);
     return { items, total };
+  }
+
+  /** Fase 3 · avisos del motor sin publicar pasado su plazo (HOT 2 min, WARM 15 min). */
+  public async learningUndeliveredNotices(tenantId: string, now: Date) {
+    const hot = new Date(now.getTime() - 2 * 60_000);
+    const warm = new Date(now.getTime() - 15 * 60_000);
+    const [row] = await this.client.$queryRaw<{ hot: bigint; warm: bigint }[]>`
+      SELECT count(*) FILTER (WHERE payload->>'urgency' = 'immediate' AND available_at < ${hot}) AS hot,
+             count(*) FILTER (WHERE payload->>'urgency' <> 'immediate' AND available_at < ${warm}) AS warm
+        FROM soc_outbox_messages
+       WHERE tenant_id = ${tenantId} AND message_type = 'soc.alert.review_requested'
+         AND status <> 'published' AND payload->>'reasonCodes' LIKE 'LEARNING%'`;
+    return { hot: Number(row?.hot ?? 0), warm: Number(row?.warm ?? 0) };
+  }
+
+  public async learningEngineState(tenantId: string): Promise<LearningEngineStateRow | undefined> {
+    const row = await this.client.socLearningEngineState.findUnique({ where: { tenantId } });
+    return row ?? undefined;
   }
 
   /** Fase 2 · informe de sombra: decisiones del período con el estado actual de su alerta. */

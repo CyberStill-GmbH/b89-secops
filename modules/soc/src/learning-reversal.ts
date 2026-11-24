@@ -12,6 +12,7 @@
 import type { Actor } from '@b89/access';
 import { recordAudit } from '@b89/audit';
 
+import { enqueueLearningNotice } from './learning-notices.js';
 import type { LearningPattern } from './learning-pattern.js';
 import type { SocTransactionContext } from './ports.js';
 import type { IdFactory, socAuditDraft } from './use-cases.js';
@@ -100,6 +101,18 @@ export async function recordManualReopen(
   const pattern = decision.patternId
     ? await context.patterns.byId(input.tenantId, decision.patternId)
     : undefined;
+  const alert = await context.alerts.byId(input.tenantId, input.alertId);
+  if (alert) {
+    await enqueueLearningNotice(context, ids, {
+      alert,
+      kind: 'REVERSAL',
+      decisionId: decision.id,
+      ruleKey: decision.ruleKey,
+      patternId: decision.patternId,
+      actorId: input.actor.subjectId,
+      at: input.at,
+    });
+  }
   if (pattern) {
     await pauseLearningPattern(
       context,

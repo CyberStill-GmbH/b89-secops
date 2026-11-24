@@ -38,6 +38,7 @@ import {
   type IncidentWithAlertsRow,
   type LearningClosureRow,
   type LearningDecisionRow,
+  type LearningEngineStateRow,
   type LearningJobRow,
   type LearningPatternRow,
   type LearningReviewRow,
@@ -77,6 +78,7 @@ import {
   type EngineCheck,
 } from '../learning-engine.js';
 import type { ShadowRow } from '../learning-shadow-report.js';
+import { ENGINE_PAUSE_REASONS, type LearningEngineState } from '../learning-engine-state.js';
 import type {
   ClaimedWazuhPushHint,
   WazuhPushHint,
@@ -361,6 +363,13 @@ function toJob(row: LearningJobRow): LearningJob {
     fingerprint: toJobFingerprint(row.fingerprint),
     signals: toJobSignals(row.signals),
     status: oneOf(LEARNING_JOB_STATUSES, row.status, 'soc_learning_jobs', 'status'),
+  };
+}
+
+function toEngineState(row: LearningEngineStateRow): LearningEngineState {
+  return {
+    ...row,
+    reason: optionalOneOf(ENGINE_PAUSE_REASONS, row.reason, 'soc_learning_engine_state', 'reason'),
   };
 }
 
@@ -692,7 +701,16 @@ export class PostgresSocPersistence implements SocPersistence {
               : null,
           }),
       };
+      const learningState = {
+        get: async (tenantId: string) => {
+          const row = await stores.learningState.get(tenantId);
+          return row ? toEngineState(row) : undefined;
+        },
+        save: (state: LearningEngineState, expectedRevision: number | null) =>
+          stores.learningState.save(state, expectedRevision),
+      };
       return work({
+        learningState,
         learningJobs,
         alerts,
         closures,
@@ -834,6 +852,15 @@ export class PostgresSocPersistence implements SocPersistence {
       if (row.origin === 'human') closures.push(toClosureEvidence(row));
     }
     return { closures, truePositivesByFingerprint };
+  }
+
+  public learningUndeliveredNotices(tenantId: string, now: Date) {
+    return this.queries.learningUndeliveredNotices(tenantId, now);
+  }
+
+  public async learningEngineState(tenantId: string): Promise<LearningEngineState | undefined> {
+    const row = await this.queries.learningEngineState(tenantId);
+    return row ? toEngineState(row) : undefined;
   }
 
   public async learningShadowRows(

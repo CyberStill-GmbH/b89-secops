@@ -200,6 +200,22 @@ export {
   type RevertRequest,
 } from './learning-engine-use-cases.js';
 export {
+  capForEngineState,
+  checkLearningNoticeDelivery,
+  ENGINE_PAUSE_REASONS,
+  resumeLearningEngine,
+  type EnginePauseReason,
+  type LearningEngineState,
+  type LearningEngineStateStore,
+} from './learning-engine-state.js';
+export {
+  enqueueLearningNotice,
+  HOT_LEARNING_NOTICES,
+  LEARNING_NOTICE_DEADLINES,
+  LEARNING_NOTICE_PREFIX,
+  urgencyOf,
+} from './learning-notices.js';
+export {
   buildShadowReport,
   clopperPearsonLower,
   type ShadowReport,

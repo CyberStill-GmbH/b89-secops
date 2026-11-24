@@ -31,6 +31,7 @@ import {
   type EngineSettings,
 } from './learning-engine.js';
 import type { LearningPattern } from './learning-pattern.js';
+import { enqueueLearningNotice } from './learning-notices.js';
 import { pauseLearningPattern } from './learning-reversal.js';
 import { LEARNING_SERVICE_ACTOR } from './learning-use-cases.js';
 import type {
@@ -447,6 +448,29 @@ export async function evaluateAlertWithLearning(
           revision: 1,
         });
       }
+      // AttentionPort: una escalada con efecto llega a una persona (HOT inmediato o WARM en resumen).
+      if (applied === 'ESCALATE') {
+        await enqueueLearningNotice(context, dependencies.ids, {
+          alert,
+          kind: decided.escalateReason ?? 'EFFECT_FAILED',
+          decisionId,
+          ruleKey: fp.ruleKey,
+          patternId: decided.patternId,
+          actorId: LEARNING_SERVICE_ACTOR,
+          at: now,
+        });
+      }
+      if (decided.pausePattern && exact) {
+        await enqueueLearningNotice(context, dependencies.ids, {
+          alert,
+          kind: 'PATTERN_PAUSED',
+          decisionId,
+          ruleKey: fp.ruleKey,
+          patternId: exact.id,
+          actorId: LEARNING_SERVICE_ACTOR,
+          at: now,
+        });
+      }
       const actor = serviceActor(request.tenantId);
       if (decided.pausePattern && exact) {
         await pausePattern(
@@ -650,6 +674,20 @@ export async function resolveLearningReview(
         request.correlationId,
         now,
       );
+      if (reopened || request.truePositive) {
+        const target = await context.alerts.byId(review.tenantId, review.alertId);
+        if (target) {
+          await enqueueLearningNotice(context, dependencies.ids, {
+            alert: target,
+            kind: 'REVERSAL',
+            decisionId: review.decisionId,
+            ruleKey: pattern?.ruleKey ?? null,
+            patternId: review.patternId,
+            actorId: request.actor.subjectId,
+            at: now,
+          });
+        }
+      }
       if (reopened) {
         await context.learning.appendReversal({
           id: dependencies.ids.next(),
@@ -784,6 +822,18 @@ export async function revertLearningDecision(
     const pattern = decision.patternId
       ? await context.patterns.byId(decision.tenantId, decision.patternId)
       : undefined;
+    const reverted = await context.alerts.byId(decision.tenantId, decision.alertId);
+    if (reverted) {
+      await enqueueLearningNotice(context, dependencies.ids, {
+        alert: reverted,
+        kind: 'REVERSAL',
+        decisionId: decision.id,
+        ruleKey: decision.ruleKey,
+        patternId: decision.patternId,
+        actorId: request.actor.subjectId,
+        at: now,
+      });
+    }
     if (pattern) {
       await pausePattern(
         context,

@@ -47,6 +47,8 @@ END $$;
 
 -- Fase 2 (cola, latidos, configuración)
 DROP TABLE IF EXISTS soc_learning_config_events;
+DROP TABLE IF EXISTS soc_learning_engine_state;
+DROP INDEX IF EXISTS soc_outbox_messages_learning_notice_idx;
 DROP TABLE IF EXISTS soc_learning_worker_heartbeats;
 DROP TABLE IF EXISTS soc_learning_jobs;
 -- Etapa E
@@ -70,7 +72,8 @@ DELETE FROM _prisma_migrations
     '20261124160000_soc_learning_engine',
     '20261124161000_soc_learning_engine_guards',
     '20261124162000_soc_learning_queue',
-    '20261124163000_soc_learning_effective_priority'
+    '20261124163000_soc_learning_effective_priority',
+    '20261124164000_soc_learning_engine_state'
  );
 
 COMMIT;

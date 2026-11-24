@@ -338,12 +338,15 @@ function learningFrom(environment: Readonly<Record<string, string | undefined>>)
     samplingKeyVersion,
   };
   if (!engine.enabled) return { learningConfig };
+  // Fase 3: sin canal de notificación la escalada no llega a nadie: el techo queda en sombra.
+  const channel = loadTeamsWorkflowUrl(environment) !== undefined;
+  const channelMissing = !channel && (engine.maxMode === 'dry_run' || engine.maxMode === 'active');
   return {
     learningConfig,
     learning: {
       settings: {
         ...DEFAULT_ENGINE_SETTINGS,
-        maxMode: engine.maxMode,
+        maxMode: channelMissing ? ('shadow' as const) : engine.maxMode,
         activeRules: new Set(engine.activeRules),
         killSwitch: engine.killSwitch,
         killedRules: new Set(engine.killedRules),
@@ -357,6 +360,7 @@ function learningFrom(environment: Readonly<Record<string, string | undefined>>)
       changeCalendarAckUntil: engine.changeCalendarAckUntil,
       refreshMs: engine.refreshMinutes * 60_000,
       approvers: loadSocLearningApprovers(environment).approvers,
+      channelMissing,
     },
   };
 }

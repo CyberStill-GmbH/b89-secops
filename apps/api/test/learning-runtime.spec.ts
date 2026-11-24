@@ -121,3 +121,21 @@ describe('fase 3 · piso de impacto al arrancar', () => {
     ).rejects.toThrow(/alto impacto/u);
   });
 });
+
+describe('fase 3 · sin canal de notificación el motor no pasa de sombra', () => {
+  it('se pide activo sin Teams: queda en sombra y la salud lo marca crítico', async () => {
+    const built = await buildApi(
+      {
+        B89_PROFILE: 'test',
+        B89_LEARNING_ENABLED: 'true',
+        B89_LEARNING_MAX_MODE: 'active',
+        B89_LEARNING_ACTIVE_RULES: 'linux-process:100200',
+      },
+      () => {},
+    );
+    stop = built.stop;
+    const { report, metrics } = await built.runtime.learningHealth();
+    expect(metrics.maxMode).toBe('shadow');
+    expect(report.alerts.map((alert) => alert.id)).toContain('NOTIFICATION_CHANNEL_MISSING');
+  });
+});

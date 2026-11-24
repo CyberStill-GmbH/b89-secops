@@ -70,6 +70,8 @@ import {
 } from '@b89/detection';
 import { OBSERVABLES_NORMALIZER_VERSION } from '@b89/contracts';
 import {
+  capForEngineState,
+  checkLearningNoticeDelivery,
   drainLearningQueue,
   evaluateLearningHealth,
   InMemorySoc,
@@ -268,6 +270,8 @@ export interface LearningRuntimeOptions {
   /** Worker de la cola del motor (fase 2); por defecto `DEFAULT_LEARNING_WORKER_POLICY`. */
   readonly worker?: LearningWorkerPolicy;
   readonly workerIntervalMs?: number;
+  /** Fase 3: se pidió dry_run/activo sin canal de notificación y el techo quedó en sombra. */
+  readonly channelMissing?: boolean;
 }
 
 /** Huella de la configuración del motor de cada arranque (también con el motor apagado). */
@@ -1098,10 +1102,16 @@ export class SecOpsRuntime {
     const learning = this.options.learning;
     const queue = this.soc.learningQueue;
     if (!learning || !queue) return { claimed: 0, done: 0, retried: 0, dead: 0 };
+    // AttentionPort: si un aviso del motor venció sin entregarse, el motor se pausa (a sombra).
+    await checkLearningNoticeDelivery(this.socDependencies(), this.soc, this.tenantId);
+    const state = await this.soc.learningEngineState?.(this.tenantId);
     return drainLearningQueue({
       dependencies: this.socDependencies(),
       queue,
-      engine: { settings: learning.settings, context: () => this.learningEngineContext() },
+      engine: {
+        settings: capForEngineState(learning.settings, state),
+        context: () => this.learningEngineContext(),
+      },
       ...(learning.worker ? { policy: learning.worker } : {}),
       workerId: `api-${process.pid}`,
       tenantId: this.tenantId,
@@ -1152,6 +1162,8 @@ export class SecOpsRuntime {
         last24h: { pauses: 0, reversals: 0, disagreements: 0, configChanges: 0, modeRaised: false },
       }),
       enabled: learning !== undefined,
+      enginePaused: (await this.soc.learningEngineState?.(this.tenantId))?.paused === true,
+      channelMissing: learning?.channelMissing === true,
       maxMode: learning?.settings.maxMode ?? 'off',
       killSwitch: learning?.settings.killSwitch ?? false,
       sourceState: this.learningEngineContext().sourceState,

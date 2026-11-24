@@ -11,6 +11,7 @@ import { Body, Controller, Get, Inject, Param, Post, Query, Req } from '@nestjs/
 
 import {
   approveLearningPattern,
+  resumeLearningEngine,
   buildShadowReport,
   LEARNING_REVIEW_STATUSES,
   PATTERN_STATUSES,
@@ -52,6 +53,7 @@ const EXPLAINED_REASONS = new Set([
   'OPEN_PATTERN_EXISTS',
   'REVIEW_RESOLVED',
   'NOT_ENGINE_CLOSED',
+  'ENGINE_NOT_PAUSED',
 ]);
 
 function failureOf(
@@ -189,6 +191,25 @@ export class LearningController {
     const from = new Date(to.getTime() - (period === 'weekly' ? 7 : 1) * 24 * 60 * 60 * 1000);
     const rows = (await this.runtime.soc.learningShadowRows?.(actor.tenantId, from, to)) ?? [];
     return { correlationId, report: buildShadowReport(rows, { from, to }) };
+  }
+
+  /** Reanuda el motor tras una pausa automática (aprobador designado, con comentario). */
+  @Post('learning/engine/resume')
+  public async resumeEngine(
+    @Req() request: IncomingRequest,
+    @Body() body: { readonly comment?: string },
+  ) {
+    const { actor, correlationId } = await mutatingActor(this.runtime, request);
+    if (typeof body.comment !== 'string')
+      throw new ApiError('VALIDATION_FAILED', correlationId, ['comment']);
+    const result = await resumeLearningEngine(this.runtime.socDependencies(), {
+      actor,
+      designatedApprovers: this.runtime.learningApprovers,
+      comment: body.comment,
+      correlationId,
+    });
+    if (!result.ok) throw failureOf(result, correlationId);
+    return { correlationId, paused: result.value.paused };
   }
 
   @Get('learning/patterns')

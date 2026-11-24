@@ -29,6 +29,7 @@ import type {
   LearningPattern,
   PatternStatus,
 } from './learning-pattern.js';
+import type { LearningEngineStateStore } from './learning-engine-state.js';
 import type { LearningHealthMetrics } from './learning-health.js';
 import type { ShadowRow } from './learning-shadow-report.js';
 import type {
@@ -318,6 +319,7 @@ export interface SocTransactionContext {
   readonly patterns: LearningPatternStore;
   readonly learning: LearningRecordStore;
   readonly learningJobs: LearningJobStore;
+  readonly learningState: LearningEngineStateStore;
   readonly incidents: IncidentStore;
   readonly tasks: IncidentTaskStore;
   readonly notes: IncidentNoteStore;
@@ -420,6 +422,15 @@ export interface SocReadModel {
   learningHealthCounts?(tenantId: string, now: Date): Promise<LearningHealthCounts>;
   /** Fase 2 · decisiones del período con el estado actual de su alerta (informe de sombra). */
   learningShadowRows?(tenantId: string, from: Date, to: Date): Promise<readonly ShadowRow[]>;
+  /** Fase 3 · avisos del motor sin publicar pasado su plazo (HOT 2 min, WARM 15 min). */
+  learningUndeliveredNotices?(
+    tenantId: string,
+    now: Date,
+  ): Promise<{ readonly hot: number; readonly warm: number }>;
+  /** Fase 3 · estado del motor (pausa automática). */
+  learningEngineState?(
+    tenantId: string,
+  ): Promise<import('./learning-engine-state.js').LearningEngineState | undefined>;
   /** Etapa D/E · lecturas de la consola. */
   listLearningPatterns?(query: {
     readonly tenantId: string;

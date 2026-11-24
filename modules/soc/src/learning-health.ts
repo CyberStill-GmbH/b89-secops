@@ -39,6 +39,10 @@ export interface LearningHealthMetrics {
     readonly modeRaised: boolean;
   };
   readonly sourceState: string | null;
+  /** Fase 3: el motor se pausó solo (avisos sin entregar) y está en sombra. */
+  readonly enginePaused?: boolean;
+  /** Fase 3: se pidió dry_run/activo sin canal de notificación: quedó en sombra. */
+  readonly channelMissing?: boolean;
 }
 
 export type HealthSeverity = 'critical' | 'warning' | 'info';
@@ -118,6 +122,22 @@ export function evaluateLearningHealth(
     );
   }
   if (metrics.killSwitch) add('KILL_SWITCH', 'info', 'Kill switch global activo.', 'kill-switch');
+  if (metrics.channelMissing) {
+    add(
+      'NOTIFICATION_CHANNEL_MISSING',
+      'critical',
+      'Se pidió dry_run/activo sin canal de notificación: el motor quedó en sombra.',
+      'escalacion-sin-entrega',
+    );
+  }
+  if (metrics.enginePaused) {
+    add(
+      'ENGINE_SELF_PAUSED',
+      'critical',
+      'El motor se pausó solo: avisos de escalada sin entregar a tiempo. Está en sombra.',
+      'escalacion-sin-entrega',
+    );
+  }
   if (!metrics.enabled || metrics.maxMode === 'off') {
     return { status: 'OFF', alerts };
   }

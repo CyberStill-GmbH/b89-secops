@@ -29,6 +29,8 @@ import {
 } from './learning-pattern.js';
 import type { AlertClosureRecord } from './closure.js';
 import { limaDayStart, type PatternCounters } from './learning-engine.js';
+import type { LearningEngineState, LearningEngineStateStore } from './learning-engine-state.js';
+import { LEARNING_NOTICE_DEADLINES, LEARNING_NOTICE_PREFIX } from './learning-notices.js';
 import type { Incident } from './incident.js';
 import type { IncidentNote, IncidentTask } from './incident-work.js';
 import { InMemoryIngestionState } from './memory-ingestion.js';
@@ -82,6 +84,7 @@ interface Snapshot {
   readonly reviews: ReadonlyMap<string, LearningReviewRecord>;
   readonly reversals: readonly LearningReversalRecord[];
   readonly jobs: ReadonlyMap<string, LearningJob>;
+  readonly engineStates: ReadonlyMap<string, LearningEngineState>;
   readonly groupMembers: ReadonlyMap<string, GroupMember>;
   readonly incidents: ReadonlyMap<string, Incident>;
   readonly tasks: ReadonlyMap<string, IncidentTask>;
@@ -138,6 +141,17 @@ export class InMemorySoc implements SocPersistence {
     { tenantId: string; at: Date; claimed: number; failed: number }
   >();
   public readonly configEventRows: LearningConfigEvent[] = [];
+  public readonly engineStateRows = new Map<string, LearningEngineState>();
+
+  private readonly learningState: LearningEngineStateStore = {
+    get: (tenantId) => Promise.resolve(this.engineStateRows.get(tenantId)),
+    save: (state, expectedRevision) => {
+      const current = this.engineStateRows.get(state.tenantId);
+      if ((current?.revision ?? null) !== expectedRevision) return Promise.resolve(false);
+      this.engineStateRows.set(state.tenantId, state);
+      return Promise.resolve(true);
+    },
+  };
 
   private readonly learningJobs: LearningJobStore = {
     enqueue: (job) => {
@@ -518,6 +532,7 @@ export class InMemorySoc implements SocPersistence {
       reviews: new Map(this.reviewRows),
       reversals: [...this.reversalRows],
       jobs: new Map(this.jobRows),
+      engineStates: new Map(this.engineStateRows),
       groupMembers: new Map(this.groupMemberRows),
       incidents: new Map(this.incidentRows),
       tasks: new Map(this.taskRows),
@@ -552,6 +567,7 @@ export class InMemorySoc implements SocPersistence {
     replace(this.reviewRows, snapshot.reviews);
     this.reversalRows.splice(0, this.reversalRows.length, ...snapshot.reversals);
     replace(this.jobRows, snapshot.jobs);
+    replace(this.engineStateRows, snapshot.engineStates);
     replace(this.groupMemberRows, snapshot.groupMembers);
     replace(this.incidentRows, snapshot.incidents);
     replace(this.taskRows, snapshot.tasks);
@@ -584,6 +600,7 @@ export class InMemorySoc implements SocPersistence {
         patterns: this.patterns,
         learning: this.learning,
         learningJobs: this.learningJobs,
+        learningState: this.learningState,
         incidents: this.incidents,
         tasks: this.tasks,
         notes: this.notes,
@@ -728,6 +745,28 @@ export class InMemorySoc implements SocPersistence {
       )
       .sort((left, right) => right.at.getTime() - left.at.getTime());
     return Promise.resolve({ items: items.slice(0, query.limit), total: items.length });
+  }
+
+  public learningEngineState(tenantId: string) {
+    return Promise.resolve(this.engineStateRows.get(tenantId));
+  }
+
+  /** Mismo criterio que `PrismaSocQueries.learningUndeliveredNotices`. */
+  public learningUndeliveredNotices(tenantId: string, now: Date) {
+    let hot = 0;
+    let warm = 0;
+    for (const message of this.outboxRows.values()) {
+      if (message.tenantId !== tenantId || message.messageType !== 'soc.alert.review_requested')
+        continue;
+      if (!String(message.payload['reasonCodes'] ?? '').startsWith(LEARNING_NOTICE_PREFIX))
+        continue;
+      if (this.outboxState.get(message.messageId)?.status === 'published') continue;
+      const age = now.getTime() - message.availableAt.getTime();
+      if (message.payload['urgency'] === 'immediate') {
+        if (age > LEARNING_NOTICE_DEADLINES.hotMs) hot += 1;
+      } else if (age > LEARNING_NOTICE_DEADLINES.warmMs) warm += 1;
+    }
+    return Promise.resolve({ hot, warm });
   }
 
   public learningShadowRows(tenantId: string, from: Date, to: Date) {
