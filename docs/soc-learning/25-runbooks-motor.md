@@ -91,3 +91,28 @@ Alerta: `CONFIG_CHANGED` (crítica si sube el techo de modo), monitor `learning_
 
 Alerta informativa `KILL_SWITCH`. Confirmar que fue intencional (registro de cambio). Para volver:
 quitar la variable, reiniciar y verificar `GET /api/learning/health`.
+
+## escalacion-sin-entrega
+
+Alertas: `ENGINE_SELF_PAUSED` (crítica), `NOTIFICATION_CHANNEL_MISSING` (crítica).
+
+1. El motor ya está en sombra (sin efectos): ninguna alerta se cerrará ni bajará de prioridad.
+2. Canal: `B89_TEAMS_WORKFLOW_URL` configurado y el despacho vivo (`GET /api/operations/health`,
+   sección de outbox). Si falta el canal, el motor no pasará de sombra hasta configurarlo.
+3. Avisos pendientes: `SELECT available_at, payload->>'reasonCodes', payload->>'urgency' FROM soc_outbox_messages WHERE message_type = 'soc.alert.review_requested' AND status <> 'published' AND payload->>'reasonCodes' LIKE 'LEARNING%' ORDER BY 1;`
+4. Con el canal reparado y los avisos publicados, un aprobador designado reanuda:
+   `POST /api/learning/engine/resume` con un comentario. Si quedan avisos vencidos, se volverá a pausar.
+
+## clave-comprometida
+
+Alerta relacionada: `SAMPLING_KEY_ROTATION_DUE`, `SAMPLING_KEY_UNDATED`. Si la clave de muestreo se
+filtró, un atacante puede predecir qué alertas NO se revisan (muestreo de calidad).
+
+1. Kill switch o `B89_LEARNING_MAX_MODE=shadow` y reinicio (sin cierres mientras tanto).
+2. Generar una clave nueva fuera del repo (`openssl rand -base64 48`) en el gestor de secretos, con
+   `B89_LEARNING_SAMPLING_KEY_ID` nuevo y `B89_LEARNING_SAMPLING_KEY_ISSUED_AT` de hoy. Reiniciar.
+3. Alcance: `SELECT count(*), min(at), max(at) FROM soc_learning_decisions WHERE sampling_key_version = '<kid viejo>' AND applied_action = 'AUTO_CLOSE';`
+   Revisar por personas una muestra ampliada de esos cierres (o todos, si son pocos).
+4. Registrar el incidente y el cambio en `docs/22-registro-de-cambios.md`. La bitácora
+   `soc_learning_config_events` muestra el cambio de `sampling_key_version`.
+5. Rotación normal: cada ≤ 90 días con los pasos 2 y 4 (sin el 1 ni el 3).

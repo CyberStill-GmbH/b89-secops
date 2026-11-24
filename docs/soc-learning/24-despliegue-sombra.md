@@ -125,13 +125,32 @@ SLOs cumplidos; 0 dead-letter.
 llenarse). Las tablas quedan (son evidencia). Rollback de esquema solo sin datos
 (`rollback-learning-engine.sql`).
 
-## 7. ¿Se puede desplegar?
+## 7. ¿Se puede desplegar? (actualizado tras la fase 3)
 
-| Modo | Veredicto hoy | Qué falta |
+Todo lo que es código está hecho. Lo que queda son **tus pruebas** (en la otra máquina) y **tu
+aprobación**; el veredicto es «sí» condicionado a eso, no antes.
+
+| Modo | Veredicto | Condición (la cumple el dueño) |
 |---|---|---|
-| Código desplegado **con el motor apagado** | **Todavía no.** Seguro por diseño (migraciones aditivas, `B89_LEARNING_ENABLED=false`), pero **nada se verificó en PostgreSQL real** | §6.1–6.3: `verify-engine.sh` en verde, merge con la otra sesión, CI verde |
-| **Sombra** | **No todavía.** | Lo anterior + canarios en staging, monitor reinstalado, clave de sombra, registro de cambio. Y para que el reloj de 21 días valga: §2 (patrones activos y contexto completo) |
-| dry_run / activo | **No.** | Bloqueantes de la fase 3 (escalación que llega a una persona, `effective_priority`, notificaciones, piso de impacto inconfigurable, habilitación en dos capas, clave versionada) |
+| Código desplegado **con el motor apagado** | **Sí**, cuando pasen tus pruebas | `verify-engine.sh` en verde (Postgres real, cada commit, suites ×3, carga, canarios) y merge con la otra sesión |
+| **Sombra** | **Sí**, cuando pasen tus pruebas | Lo anterior + canarios en staging, monitor reinstalado, clave de sombra y registro de cambio (`26-registro-cambio-sombra.md`, todo preparado). Para que los 21 días valgan: §2 (patrones activos y contexto completo) |
+| **dry_run / activo** | **Sí** en código: los seis bloqueantes de la fase 3 están resueltos | Tus pruebas + la evidencia de sombra por regla (doc 23, cuando lo apruebes) + habilitación en base firmada por dos personas + tu aprobación explícita. El sistema impide pasar de sombra sin canal de notificación, sin la habilitación de dos personas, con reglas de alto impacto o con avisos sin entregar |
+
+### Fase 3 · bloqueantes de dry_run
+
+| Pendiente | Estado | Evidencia | Verificado en |
+|---|---|---|---|
+| Escalada que llega a una persona (AttentionPort) y auto-pausa si no llega | hecho | `7d8198e`; `learning-notices.spec.ts` | memoria · API en memoria |
+| `effective_priority` y DEMOTE real (solo P3 → P4, reversible, CHECK en base) | hecho | `d82a939`; contrato B2; spec PG | memoria · PGlite · Postgres pendiente |
+| Avisos inmediatos HOT/WARM con deduplicación y acuse; sin canal, solo sombra | hecho (ruta de revisión existente de SOAR) | `7d8198e`; `learning-runtime.spec.ts` | memoria · API en memoria |
+| Piso de impacto inconfigurable (260 reglas; arranque, cada decisión y base) | hecho | `2036c9d`; `high-impact-rules.spec.ts` | memoria · API en memoria |
+| Habilitación en dos capas + contexto en base con vencimiento | hecho | `3558fdd`; `learning-governance.spec.ts`, prueba de API | memoria · PGlite · Postgres pendiente |
+| Clave de muestreo versionada, fecha de emisión, rotación y plan de compromiso | hecho | `0044e2b`; runbook `clave-comprometida` | memoria · PGlite |
+| CHECKs que aceptaban NULL (3) | corregido | `19fe3f4` | PGlite (26/26, 47 migraciones) · Postgres pendiente |
+
+Fuera de mi alcance (archivo de la otra sesión): que la **cola** ordene por la prioridad efectiva
+(`attention-ranking.ts`). La vista de la alerta ya expone `priority` y `effectivePriority`; el
+contrato está en `COORDINACION-CLAUDE-CODEX.md`.
 
 ## 8. Riesgos, supuestos y qué necesito
 

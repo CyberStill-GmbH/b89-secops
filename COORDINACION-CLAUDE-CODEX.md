@@ -849,3 +849,21 @@ Detalle y veredicto: `docs/soc-learning/24-despliegue-sombra.md`; runbooks: `25-
 - **Monitor de plataforma (dueño del monitor):** nuevo chequeo `learning` (lee la base); al reinstalar,
   `b89_monitor` recibe SELECT en las tablas de aprendizaje si existen. Sin IDs de regla nuevos (usa la
   genérica 101829); IDs propios con más nivel los asigna el dueño.
+
+## Fase 3 · bloqueantes de dry_run resueltos en código (Claude, 2026-11-24)
+
+Detalle: `docs/soc-learning/24-despliegue-sombra.md` §7.
+
+- **Cola de atención (`apps/api/src/soc/attention-ranking.ts`, otra sesión):** ordenar por
+  `effectivePriority ?? priority` y mostrar `priority` (la original). Una alerta con
+  `effectivePriority = P4` y `priority = P3` fue bajada por el motor (`demotedBy` = decisión).
+- **Avisos del motor:** usan `soc.alert.review_requested` (ruta a analista y líder ya existente) con
+  `reasonCodes = LEARNING_<MOTIVO>`, `urgency` immediate (HOT) o digest (WARM) y `groupKey`
+  `learning:<motivo>:<regla>:<hora>`. No hay tipo de evento nuevo ni cambio en SOAR.
+- **Consola (Codex), contratos nuevos:**
+  - `GET/POST /api/learning/enablements`, `POST …/:id/approve|revoke` `{expectedRevision}`:
+    habilitación por regla (dos personas, vencimiento ≤ 90 días).
+  - `GET/POST /api/learning/context`, `POST …/:id/revoke`: contexto (solo `learning.patterns.approve`
+    ve los valores).
+  - `POST /api/learning/engine/resume` `{comment}`: reanudar tras auto-pausa.
+  - La vista de alerta añade `effectivePriority` y `demotedBy`.
