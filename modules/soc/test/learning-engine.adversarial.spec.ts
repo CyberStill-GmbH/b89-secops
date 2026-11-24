@@ -432,3 +432,29 @@ describe('cuenta svc:b89-soc-learning', () => {
     expect(soc.reversalRows).toEqual([]);
   });
 });
+
+describe('fase 3 · piso de impacto inconfigurable', () => {
+  it('una regla de alto impacto nunca supera la sombra ni cierra, aunque esté habilitada', async () => {
+    const highImpact = 'cloudflare:102001';
+    const alert = newAlert();
+    const result = await evaluateAlertWithLearning(
+      deps,
+      {
+        settings: { ...SETTINGS, activeRules: new Set([RULE, highImpact]) },
+        context: () => CONTEXT,
+      },
+      {
+        tenantId: TENANT,
+        alertId: alert.id,
+        fingerprint: { ...FINGERPRINT, ruleKey: highImpact },
+        signals: { severity: 'low', mitreTactics: [], threatIntelHit: false },
+        correlationId: 'corr',
+      },
+    );
+    expect(result).toMatchObject({
+      ok: true,
+      value: { decision: { mode: 'shadow', appliedAction: 'NONE' } },
+    });
+    expect(statusOf(alert)).toBe('new');
+  });
+});

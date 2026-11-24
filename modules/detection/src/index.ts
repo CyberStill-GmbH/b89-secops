@@ -61,6 +61,7 @@ export {
 export {
   COLLIDING_RULE_IDS,
   collidingRuleKeys,
+  isHighImpactRuleKey,
   RULE_SOURCE_RANGES,
   ruleKeyOf,
   type RuleSourceRange,

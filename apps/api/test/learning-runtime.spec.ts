@@ -105,3 +105,19 @@ describe('fase 2 · motor en el API', () => {
     expect(report.alerts.map((item) => item.id)).toContain('SOURCE_NOT_HEALTHY');
   });
 });
+
+describe('fase 3 · piso de impacto al arrancar', () => {
+  it('el API no arranca si se habilita una regla de alto impacto', async () => {
+    await expect(
+      buildApi(
+        {
+          B89_PROFILE: 'test',
+          B89_LEARNING_ENABLED: 'true',
+          B89_LEARNING_MAX_MODE: 'active',
+          B89_LEARNING_ACTIVE_RULES: 'cloudflare:102001',
+        },
+        () => {},
+      ),
+    ).rejects.toThrow(/alto impacto/u);
+  });
+});

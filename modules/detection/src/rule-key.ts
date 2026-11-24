@@ -9,6 +9,7 @@
 
 import type { SecurityEvent } from '@b89/contracts';
 
+import { HIGH_IMPACT_RULES } from './high-impact-rules.generated.js';
 import { RULE_SOURCE_RANGES } from './rule-sources.generated.js';
 
 export interface RuleSourceRange {
@@ -92,4 +93,15 @@ export function collidingRuleKeys(): ReadonlySet<string> {
       return `${range?.source ?? 'unknown'}:${id}`;
     }),
   );
+}
+
+/**
+ * Aprendizaje SOC · fase 3 — piso de impacto: reglas de alto impacto (táctica MITRE de exclusión o
+ * `priority_hint` P1/P2 en su metadata). El motor nunca las autocierra y no se pueden habilitar.
+ * La lista la genera `scripts/soc-learning/generate-high-impact-rules.mjs` (una spec la vigila).
+ */
+export function isHighImpactRuleKey(ruleKey: string | null): boolean {
+  if (ruleKey === null) return false;
+  const id = ruleKey.slice(ruleKey.lastIndexOf(':') + 1);
+  return /^\d+$/u.test(id) && HIGH_IMPACT_RULES.has(Number(id));
 }

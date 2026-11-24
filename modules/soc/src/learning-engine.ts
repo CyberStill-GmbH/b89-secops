@@ -20,6 +20,7 @@ import { createHmac } from 'node:crypto';
 import {
   FINGERPRINT_BEHAVIOR_COMPONENTS,
   FINGERPRINT_SUBJECT_COMPONENTS,
+  isHighImpactRuleKey,
   type FingerprintComponents,
   type GuardSignals,
   type Priority,
@@ -210,9 +211,13 @@ const SEVERITY_BY_BASE: Readonly<Record<number, string>> = {
   15: 'unknown',
 };
 
-/** Modo efectivo para una regla: mínimo de techo y habilitación por regla. */
+/**
+ * Modo efectivo para una regla: mínimo de techo y habilitación por regla. Piso de impacto
+ * inconfigurable: una regla de alto impacto nunca pasa de la sombra, diga lo que diga la configuración.
+ */
 export function effectiveMode(settings: EngineSettings, ruleKey: string | null): LearningMode {
   if (settings.maxMode === 'off') return 'off';
+  if (isHighImpactRuleKey(ruleKey)) return 'shadow';
   const perRule: LearningMode = ruleKey && settings.activeRules.has(ruleKey) ? 'active' : 'shadow';
   return MODE_RANK[perRule] < MODE_RANK[settings.maxMode] ? perRule : settings.maxMode;
 }
@@ -410,7 +415,8 @@ export function decideLearningAction(input: EngineInput): EngineDecision {
       !codes.has('SUCCESSFUL_INTRUSION') &&
         !(alert.signal !== null && settings.excludedSignals.has(alert.signal)) &&
         !input.signals.mitreTactics.some((tactic) => settings.excludedTactics.has(tactic)) &&
-        !(ruleKey !== null && settings.neverSuppressRules.has(ruleKey)),
+        !(ruleKey !== null && settings.neverSuppressRules.has(ruleKey)) &&
+        !isHighImpactRuleKey(ruleKey),
       `señal ${alert.signal ?? '—'}, tácticas ${input.signals.mitreTactics.join(',') || '—'}`,
       'GUARD_IMPACT',
     ],

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { isHighImpactRuleKey } from '@b89/detection';
 import { DEFAULT_ENGINE_SETTINGS } from '@b89/soc';
 import {
   loadAccessConfig,
@@ -301,6 +302,13 @@ async function durableStoresFor(
  */
 function learningFrom(environment: Readonly<Record<string, string | undefined>>) {
   const engine = loadLearningEngine(environment);
+  // Piso de impacto inconfigurable (fase 3): una regla de alto impacto no se habilita nunca.
+  const forbidden = engine.activeRules.filter((ruleKey) => isHighImpactRuleKey(ruleKey));
+  if (forbidden.length > 0) {
+    throw new Error(
+      `B89_LEARNING_ACTIVE_RULES incluye reglas de alto impacto (${forbidden.join(', ')}): el motor no puede habilitarlas.`,
+    );
+  }
   // Identificador de la clave de muestreo (nunca la clave): permite ver rotaciones en la bitácora.
   const samplingKeyVersion = engine.samplingKey
     ? `kid-${createHash('sha256').update(engine.samplingKey.reveal(), 'utf8').digest('hex').slice(0, 12)}`
