@@ -106,11 +106,20 @@ export function candidateId(key: string, occurredAt: Date): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-function titleFor(event: SecurityEvent): string {
+/**
+ * Opciones del borde (C-23): el dominio no nombra proveedores. El composition root declara qué
+ * proveedores usan IDs internos que no ayudan al analista en el título.
+ */
+export interface PromotionOptions {
+  /** Proveedores cuyo título es solo el nombre de la regla, sin `(proveedor id)`. */
+  readonly bareTitleProviders?: ReadonlySet<string>;
+}
+
+function titleFor(event: SecurityEvent, options: PromotionOptions): string {
   const rule = event.detection?.rule;
-  // El ID interno del detector no ayuda al analista: la razón visible ya conserva
+  // El ID interno de algunos detectores no ayuda al analista: la razón visible ya conserva
   // grado/confianza y la evidencia mantiene el identificador técnico completo.
-  if (rule?.provider === 'OpenSearch Anomaly Detection') return rule.name;
+  if (rule && options.bareTitleProviders?.has(rule.provider)) return rule.name;
   if (rule) return `${rule.name} (${rule.provider} ${rule.id})`;
   return `${event.source.product} · ${event.action ?? event.category[0]}`;
 }
@@ -120,6 +129,7 @@ export function decidePromotion(
   context: PrioritizationContext,
   existing: DetectionCandidate | undefined,
   now: Date,
+  options: PromotionOptions = {},
 ): PromotionDecision {
   const evaluation = prioritize(event, context);
   const key = promotionKey(event.tenant.id, event.recordId, evaluation.rulesetVersion);
@@ -151,7 +161,7 @@ export function decidePromotion(
       rulesetVersion: evaluation.rulesetVersion,
       occurredAt,
       createdAt: now,
-      title: titleFor(event),
+      title: titleFor(event, options),
       entityKeys: context.correlation?.entityKeys ?? entityKeysOf(event),
       signal: context.correlation?.signal ?? signalOf(event),
       ruleId: event.detection?.rule.id ?? null,

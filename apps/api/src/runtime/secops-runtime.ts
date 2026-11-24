@@ -159,7 +159,13 @@ import {
   type NotificationPolicyConfig,
 } from '@b89/soar';
 import { CONNECTED_SOURCE_SIGNAL_CATALOG } from './signal-catalog.js';
+import { ANOMALY_DETECTION_PROVIDER } from './opensearch-anomaly-ingestion.js';
 import type { IpReputationLookup } from './abuseipdb.js';
+
+/** C-23: el vocabulario de proveedor entra a la promoción por el borde, no desde el dominio. */
+const PROMOTION_OPTIONS = Object.freeze({
+  bareTitleProviders: new Set([ANOMALY_DETECTION_PROVIDER]),
+});
 
 /**
  * Diagnóstico de un inicio de sesión rechazado. Solo códigos: ni tokens, ni claims, ni texto
@@ -836,6 +842,7 @@ export class SecOpsRuntime {
       { ...this.detectionContext, correlation },
       existing,
       this.now(),
+      PROMOTION_OPTIONS,
     );
     if (decision.outcome === 'duplicate') return 'duplicate';
     if (decision.outcome === 'not_promoted') {

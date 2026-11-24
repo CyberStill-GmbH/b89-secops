@@ -20,6 +20,7 @@ export {
   promotionKey,
   type DetectionCandidate,
   type PromotionDecision,
+  type PromotionOptions,
   type PromotionOutcomeCode,
 } from './promotion.js';
 export type { DetectionCandidateStore } from './ports.js';
