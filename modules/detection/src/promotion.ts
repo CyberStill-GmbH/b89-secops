@@ -17,6 +17,7 @@ import { createHash } from 'node:crypto';
 import type { SecurityEvent } from '@b89/contracts';
 
 import { entityKeysOf, signalOf, type SignalClass } from './correlation.js';
+import { computeFingerprint, type AlertFingerprint } from './fingerprint.js';
 import {
   prioritize,
   PROMOTION_THRESHOLD,
@@ -54,6 +55,11 @@ export interface DetectionCandidate {
    * esta vista y debe poder explicarse tal como fue.
    */
   readonly relatedAlertIds: readonly string[];
+  /**
+   * Aprendizaje SOC · etapa B: huella del evento al promover. Ausente en candidatos que no
+   * nacen de un SecurityEvent (p. ej. el correlador) o anteriores a la etapa B.
+   */
+  readonly fingerprint?: AlertFingerprint;
 }
 
 export type PromotionDecision =
@@ -150,6 +156,7 @@ export function decidePromotion(
       signal: context.correlation?.signal ?? signalOf(event),
       ruleId: event.detection?.rule.id ?? null,
       relatedAlertIds: context.correlation?.relatedAlertIds ?? [],
+      fingerprint: computeFingerprint(event),
     },
   };
 }

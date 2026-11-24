@@ -41,3 +41,18 @@ export {
   type SignalCatalog,
   type SignalClass,
 } from './correlation.js';
+export {
+  canonicalJson,
+  computeFingerprint,
+  differingComponents,
+  FINGERPRINT_BEHAVIOR_COMPONENTS,
+  FINGERPRINT_COMPONENTS,
+  FINGERPRINT_LEVELS,
+  FINGERPRINT_SUBJECT_COMPONENTS,
+  FINGERPRINT_VERSION,
+  type AlertFingerprint,
+  type FingerprintComponent,
+  type FingerprintComponents,
+  type FingerprintLevel,
+} from './fingerprint.js';
+export { RULE_SOURCE_RANGES, ruleKeyOf, type RuleSourceRange } from './rule-key.js';
