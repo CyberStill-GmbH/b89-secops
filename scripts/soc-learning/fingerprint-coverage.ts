@@ -20,6 +20,7 @@ import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 
+import { OBSERVABLES_NORMALIZER_VERSION } from '../../packages/contracts/src/index.js';
 import { computeFingerprint, type AlertFingerprint } from '../../modules/detection/src/index.js';
 import {
   normalizeWazuhAlert,
@@ -224,6 +225,9 @@ const byRule = new Map<string, Bucket>();
 const bySource = new Map<string, Bucket>();
 const quarantined: string[] = [];
 const all = bucket();
+/** Huellas distintas: número de grupos si la ventana de agrupación no cortara nunca. */
+const distinct = new Set<string>();
+const distinctFine = new Set<string>();
 
 for (const [index, sample] of samples.entries()) {
   const raw = JSON.stringify(sample.alert);
@@ -254,6 +258,8 @@ for (const [index, sample] of samples.entries()) {
     continue;
   }
   const fingerprint = computeFingerprint(outcome.event);
+  distinct.add(fingerprint.fingerprint);
+  if (fingerprint.level === 'fine') distinctFine.add(fingerprint.fingerprint);
   const ruleKey = fingerprint.ruleKey ?? '(sin regla)';
   const source = ruleKey.split(':')[0] ?? 'unknown';
   const hints = unmappedHints(sample.alert);
@@ -279,6 +285,9 @@ const hintList = (target: Bucket) =>
 
 const lines: string[] = [];
 lines.push(`Entrada: ${dump ? `volcado \`${dump}\`` : 'fixtures del repo (sin volcado)'}`);
+lines.push(
+  `Normalizador v${OBSERVABLES_NORMALIZER_VERSION} · huellas distintas (grupos sin corte de ventana): ${distinct.size} · de ellas finas: ${distinctFine.size}`,
+);
 lines.push(
   `Alertas evaluadas: ${all.total} · huella fina: ${all.fine} (${pct(all.fine, all.total)}) · cuarentena: ${quarantined.length} · líneas no evaluables sin logtest: ${Object.values(skipped).reduce((a, b) => a + b, 0)}`,
 );
