@@ -61,6 +61,10 @@ export interface AlertFingerprintStore {
  * La pertenencia es append-only: una alerta entra a un grupo una sola vez.
  */
 export interface AlertGroupStore {
+  /**
+   * Grupo abierto de la huella. Un adapter durable **debe bloquear la fila** hasta el fin de la
+   * transacción (`FOR UPDATE`): así ingestas concurrentes se suman en orden en vez de perder el CAS.
+   */
   openByFingerprint(tenantId: string, fingerprint: string): Promise<AlertGroup | undefined>;
   insertIfAbsent(group: AlertGroup): Promise<boolean>;
   update(group: AlertGroup, expectedRevision: number): Promise<boolean>;

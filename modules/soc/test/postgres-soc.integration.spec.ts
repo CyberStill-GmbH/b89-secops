@@ -579,7 +579,7 @@ describe.skipIf(!databaseUrl)('C-17 · persistencia SOC sobre PostgreSQL', () =>
     }
   });
 
-  it('aprendizaje SOC · ingestas concurrentes de la misma huella dejan un solo grupo abierto', async () => {
+  it('aprendizaje SOC · 50 ingestas concurrentes de la misma huella: 1 grupo, contador exacto, 0 alertas perdidas', async () => {
     const fingerprint = {
       fingerprint: `fp1_${'c'.repeat(64)}`,
       level: 'fine' as const,
@@ -605,35 +605,41 @@ describe.skipIf(!databaseUrl)('C-17 · persistencia SOC sobre PostgreSQL', () =>
       ...dependencies(persistence),
       groupingPolicy: { windowMs: 24 * 60 * 60 * 1000, maxSpanMs: 7 * 24 * 60 * 60 * 1000 },
     };
-    const targets = [43, 44, 45, 46].map((n) =>
-      candidate(n, { priority: 'P4', score: 35, fingerprint }),
+    const CONCURRENT = 50;
+    const targets = Array.from({ length: CONCURRENT }, (_, index) =>
+      candidate(100 + index, { priority: index === 7 ? 'P2' : 'P4', score: 35, fingerprint }),
     );
     const results = await Promise.all(targets.map((target) => ingestCandidate(deps, target)));
-    expect(results.every((result) => result.ok)).toBe(true);
+    expect(results.filter((result) => !result.ok)).toEqual([]);
 
     const admin = new Client(database!.url);
     await admin.connect();
     try {
-      const open = await admin.query(
-        `SELECT id, alert_count FROM soc_alert_groups WHERE fingerprint = $1 AND status = 'open'`,
+      const groups = await admin.query(
+        `SELECT id, status, alert_count, highest_priority FROM soc_alert_groups WHERE fingerprint = $1`,
         [fingerprint.fingerprint],
       );
-      expect(open.rows).toHaveLength(1);
+      expect(groups.rows).toHaveLength(1);
+      expect(groups.rows[0]).toMatchObject({
+        status: 'open',
+        alert_count: CONCURRENT,
+        highest_priority: 'P2',
+      });
       const members = await admin.query(
-        `SELECT alert_id FROM soc_alert_group_members WHERE group_id = $1`,
-        [open.rows[0].id],
+        `SELECT count(*)::int AS n FROM soc_alert_group_members WHERE group_id = $1`,
+        [groups.rows[0].id],
       );
-      // Una alerta que perdió la carrera queda sin grupo (visible), nunca se pierde ni duplica.
-      expect(members.rows.length).toBe(open.rows[0].alert_count);
-      expect(members.rows.length).toBeGreaterThanOrEqual(1);
+      expect(members.rows[0].n).toBe(CONCURRENT);
+      const alerts = await admin.query(
+        `SELECT count(*)::int AS n FROM soc_alerts WHERE id = ANY($1::uuid[])`,
+        [targets.map((target) => target.id)],
+      );
+      expect(alerts.rows[0].n).toBe(CONCURRENT);
       for (const target of targets) {
-        expect(await persistence.alertById(TENANT, target.id)).toBeDefined();
+        expect(await persistence.alertGroupOf(TENANT, target.id)).toMatchObject({
+          id: groups.rows[0].id,
+        });
       }
-      const group = await persistence.alertGroupOf(TENANT, members.rows[0].alert_id);
-      expect(group).toMatchObject({ status: 'open', ruleKey: 'windows:101150' });
-      await expect(
-        admin.query(`DELETE FROM soc_alert_group_members WHERE group_id = $1`, [open.rows[0].id]),
-      ).rejects.toThrow(/append-only/u);
     } finally {
       await admin.end();
     }
@@ -792,6 +798,29 @@ describe.skipIf(!databaseUrl)('C-17 · persistencia SOC sobre PostgreSQL', () =>
       await admin.end();
     }
     expect(alert.revision).toBeGreaterThan(1);
+  });
+
+  it('aprendizaje SOC · huellas y pertenencias son inmutables (UPDATE, DELETE y TRUNCATE)', async () => {
+    const admin = new Client(database!.url);
+    await admin.connect();
+    try {
+      for (const table of [
+        'soc_alert_fingerprints',
+        'soc_alert_group_members',
+        'soc_alert_closures',
+      ]) {
+        // Un UPDATE/DELETE sobre 0 filas no dispara triggers de fila: la prueba exige filas reales.
+        const rows = await admin.query(`SELECT count(*)::int AS n FROM ${table}`);
+        expect(rows.rows[0].n, table).toBeGreaterThan(0);
+        await expect(admin.query(`UPDATE ${table} SET tenant_id = tenant_id`)).rejects.toThrow(
+          /append-only/u,
+        );
+        await expect(admin.query(`DELETE FROM ${table}`)).rejects.toThrow(/append-only/u);
+        await expect(admin.query(`TRUNCATE ${table} CASCADE`)).rejects.toThrow(/append-only/u);
+      }
+    } finally {
+      await admin.end();
+    }
   });
 
   it('S5 · tareas con compare-and-set, cierre bloqueado y bitácora append-only', async () => {

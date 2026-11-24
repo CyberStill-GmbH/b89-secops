@@ -158,45 +158,46 @@ async function groupAlert(
 ): Promise<GroupingOutcome> {
   const policy = dependencies.groupingPolicy;
   if (!policy) return { groupId: null, kind: 'none' };
-  const open = await context.groups.openByFingerprint(alert.tenantId, fingerprint.fingerprint);
-  const assignment = assignToGroup(
-    {
-      id: alert.id,
-      tenantId: alert.tenantId,
-      priority: alert.priority,
-      occurredAt: alert.occurredAt,
-      fingerprint: fingerprint.fingerprint,
-      ruleKey: fingerprint.ruleKey,
-      level: fingerprint.level,
-    },
-    open,
-    policy,
-    dependencies.ids.next(),
-  );
-  if (assignment.kind === 'none') return { groupId: null, kind: 'none' };
-  if (assignment.kind === 'join') {
-    if (!(await context.groups.update(assignment.group, assignment.expectedRevision))) {
-      return { groupId: null, kind: 'conflict' };
-    }
-  } else {
-    if (
-      assignment.seal &&
-      !(await context.groups.update(assignment.seal.group, assignment.seal.expectedRevision))
-    ) {
-      return { groupId: null, kind: 'conflict' };
-    }
-    if (!(await context.groups.insertIfAbsent(assignment.group))) {
-      return { groupId: null, kind: 'conflict' };
-    }
-  }
-  await context.groups.addMember({
+  const groupable = {
+    id: alert.id,
     tenantId: alert.tenantId,
-    groupId: assignment.group.id,
-    alertId: alert.id,
-    joinedAt: at,
-  });
-  return { groupId: assignment.group.id, kind: assignment.kind };
+    priority: alert.priority,
+    occurredAt: alert.occurredAt,
+    fingerprint: fingerprint.fingerprint,
+    ruleKey: fingerprint.ruleKey,
+    level: fingerprint.level,
+  };
+  // El store bloquea el grupo abierto al leerlo; el único conflicto esperable es que otra
+  // ingesta abra el grupo entre nuestra lectura (vacía) y nuestra inserción. Se relee una vez:
+  // la segunda lectura ya ve el grupo confirmado y se une a él.
+  for (let attempt = 0; attempt < GROUPING_ATTEMPTS; attempt += 1) {
+    const open = await context.groups.openByFingerprint(alert.tenantId, fingerprint.fingerprint);
+    const assignment = assignToGroup(groupable, open, policy, dependencies.ids.next());
+    if (assignment.kind === 'none') return { groupId: null, kind: 'none' };
+    if (assignment.kind === 'join') {
+      if (!(await context.groups.update(assignment.group, assignment.expectedRevision))) continue;
+    } else {
+      if (
+        assignment.seal &&
+        !(await context.groups.update(assignment.seal.group, assignment.seal.expectedRevision))
+      ) {
+        continue;
+      }
+      if (!(await context.groups.insertIfAbsent(assignment.group))) continue;
+    }
+    await context.groups.addMember({
+      tenantId: alert.tenantId,
+      groupId: assignment.group.id,
+      alertId: alert.id,
+      joinedAt: at,
+    });
+    return { groupId: assignment.group.id, kind: assignment.kind };
+  }
+  return { groupId: null, kind: 'conflict' };
 }
+
+/** Intentos de agrupar ante una carrera al abrir el grupo (ver `groupAlert`). */
+const GROUPING_ATTEMPTS = 3;
 
 /** Materializa un candidato de C-16 como alerta. Repetirlo no crea una segunda. */
 export async function ingestCandidate(

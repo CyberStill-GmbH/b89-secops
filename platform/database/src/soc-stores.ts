@@ -394,14 +394,24 @@ export interface AlertGroupRow {
 export class PrismaAlertGroupStore {
   public constructor(private readonly tx: Tx) {}
 
+  /**
+   * Lee el grupo abierto **bloqueando su fila** hasta el fin de la transacción. En READ COMMITTED,
+   * dos ingestas que lo leyeran sin bloqueo harían fallar el CAS de la segunda y su alerta quedaría
+   * sin grupo; con el bloqueo esperan su turno y la segunda lee el contador ya actualizado.
+   */
   public async openByFingerprint(
     tenantId: string,
     fingerprint: string,
   ): Promise<AlertGroupRow | undefined> {
-    const row = await this.tx.socAlertGroup.findFirst({
-      where: { tenantId, fingerprint, status: 'open' },
-    });
-    return row ?? undefined;
+    const rows = await this.tx.$queryRaw<AlertGroupRow[]>`
+      SELECT id, tenant_id AS "tenantId", fingerprint, rule_key AS "ruleKey", level, status,
+             first_seen_at AS "firstSeenAt", last_seen_at AS "lastSeenAt",
+             alert_count AS "alertCount", primary_alert_id AS "primaryAlertId",
+             highest_priority AS "highestPriority", revision
+        FROM soc_alert_groups
+       WHERE tenant_id = ${tenantId} AND fingerprint = ${fingerprint} AND status = 'open'
+       FOR UPDATE`;
+    return rows[0];
   }
 
   /** `false` si ya había un grupo abierto para la huella (índice único parcial). */
