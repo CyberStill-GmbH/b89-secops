@@ -28,6 +28,7 @@ import {
   type LearningPattern,
 } from './learning-pattern.js';
 import type { AlertClosureRecord } from './closure.js';
+import { limaDayStart, type PatternCounters } from './learning-engine.js';
 import type { Incident } from './incident.js';
 import type { IncidentNote, IncidentTask } from './incident-work.js';
 import { InMemoryIngestionState } from './memory-ingestion.js';
@@ -43,8 +44,13 @@ import type {
   AlertGroupQuery,
   AlertGroupStore,
   AlertStore,
+  LearningDecisionRecord,
   LearningEvidence,
   LearningPatternStore,
+  LearningRecordStore,
+  LearningReversalRecord,
+  LearningReviewRecord,
+  LearningReviewStatus,
   PatternEventRecord,
   ReadinessMetrics,
   ClaimedOutboxMessage,
@@ -67,6 +73,9 @@ interface Snapshot {
   readonly patterns: ReadonlyMap<string, LearningPattern>;
   readonly approvals: readonly ApprovalRecord[];
   readonly patternEvents: readonly PatternEventRecord[];
+  readonly decisions: ReadonlyMap<string, LearningDecisionRecord>;
+  readonly reviews: ReadonlyMap<string, LearningReviewRecord>;
+  readonly reversals: readonly LearningReversalRecord[];
   readonly groupMembers: ReadonlyMap<string, GroupMember>;
   readonly incidents: ReadonlyMap<string, Incident>;
   readonly tasks: ReadonlyMap<string, IncidentTask>;
@@ -112,6 +121,10 @@ export class InMemorySoc implements SocPersistence {
   public readonly patternRows = new Map<string, LearningPattern>();
   public readonly approvalRows: ApprovalRecord[] = [];
   public readonly patternEventRows: PatternEventRecord[] = [];
+  /** Etapa E: decisiones por `tenant|alertId` (una por alerta), revisiones y reversiones. */
+  public readonly decisionRows = new Map<string, LearningDecisionRecord>();
+  public readonly reviewRows = new Map<string, LearningReviewRecord>();
+  public readonly reversalRows: LearningReversalRecord[] = [];
   public readonly incidentRows = new Map<string, Incident>();
   public readonly taskRows = new Map<string, IncidentTask>();
   public readonly noteRows = new Map<string, IncidentNote>();
@@ -164,6 +177,77 @@ export class InMemorySoc implements SocPersistence {
     },
   };
 
+  private readonly learning: LearningRecordStore = {
+    appendDecision: (record) => {
+      const key = `${record.tenantId}|${record.alertId}`;
+      if (this.decisionRows.has(key)) return Promise.resolve(false);
+      this.decisionRows.set(key, record);
+      return Promise.resolve(true);
+    },
+    decisionById: (tenantId, decisionId) =>
+      Promise.resolve(
+        [...this.decisionRows.values()].find(
+          (row) => row.tenantId === tenantId && row.id === decisionId,
+        ),
+      ),
+    counters: (tenantId, patternId, now, since) =>
+      Promise.resolve(this.patternCounters(tenantId, patternId, now, since)),
+    insertReview: (record) => {
+      this.reviewRows.set(`${record.tenantId}|${record.id}`, record);
+      return Promise.resolve();
+    },
+    reviewById: (tenantId, reviewId) =>
+      Promise.resolve(this.reviewRows.get(`${tenantId}|${reviewId}`)),
+    updateReview: (record, expectedRevision) => {
+      const key = `${record.tenantId}|${record.id}`;
+      const current = this.reviewRows.get(key);
+      if (!current || current.revision !== expectedRevision) return Promise.resolve(false);
+      this.reviewRows.set(key, record);
+      return Promise.resolve(true);
+    },
+    appendReversal: (record) => {
+      this.reversalRows.push(record);
+      return Promise.resolve();
+    },
+  };
+
+  /** Mismo cálculo que la consulta SQL de `PrismaLearningRecordStore.counters`. */
+  private patternCounters(
+    tenantId: string,
+    patternId: string,
+    now: Date,
+    since: Date,
+  ): PatternCounters {
+    const closes = [...this.decisionRows.values()].filter(
+      (row) =>
+        row.tenantId === tenantId &&
+        row.patternId === patternId &&
+        row.proposedAction === 'AUTO_CLOSE' &&
+        row.mode !== 'shadow' &&
+        row.at >= since,
+    );
+    const resolved = [...this.reviewRows.values()].filter(
+      (row) => row.tenantId === tenantId && row.patternId === patternId && row.resolvedAt !== null,
+    );
+    const lastReview = resolved.reduce<Date | null>(
+      (latest, row) => (latest === null || row.resolvedAt! > latest ? row.resolvedAt : latest),
+      null,
+    );
+    const hourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const dayStart = limaDayStart(now);
+    return {
+      autoClosedLastHour: closes.filter((row) => row.at > hourAgo).length,
+      autoClosedToday: closes.filter((row) => row.at >= dayStart).length,
+      autoClosedSinceReview: closes.filter((row) => lastReview === null || row.at > lastReview)
+        .length,
+      agreedSamplesLast30Days: resolved.filter(
+        (row) =>
+          row.kind === 'quality_sample' && row.status === 'agreed' && row.resolvedAt! > monthAgo,
+      ).length,
+    };
+  }
+
   private readonly patterns: LearningPatternStore = {
     byId: (tenantId, patternId) =>
       Promise.resolve(this.patternRows.get(`${tenantId}|${patternId}`)),
@@ -174,6 +258,15 @@ export class InMemorySoc implements SocPersistence {
             pattern.tenantId === tenantId &&
             pattern.fingerprint === fingerprint &&
             OPEN_PATTERN_STATUSES.includes(pattern.status),
+        ),
+      ),
+    activeByRule: (tenantId, ruleKey) =>
+      Promise.resolve(
+        [...this.patternRows.values()].filter(
+          (pattern) =>
+            pattern.tenantId === tenantId &&
+            pattern.ruleKey === ruleKey &&
+            pattern.status === 'active',
         ),
       ),
     listOpen: (tenantId) =>
@@ -329,6 +422,9 @@ export class InMemorySoc implements SocPersistence {
       patterns: new Map(this.patternRows),
       approvals: [...this.approvalRows],
       patternEvents: [...this.patternEventRows],
+      decisions: new Map(this.decisionRows),
+      reviews: new Map(this.reviewRows),
+      reversals: [...this.reversalRows],
       groupMembers: new Map(this.groupMemberRows),
       incidents: new Map(this.incidentRows),
       tasks: new Map(this.taskRows),
@@ -359,6 +455,9 @@ export class InMemorySoc implements SocPersistence {
     replace(this.patternRows, snapshot.patterns);
     this.approvalRows.splice(0, this.approvalRows.length, ...snapshot.approvals);
     this.patternEventRows.splice(0, this.patternEventRows.length, ...snapshot.patternEvents);
+    replace(this.decisionRows, snapshot.decisions);
+    replace(this.reviewRows, snapshot.reviews);
+    this.reversalRows.splice(0, this.reversalRows.length, ...snapshot.reversals);
     replace(this.groupMemberRows, snapshot.groupMembers);
     replace(this.incidentRows, snapshot.incidents);
     replace(this.taskRows, snapshot.tasks);
@@ -389,6 +488,7 @@ export class InMemorySoc implements SocPersistence {
         fingerprints: this.fingerprints,
         groups: this.groups,
         patterns: this.patterns,
+        learning: this.learning,
         incidents: this.incidents,
         tasks: this.tasks,
         notes: this.notes,
@@ -468,9 +568,71 @@ export class InMemorySoc implements SocPersistence {
         fingerprint: fingerprint.fingerprint,
         level: fingerprint.level,
         normalizerVersion: fingerprint.normalizerVersion,
+        components: fingerprint.components,
       });
     }
     return Promise.resolve({ closures, truePositivesByFingerprint });
+  }
+
+  public listLearningPatterns(query: {
+    readonly tenantId: string;
+    readonly status?: LearningPattern['status'];
+    readonly limit: number;
+  }): Promise<QueryResult<LearningPattern>> {
+    const items = [...this.patternRows.values()]
+      .filter(
+        (row) => row.tenantId === query.tenantId && (!query.status || row.status === query.status),
+      )
+      .sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime());
+    return Promise.resolve({ items: items.slice(0, query.limit), total: items.length });
+  }
+
+  public learningPatternById(
+    tenantId: string,
+    patternId: string,
+  ): Promise<LearningPattern | undefined> {
+    return Promise.resolve(this.patternRows.get(`${tenantId}|${patternId}`));
+  }
+
+  public learningPatternHistory(tenantId: string, patternId: string) {
+    return Promise.resolve({
+      approvals: this.approvalRows.filter(
+        (row) => row.tenantId === tenantId && row.patternId === patternId,
+      ),
+      events: this.patternEventRows.filter(
+        (row) => row.tenantId === tenantId && row.patternId === patternId,
+      ),
+    });
+  }
+
+  public listLearningDecisions(query: {
+    readonly tenantId: string;
+    readonly alertId?: string;
+    readonly patternId?: string;
+    readonly limit: number;
+  }): Promise<QueryResult<LearningDecisionRecord>> {
+    const items = [...this.decisionRows.values()]
+      .filter(
+        (row) =>
+          row.tenantId === query.tenantId &&
+          (!query.alertId || row.alertId === query.alertId) &&
+          (!query.patternId || row.patternId === query.patternId),
+      )
+      .sort((left, right) => right.at.getTime() - left.at.getTime());
+    return Promise.resolve({ items: items.slice(0, query.limit), total: items.length });
+  }
+
+  public listLearningReviews(query: {
+    readonly tenantId: string;
+    readonly status?: LearningReviewStatus;
+    readonly limit: number;
+  }): Promise<QueryResult<LearningReviewRecord>> {
+    const items = [...this.reviewRows.values()]
+      .filter(
+        (row) => row.tenantId === query.tenantId && (!query.status || row.status === query.status),
+      )
+      .sort((left, right) => right.at.getTime() - left.at.getTime());
+    return Promise.resolve({ items: items.slice(0, query.limit), total: items.length });
   }
 
   public readinessMetrics(tenantId: string, since: Date): Promise<ReadinessMetrics> {

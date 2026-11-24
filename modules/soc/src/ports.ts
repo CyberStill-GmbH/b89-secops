@@ -28,6 +28,14 @@ import type {
   LearningPattern,
   PatternStatus,
 } from './learning-pattern.js';
+import type {
+  Confidence,
+  EngineAction,
+  EngineCheck,
+  EscalateReason,
+  LearningMode,
+  PatternCounters,
+} from './learning-engine.js';
 import type { Incident, IncidentStatus } from './incident.js';
 import type { IncidentNote, IncidentTask } from './incident-work.js';
 import type { OutboxMessageDraft } from './events.js';
@@ -81,11 +89,87 @@ export interface LearningPatternStore {
   byId(tenantId: string, patternId: string): Promise<LearningPattern | undefined>;
   openByFingerprint(tenantId: string, fingerprint: string): Promise<LearningPattern | undefined>;
   listOpen(tenantId: string): Promise<readonly LearningPattern[]>;
+  /** Patrones `active` del tenant con la misma `rule_key` (deriva). */
+  activeByRule(tenantId: string, ruleKey: string): Promise<readonly LearningPattern[]>;
   insertIfAbsent(pattern: LearningPattern): Promise<boolean>;
   update(pattern: LearningPattern, expectedRevision: number): Promise<boolean>;
   approvals(tenantId: string, patternId: string): Promise<readonly ApprovalRecord[]>;
   appendApproval(record: ApprovalRecord): Promise<void>;
   appendEvent(record: PatternEventRecord): Promise<void>;
+}
+
+/** Etapa E · decisión del motor (append-only, una por alerta). */
+export interface LearningDecisionRecord {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly alertId: string;
+  readonly mode: LearningMode;
+  readonly engineVersion: string;
+  readonly fingerprint: string;
+  readonly level: 'fine' | 'coarse';
+  readonly ruleKey: string | null;
+  readonly patternId: string | null;
+  readonly proposedAction: EngineAction;
+  readonly appliedAction: EngineAction;
+  readonly escalateReason: EscalateReason | null;
+  readonly confidence: Confidence;
+  readonly checks: readonly EngineCheck[];
+  readonly drift: Readonly<
+    Record<string, { readonly from: string | null; readonly to: string | null }>
+  > | null;
+  readonly sampled: boolean;
+  readonly at: Date;
+}
+
+export const LEARNING_REVIEW_KINDS = [
+  'quality_sample',
+  'dry_run_approval',
+  'forced_review',
+] as const;
+export type LearningReviewKind = (typeof LEARNING_REVIEW_KINDS)[number];
+export const LEARNING_REVIEW_STATUSES = ['pending', 'agreed', 'disagreed', 'expired'] as const;
+export type LearningReviewStatus = (typeof LEARNING_REVIEW_STATUSES)[number];
+
+/** Etapa E · revisión humana de una decisión (muestra, propuesta en dry-run o revisión forzada). */
+export interface LearningReviewRecord {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly decisionId: string;
+  readonly alertId: string;
+  readonly patternId: string | null;
+  readonly kind: LearningReviewKind;
+  readonly status: LearningReviewStatus;
+  readonly reviewerId: string | null;
+  readonly truePositive: boolean | null;
+  readonly comment: string | null;
+  readonly at: Date;
+  readonly resolvedAt: Date | null;
+  readonly revision: number;
+}
+
+/** Etapa E · reversión de un autocierre (append-only). */
+export interface LearningReversalRecord {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly decisionId: string;
+  readonly alertId: string;
+  readonly patternId: string | null;
+  readonly actorId: string;
+  readonly reason: string;
+  readonly reopened: boolean;
+  readonly at: Date;
+}
+
+/** Etapa E · registro del motor. `appendDecision` es `false` si la alerta ya tenía decisión. */
+export interface LearningRecordStore {
+  appendDecision(record: LearningDecisionRecord): Promise<boolean>;
+  decisionById(tenantId: string, decisionId: string): Promise<LearningDecisionRecord | undefined>;
+  /** Contadores del patrón: cierres (propuestos en dry-run/activo) desde `since` y muestras. */
+  counters(tenantId: string, patternId: string, now: Date, since: Date): Promise<PatternCounters>;
+  insertReview(record: LearningReviewRecord): Promise<void>;
+  reviewById(tenantId: string, reviewId: string): Promise<LearningReviewRecord | undefined>;
+  updateReview(record: LearningReviewRecord, expectedRevision: number): Promise<boolean>;
+  appendReversal(record: LearningReversalRecord): Promise<void>;
 }
 
 /** Evidencia para refrescar patrones: último cierre humano vigente por alerta, con su huella. */
@@ -153,6 +237,7 @@ export interface SocTransactionContext {
   readonly fingerprints: AlertFingerprintStore;
   readonly groups: AlertGroupStore;
   readonly patterns: LearningPatternStore;
+  readonly learning: LearningRecordStore;
   readonly incidents: IncidentStore;
   readonly tasks: IncidentTaskStore;
   readonly notes: IncidentNoteStore;
@@ -251,6 +336,31 @@ export interface SocReadModel {
   learningEvidence?(tenantId: string, since: Date): Promise<LearningEvidence>;
   /** Etapa D. Alertas cerradas sin origen y cobertura de huella fina por fuente desde `since`. */
   readinessMetrics?(tenantId: string, since: Date): Promise<ReadinessMetrics>;
+  /** Etapa D/E · lecturas de la consola. */
+  listLearningPatterns?(query: {
+    readonly tenantId: string;
+    readonly status?: PatternStatus;
+    readonly limit: number;
+  }): Promise<QueryResult<LearningPattern>>;
+  learningPatternById?(tenantId: string, patternId: string): Promise<LearningPattern | undefined>;
+  learningPatternHistory?(
+    tenantId: string,
+    patternId: string,
+  ): Promise<{
+    readonly approvals: readonly ApprovalRecord[];
+    readonly events: readonly PatternEventRecord[];
+  }>;
+  listLearningDecisions?(query: {
+    readonly tenantId: string;
+    readonly alertId?: string;
+    readonly patternId?: string;
+    readonly limit: number;
+  }): Promise<QueryResult<LearningDecisionRecord>>;
+  listLearningReviews?(query: {
+    readonly tenantId: string;
+    readonly status?: LearningReviewStatus;
+    readonly limit: number;
+  }): Promise<QueryResult<LearningReviewRecord>>;
   /**
    * Conteos exactos por veredicto y estado; opcional (los adapters que no lo implementan
    * obligan a quien llama a usar `listAlerts` y declarar el tope).

@@ -160,11 +160,45 @@ export {
   LEARNING_SERVICE_ACTOR,
   refreshLearningPatterns,
   rejectLearningPattern,
+  renewLearningPattern,
+  resumeLearningPattern,
   revokeLearningPattern,
   type PatternDecisionRequest,
   type RefreshRequest,
   type RefreshSummary,
 } from './learning-use-cases.js';
+export {
+  decideLearningAction,
+  DEFAULT_ENGINE_SETTINGS,
+  effectiveMode,
+  ENGINE_ACTIONS,
+  ESCALATE_REASONS,
+  isSampled,
+  LEARNING_ENGINE_VERSION,
+  LEARNING_HARD_GUARDS,
+  LEARNING_MODES,
+  limaDayStart,
+  type Confidence,
+  type EngineAction,
+  type EngineCheck,
+  type EngineContext,
+  type EngineDecision,
+  type EngineInput,
+  type EngineSettings,
+  type EscalateReason,
+  type LearningMode,
+  type PatternCounters,
+} from './learning-engine.js';
+export {
+  evaluateAlertWithLearning,
+  resolveLearningReview,
+  revertLearningDecision,
+  type EvaluateRequest,
+  type EvaluationOutcome,
+  type LearningEngineDependencies,
+  type ReviewResolutionRequest,
+  type RevertRequest,
+} from './learning-engine-use-cases.js';
 export { InMemorySoc } from './memory-unit-of-work.js';
 export { InMemoryIngestionState } from './memory-ingestion.js';
 export {
@@ -213,8 +247,14 @@ export type {
   IncidentQuery,
   IncidentStore,
   IncidentTaskStore,
+  LearningDecisionRecord,
   LearningEvidence,
   LearningPatternStore,
+  LearningRecordStore,
+  LearningReversalRecord,
+  LearningReviewKind,
+  LearningReviewRecord,
+  LearningReviewStatus,
   OutboxHealth,
   OutboxLane,
   OutboxStore,
@@ -228,4 +268,8 @@ export type {
   SocTransactionContext,
   SocUnitOfWork,
 } from './ports.js';
-export { DEFAULT_FALSE_POSITIVE_ORIGINS } from './ports.js';
+export {
+  DEFAULT_FALSE_POSITIVE_ORIGINS,
+  LEARNING_REVIEW_KINDS,
+  LEARNING_REVIEW_STATUSES,
+} from './ports.js';

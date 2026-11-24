@@ -82,6 +82,8 @@ export const CAPABILITIES = [
    * la lista de aprobadores designados (`B89_SOC_LEARNING_APPROVERS`): se otorga por persona.
    */
   'learning.patterns.approve',
+  /** Etapa E: resolver revisiones del motor (muestras, propuestas en dry-run) y revertir autocierres. */
+  'learning.reviews.resolve',
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
@@ -120,6 +122,7 @@ export const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> 
     'dlp.read',
     'allowlist.read',
     'learning.read',
+    'learning.reviews.resolve',
   ],
   'b89.soc.lead': [
     'events.read',
@@ -142,6 +145,7 @@ export const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> 
     'allowlist.read',
     'learning.read',
     'learning.patterns.approve',
+    'learning.reviews.resolve',
   ],
   'b89.auditor': [
     'audit.read',
@@ -236,6 +240,7 @@ const SCOPE_CAPABILITIES: Readonly<Record<Scope, readonly Capability[]>> = Objec
     'dlp.configure',
     'allowlist.manage',
     'learning.patterns.approve',
+    'learning.reviews.resolve',
   ],
   'audit.read': ['audit.read', 'audit.read_sensitive', 'audit.verify'],
 });

@@ -9,7 +9,7 @@
  * Además, un patrón activo no tiene efecto hasta que exista el motor (etapa E).
  */
 
-import type { Priority } from '@b89/detection';
+import type { FingerprintComponents, Priority } from '@b89/detection';
 
 import type { ClosureReason } from './closure.js';
 import { LEARNABLE_CLOSURE_REASONS } from './closure.js';
@@ -44,6 +44,8 @@ export interface LearningPattern {
   readonly fingerprint: string;
   readonly normalizerVersion: string;
   readonly level: 'fine' | 'coarse';
+  /** Componentes de la huella aprendida: el motor los compara para detectar colisión y deriva. */
+  readonly components: FingerprintComponents;
   /** Una huella gruesa nunca autocierra (diseño §4.4). */
   readonly maxAction: PatternMaxAction;
   readonly closureReason: ClosureReason;
@@ -83,6 +85,7 @@ export interface ClosureEvidence {
   readonly fingerprint: string;
   readonly level: 'fine' | 'coarse';
   readonly normalizerVersion: string;
+  readonly components: FingerprintComponents;
 }
 
 export interface CandidatePolicy {
@@ -394,7 +397,12 @@ export function nextAutomaticState(
         ? undefined
         : { status: 'revoked', reason: 'TRUE_POSITIVE_ON_FINGERPRINT' };
   }
-  if (pattern.status === 'active' && pattern.expiresAt && context.now >= pattern.expiresAt) {
+  // Vence por reloj del servidor, también en pausa: reanudar no puede extender la vigencia.
+  if (
+    (pattern.status === 'active' || pattern.status === 'paused') &&
+    pattern.expiresAt &&
+    context.now >= pattern.expiresAt
+  ) {
     return { status: 'expired', reason: 'EXPIRED' };
   }
   // Fail-closed: si una precondición deja de cumplirse, un patrón activo se pausa.

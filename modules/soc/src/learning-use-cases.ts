@@ -23,6 +23,7 @@ import {
   expiryFor,
   nextAutomaticState,
   OPEN_PATTERN_STATUSES,
+  requiresSecondApprover,
   type CandidatePolicy,
   type ClosureEvidence,
   type LearningPattern,
@@ -152,6 +153,7 @@ export async function refreshLearningPatterns(
           fingerprint,
           normalizerVersion: sample.normalizerVersion,
           level: sample.level,
+          components: sample.components,
           maxAction: sample.level === 'fine' ? 'auto_close' : 'demote',
           closureReason: eligibility.closureReason,
           status: 'candidate',
@@ -267,7 +269,14 @@ export async function refreshLearningPatterns(
         updatedAt: now,
         revision: pattern.revision + 1,
         ...(change.status === 'active'
-          ? { activatedAt: now, expiresAt: expiryFor(pattern, now) }
+          ? {
+              activatedAt: now,
+              // Un patrón reanudado conserva su vencimiento; uno nuevo o renovado recibe el suyo.
+              expiresAt:
+                pattern.expiresAt && pattern.expiresAt.getTime() > now.getTime()
+                  ? pattern.expiresAt
+                  : expiryFor(pattern, now),
+            }
           : {}),
       };
       if (
@@ -364,7 +373,8 @@ export async function approveLearningPattern(
     if (!loaded.ok) return loaded;
     const pattern = loaded.value;
     const approvals = await context.patterns.approvals(pattern.tenantId, pattern.id);
-    const first = approvals.find((row) => row.decision === 'approve' && row.stage === 'first');
+    // La primera firma del ciclo vigente (una renovación abre un ciclo nuevo).
+    const first = approvals.findLast((row) => row.decision === 'approve' && row.stage === 'first');
     const check = checkApproval(
       pattern,
       request.actor.subjectId,
@@ -507,3 +517,132 @@ export const revokeLearningPattern = (
   dependencies: SocDependencies,
   request: PatternDecisionRequest,
 ) => closePattern(dependencies, request, 'revoke');
+
+/* ------------------------------------------------------ Reanudar y renovar */
+
+/** Separación de funciones común a reanudar y renovar (como en `checkApproval`). */
+function signerProblem(
+  pattern: LearningPattern,
+  request: PatternDecisionRequest,
+): string | undefined {
+  const subject = request.actor.subjectId;
+  if (subject.startsWith('svc:')) return 'SERVICE_IDENTITY';
+  if (!request.designatedApprovers.includes(subject)) return 'NOT_A_DESIGNATED_APPROVER';
+  if (subject === pattern.proposedBy) return 'APPROVER_IS_PROPOSER';
+  if (pattern.originClosers.includes(subject)) return 'APPROVER_CLOSED_ORIGIN_ALERTS';
+  return undefined;
+}
+
+async function signAndMove(
+  dependencies: SocDependencies,
+  request: PatternDecisionRequest,
+  action: 'resume' | 'renew',
+): Promise<SocResult<LearningPattern>> {
+  const now = dependencies.clock.now();
+  return dependencies.unitOfWork.run(async (context) => {
+    const loaded = await loadForDecision(
+      dependencies,
+      context,
+      request,
+      `learning.pattern.${action}`,
+    );
+    if (!loaded.ok) return loaded;
+    const pattern = loaded.value;
+    const problem = signerProblem(pattern, request);
+    if (problem) {
+      await recordAudit(
+        context.audit,
+        socAuditDraft({
+          id: dependencies.ids.next(),
+          actor: request.actor,
+          action: `learning.pattern.${action}`,
+          resource: { type: 'learning_pattern', id: pattern.id },
+          outcome: 'denied',
+          correlationId: request.correlationId,
+          at: now,
+          reason: problem,
+        }),
+      );
+      return socFailure('FORBIDDEN', problem, problem);
+    }
+    let next: LearningPattern;
+    if (action === 'resume') {
+      // Reanudar vuelve a `approved`: las compuertas deciden la activación y el vencimiento se
+      // conserva. Un patrón vencido no se reanuda: se renueva.
+      if (pattern.status !== 'paused') {
+        return socFailure(
+          'INVALID_COMMAND',
+          'INVALID_TRANSITION',
+          'Solo se reanuda un patrón en pausa.',
+        );
+      }
+      if (!pattern.expiresAt || pattern.expiresAt.getTime() <= now.getTime()) {
+        return socFailure('INVALID_COMMAND', 'PATTERN_EXPIRED', 'El patrón venció; renuévelo.');
+      }
+      next = { ...pattern, status: 'approved', updatedAt: now, revision: pattern.revision + 1 };
+    } else {
+      // Renovar abre un ciclo de firmas nuevo (A o A+B) con vigencia de renovación (90 días).
+      if (pattern.status !== 'expired') {
+        return socFailure(
+          'INVALID_COMMAND',
+          'INVALID_TRANSITION',
+          'Solo se renueva un patrón vencido.',
+        );
+      }
+      if (await context.patterns.openByFingerprint(pattern.tenantId, pattern.fingerprint)) {
+        return socFailure(
+          'CONFLICT',
+          'OPEN_PATTERN_EXISTS',
+          'Ya hay otro patrón abierto para la misma huella.',
+        );
+      }
+      const renewed: LearningPattern = { ...pattern, renewalCount: pattern.renewalCount + 1 };
+      next = {
+        ...renewed,
+        status: requiresSecondApprover(renewed) ? 'pending_second_approval' : 'approved',
+        activatedAt: null,
+        expiresAt: null,
+        readinessBlockers: [],
+        updatedAt: now,
+        revision: pattern.revision + 1,
+      };
+    }
+    if (
+      !(await transition(
+        context,
+        dependencies,
+        pattern,
+        next,
+        action === 'resume' ? 'RESUMED' : 'RENEWAL_SIGNED',
+        request.actor,
+        request.correlationId,
+      ))
+    ) {
+      return socFailure('CONFLICT', 'REVISION_STALE', 'Otra escritura modificó el patrón.');
+    }
+    await context.patterns.appendApproval({
+      id: dependencies.ids.next(),
+      tenantId: pattern.tenantId,
+      patternId: pattern.id,
+      patternRevision: pattern.revision,
+      stage: 'first',
+      approverId: request.actor.subjectId,
+      decision: 'approve',
+      comment: request.comment.trim(),
+      at: now,
+    });
+    return { ok: true as const, value: next };
+  });
+}
+
+/** Reanuda un patrón en pausa (una firma de un aprobador designado). */
+export const resumeLearningPattern = (
+  dependencies: SocDependencies,
+  request: PatternDecisionRequest,
+) => signAndMove(dependencies, request, 'resume');
+
+/** Renueva un patrón vencido: nuevo ciclo de firmas y vigencia de 90 días al activarse. */
+export const renewLearningPattern = (
+  dependencies: SocDependencies,
+  request: PatternDecisionRequest,
+) => signAndMove(dependencies, request, 'renew');

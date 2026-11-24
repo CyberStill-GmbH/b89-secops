@@ -1146,4 +1146,4 @@ export async function addIncidentNote(
 }
 
 /** Uso interno del módulo (casos de uso de aprendizaje); no se reexporta en `index.ts`. */
-export { auditDraft as socAuditDraft, failure as socFailure };
+export { auditDraft as socAuditDraft, failure as socFailure, publish as socPublish };
