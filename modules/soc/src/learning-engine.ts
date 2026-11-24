@@ -72,6 +72,11 @@ export interface EngineSettings {
   readonly maxMode: LearningMode;
   /** `rule_key` habilitadas por encima de `shadow`. Las demás quedan como máximo en sombra. */
   readonly activeRules: ReadonlySet<string>;
+  /**
+   * Capa 2 (base): modo aprobado por dos personas y vigente para cada regla. Si está presente, una
+   * regla sin entrada aquí queda en sombra aunque figure en `activeRules` (capa 1, entorno).
+   */
+  readonly ruleModes?: ReadonlyMap<string, 'dry_run' | 'active'>;
   readonly killSwitch: boolean;
   readonly killedRules: ReadonlySet<string>;
   readonly samplingPercent: number;
@@ -218,7 +223,12 @@ const SEVERITY_BY_BASE: Readonly<Record<number, string>> = {
 export function effectiveMode(settings: EngineSettings, ruleKey: string | null): LearningMode {
   if (settings.maxMode === 'off') return 'off';
   if (isHighImpactRuleKey(ruleKey)) return 'shadow';
-  const perRule: LearningMode = ruleKey && settings.activeRules.has(ruleKey) ? 'active' : 'shadow';
+  const listed = ruleKey !== null && settings.activeRules.has(ruleKey);
+  const perRule: LearningMode = !listed
+    ? 'shadow'
+    : settings.ruleModes
+      ? (settings.ruleModes.get(ruleKey) ?? 'shadow')
+      : 'active';
   return MODE_RANK[perRule] < MODE_RANK[settings.maxMode] ? perRule : settings.maxMode;
 }
 

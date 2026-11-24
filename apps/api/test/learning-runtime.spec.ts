@@ -12,7 +12,8 @@ import {
   type DetectionCandidate,
   type FingerprintComponents,
 } from '@b89/detection';
-import { ingestCandidate } from '@b89/soc';
+import { capabilitiesForRoles } from '@b89/access';
+import { approveRuleEnablement, ingestCandidate, requestRuleEnablement } from '@b89/soc';
 
 import { buildApi } from '../src/bootstrap.js';
 
@@ -137,5 +138,65 @@ describe('fase 3 · sin canal de notificación el motor no pasa de sombra', () =
     const { report, metrics } = await built.runtime.learningHealth();
     expect(metrics.maxMode).toBe('shadow');
     expect(report.alerts.map((alert) => alert.id)).toContain('NOTIFICATION_CHANNEL_MISSING');
+  });
+});
+
+describe('fase 3 · habilitación en dos capas en el API', () => {
+  it('la regla en el entorno no basta: sin habilitación aprobada en base, sombra; con ella, dry_run', async () => {
+    const built = await buildApi(
+      {
+        B89_PROFILE: 'test',
+        B89_LEARNING_ENABLED: 'true',
+        B89_LEARNING_MAX_MODE: 'dry_run',
+        B89_LEARNING_ACTIVE_RULES: 'linux-process:100200',
+        B89_LEARNING_SAMPLING_KEY: 'k'.repeat(40),
+        B89_TEAMS_WORKFLOW_URL:
+          'https://prod-00.westus.logic.azure.com/workflows/abc/triggers/manual/paths/invoke',
+        B89_SOC_LEARNING_APPROVERS: 'lead-a,lead-b',
+      },
+      () => {},
+    );
+    stop = built.stop;
+    const { runtime } = built;
+    const decide = async (sequence: number) => {
+      const created = await ingestCandidate(
+        runtime.socDependencies(),
+        candidate(runtime.tenantId, sequence),
+      );
+      if (!created.ok) throw new Error(created.code);
+      await runtime.drainLearning();
+      const decisions = await runtime.soc.listLearningDecisions?.({
+        tenantId: runtime.tenantId,
+        alertId: created.value.alert.id,
+        limit: 1,
+      });
+      return decisions?.items[0];
+    };
+    expect((await decide(10))?.mode).toBe('shadow');
+    const lead = (subjectId: string) => ({
+      subjectId,
+      tenantId: runtime.tenantId,
+      sessionId: 's',
+      roles: ['b89.soc.lead'],
+      capabilities: capabilitiesForRoles(['b89.soc.lead']),
+    });
+    const asked = await requestRuleEnablement(runtime.socDependencies(), {
+      actor: lead('lead-a'),
+      designatedApprovers: runtime.learningApprovers,
+      correlationId: 'c',
+      ruleKey: 'linux-process:100200',
+      mode: 'dry_run',
+      reason: 'Sombra superada según el informe semanal.',
+      expiresInDays: 30,
+    });
+    if (!asked.ok) throw new Error(asked.reason);
+    await approveRuleEnablement(runtime.socDependencies(), {
+      actor: lead('lead-b'),
+      designatedApprovers: runtime.learningApprovers,
+      correlationId: 'c',
+      id: asked.value.id,
+      expectedRevision: asked.value.revision,
+    });
+    expect((await decide(11))?.mode).toBe('dry_run');
   });
 });

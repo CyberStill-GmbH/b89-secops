@@ -71,6 +71,9 @@ import {
 import { OBSERVABLES_NORMALIZER_VERSION } from '@b89/contracts';
 import {
   capForEngineState,
+  liveContextFrom,
+  ruleModesFrom,
+  type LiveContext,
   checkLearningNoticeDelivery,
   drainLearningQueue,
   evaluateLearningHealth,
@@ -520,6 +523,10 @@ export class SecOpsRuntime {
    * ella, listas vacías y la prioridad depende solo de severidad y correlación.
    */
   public detectionContext: PrioritizationContext;
+  /** Contexto del entorno (capa fija); el de base se suma encima en cada refresco (fase 3). */
+  private detectionContextBase: PrioritizationContext | undefined;
+  /** Contexto vivo de la base (activos, identidades, calendario, never-suppress). */
+  private learningLiveContext: LiveContext | undefined;
   private readonly correlationPolicy: CorrelationPolicy;
   private readonly signalCatalog: SignalCatalog;
 
@@ -1052,7 +1059,10 @@ export class SecOpsRuntime {
     return {
       criticalAssets: this.detectionContext.criticalAssets.size,
       privilegedIdentities: this.detectionContext.privilegedIdentities.size,
-      changeCalendarAckUntil: learning?.changeCalendarAckUntil ?? null,
+      changeCalendarAckUntil: this.latestAck(
+        learning?.changeCalendarAckUntil ?? null,
+        this.learningLiveContext?.changeCalendarAckUntil ?? null,
+      ),
       sourceState: fresh ? measured.state : null,
       samplingKey: learning?.samplingKey ?? null,
     };
@@ -1085,6 +1095,7 @@ export class SecOpsRuntime {
       const evaluation = await evaluateMonitor(monitor, this.soc.ingestion, this.now());
       this.learningSourceState = { state: evaluation.state, at: this.now() };
     }
+    await this.applyLearningContext();
     const result = await refreshLearningPatterns(this.socDependencies(), this.soc, {
       tenantId: this.tenantId,
       readiness: await this.learningReadiness(),
@@ -1097,6 +1108,32 @@ export class SecOpsRuntime {
     }
   }
 
+  private latestAck(left: Date | null, right: Date | null): Date | null {
+    if (left === null) return right;
+    if (right === null) return left;
+    return left > right ? left : right;
+  }
+
+  /**
+   * Fase 3 · suma el contexto vigente de la base al del entorno (unión, nunca reemplazo). Lo usa
+   * la priorización (razones CRITICAL_ASSET, PRIVILEGED_IDENTITY, BREAK_GLASS) y el motor (contexto
+   * vigente). Si la lectura falla, se conserva el último contexto conocido.
+   */
+  private async applyLearningContext(): Promise<void> {
+    if (!this.options.learning || !this.soc.listContextEntries) return;
+    const entries = await this.soc.listContextEntries(this.tenantId);
+    const live = liveContextFrom(entries, this.now());
+    this.learningLiveContext = live;
+    this.detectionContextBase ??= this.detectionContext;
+    const base = this.detectionContextBase;
+    this.detectionContext = {
+      ...base,
+      criticalAssets: new Set([...base.criticalAssets, ...live.criticalAssets]),
+      privilegedIdentities: new Set([...base.privilegedIdentities, ...live.privilegedIdentities]),
+      breakGlassIdentities: new Set([...(base.breakGlassIdentities ?? []), ...live.breakGlass]),
+    };
+  }
+
   /** Una pasada del worker de la cola del motor. */
   public async drainLearning() {
     const learning = this.options.learning;
@@ -1105,11 +1142,22 @@ export class SecOpsRuntime {
     // AttentionPort: si un aviso del motor venció sin entregarse, el motor se pausa (a sombra).
     await checkLearningNoticeDelivery(this.socDependencies(), this.soc, this.tenantId);
     const state = await this.soc.learningEngineState?.(this.tenantId);
+    await this.applyLearningContext();
+    // Capa 2: solo las reglas con habilitación aprobada por dos personas y vigente pasan de sombra.
+    const enablements = (await this.soc.listRuleEnablements?.(this.tenantId)) ?? [];
+    const layered = {
+      ...capForEngineState(learning.settings, state),
+      ruleModes: ruleModesFrom(enablements, this.now()),
+      neverSuppressRules: new Set([
+        ...learning.settings.neverSuppressRules,
+        ...(this.learningLiveContext?.neverSuppressRules ?? []),
+      ]),
+    };
     return drainLearningQueue({
       dependencies: this.socDependencies(),
       queue,
       engine: {
-        settings: capForEngineState(learning.settings, state),
+        settings: layered,
         context: () => this.learningEngineContext(),
       },
       ...(learning.worker ? { policy: learning.worker } : {}),

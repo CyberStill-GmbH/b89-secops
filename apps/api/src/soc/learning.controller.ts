@@ -10,7 +10,16 @@
 import { Body, Controller, Get, Inject, Param, Post, Query, Req } from '@nestjs/common';
 
 import {
+  addContextEntry,
   approveLearningPattern,
+  approveRuleEnablement,
+  CONTEXT_KINDS,
+  ENABLEMENT_MODES,
+  requestRuleEnablement,
+  revokeContextEntry,
+  revokeRuleEnablement,
+  type ContextKind,
+  type EnablementMode,
   resumeLearningEngine,
   buildShadowReport,
   LEARNING_REVIEW_STATUSES,
@@ -54,6 +63,11 @@ const EXPLAINED_REASONS = new Set([
   'REVIEW_RESOLVED',
   'NOT_ENGINE_CLOSED',
   'ENGINE_NOT_PAUSED',
+  'ENABLEMENT_INVALID',
+  'IMPACT_FLOOR',
+  'OPEN_ENABLEMENT_EXISTS',
+  'ENABLEMENT_EXPIRED',
+  'CONTEXT_INVALID',
 ]);
 
 function failureOf(
@@ -210,6 +224,174 @@ export class LearningController {
     });
     if (!result.ok) throw failureOf(result, correlationId);
     return { correlationId, paused: result.value.paused };
+  }
+
+  /** Capa 2 · habilitaciones por regla (lectura: `learning.read`). */
+  @Get('learning/enablements')
+  public async enablements(@Req() request: IncomingRequest) {
+    const { actor, correlationId } = await this.reader(request);
+    const rows = (await this.runtime.soc.listRuleEnablements?.(actor.tenantId)) ?? [];
+    return {
+      correlationId,
+      items: rows.map((row) => ({
+        ...row,
+        requestedAt: row.requestedAt.toISOString(),
+        approvedAt: row.approvedAt?.toISOString() ?? null,
+        expiresAt: row.expiresAt.toISOString(),
+        revokedAt: row.revokedAt?.toISOString() ?? null,
+      })),
+    };
+  }
+
+  @Post('learning/enablements')
+  public async requestEnablement(
+    @Req() request: IncomingRequest,
+    @Body() body: { ruleKey?: string; mode?: string; reason?: string; expiresInDays?: number },
+  ) {
+    const { actor, correlationId } = await mutatingActor(this.runtime, request);
+    if (
+      typeof body.ruleKey !== 'string' ||
+      !(ENABLEMENT_MODES as readonly string[]).includes(body.mode ?? '') ||
+      typeof body.reason !== 'string' ||
+      typeof body.expiresInDays !== 'number'
+    ) {
+      throw new ApiError('VALIDATION_FAILED', correlationId, [
+        'ruleKey',
+        'mode',
+        'reason',
+        'expiresInDays',
+      ]);
+    }
+    const result = await requestRuleEnablement(this.runtime.socDependencies(), {
+      actor,
+      designatedApprovers: this.runtime.learningApprovers,
+      correlationId,
+      ruleKey: body.ruleKey,
+      mode: body.mode as EnablementMode,
+      reason: body.reason,
+      expiresInDays: body.expiresInDays,
+    });
+    if (!result.ok) throw failureOf(result, correlationId);
+    return {
+      correlationId,
+      id: result.value.id,
+      status: result.value.status,
+      revision: result.value.revision,
+    };
+  }
+
+  @Post('learning/enablements/:id/approve')
+  public async approveEnablement(
+    @Req() request: IncomingRequest,
+    @Param('id') id: string,
+    @Body() body: { expectedRevision?: number },
+  ) {
+    const { actor, correlationId } = await mutatingActor(this.runtime, request);
+    if (typeof body.expectedRevision !== 'number') {
+      throw new ApiError('VALIDATION_FAILED', correlationId, ['expectedRevision']);
+    }
+    const result = await approveRuleEnablement(this.runtime.socDependencies(), {
+      actor,
+      designatedApprovers: this.runtime.learningApprovers,
+      correlationId,
+      id,
+      expectedRevision: body.expectedRevision,
+    });
+    if (!result.ok) throw failureOf(result, correlationId);
+    return { correlationId, id, status: result.value.status, revision: result.value.revision };
+  }
+
+  @Post('learning/enablements/:id/revoke')
+  public async revokeEnablement(
+    @Req() request: IncomingRequest,
+    @Param('id') id: string,
+    @Body() body: { expectedRevision?: number },
+  ) {
+    const { actor, correlationId } = await mutatingActor(this.runtime, request);
+    if (typeof body.expectedRevision !== 'number') {
+      throw new ApiError('VALIDATION_FAILED', correlationId, ['expectedRevision']);
+    }
+    const result = await revokeRuleEnablement(this.runtime.socDependencies(), {
+      actor,
+      designatedApprovers: this.runtime.learningApprovers,
+      correlationId,
+      id,
+      expectedRevision: body.expectedRevision,
+    });
+    if (!result.ok) throw failureOf(result, correlationId);
+    return { correlationId, id, status: result.value.status, revision: result.value.revision };
+  }
+
+  /** Contexto del tenant: valores visibles solo para quien puede aprobar (pueden ser identidades). */
+  @Get('learning/context')
+  public async contextEntries(@Req() request: IncomingRequest) {
+    const { actor, correlationId } = await readingActor(this.runtime, request);
+    if (!actor.capabilities.has('learning.patterns.approve')) {
+      throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
+    }
+    const rows = (await this.runtime.soc.listContextEntries?.(actor.tenantId)) ?? [];
+    return {
+      correlationId,
+      items: rows.map((row) => ({
+        ...row,
+        createdAt: row.createdAt.toISOString(),
+        expiresAt: row.expiresAt.toISOString(),
+        revokedAt: row.revokedAt?.toISOString() ?? null,
+      })),
+    };
+  }
+
+  @Post('learning/context')
+  public async addContext(
+    @Req() request: IncomingRequest,
+    @Body() body: { kind?: string; value?: string; reason?: string; expiresInDays?: number },
+  ) {
+    const { actor, correlationId } = await mutatingActor(this.runtime, request);
+    if (
+      !(CONTEXT_KINDS as readonly string[]).includes(body.kind ?? '') ||
+      typeof body.value !== 'string' ||
+      typeof body.reason !== 'string' ||
+      typeof body.expiresInDays !== 'number'
+    ) {
+      throw new ApiError('VALIDATION_FAILED', correlationId, [
+        'kind',
+        'value',
+        'reason',
+        'expiresInDays',
+      ]);
+    }
+    const result = await addContextEntry(this.runtime.socDependencies(), {
+      actor,
+      designatedApprovers: this.runtime.learningApprovers,
+      correlationId,
+      kind: body.kind as ContextKind,
+      value: body.value,
+      reason: body.reason,
+      expiresInDays: body.expiresInDays,
+    });
+    if (!result.ok) throw failureOf(result, correlationId);
+    return { correlationId, id: result.value.id, revision: result.value.revision };
+  }
+
+  @Post('learning/context/:id/revoke')
+  public async revokeContext(
+    @Req() request: IncomingRequest,
+    @Param('id') id: string,
+    @Body() body: { expectedRevision?: number },
+  ) {
+    const { actor, correlationId } = await mutatingActor(this.runtime, request);
+    if (typeof body.expectedRevision !== 'number') {
+      throw new ApiError('VALIDATION_FAILED', correlationId, ['expectedRevision']);
+    }
+    const result = await revokeContextEntry(this.runtime.socDependencies(), {
+      actor,
+      designatedApprovers: this.runtime.learningApprovers,
+      correlationId,
+      id,
+      expectedRevision: body.expectedRevision,
+    });
+    if (!result.ok) throw failureOf(result, correlationId);
+    return { correlationId, id, revision: result.value.revision };
   }
 
   @Get('learning/patterns')

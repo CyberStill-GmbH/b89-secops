@@ -200,6 +200,24 @@ export {
   type RevertRequest,
 } from './learning-engine-use-cases.js';
 export {
+  addContextEntry,
+  approveRuleEnablement,
+  CONTEXT_KINDS,
+  ENABLEMENT_MODES,
+  ENABLEMENT_STATUSES,
+  liveContextFrom,
+  requestRuleEnablement,
+  revokeContextEntry,
+  revokeRuleEnablement,
+  ruleModesFrom,
+  type ContextEntry,
+  type ContextKind,
+  type EnablementMode,
+  type LearningGovernanceStore,
+  type LiveContext,
+  type RuleEnablement,
+} from './learning-governance.js';
+export {
   capForEngineState,
   checkLearningNoticeDelivery,
   ENGINE_PAUSE_REASONS,

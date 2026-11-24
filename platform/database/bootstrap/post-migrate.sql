@@ -47,6 +47,12 @@ BEGIN
     IF to_regclass('public.soc_learning_engine_state') IS NOT NULL THEN
       REVOKE DELETE, TRUNCATE ON public.soc_learning_engine_state FROM b89_soc_runtime;
     END IF;
+    IF to_regclass('public.soc_learning_rule_enablements') IS NOT NULL THEN
+      REVOKE DELETE, TRUNCATE ON public.soc_learning_rule_enablements FROM b89_soc_runtime;
+    END IF;
+    IF to_regclass('public.soc_learning_context_entries') IS NOT NULL THEN
+      REVOKE DELETE, TRUNCATE ON public.soc_learning_context_entries FROM b89_soc_runtime;
+    END IF;
     IF to_regclass('public.soc_learning_patterns') IS NOT NULL THEN
       REVOKE DELETE, TRUNCATE ON public.soc_learning_patterns FROM b89_soc_runtime;
     END IF;

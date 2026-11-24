@@ -200,6 +200,69 @@
       "owner": "application-platform"
     },
     {
+      "path": "/api/learning/enablements",
+      "method": "GET",
+      "upstream": "/api/learning/enablements",
+      "query_parameters": [],
+      "auth": "api-session",
+      "encoding": "no-op",
+      "owner": "application-platform"
+    },
+    {
+      "path": "/api/learning/enablements",
+      "method": "POST",
+      "upstream": "/api/learning/enablements",
+      "query_parameters": [],
+      "auth": "api-session",
+      "encoding": "no-op",
+      "owner": "application-platform"
+    },
+    {
+      "path": "/api/learning/enablements/{id}/approve",
+      "method": "POST",
+      "upstream": "/api/learning/enablements/{id}/approve",
+      "query_parameters": [],
+      "auth": "api-session",
+      "encoding": "no-op",
+      "owner": "application-platform"
+    },
+    {
+      "path": "/api/learning/enablements/{id}/revoke",
+      "method": "POST",
+      "upstream": "/api/learning/enablements/{id}/revoke",
+      "query_parameters": [],
+      "auth": "api-session",
+      "encoding": "no-op",
+      "owner": "application-platform"
+    },
+    {
+      "path": "/api/learning/context",
+      "method": "GET",
+      "upstream": "/api/learning/context",
+      "query_parameters": [],
+      "auth": "api-session",
+      "encoding": "no-op",
+      "owner": "application-platform"
+    },
+    {
+      "path": "/api/learning/context",
+      "method": "POST",
+      "upstream": "/api/learning/context",
+      "query_parameters": [],
+      "auth": "api-session",
+      "encoding": "no-op",
+      "owner": "application-platform"
+    },
+    {
+      "path": "/api/learning/context/{id}/revoke",
+      "method": "POST",
+      "upstream": "/api/learning/context/{id}/revoke",
+      "query_parameters": [],
+      "auth": "api-session",
+      "encoding": "no-op",
+      "owner": "application-platform"
+    },
+    {
       "path": "/api/learning/readiness",
       "method": "GET",
       "upstream": "/api/learning/readiness",

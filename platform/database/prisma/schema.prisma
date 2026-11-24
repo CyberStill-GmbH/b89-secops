@@ -660,6 +660,43 @@ model SocLearningEngineState {
   @@map("soc_learning_engine_state")
 }
 
+// Habilitación por regla y tenant (capa 2): dos personas, vencimiento obligatorio.
+model SocLearningRuleEnablement {
+  id          String    @id @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Text
+  ruleKey     String    @map("rule_key") @db.Text
+  mode        String    @db.Text
+  status      String    @db.Text
+  reason      String    @db.Text
+  requestedBy String    @map("requested_by") @db.Text
+  requestedAt DateTime  @map("requested_at") @db.Timestamptz(3)
+  approvedBy  String?   @map("approved_by") @db.Text
+  approvedAt  DateTime? @map("approved_at") @db.Timestamptz(3)
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedBy   String?   @map("revoked_by") @db.Text
+  revokedAt   DateTime? @map("revoked_at") @db.Timestamptz(3)
+  revision    Int
+
+  @@map("soc_learning_rule_enablements")
+}
+
+// Contexto del tenant (se suma a las listas del entorno).
+model SocLearningContextEntry {
+  id        String    @id @db.Uuid
+  tenantId  String    @map("tenant_id") @db.Text
+  kind      String    @db.Text
+  value     String    @db.Text
+  reason    String    @db.Text
+  createdBy String    @map("created_by") @db.Text
+  createdAt DateTime  @map("created_at") @db.Timestamptz(3)
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedBy String?   @map("revoked_by") @db.Text
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+  revision  Int
+
+  @@map("soc_learning_context_entries")
+}
+
 // C-17/C-20 — outbox del SOC: cola durable con lease que el despacho reclama de forma
 // atómica. Separado del outbox de admisión de C-04, que tiene FK a manifiestos de ingesta.
 model SocOutboxMessage {

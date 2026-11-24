@@ -30,6 +30,11 @@ import {
 import type { AlertClosureRecord } from './closure.js';
 import { limaDayStart, type PatternCounters } from './learning-engine.js';
 import type { LearningEngineState, LearningEngineStateStore } from './learning-engine-state.js';
+import type {
+  ContextEntry,
+  LearningGovernanceStore,
+  RuleEnablement,
+} from './learning-governance.js';
 import { LEARNING_NOTICE_DEADLINES, LEARNING_NOTICE_PREFIX } from './learning-notices.js';
 import type { Incident } from './incident.js';
 import type { IncidentNote, IncidentTask } from './incident-work.js';
@@ -85,6 +90,8 @@ interface Snapshot {
   readonly reversals: readonly LearningReversalRecord[];
   readonly jobs: ReadonlyMap<string, LearningJob>;
   readonly engineStates: ReadonlyMap<string, LearningEngineState>;
+  readonly enablements: ReadonlyMap<string, RuleEnablement>;
+  readonly contextEntries: ReadonlyMap<string, ContextEntry>;
   readonly groupMembers: ReadonlyMap<string, GroupMember>;
   readonly incidents: ReadonlyMap<string, Incident>;
   readonly tasks: ReadonlyMap<string, IncidentTask>;
@@ -142,6 +149,42 @@ export class InMemorySoc implements SocPersistence {
   >();
   public readonly configEventRows: LearningConfigEvent[] = [];
   public readonly engineStateRows = new Map<string, LearningEngineState>();
+  public readonly enablementRows = new Map<string, RuleEnablement>();
+  public readonly contextEntryRows = new Map<string, ContextEntry>();
+
+  private readonly learningGovernance: LearningGovernanceStore = {
+    enablementById: (tenantId, id) => Promise.resolve(this.enablementRows.get(`${tenantId}|${id}`)),
+    insertEnablement: (row) => {
+      const open = [...this.enablementRows.values()].some(
+        (other) =>
+          other.tenantId === row.tenantId &&
+          other.ruleKey === row.ruleKey &&
+          other.status !== 'revoked',
+      );
+      if (open) return Promise.resolve(false);
+      this.enablementRows.set(`${row.tenantId}|${row.id}`, row);
+      return Promise.resolve(true);
+    },
+    updateEnablement: (row, expectedRevision) => {
+      const key = `${row.tenantId}|${row.id}`;
+      if (this.enablementRows.get(key)?.revision !== expectedRevision)
+        return Promise.resolve(false);
+      this.enablementRows.set(key, row);
+      return Promise.resolve(true);
+    },
+    contextById: (tenantId, id) => Promise.resolve(this.contextEntryRows.get(`${tenantId}|${id}`)),
+    insertContext: (row) => {
+      this.contextEntryRows.set(`${row.tenantId}|${row.id}`, row);
+      return Promise.resolve();
+    },
+    updateContext: (row, expectedRevision) => {
+      const key = `${row.tenantId}|${row.id}`;
+      if (this.contextEntryRows.get(key)?.revision !== expectedRevision)
+        return Promise.resolve(false);
+      this.contextEntryRows.set(key, row);
+      return Promise.resolve(true);
+    },
+  };
 
   private readonly learningState: LearningEngineStateStore = {
     get: (tenantId) => Promise.resolve(this.engineStateRows.get(tenantId)),
@@ -533,6 +576,8 @@ export class InMemorySoc implements SocPersistence {
       reversals: [...this.reversalRows],
       jobs: new Map(this.jobRows),
       engineStates: new Map(this.engineStateRows),
+      enablements: new Map(this.enablementRows),
+      contextEntries: new Map(this.contextEntryRows),
       groupMembers: new Map(this.groupMemberRows),
       incidents: new Map(this.incidentRows),
       tasks: new Map(this.taskRows),
@@ -568,6 +613,8 @@ export class InMemorySoc implements SocPersistence {
     this.reversalRows.splice(0, this.reversalRows.length, ...snapshot.reversals);
     replace(this.jobRows, snapshot.jobs);
     replace(this.engineStateRows, snapshot.engineStates);
+    replace(this.enablementRows, snapshot.enablements);
+    replace(this.contextEntryRows, snapshot.contextEntries);
     replace(this.groupMemberRows, snapshot.groupMembers);
     replace(this.incidentRows, snapshot.incidents);
     replace(this.taskRows, snapshot.tasks);
@@ -601,6 +648,7 @@ export class InMemorySoc implements SocPersistence {
         learning: this.learning,
         learningJobs: this.learningJobs,
         learningState: this.learningState,
+        learningGovernance: this.learningGovernance,
         incidents: this.incidents,
         tasks: this.tasks,
         notes: this.notes,
@@ -745,6 +793,18 @@ export class InMemorySoc implements SocPersistence {
       )
       .sort((left, right) => right.at.getTime() - left.at.getTime());
     return Promise.resolve({ items: items.slice(0, query.limit), total: items.length });
+  }
+
+  public listRuleEnablements(tenantId: string) {
+    return Promise.resolve(
+      [...this.enablementRows.values()].filter((row) => row.tenantId === tenantId),
+    );
+  }
+
+  public listContextEntries(tenantId: string) {
+    return Promise.resolve(
+      [...this.contextEntryRows.values()].filter((row) => row.tenantId === tenantId),
+    );
   }
 
   public learningEngineState(tenantId: string) {

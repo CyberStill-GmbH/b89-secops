@@ -792,6 +792,92 @@ export interface LearningEngineStateRow {
   readonly revision: number;
 }
 
+export interface RuleEnablementRow {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly ruleKey: string;
+  readonly mode: string;
+  readonly status: string;
+  readonly reason: string;
+  readonly requestedBy: string;
+  readonly requestedAt: Date;
+  readonly approvedBy: string | null;
+  readonly approvedAt: Date | null;
+  readonly expiresAt: Date;
+  readonly revokedBy: string | null;
+  readonly revokedAt: Date | null;
+  readonly revision: number;
+}
+
+export interface ContextEntryRow {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly kind: string;
+  readonly value: string;
+  readonly reason: string;
+  readonly createdBy: string;
+  readonly createdAt: Date;
+  readonly expiresAt: Date;
+  readonly revokedBy: string | null;
+  readonly revokedAt: Date | null;
+  readonly revision: number;
+}
+
+/** Habilitaciones y contexto: inserción única por regla abierta y CAS por `revision`. */
+export class PrismaLearningGovernanceStore {
+  public constructor(private readonly tx: Tx) {}
+
+  public async enablementById(
+    tenantId: string,
+    id: string,
+  ): Promise<RuleEnablementRow | undefined> {
+    if (!UUID_PATTERN.test(id)) return undefined;
+    return (
+      (await this.tx.socLearningRuleEnablement.findFirst({ where: { id, tenantId } })) ?? undefined
+    );
+  }
+
+  public async insertEnablement(row: RuleEnablementRow): Promise<boolean> {
+    const created = await this.tx.socLearningRuleEnablement.createMany({
+      data: [{ ...row }],
+      skipDuplicates: true,
+    });
+    return created.count === 1;
+  }
+
+  public async updateEnablement(
+    row: RuleEnablementRow,
+    expectedRevision: number,
+  ): Promise<boolean> {
+    const { id, tenantId, ...data } = row;
+    const updated = await this.tx.socLearningRuleEnablement.updateMany({
+      where: { id, tenantId, revision: expectedRevision },
+      data,
+    });
+    return updated.count === 1;
+  }
+
+  public async contextById(tenantId: string, id: string): Promise<ContextEntryRow | undefined> {
+    if (!UUID_PATTERN.test(id)) return undefined;
+    return (
+      (await this.tx.socLearningContextEntry.findFirst({ where: { id, tenantId } })) ?? undefined
+    );
+  }
+
+  public async insertContext(row: ContextEntryRow): Promise<void> {
+    await this.tx.socLearningContextEntry.create({ data: { ...row } });
+  }
+
+  public async updateContext(row: ContextEntryRow, expectedRevision: number): Promise<boolean> {
+    const { id, tenantId, ...data } = row;
+    const updated = await this.tx.socLearningContextEntry.updateMany({
+      where: { id, tenantId, revision: expectedRevision },
+      data,
+    });
+    return updated.count === 1;
+  }
+}
+
 /** Estado del motor: CAS por `revision` (`null` = primera fila). */
 export class PrismaLearningEngineStateStore {
   public constructor(private readonly tx: Tx) {}
@@ -1134,6 +1220,7 @@ export interface SocStores {
   readonly learning: PrismaLearningRecordStore;
   readonly learningJobs: PrismaLearningJobStore;
   readonly learningState: PrismaLearningEngineStateStore;
+  readonly learningGovernance: PrismaLearningGovernanceStore;
   readonly incidents: PrismaIncidentStore;
   readonly tasks: PrismaIncidentTaskStore;
   readonly notes: PrismaIncidentNoteStore;
@@ -1157,6 +1244,7 @@ export class PrismaSocUnitOfWork {
         learning: new PrismaLearningRecordStore(tx),
         learningJobs: new PrismaLearningJobStore(tx),
         learningState: new PrismaLearningEngineStateStore(tx),
+        learningGovernance: new PrismaLearningGovernanceStore(tx),
         incidents: new PrismaIncidentStore(tx),
         tasks: new PrismaIncidentTaskStore(tx),
         notes: new PrismaIncidentNoteStore(tx),
@@ -1377,6 +1465,22 @@ export class PrismaSocQueries {
        WHERE tenant_id = ${tenantId} AND message_type = 'soc.alert.review_requested'
          AND status <> 'published' AND payload->>'reasonCodes' LIKE 'LEARNING%'`;
     return { hot: Number(row?.hot ?? 0), warm: Number(row?.warm ?? 0) };
+  }
+
+  public listRuleEnablements(tenantId: string): Promise<readonly RuleEnablementRow[]> {
+    return this.client.socLearningRuleEnablement.findMany({
+      where: { tenantId },
+      orderBy: [{ requestedAt: 'desc' }, { id: 'asc' }],
+      take: SOC_QUERY_LIMITS.maximumListRows,
+    });
+  }
+
+  public listContextEntries(tenantId: string): Promise<readonly ContextEntryRow[]> {
+    return this.client.socLearningContextEntry.findMany({
+      where: { tenantId },
+      orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+      take: SOC_QUERY_LIMITS.maximumListRows,
+    });
   }
 
   public async learningEngineState(tenantId: string): Promise<LearningEngineStateRow | undefined> {

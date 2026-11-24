@@ -39,6 +39,8 @@ import {
   type LearningClosureRow,
   type LearningDecisionRow,
   type LearningEngineStateRow,
+  type RuleEnablementRow,
+  type ContextEntryRow,
   type LearningJobRow,
   type LearningPatternRow,
   type LearningReviewRow,
@@ -79,6 +81,14 @@ import {
 } from '../learning-engine.js';
 import type { ShadowRow } from '../learning-shadow-report.js';
 import { ENGINE_PAUSE_REASONS, type LearningEngineState } from '../learning-engine-state.js';
+import {
+  CONTEXT_KINDS,
+  ENABLEMENT_MODES,
+  ENABLEMENT_STATUSES,
+  type ContextEntry,
+  type LearningGovernanceStore,
+  type RuleEnablement,
+} from '../learning-governance.js';
 import type {
   ClaimedWazuhPushHint,
   WazuhPushHint,
@@ -364,6 +374,19 @@ function toJob(row: LearningJobRow): LearningJob {
     signals: toJobSignals(row.signals),
     status: oneOf(LEARNING_JOB_STATUSES, row.status, 'soc_learning_jobs', 'status'),
   };
+}
+
+function toEnablement(row: RuleEnablementRow): RuleEnablement {
+  const table = 'soc_learning_rule_enablements';
+  return {
+    ...row,
+    mode: oneOf(ENABLEMENT_MODES, row.mode, table, 'mode'),
+    status: oneOf(ENABLEMENT_STATUSES, row.status, table, 'status'),
+  };
+}
+
+function toContextEntry(row: ContextEntryRow): ContextEntry {
+  return { ...row, kind: oneOf(CONTEXT_KINDS, row.kind, 'soc_learning_context_entries', 'kind') };
 }
 
 function toEngineState(row: LearningEngineStateRow): LearningEngineState {
@@ -709,7 +732,24 @@ export class PostgresSocPersistence implements SocPersistence {
         save: (state: LearningEngineState, expectedRevision: number | null) =>
           stores.learningState.save(state, expectedRevision),
       };
+      const learningGovernance: LearningGovernanceStore = {
+        enablementById: async (tenantId, id) => {
+          const row = await stores.learningGovernance.enablementById(tenantId, id);
+          return row ? toEnablement(row) : undefined;
+        },
+        insertEnablement: (row) => stores.learningGovernance.insertEnablement(row),
+        updateEnablement: (row, expectedRevision) =>
+          stores.learningGovernance.updateEnablement(row, expectedRevision),
+        contextById: async (tenantId, id) => {
+          const row = await stores.learningGovernance.contextById(tenantId, id);
+          return row ? toContextEntry(row) : undefined;
+        },
+        insertContext: (row) => stores.learningGovernance.insertContext(row),
+        updateContext: (row, expectedRevision) =>
+          stores.learningGovernance.updateContext(row, expectedRevision),
+      };
       return work({
+        learningGovernance,
         learningState,
         learningJobs,
         alerts,
@@ -852,6 +892,14 @@ export class PostgresSocPersistence implements SocPersistence {
       if (row.origin === 'human') closures.push(toClosureEvidence(row));
     }
     return { closures, truePositivesByFingerprint };
+  }
+
+  public async listRuleEnablements(tenantId: string): Promise<readonly RuleEnablement[]> {
+    return (await this.queries.listRuleEnablements(tenantId)).map(toEnablement);
+  }
+
+  public async listContextEntries(tenantId: string): Promise<readonly ContextEntry[]> {
+    return (await this.queries.listContextEntries(tenantId)).map(toContextEntry);
   }
 
   public learningUndeliveredNotices(tenantId: string, now: Date) {

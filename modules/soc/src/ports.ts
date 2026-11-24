@@ -30,6 +30,11 @@ import type {
   PatternStatus,
 } from './learning-pattern.js';
 import type { LearningEngineStateStore } from './learning-engine-state.js';
+import type {
+  ContextEntry,
+  LearningGovernanceStore,
+  RuleEnablement,
+} from './learning-governance.js';
 import type { LearningHealthMetrics } from './learning-health.js';
 import type { ShadowRow } from './learning-shadow-report.js';
 import type {
@@ -320,6 +325,7 @@ export interface SocTransactionContext {
   readonly learning: LearningRecordStore;
   readonly learningJobs: LearningJobStore;
   readonly learningState: LearningEngineStateStore;
+  readonly learningGovernance: LearningGovernanceStore;
   readonly incidents: IncidentStore;
   readonly tasks: IncidentTaskStore;
   readonly notes: IncidentNoteStore;
@@ -427,6 +433,9 @@ export interface SocReadModel {
     tenantId: string,
     now: Date,
   ): Promise<{ readonly hot: number; readonly warm: number }>;
+  /** Fase 3 · habilitaciones por regla y entradas de contexto del tenant (todas, para filtrar). */
+  listRuleEnablements?(tenantId: string): Promise<readonly RuleEnablement[]>;
+  listContextEntries?(tenantId: string): Promise<readonly ContextEntry[]>;
   /** Fase 3 · estado del motor (pausa automática). */
   learningEngineState?(
     tenantId: string,
