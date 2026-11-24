@@ -218,7 +218,7 @@ say('');
 
 const canaries = runCanaries(4242, 500);
 say(
-  '## E4 · Ficha 4 — canarios de casi-coincidencia (huella real, decisión modelada)',
+  '## E4 · Ficha 4 — canarios de casi-coincidencia · MODELO DE DISEÑO (no es evidencia del motor; contrato real en docs/soc-learning/16-contrato-canarios-motor.md)',
   '',
   '500 patrones aprobados; por cada uno, una variante. La huella es la del repo (`modules/detection/src/fingerprint.ts`); la decisión es un **modelo** del diseño §7 (el motor no existe).',
   '',
