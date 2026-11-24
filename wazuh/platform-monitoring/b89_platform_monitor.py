@@ -395,6 +395,75 @@ def check_certificates(config: dict, now: datetime) -> list[Finding]:
     return findings
 
 
+def check_learning_engine(config: dict, now: datetime, rows_reader=psql_rows) -> list[Finding]:
+    """Dead man's switch del motor de aprendizaje SOC (mismos umbrales que /api/learning/health).
+
+    Lee la base directamente para avisar aunque el API esté caído. Sin ningún arranque registrado
+    (código anterior a la fase 2) no informa nada; con el motor apagado solo vigila la configuración.
+    """
+    spec = config.get("b89_learning") or {}
+    pg = config.get("postgres") or {}
+    heartbeat_max = float(spec.get("heartbeat_max_minutes", 5))
+    backlog_warn = float(spec.get("backlog_warn_minutes", 5))
+    backlog_critical = float(spec.get("backlog_critical_minutes", 30))
+    rows = rows_reader(
+        pg.get("container", "b89-postgres-1"), pg.get("role", "b89_monitor"), pg.get("database", "b89_secops"),
+        "SELECT "
+        "(SELECT max_mode FROM soc_learning_config_events ORDER BY at DESC LIMIT 1), "
+        "(SELECT max(beat_at) FROM soc_learning_worker_heartbeats), "
+        "(SELECT count(*) FROM soc_learning_jobs WHERE status = 'pending'), "
+        "(SELECT min(enqueued_at) FROM soc_learning_jobs WHERE status = 'pending'), "
+        "(SELECT count(*) FROM soc_learning_jobs WHERE status = 'dead' AND finished_at > now() - interval '1 day'), "
+        "(SELECT count(*) FROM soc_learning_pattern_events WHERE to_status = 'paused' AND at > now() - interval '1 day'), "
+        "(SELECT count(*) FROM (SELECT config_hash, lag(config_hash) OVER (ORDER BY at) AS prev, at "
+        "FROM soc_learning_config_events) c WHERE prev IS NOT NULL AND prev <> config_hash AND at > now() - interval '1 day')",
+    )
+    if not rows or not rows[0] or not rows[0][0]:
+        return []
+    mode, beat, pending, oldest, dead, pauses, changes = (rows[0] + [""] * 7)[:7]
+    findings: list[Finding] = []
+    changed = int(changes or 0)
+    findings.append(Finding(
+        "learning_config_changed", "b89-learning", changed > 0,
+        f"Configuración del motor de aprendizaje cambiada {changed} vez/veces en 24 h (modo actual {mode})."
+        if changed else f"Configuración del motor sin cambios (modo {mode}).",
+        "critical" if changed and mode in ("dry_run", "active") else "warning", "config",
+    ))
+    if mode == "off":
+        return findings
+    beat_age = minutes_since(_parse(beat), now)
+    findings.append(Finding(
+        "learning_heartbeat", "b89-learning", beat_age is None or beat_age > heartbeat_max,
+        "El worker del motor nunca registró un latido." if beat_age is None
+        else f"Último latido del worker del motor hace {_fmt_age(beat_age)}.",
+        "critical", "worker", value=None if beat_age is None else round(beat_age, 1),
+        threshold=heartbeat_max, unit="min",
+    ))
+    backlog_age = minutes_since(_parse(oldest), now)
+    backlog_problem = int(pending or 0) > 0 and backlog_age is not None and backlog_age > backlog_warn
+    findings.append(Finding(
+        "learning_backlog", "b89-learning", backlog_problem,
+        f"{pending} trabajo(s) del motor pendiente(s); el más viejo espera {_fmt_age(backlog_age)}."
+        if backlog_problem else f"Cola del motor al día ({pending or 0} pendiente(s)).",
+        "critical" if backlog_problem and backlog_age > backlog_critical else "warning", "queue",
+        value=None if backlog_age is None else round(backlog_age, 1), threshold=backlog_warn, unit="min",
+    ))
+    dead_count = int(dead or 0)
+    findings.append(Finding(
+        "learning_dead_letters", "b89-learning", dead_count > 0,
+        f"{dead_count} trabajo(s) del motor en dead-letter en 24 h (esas alertas quedaron con personas)."
+        if dead_count else "Sin trabajos del motor en dead-letter.",
+        "critical" if dead_count >= 10 else "warning", "queue", value=dead_count,
+    ))
+    paused = int(pauses or 0)
+    findings.append(Finding(
+        "learning_pattern_paused", "b89-learning", paused > 0,
+        f"{paused} patrón(es) de aprendizaje en pausa en 24 h." if paused else "Sin patrones en pausa en 24 h.",
+        "warning", "patterns", value=paused,
+    ))
+    return findings
+
+
 def check_ingestion(config: dict, now: datetime, newest_alert: datetime | None, rows_reader=psql_rows) -> list[Finding]:
     spec = config.get("b89_ingestion") or {}
     pg = config.get("postgres") or {}
@@ -706,6 +775,7 @@ def collect_findings(config: dict, now: datetime, indexer=None, api=None) -> lis
         ("indexer", check_indexer, (config, indexer)),
         ("certificates", check_certificates, (config, now)),
         ("ingestion", check_ingestion, (config, now, newest_alert)),
+        ("learning", check_learning_engine, (config, now)),
         ("host", check_host, (config,)),
         ("edge", check_edge, (config,)),
         ("vuln_intel", check_vuln_intel, (config, now)),

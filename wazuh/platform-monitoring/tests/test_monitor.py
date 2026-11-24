@@ -342,3 +342,28 @@ def test_source_status_carries_the_collector_scope(tmp_path):
     config["collectors"]["cloudflare"]["state_file"] = str(tmp_path / "missing.json")
     events, _ = mon.source_snapshots(findings, config, {}, NOW)
     assert "scope_count" not in events[0]["b89"]["health"]
+
+
+def test_learning_engine_dead_mans_switch():
+    fresh = (NOW - timedelta(minutes=1)).isoformat()
+    healthy = [["shadow", fresh, "0", "", "0", "0", "0"]]
+    found = {f.check: f for f in mon.check_learning_engine({}, NOW, lambda *a: healthy)}
+    assert not any(f.problem for f in found.values())
+    stale = [["shadow", (NOW - timedelta(minutes=9)).isoformat(), "4", (NOW - timedelta(minutes=40)).isoformat(), "12", "1", "0"]]
+    found = {f.check: f for f in mon.check_learning_engine({}, NOW, lambda *a: stale)}
+    assert found["learning_heartbeat"].problem and found["learning_heartbeat"].severity == "critical"
+    assert found["learning_backlog"].problem and found["learning_backlog"].severity == "critical"
+    assert found["learning_dead_letters"].severity == "critical"
+    assert found["learning_pattern_paused"].problem
+    never = [["shadow", "", "0", "", "0", "0", "0"]]
+    (_config, beat, *_rest) = mon.check_learning_engine({}, NOW, lambda *a: never)
+    assert beat.problem and "nunca" in beat.summary
+
+
+def test_learning_engine_off_or_absent():
+    assert mon.check_learning_engine({}, NOW, lambda *a: []) == []
+    assert mon.check_learning_engine({}, NOW, lambda *a: [["", "", "", "", "", "", ""]]) == []
+    (config,) = mon.check_learning_engine({}, NOW, lambda *a: [["off", "", "0", "", "0", "0", "1"]])
+    assert config.check == "learning_config_changed" and config.problem and config.severity == "warning"
+    (raised, *_rest) = mon.check_learning_engine({}, NOW, lambda *a: [["active", NOW.isoformat(), "0", "", "0", "0", "1"]])
+    assert raised.problem and raised.severity == "critical"
