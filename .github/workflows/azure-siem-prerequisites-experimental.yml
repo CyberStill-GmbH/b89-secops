@@ -120,7 +120,7 @@ jobs:
             > "$RUNNER_TEMP/manager-artifact/provenance.json"
 
       - name: Upload ephemeral Manager package
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: azure-siem-manager-4.14.8-experimental
           path: ${{ runner.temp }}/manager-artifact/
@@ -235,7 +235,7 @@ jobs:
           fi
 
       - name: Upload ephemeral Indexer package
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: azure-siem-indexer-4.14.8-experimental
           path: ${{ runner.temp }}/indexer-artifact/
@@ -306,7 +306,7 @@ jobs:
             > "$RUNNER_TEMP/filebeat-artifact/provenance.json"
 
       - name: Upload ephemeral Filebeat artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: azure-siem-filebeat-7.10.2-2-experimental
           path: ${{ runner.temp }}/filebeat-artifact/
@@ -363,7 +363,7 @@ jobs:
           cp "$filebeat/provenance.json" "$RUNNER_TEMP/evidence/filebeat-provenance.json"
 
       - name: Upload ephemeral evidence for one day
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: azure-siem-prerequisites-manifest-experimental
           path: ${{ runner.temp }}/evidence/
