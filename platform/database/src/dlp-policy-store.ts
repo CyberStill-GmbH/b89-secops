@@ -78,10 +78,10 @@ export class PrismaDlpPolicyStore {
     readonly expiresAt: Date;
     readonly now: Date;
   }): Promise<boolean> {
-    await this.client.$executeRaw`
-      DELETE FROM "dlp_endpoints"
-       WHERE "tenant_id" = ${input.tenantId} AND "enrolled_at" IS NULL
-         AND "enrollment_expires_at" <= ${input.now}`;
+    // Runtime DB role deliberately has no table-wide DELETE permission. The narrowly scoped
+    // SECURITY DEFINER function removes only expired, unclaimed enrollment tokens for this tenant.
+    await this.client.$queryRaw`
+      SELECT public.dlp_cleanup_expired_enrollment_tokens(${input.tenantId})`;
     const inserted = await this.client.$queryRaw<{ id: string }[]>`
       INSERT INTO "dlp_endpoints" ("id", "tenant_id", "token_hash", "enrollment_expires_at")
       SELECT ${input.id}, ${input.tenantId}, ${input.tokenHash}, ${input.expiresAt}
@@ -134,10 +134,9 @@ export class PrismaDlpPolicyStore {
     readonly id: string;
     readonly at: Date;
   }): Promise<boolean> {
-    const count = await this.client.$executeRaw`
-      DELETE FROM "dlp_endpoints"
-       WHERE "tenant_id" = ${input.tenantId} AND "id" = ${input.id} AND "enrolled_at" IS NULL`;
-    return count === 1;
+    const rows = await this.client.$queryRaw<{ cancelled: boolean }[]>`
+      SELECT public.dlp_cancel_enrollment_token(${input.tenantId}, ${input.id}) AS cancelled`;
+    return rows[0]?.cancelled ?? false;
   }
 
   public async endpointByToken(input: {

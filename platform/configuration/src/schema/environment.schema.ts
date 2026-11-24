@@ -134,6 +134,8 @@ export const KNOWN_B89_VARIABLES = new Set([
   'B89_DIRECTORY_SYNC_INTERVAL_MINUTES',
   'B89_TEAMS_WORKFLOW_URL',
   'B89_ALERT_MAIL_SENDER',
+  // Generado por el despliegue y consumido por GET /api/cloudflare/allowlist/feed.
+  'B89_ALLOWLIST_FEED_TOKEN',
   'B89_VAPID_PRIVATE_KEY',
   'B89_VAPID_PRIVATE_KEY_REF',
   // Bunny (asistente IA); validación en assistant.schema.ts (la lista se repite literal: el

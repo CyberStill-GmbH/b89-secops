@@ -36,6 +36,15 @@ RUN pnpm --filter '@b89/api...' run build \
     && pnpm --filter @b89/api deploy --prod --legacy /runtime \
     && node scripts/docker/prune-deploy.mjs /runtime
 
+# The dashboard can download verified, platform-specific Ferrispector packages from the
+# capability-checked DLP API. Every upstream YARA-X archive is pinned by SHA-256.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates python3 \
+    && python3 infra/wazuh/endpoint/ferrispector/build-release-packages.py /tmp/ferrispector-packages \
+    && apt-get purge -y python3 \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
+
 FROM --platform=linux/amd64 gcr.io/distroless/nodejs24-debian13:nonroot@sha256:088a01637f22908632ba09018be2e0b516f2fa6f7869c191d29491139db43c78 AS runtime
 
 # Bundle CA de RDS con permisos ya fijados en la etapa de build (C-1).
@@ -49,6 +58,7 @@ ENV NODE_ENV=production \
 WORKDIR /app
 
 COPY --from=build --chown=1000:1000 /runtime/ ./
+COPY --from=build --chown=1000:1000 /tmp/ferrispector-packages/ /app/ferrispector-packages/
 
 USER 1000:1000
 EXPOSE 3000

@@ -172,6 +172,43 @@ export class B89ApiClient {
     return this.request<T>('DELETE', path, undefined, session.csrfToken);
   }
 
+  /** Descarga protegida de un archivo binario servido por la API B89. */
+  public async download(path: string): Promise<{ readonly blob: Blob; readonly filename: string; readonly sha256: string }> {
+    await this.session();
+    let response: Response;
+    try {
+      response = await this.fetchImpl(`${this.options.apiPrefix}${path}`, {
+        method: 'GET',
+        headers: { accept: 'application/zip, application/json' },
+        credentials: 'same-origin',
+        cache: 'no-store',
+      });
+    } catch {
+      throw new B89ApiError('DEPENDENCY_DEGRADED', 0, null);
+    }
+    if (!response.ok) {
+      let parsed: unknown = null;
+      try {
+        parsed = await response.json();
+      } catch {
+        parsed = null;
+      }
+      const error = errorFrom(response.status, parsed);
+      if (error.code === 'AUTH_REQUIRED' || error.code === 'SESSION_EXPIRED') {
+        this.sessionPromise = null;
+        this.options.redirect?.(this.loginUrl());
+      }
+      throw error;
+    }
+    const disposition = response.headers.get('content-disposition') ?? '';
+    const filename = /filename="(Ferrispector-[a-z]+-(?:x64|arm64)\.zip)"/iu.exec(disposition)?.[1];
+    const sha256 = response.headers.get('x-content-sha256') ?? '';
+    if (!filename || !/^[0-9a-f]{64}$/iu.test(sha256) || !(response.headers.get('content-type') ?? '').toLowerCase().includes('application/zip')) {
+      throw new B89ApiError('DEPENDENCY_DEGRADED', response.status, null);
+    }
+    return { blob: await response.blob(), filename, sha256: sha256.toLowerCase() };
+  }
+
   /** Prefijo público de la API B89 (mismo origen), para sondas opcionales sin redirección. */
   public get apiPrefix(): string {
     return this.options.apiPrefix;

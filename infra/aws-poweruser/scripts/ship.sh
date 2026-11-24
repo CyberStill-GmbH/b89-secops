@@ -90,7 +90,7 @@ ssh_remote() {
       --instance-os-user ubuntu \
       --ssh-public-key "$(<"$EIC_PUBLIC_KEY")" \
       --region "$AWS_REGION" \
-      --query Success --output text)"
+      --query Success --output text </dev/null)"
     [[ $success == True ]] || {
       echo 'EC2 Instance Connect rechazó la clave SSH temporal' >&2
       return 1
@@ -109,6 +109,7 @@ fi
 
 tar -C "$REPO" -czf - \
   --exclude='./.git' --exclude='./.env' --exclude='./.env.*' --exclude='*/.env' \
+  --exclude='./.tmp-*' --exclude='*/.tmp-*' \
   --exclude='node_modules' --exclude='./.aws' --exclude='./.codex' \
   --exclude='./.local' --exclude='./.claude' --exclude='./.agents' \
   --exclude='pytest-cache-files-*' --exclude='.pytest-tmp-wazuh-agent' \

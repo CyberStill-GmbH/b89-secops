@@ -115,6 +115,83 @@ export function StepUpNotice({ action, logoutHref, onDismiss }: { action: string
   );
 }
 
+const INSTALLER_GROUPS = [
+  { platform: 'windows', label: 'Windows', options: [{ arch: 'x64', label: '64 bits · Intel o AMD' }, { arch: 'arm64', label: 'ARM64' }] },
+  { platform: 'macos', label: 'macOS', options: [{ arch: 'arm64', label: 'Apple Silicon' }, { arch: 'x64', label: 'Intel' }] },
+  { platform: 'linux', label: 'Linux', options: [{ arch: 'x64', label: '64 bits · Intel o AMD' }, { arch: 'arm64', label: 'ARM64' }] },
+] as const;
+
+/** Descargas solo para administradores; cada paquete trae motor, reglas verificadas e instrucciones. */
+function InstallerDownloads({ api, onPackageDownloaded }: {
+  api: ReturnType<typeof useConsole>['api'];
+  onPackageDownloaded: (platform: string, sha256: string) => void;
+}) {
+  const [downloading, setDownloading] = useState<string | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [downloaded, setDownloaded] = useState<{ filename: string; sha256: string } | null>(null);
+  const download = async (platform: string, arch: string) => {
+    const target = `${platform}-${arch}`;
+    setDownloading(target);
+    setError(null);
+    try {
+      const result = await api.download(`/dlp/installers/${target}`);
+      setDownloaded({ filename: result.filename, sha256: result.sha256 });
+      onPackageDownloaded(target, result.sha256);
+      const url = URL.createObjectURL(result.blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = result.filename;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (reason) {
+      setError(reason);
+    } finally {
+      setDownloading(null);
+    }
+  };
+
+  return (
+    <section className="b89Panel b89Dlp__downloads" aria-labelledby="b89-dlp-downloads">
+      <div className="b89Panel__header">
+        <div>
+          <h2 id="b89-dlp-downloads">Instalar Ferrispector</h2>
+          <p>Descarga el paquete para el equipo que vas a proteger. La clave de conexión se crea aparte.</p>
+        </div>
+      </div>
+      {error && <ErrorCallout error={error} />}
+      <div className="b89Dlp__downloadOptions">
+        {INSTALLER_GROUPS.map((group) => (
+          <details className="b89Dlp__downloadCard" key={group.platform}>
+            <summary>
+              <span>{group.label}</span>
+              <span className="b89Muted">Elegir arquitectura</span>
+            </summary>
+            <div className="b89Dlp__downloadChoices">
+              {group.options.map((option) => {
+                const target = `${group.platform}-${option.arch}`;
+                return (
+                  <EuiButton
+                    key={target}
+                    size="s"
+                    iconType="download"
+                    isLoading={downloading === target}
+                    isDisabled={Boolean(downloading)}
+                    onClick={() => void download(group.platform, option.arch)}
+                  >
+                    {option.label}
+                  </EuiButton>
+                );
+              })}
+            </div>
+          </details>
+        ))}
+      </div>
+      {downloaded && <p className="b89Dlp__downloaded" role="status">{downloaded.filename} descargado. SHA-256: <Mono>{downloaded.sha256}</Mono></p>}
+      <p className="b89Dlp__downloadNote">El paquete incluye el motor y las reglas iniciales. Instálalo con permisos de administrador y luego conecta el equipo con una clave de un solo uso.</p>
+    </section>
+  );
+}
+
 /** La respuesta primero: cuántos equipos están protegidos y si hay algo que atender. */
 export function FleetStatus({
   summary,
@@ -336,7 +413,24 @@ export function ConnectWizard({
         <div className="b89Dlp__stepBody">
           <p>La clave sirve para un solo equipo y vence en 30 minutos.</p>
           {state.stepUp && <StepUpNotice action="crear la clave" logoutHref={logoutHref} />}
-          {Boolean(state.error) && <ErrorCallout error={state.error} />}
+          {state.error instanceof B89ApiError ? (
+            <EuiCallOut
+              color={state.error.code === 'DEPENDENCY_DEGRADED' ? 'warning' : 'danger'}
+              iconType={state.error.code === 'DEPENDENCY_DEGRADED' ? 'alert' : 'cross'}
+              size="s"
+              title="No se pudo crear la clave de conexión"
+            >
+              <p>
+                {state.error.code === 'DEPENDENCY_DEGRADED'
+                  ? 'El servicio DLP o su base de datos no respondió. La clave no quedó activa. Reintenta en unos minutos.'
+                  : state.error.code === 'RESOURCE_UNAVAILABLE'
+                    ? 'No se pudo reservar la clave. Comprueba el permiso de administración de DLP y el límite de equipos; si continúa, comparte la referencia con Plataforma.'
+                    : 'La solicitud no se completó. Revisa tu sesión y vuelve a intentarlo.'}
+              </p>
+              {state.error.correlationId && <p>Referencia: <Mono>{state.error.correlationId}</Mono></p>}
+              <EuiButtonEmpty size="s" flush="left" onClick={onCreate}>Intentar de nuevo</EuiButtonEmpty>
+            </EuiCallOut>
+          ) : state.error ? <ErrorCallout error={state.error} /> : null}
           <EuiButton fill onClick={onCreate} isLoading={state.busy}>Crear clave</EuiButton>
         </div>
       )}
@@ -1015,17 +1109,27 @@ export function DlpView() {
         {policyError && <ErrorCallout error={policyError} onRetry={() => { void loadPolicy(); void loadEndpoints(); }} />}
         {Boolean(actionError) && <ErrorCallout error={actionError} />}
 
-        {endpoints === null && !endpointsError ? (
-          <EuiLoadingContent lines={2} />
-        ) : (
-          <FleetStatus
-            summary={summary}
-            policy={policy}
-            endpointsError={endpointsError}
-            stale={Boolean(endpointsError) && endpoints !== null}
-            onRetry={() => void loadEndpoints()}
-          />
-        )}
+        <div className="b89Dlp__overview">
+          {endpoints === null && !endpointsError ? (
+            <EuiLoadingContent lines={2} />
+          ) : (
+            <FleetStatus
+              summary={summary}
+              policy={policy}
+              endpointsError={endpointsError}
+              stale={Boolean(endpointsError) && endpoints !== null}
+              onRetry={() => void loadEndpoints()}
+            />
+          )}
+          {canConfigure && (
+            <InstallerDownloads
+              api={api}
+              onPackageDownloaded={(platform, sha256) => {
+                if (platform.startsWith('windows-')) updateInstall({ ...install, packageSha256: sha256 });
+              }}
+            />
+          )}
+        </div>
 
         <FindingsLoader basePath={basePath} />
 

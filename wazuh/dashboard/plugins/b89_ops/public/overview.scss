@@ -1100,6 +1100,74 @@ a.b89Kpi__chip {
   white-space: nowrap;
 }
 
+.b89Dlp__overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  align-items: start;
+  gap: $ouiSizeM;
+
+  @media (max-width: $b89OvMobile) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.b89Dlp__downloads {
+  display: grid;
+  gap: $ouiSizeS;
+
+  .b89Panel__header {
+    margin-bottom: 0;
+  }
+
+  .b89Panel__header p,
+  .b89Dlp__downloadNote,
+  .b89Dlp__downloaded {
+    margin: $ouiSizeXS 0 0;
+    color: $ouiTextSubduedColor;
+    font-size: $ouiFontSizeS;
+    line-height: 1.45;
+  }
+}
+
+.b89Dlp__downloaded {
+  overflow-wrap: anywhere;
+}
+
+.b89Dlp__downloadOptions {
+  display: grid;
+  gap: $ouiSizeXS;
+}
+
+.b89Dlp__downloadCard {
+  border: 1px solid $ouiBorderColor;
+  border-radius: $b89OvRadius;
+  background: $ouiColorEmptyShade;
+
+  summary {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: $ouiSizeXS $ouiSize;
+    min-height: 40px;
+    padding: 0 $ouiSizeS;
+    cursor: pointer;
+    font-weight: $ouiFontWeightMedium;
+  }
+
+  summary:focus-visible {
+    outline: 2px solid $ouiColorPrimary;
+    outline-offset: 2px;
+  }
+}
+
+.b89Dlp__downloadChoices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $ouiSizeXS;
+  padding: 0 $ouiSizeS $ouiSizeS;
+}
+
 .b89Dlp__status {
   display: flex;
   flex-wrap: wrap;
