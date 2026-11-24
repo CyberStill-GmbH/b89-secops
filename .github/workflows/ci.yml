@@ -272,6 +272,43 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  soc-learning-postgres:
+    name: SOC learning migrations, rollback and concurrency on PostgreSQL
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        # Mismo digest que platform/testing/integration-environment.lock.json (postgres 18.6).
+        image: docker.io/library/postgres@sha256:86c951e05bf56c93d95d397747fb8820ac76cc3bedb78f43abd83eedbe3666ae
+        env:
+          POSTGRES_USER: b89
+          POSTGRES_PASSWORD: ci-only-not-a-secret
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U b89"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      ADMIN_DATABASE_URL: postgresql://b89:ci-only-not-a-secret@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Generate the Prisma client
+        run: pnpm --filter @b89/database generate
+      - name: Install the PostgreSQL client
+        run: command -v psql || (sudo apt-get update && sudo apt-get install -y postgresql-client)
+      - name: Migrations, backfill, guarded rollback, re-apply and integration specs
+        run: bash scripts/ci/soc-learning-postgres.sh
+
   c28-krakend:
     name: C-28 KrakenD config and route contract
     runs-on: ubuntu-24.04
