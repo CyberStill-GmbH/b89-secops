@@ -4,6 +4,25 @@ Reglas 101110–101116 (`infra/wazuh/endpoint/rules/b89_endpoint_rules.xml`). Fe
 bloquea, no mueve y no borra archivos. Los eventos traen el equipo, la regla, la extensión, el tamaño y la
 huella SHA-256 del archivo; nunca la ruta ni el contenido.
 
+## Instalar un equipo
+
+1. En **DLP de endpoints**, abre una ficha de Windows, macOS o Linux y descarga la arquitectura del equipo.
+   Los paquetes contienen el motor YARA-X v1.24.0, las reglas iniciales y sus avisos de licencia; cada
+   archivo de origen se comprueba con SHA-256 durante la compilación. La descarga requiere `dlp.configure`
+   y queda auditada como `dlp.installer.requested`.
+2. Extrae el ZIP en el equipo y abre **Conectar un equipo** en la consola. Selecciona el sistema, indica la
+   carpeta aprobada y los datos del servidor que pida el asistente. En Windows, el SHA-256 del ZIP se
+   completa al descargarlo y el instalador lo compara antes de instalar.
+3. Crea una clave de un solo uso, vence en 30 minutos. Pégala cuando el instalador la solicite; no la pongas
+   en el comando ni en el historial de la terminal. En Windows ejecuta PowerShell como administrador; en
+   macOS o Linux usa `sudo`.
+4. Espera a que la consola muestre el equipo conectado. La primera conexión recibe la política activa en
+   menos de un minuto. Si no aparece, comprueba red, permisos de la carpeta y la URL de la consola.
+
+La API entrega paquetes solo a quien tenga `dlp.configure`; la ruta de descarga responde sin caché. Si la
+clave no se puede guardar, la consola muestra la referencia para Plataforma. Si falla el registro de
+auditoría después de crearla, la API anula la clave para que no quede un secreto activo sin seguimiento.
+
 ## Triage de 10 minutos
 
 1. Abre la alerta y mira «Por qué saltó»: qué tipo de dato se encontró y en qué equipo.

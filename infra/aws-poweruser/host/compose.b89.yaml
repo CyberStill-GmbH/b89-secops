@@ -135,9 +135,11 @@ services:
     volumes:
       - /opt/b89/pki/ca.pem:/etc/b89-local/ca.pem:ro
     networks:
-      - default
-      - correlator-internal
-      - reports-internal
+      # Reserve a distinct address so API recreation cannot take the edge proxy's .11.
+      default:
+        ipv4_address: 172.30.89.15
+      correlator-internal: {}
+      reports-internal: {}
     depends_on:
       postgres:
         condition: service_healthy

@@ -1,5 +1,8 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { Body, Controller, Get, Header, Inject, Param, Post, Put, Req } from '@nestjs/common';
+import { Body, Controller, Get, Header, Inject, Param, Post, Put, Req, Res, StreamableFile } from '@nestjs/common';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import type { FastifyReply } from 'fastify';
 
 import { recordAudit } from '@b89/audit';
 import type { IncomingRequest } from '../http/http-contracts.js';
@@ -37,6 +40,8 @@ const MAX_FINGERPRINTS = 10_000;
 const MAX_HOSTNAME = /^[A-Za-z0-9_.-]{1,128}$/u;
 const AGENT_ID = /^[A-Za-z0-9_.-]{1,16}$/u;
 const POLICY_VERSION = /^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]{1,32})?$/u;
+const INSTALLER_PLATFORMS = new Set(['windows-x64', 'windows-arm64', 'macos-x64', 'macos-arm64', 'linux-x64', 'linux-arm64']);
+const INSTALLER_DIR = '/app/ferrispector-packages';
 
 interface DlpPolicyDocument {
   readonly policyVersion: string;
@@ -313,18 +318,59 @@ export class DlpPolicyController {
     const id = randomUUID();
     const now = this.runtime.now();
     const expiresAt = new Date(now.getTime() + ENROLLMENT_TTL_MS);
-    const created = await this.store(correlationId).issueEnrollmentToken({
-      id,
-      tenantId: actor.tenantId,
-      tokenHash: createHash('sha256').update(token, 'utf8').digest('hex'),
-      expiresAt,
-      now,
-    });
+    const store = this.store(correlationId);
+    let created: boolean;
+    try {
+      created = await store.issueEnrollmentToken({
+        id,
+        tenantId: actor.tenantId,
+        tokenHash: createHash('sha256').update(token, 'utf8').digest('hex'),
+        expiresAt,
+        now,
+      });
+    } catch {
+      // Keep database details private while returning a useful, correlatable service error.
+      throw new ApiError('DEPENDENCY_DEGRADED', correlationId);
+    }
     if (!created) throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
-    await this.audit(actor, correlationId, 'dlp.endpoint.enrollment_token_created', { type: 'dlp_endpoint', id }, {
-      expiresAt: expiresAt.toISOString(),
-    });
+    try {
+      await this.audit(actor, correlationId, 'dlp.endpoint.enrollment_token_created', { type: 'dlp_endpoint', id }, {
+        expiresAt: expiresAt.toISOString(),
+      });
+    } catch {
+      // Do not leave a valid, untracked enrollment secret if durable audit is unavailable.
+      await store.cancelEnrollment({ tenantId: actor.tenantId, id, at: this.runtime.now() }).catch(() => false);
+      throw new ApiError('DEPENDENCY_DEGRADED', correlationId);
+    }
     return { correlationId, id, token, expiresAt: expiresAt.toISOString() };
+  }
+
+  @Get('installers/:platform')
+  @Header('Cache-Control', 'private, no-store')
+  public async downloadInstaller(
+    @Req() request: IncomingRequest,
+    @Param('platform') platform: string,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ) {
+    const { actor, correlationId } = await this.authorized(request, 'dlp.configure');
+    if (!INSTALLER_PLATFORMS.has(platform)) throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
+    const filename = `Ferrispector-${platform}.zip`;
+    let bytes: Buffer;
+    try {
+      bytes = await readFile(join(INSTALLER_DIR, filename));
+    } catch {
+      throw new ApiError('DEPENDENCY_DEGRADED', correlationId);
+    }
+    reply.header('X-Content-SHA256', createHash('sha256').update(bytes).digest('hex'));
+    await this.audit(actor, correlationId, 'dlp.installer.requested', { type: 'dlp_installer', id: platform }, {
+      filename,
+      bytes: bytes.byteLength,
+    });
+    return new StreamableFile(bytes, {
+      type: 'application/zip',
+      disposition: `attachment; filename="${filename}"`,
+      length: bytes.byteLength,
+    });
   }
 
   /**
