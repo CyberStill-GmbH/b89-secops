@@ -664,3 +664,25 @@ Backend de Claude; **la consola es de Codex** y no se tocó.
 - **Pedido a Codex:** en «Cerrar» de `alerts_view.tsx`/`alert_actions.ts`, selector de motivo según el
   veredicto, justificación, dato de legitimidad y evidencia (ticket/URL/alerta), y mostrar
   `closureReason`/`closureOrigin` en el detalle. Revisión del contrato antes de activar la bandera.
+
+### Claude · 2026-11-24 · Aprendizaje SOC · etapa B: huella de alerta y extensión `b89.observables`
+
+Lo pidió el dueño. Commits locales en `feat/soc-learning-stage-a` (sin push). Solo backend.
+
+- **Contrato:** extensión `extensions['b89.observables']` v1 (`packages/contracts/src/observables`),
+  aditiva dentro de SecurityEvent 1.0.0. Proceso, padre, línea de comando **normalizada y redactada**,
+  hashes, destino y MITRE. El contrato no usa Node: el SHA-256 lo inyecta quien normaliza.
+- **Mapping Wazuh 1.4.0** (`wazuh-observables.ts`, declarado en el inventario C-23 como sub-mapping).
+- **Huella v1** en `modules/detection/src/fingerprint.ts` y clave `fuente:rule_id` en `rule-key.ts`
+  (rangos de `detections/catalog.yaml`; una spec falla si se desalinean: **quien edite `id_ranges` debe
+  actualizar `RULE_SOURCE_RANGES`**). Se calcula al promover y se guarda en `soc_alert_fingerprints`
+  (migración `20261124130000`, append-only).
+- **Desvíos del diseño** (no edité `01-diseno.md`: tiene cambios de otra sesión sin commit):
+  el código vive en `@b89/contracts` + `@b89/detection` y no en un paquete `@b89/soc-learning` nuevo
+  (sin pnpm en esta máquina para enlazar un workspace); `cmdlineHmac` aplazado (la línea original ya no
+  se persiste en B89; queda en el crudo del Indexer bajo su retención); `rule_key` vive en
+  `soc_alert_fingerprints`, no como columna de `soc_alerts`; MITRE se guarda como listas
+  `techniques`/`tactics` (Wazuh no las empareja).
+- Validación: suite 1609/1611 (`provider-coupling` previa, `promotion.ts`), typecheck OK. Migraciones e
+  integración Postgres **no corridas** (sin Docker).
+- Para Codex: nada que cambiar en la consola todavía; la huella se expondrá con el motor (etapa E).
