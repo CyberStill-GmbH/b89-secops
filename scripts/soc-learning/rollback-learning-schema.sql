@@ -115,7 +115,8 @@ DELETE FROM _prisma_migrations
     '20261124163000_soc_learning_effective_priority',
     '20261124164000_soc_learning_engine_state',
     '20261124165000_soc_learning_governance',
-    '20261124166000_soc_learning_sampling_key'
+    '20261124166000_soc_learning_sampling_key',
+    '20261124167000_soc_learning_check_fixes'
  );
 
 COMMIT;

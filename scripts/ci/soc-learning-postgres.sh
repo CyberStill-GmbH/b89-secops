@@ -39,7 +39,7 @@ migrate() { (cd "$root/platform/database" && DATABASE_URL="$db_url" pnpm exec pr
 
 step "1. Migraciones"
 migrate
-psql "$db_url" -v ON_ERROR_STOP=1 -tAc "SELECT count(*) FROM _prisma_migrations WHERE migration_name LIKE '%soc_learning%' AND finished_at IS NOT NULL" | grep -qx 11
+psql "$db_url" -v ON_ERROR_STOP=1 -tAc "SELECT count(*) FROM _prisma_migrations WHERE migration_name LIKE '%soc_learning%' AND finished_at IS NOT NULL" | grep -qx 12
 
 step "2. Etiquetado retroactivo (simulación, aplicado e idempotente)"
 psql "$db_url" -v ON_ERROR_STOP=1 -v apply=0 -f "$root/scripts/soc-learning/backfill-closure-origin.sql"
@@ -68,7 +68,7 @@ INSERT INTO soc_alerts (id, tenant_id, candidate_id, event_record_id, title, pri
 VALUES ('0199c1b0-0000-7000-8000-000000000001', 't-prior', '0199c1b0-0000-7000-8000-000000000001', '0199c1b0-0000-7000-8000-000000000002', 't', 'P4', 30, '[]', 'closed', now(), now(), 2, 'human');
 SQL
 (cd "$root/platform/database" && DATABASE_URL="$prior_url" pnpm exec prisma migrate deploy --schema prisma/schema.prisma)
-psql "$prior_url" -v ON_ERROR_STOP=1 -tAc "SELECT count(*) FROM _prisma_migrations WHERE migration_name LIKE '%soc_learning%' AND finished_at IS NOT NULL" | grep -qx 11
+psql "$prior_url" -v ON_ERROR_STOP=1 -tAc "SELECT count(*) FROM _prisma_migrations WHERE migration_name LIKE '%soc_learning%' AND finished_at IS NOT NULL" | grep -qx 12
 test "$(psql "$prior_url" -tAc "SELECT count(*) FROM soc_alerts WHERE tenant_id = 't-prior'")" = 1
 
 step "4c. El rollback de D/E se niega si hay datos de D/E"

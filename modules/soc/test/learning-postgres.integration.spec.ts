@@ -644,6 +644,18 @@ describe.skipIf(!databaseUrl)('Aprendizaje SOC D/E · PostgreSQL real', () => {
     );
   });
 
+  it('CHECK con NULL: pausa sin motivo y demoted_by sin prioridad efectiva se rechazan', async () => {
+    await expect(
+      adminQuery(`INSERT INTO soc_learning_engine_state VALUES ($1, true, NULL, now(), 1)`, [
+        `${TENANT}-null`,
+      ]),
+    ).rejects.toThrow(/engine_state_reason/u);
+    const alert = await ingest(fingerprintOf('m'), { priority: 'P3' });
+    await expect(
+      adminQuery(`UPDATE soc_alerts SET demoted_by = $2 WHERE id = $1`, [alert.id, randomUUID()]),
+    ).rejects.toThrow(/effective_priority_floor/u);
+  });
+
   it('la base rechaza un cierre del motor fuera de P4 aunque el código lo intentara', async () => {
     const alert = await ingest(fingerprintOf('j'), { priority: 'P2' });
     await expect(
