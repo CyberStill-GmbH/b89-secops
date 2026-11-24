@@ -58,7 +58,7 @@ jobs:
         run: terraform test
 
       - name: Setup TFLint
-        uses: terraform-linters/setup-tflint@v4
+        uses: terraform-linters/setup-tflint@v6
 
       - name: tflint
         run: |
