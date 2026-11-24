@@ -154,6 +154,29 @@ export class LearningController {
     };
   }
 
+  /** Salud del motor (meta-monitoreo): líder y administración (`observability.read_soc`). */
+  @Get('learning/health')
+  public async health(@Req() request: IncomingRequest) {
+    const { actor, correlationId } = await readingActor(this.runtime, request);
+    if (!actor.capabilities.has('observability.read_soc')) {
+      throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
+    }
+    const { report, metrics } = await this.runtime.learningHealth();
+    return {
+      correlationId,
+      status: report.status,
+      alerts: report.alerts,
+      metrics: {
+        ...metrics,
+        heartbeatAt: metrics.heartbeatAt?.toISOString() ?? null,
+        backlog: {
+          ...metrics.backlog,
+          oldestPendingAt: metrics.backlog.oldestPendingAt?.toISOString() ?? null,
+        },
+      },
+    };
+  }
+
   @Get('learning/patterns')
   public async patterns(@Req() request: IncomingRequest, @Query('status') status?: string) {
     const { actor, correlationId } = await this.reader(request);

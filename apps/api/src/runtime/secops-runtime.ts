@@ -70,13 +70,17 @@ import {
 } from '@b89/detection';
 import { OBSERVABLES_NORMALIZER_VERSION } from '@b89/contracts';
 import {
-  evaluateAlertWithLearning,
+  drainLearningQueue,
+  evaluateLearningHealth,
   InMemorySoc,
   ingestCandidate,
   readinessSnapshotFrom,
   refreshLearningPatterns,
   type EngineContext,
   type EngineSettings,
+  type LearningHealthMetrics,
+  type LearningHealthReport,
+  type LearningWorkerPolicy,
   type ReadinessSnapshot,
   type EntityRefFactory,
   type OutboxLane,
@@ -261,6 +265,18 @@ export interface LearningRuntimeOptions {
   readonly refreshMs: number;
   /** Aprobadores designados (`B89_SOC_LEARNING_APPROVERS`). */
   readonly approvers: readonly string[];
+  /** Worker de la cola del motor (fase 2); por defecto `DEFAULT_LEARNING_WORKER_POLICY`. */
+  readonly worker?: LearningWorkerPolicy;
+  readonly workerIntervalMs?: number;
+}
+
+/** Huella de la configuración del motor de cada arranque (también con el motor apagado). */
+export interface LearningConfigFingerprint {
+  readonly hash: string;
+  readonly maxMode: 'off' | 'shadow' | 'dry_run' | 'active';
+  readonly activeRules: number;
+  readonly killSwitch: boolean;
+  readonly samplingKeyVersion: string | null;
 }
 
 /** Ventana de evidencia para la cobertura de huella fina por fuente (compuerta 4). */
@@ -314,6 +330,7 @@ export interface RuntimeOptions {
   readonly closureReasonRequired?: boolean;
   /** Aprendizaje SOC · etapas D y E: refresco de patrones y motor de decisión. */
   readonly learning?: LearningRuntimeOptions;
+  readonly learningConfig?: LearningConfigFingerprint;
   /** Aprendizaje SOC · etapa C: ventana y tramo de la agrupación por huella; sin ella no se agrupa. */
   readonly alertGrouping?: {
     readonly windowMs: number;
@@ -454,6 +471,8 @@ export class SecOpsRuntime {
   private readonly digests: NotificationDispatcher;
   /** Aprendizaje SOC · refresco periódico de patrones (solo con `learning`). */
   private readonly learningLoop: NotificationDispatcher | undefined;
+  /** Fase 2 · worker de la cola del motor, fuera del camino de la ingesta. */
+  private readonly learningWorker: NotificationDispatcher | undefined;
   /** Último estado medido de la fuente de ingesta, para la guarda `GUARD_SOURCE`. */
   private learningSourceState: { readonly state: string; readonly at: Date } | undefined;
   public readonly correlatorServiceToken: string | undefined;
@@ -546,6 +565,14 @@ export class SecOpsRuntime {
           onError: options.onDispatchError ?? (() => undefined),
         })
       : undefined;
+    this.learningWorker =
+      options.learning && this.soc.learningQueue
+        ? new NotificationDispatcher({
+            drain: async () => (await this.drainLearning()).claimed,
+            intervalMs: options.learning.workerIntervalMs ?? 5_000,
+            onError: options.onDispatchError ?? (() => undefined),
+          })
+        : undefined;
     this.detectionContext = options.detectionContext ?? {
       privilegedIdentities: new Set(),
       criticalAssets: new Set(),
@@ -754,6 +781,8 @@ export class SecOpsRuntime {
       ...(this.options.entityRefs ? { entityRefs: this.options.entityRefs } : {}),
       closurePolicy: { reasonRequired: this.options.closureReasonRequired === true },
       ...(this.options.alertGrouping ? { groupingPolicy: this.options.alertGrouping } : {}),
+      // Fase 2: con el motor encendido, la ingesta solo encola su trabajo.
+      ...(this.options.learning && this.soc.learningQueue ? { learningEnqueue: true } : {}),
     };
   }
 
@@ -900,8 +929,8 @@ export class SecOpsRuntime {
       });
     }
     if (!ingested.value.created) return 'duplicate';
-    // Después del commit y en su propia transacción: un fallo del motor deja la alerta abierta.
-    await this.evaluateLearning(decision.candidate);
+    // El trabajo del motor ya quedó en la cola con la alerta; el worker lo toma fuera de la ingesta.
+    this.learningWorker?.kick();
     this.dispatcher.kick();
     // Después del commit, nunca dentro de la transacción: un fallo del analista solo se registra.
     this.analyst?.alertCreated(ingested.value.alert);
@@ -1064,25 +1093,70 @@ export class SecOpsRuntime {
     }
   }
 
-  /** Motor de decisión sobre una alerta recién creada. Nunca propaga: la alerta ya está a salvo. */
-  private async evaluateLearning(candidate: DetectionCandidate): Promise<void> {
+  /** Una pasada del worker de la cola del motor. */
+  public async drainLearning() {
     const learning = this.options.learning;
-    if (!learning || !candidate.fingerprint) return;
-    try {
-      await evaluateAlertWithLearning(
-        this.socDependencies(),
-        { settings: learning.settings, context: () => this.learningEngineContext() },
-        {
-          tenantId: candidate.tenantId,
-          alertId: candidate.id,
-          fingerprint: candidate.fingerprint,
-          signals: candidate.guardSignals,
-          correlationId: candidate.idempotencyKey,
+    const queue = this.soc.learningQueue;
+    if (!learning || !queue) return { claimed: 0, done: 0, retried: 0, dead: 0 };
+    return drainLearningQueue({
+      dependencies: this.socDependencies(),
+      queue,
+      engine: { settings: learning.settings, context: () => this.learningEngineContext() },
+      ...(learning.worker ? { policy: learning.worker } : {}),
+      workerId: `api-${process.pid}`,
+      tenantId: this.tenantId,
+    });
+  }
+
+  /** Configuración efectiva del motor en este arranque (huella, sin claves): alerta de cambios. */
+  private async recordLearningConfig(): Promise<void> {
+    const config = this.options.learningConfig;
+    const queue = this.soc.learningQueue;
+    if (!config || !queue) return;
+    await queue.recordConfig({
+      id: randomUUID(),
+      tenantId: this.tenantId,
+      configHash: config.hash,
+      maxMode: config.maxMode,
+      activeRules: config.activeRules,
+      killSwitch: config.killSwitch,
+      samplingKeyVersion: config.samplingKeyVersion,
+      at: this.now(),
+    });
+  }
+
+  /** Salud del motor (meta-monitoreo): agregados de la base + modo, kill switch y fuente. */
+  public async learningHealth(): Promise<{
+    readonly report: LearningHealthReport;
+    readonly metrics: LearningHealthMetrics;
+  }> {
+    const now = this.now();
+    const counts = this.soc.learningHealthCounts
+      ? await this.soc.learningHealthCounts(this.tenantId, now)
+      : undefined;
+    const learning = this.options.learning;
+    const metrics: LearningHealthMetrics = {
+      ...(counts ?? {
+        heartbeatAt: null,
+        backlog: { pending: 0, expiredLeases: 0, oldestPendingAt: null },
+        deadLast24h: 0,
+        lastHour: {
+          jobsFinished: 0,
+          jobsRetried: 0,
+          latencyP95Ms: null,
+          decisions: 0,
+          byApplied: {},
+          byEscalateReason: {},
+          hypotheticalCloses: 0,
         },
-      );
-    } catch (error) {
-      this.options.onDispatchError?.(error);
-    }
+        last24h: { pauses: 0, reversals: 0, disagreements: 0, configChanges: 0, modeRaised: false },
+      }),
+      enabled: learning !== undefined,
+      maxMode: learning?.settings.maxMode ?? 'off',
+      killSwitch: learning?.settings.killSwitch ?? false,
+      sourceState: this.learningEngineContext().sourceState,
+    };
+    return { report: evaluateLearningHealth(metrics, now), metrics };
   }
 
   /** Arranca el despacho continuo. Lo llama el entrypoint, no las specs. */
@@ -1091,6 +1165,10 @@ export class SecOpsRuntime {
     this.dispatcher.start();
     this.digests.start();
     this.learningLoop?.start();
+    this.learningWorker?.start();
+    void this.recordLearningConfig().catch((error: unknown) =>
+      this.options.onDispatchError?.(error),
+    );
     this.wazuhPushInboxDispatcher?.start();
     this.options.channels?.start();
   }
@@ -1102,6 +1180,7 @@ export class SecOpsRuntime {
       this.dispatcher.stop(),
       this.digests.stop(),
       this.learningLoop?.stop(),
+      this.learningWorker?.stop(),
       this.wazuhPushInboxDispatcher?.stop(),
     ]);
   }

@@ -173,6 +173,15 @@
       "owner": "application-platform"
     },
     {
+      "path": "/api/learning/health",
+      "method": "GET",
+      "upstream": "/api/learning/health",
+      "query_parameters": [],
+      "auth": "api-session",
+      "encoding": "no-op",
+      "owner": "application-platform"
+    },
+    {
       "path": "/api/learning/readiness",
       "method": "GET",
       "upstream": "/api/learning/readiness",

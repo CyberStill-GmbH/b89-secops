@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { DEFAULT_ENGINE_SETTINGS } from '@b89/soc';
 import {
   loadAccessConfig,
@@ -300,8 +301,37 @@ async function durableStoresFor(
  */
 function learningFrom(environment: Readonly<Record<string, string | undefined>>) {
   const engine = loadLearningEngine(environment);
-  if (!engine.enabled) return {};
+  // Identificador de la clave de muestreo (nunca la clave): permite ver rotaciones en la bitácora.
+  const samplingKeyVersion = engine.samplingKey
+    ? `kid-${createHash('sha256').update(engine.samplingKey.reveal(), 'utf8').digest('hex').slice(0, 12)}`
+    : null;
+  const effectiveMode = engine.enabled ? engine.maxMode : 'off';
+  // Huella de lo que decide el comportamiento (sin secretos): un cambio genera una alerta de salud.
+  const hash = createHash('sha256')
+    .update(
+      JSON.stringify({
+        mode: effectiveMode,
+        activeRules: [...engine.activeRules].sort(),
+        killSwitch: engine.killSwitch,
+        killedRules: [...engine.killedRules].sort(),
+        neverSuppressRules: [...engine.neverSuppressRules].sort(),
+        caps: [engine.samplingPercent, engine.hourlyCap, engine.dailyCap, engine.forcedReviewAfter],
+        samplingKeyVersion,
+        promotionRef: engine.promotionRef ?? null,
+      }),
+      'utf8',
+    )
+    .digest('hex');
+  const learningConfig = {
+    hash,
+    maxMode: effectiveMode,
+    activeRules: engine.activeRules.length,
+    killSwitch: engine.killSwitch,
+    samplingKeyVersion,
+  };
+  if (!engine.enabled) return { learningConfig };
   return {
+    learningConfig,
     learning: {
       settings: {
         ...DEFAULT_ENGINE_SETTINGS,
