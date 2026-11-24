@@ -1,5 +1,8 @@
 BEGIN;
 
+-- Si soc_alerts está ocupada, abortar en vez de encolar las escrituras de la cola detrás del DDL.
+SET LOCAL lock_timeout = '5s';
+
 -- Aprendizaje SOC · etapa C (docs/soc-learning/01-diseno.md §2.3). Cambio aditivo: dos tablas.
 -- Agrupar no modifica soc_alerts: cada alerta conserva estado, prioridad y revisión.
 CREATE TABLE "soc_alert_groups" (

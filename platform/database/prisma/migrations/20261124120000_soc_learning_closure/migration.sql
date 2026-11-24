@@ -1,5 +1,8 @@
 BEGIN;
 
+-- Si soc_alerts está ocupada, abortar en vez de encolar las escrituras de la cola detrás del DDL.
+SET LOCAL lock_timeout = '5s';
+
 -- Aprendizaje SOC · etapa A (docs/soc-learning/01-diseno.md §2.1, §3).
 -- Cambio aditivo: columnas nulas en soc_alerts y una bitácora nueva. No reescribe filas; el
 -- etiquetado del histórico lo hace un script idempotente aparte.
@@ -10,19 +13,30 @@ ALTER TABLE "soc_alerts"
     ADD COLUMN "closed_by" TEXT,
     ADD COLUMN "closed_at" TIMESTAMPTZ(3);
 
+-- Bloqueo: ADD COLUMN de columnas nulas sin default no reescribe la tabla, pero ALTER TABLE
+-- toma ACCESS EXCLUSIVE sobre soc_alerts hasta el COMMIT (toda la migración es una transacción,
+-- así que NOT VALID + VALIDATE no lo acorta; se mantiene por consistencia con 20261023120000).
+-- La validación recorre filas cuyas columnas nuevas son todas NULL: costo lineal y bajo con el
+-- volumen actual. `lock_timeout` (arriba) aborta la migración si no obtiene el bloqueo en 5 s.
 ALTER TABLE "soc_alerts"
     ADD CONSTRAINT "soc_alerts_closure_reason_catalog" CHECK (
         "closure_reason" IS NULL OR "closure_reason" IN (
             'FP_ACTIVIDAD_LEGITIMA_CONOCIDA', 'FP_REGLA_MAL_AFINADA', 'FP_DATOS_ERRONEOS',
             'TP_BENIGNO_PRUEBA_O_PENTEST', 'TP_RIESGO_ACEPTADO', 'DUPLICADA', 'TP_REAL'
         )
-    ),
+    ) NOT VALID,
     ADD CONSTRAINT "soc_alerts_closure_origin_catalog" CHECK (
         "closure_origin" IS NULL OR "closure_origin" IN (
             'human', 'ai_analyst', 'bulk_script', 'learning_engine', 'service_other', 'legacy_unknown'
         )
-    );
+    ) NOT VALID;
 
+ALTER TABLE "soc_alerts" VALIDATE CONSTRAINT "soc_alerts_closure_reason_catalog";
+ALTER TABLE "soc_alerts" VALIDATE CONSTRAINT "soc_alerts_closure_origin_catalog";
+
+-- Índice no concurrente: Prisma aplica la migración en una transacción (CONCURRENTLY no se
+-- admite ahí). Con el volumen actual (decenas a cientos de alertas al día) el bloqueo de
+-- escritura dura lo que tarda en construirse; programar el despliegue fuera de horas pico.
 CREATE INDEX "soc_alerts_closure_idx"
     ON "soc_alerts" ("tenant_id", "closure_origin", "closure_reason", "closed_at");
 

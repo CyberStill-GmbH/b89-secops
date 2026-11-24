@@ -1,5 +1,8 @@
 BEGIN;
 
+-- Si soc_alerts está ocupada, abortar en vez de encolar las escrituras de la cola detrás del DDL.
+SET LOCAL lock_timeout = '5s';
+
 -- Aprendizaje SOC · etapa B (docs/soc-learning/01-diseno.md §2.2, §4).
 -- Cambio aditivo: una tabla nueva, una fila por alerta, escrita en la misma transacción que la
 -- crea. Los componentes ya vienen normalizados y redactados; la línea de comando original no se
