@@ -131,7 +131,7 @@ jobs:
           [[ "$actual_version" == "$expected_version" ]] || { echo 'La versión del .deb no coincide con el metadata del build.' >&2; exit 1; }
 
       - name: Install pinned ORAS CLI
-        uses: oras-project/setup-oras@5e2f2482b30b0cb3e14e67f89a80c88c659a7c63 # v2.0.3
+        uses: oras-project/setup-oras@ac735097e22fe643015b0d19645f7c9a69942128 # v2.0.4
         with:
           url: https://github.com/oras-project/oras/releases/download/v1.3.5/oras_1.3.5_linux_amd64.tar.gz
           checksum: f48a73ea6d026a862c3919fc773da9a8c86fc259c2c737d5baed3b8b9614ad22
