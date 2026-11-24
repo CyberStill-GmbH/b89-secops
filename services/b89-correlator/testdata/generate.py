@@ -74,9 +74,13 @@ with open(out + '/wazuh-alerts.jsonl', 'w', newline='\n') as f:
 
 
 def b89(i, rule, prio, keys, at, verdict='', status='new', upd=None):
-    return {'id': '00000000-0000-4000-8000-%012d' % i, 'ruleId': rule, 'title': 'alert ' + rule, 'priority': prio,
-            'status': status, 'verdict': verdict, 'signal': 'other', 'entityKeys': keys, 'incidentId': '',
-            'occurredAt': at, 'updatedAt': upd or at}
+    alert = {'id': '00000000-0000-4000-8000-%012d' % i, 'ruleId': rule, 'title': 'alert ' + rule, 'priority': prio,
+             'status': status, 'verdict': verdict, 'signal': 'other', 'entityKeys': keys, 'incidentId': '',
+             'occurredAt': at, 'updatedAt': upd or at}
+    # SOC learning stage A: only human closures feed suppression; fixture verdicts are human.
+    if verdict:
+        alert['closureOrigin'] = 'human'
+    return alert
 
 
 alerts = []

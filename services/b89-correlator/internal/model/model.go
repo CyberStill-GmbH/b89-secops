@@ -134,17 +134,20 @@ type Observation struct {
 
 // B89Alert is the compact projection of a B89 alert the API's internal feed returns.
 type B89Alert struct {
-	ID         string    `json:"id"`
-	RuleID     string    `json:"ruleId"`
-	Title      string    `json:"title"`
-	Priority   string    `json:"priority"`
-	Status     string    `json:"status"`
-	Verdict    string    `json:"verdict"`
-	Signal     string    `json:"signal"`
-	EntityKeys []string  `json:"entityKeys"`
-	IncidentID string    `json:"incidentId"`
-	OccurredAt time.Time `json:"occurredAt"`
-	UpdatedAt  time.Time `json:"updatedAt"`
+	ID       string `json:"id"`
+	RuleID   string `json:"ruleId"`
+	Title    string `json:"title"`
+	Priority string `json:"priority"`
+	Status   string `json:"status"`
+	Verdict  string `json:"verdict"`
+	// ClosureOrigin says who closed the alert (human, ai_analyst, bulk_script, learning_engine,
+	// ...). Empty when the API predates SOC learning stage A or the alert is still open.
+	ClosureOrigin string    `json:"closureOrigin,omitempty"`
+	Signal        string    `json:"signal"`
+	EntityKeys    []string  `json:"entityKeys"`
+	IncidentID    string    `json:"incidentId"`
+	OccurredAt    time.Time `json:"occurredAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
 }
 
 // CorrelatorRulePrefix identifies alerts emitted by the risk correlator. Keep this on the
@@ -154,6 +157,14 @@ const CorrelatorRulePrefix = "b89-correlator:"
 // IsFalsePositive reports a benign/false-positive analyst verdict.
 func (a B89Alert) IsFalsePositive() bool {
 	return a.Verdict == "false_positive" || a.Verdict == "benign"
+}
+
+// IsHumanFalsePositive reports a false-positive/benign verdict closed by a person. Closures by
+// the AI analyst, bulk scripts or the learning engine never feed suppression: otherwise a
+// pattern could keep itself alive (docs/soc-learning/01-diseno.md §5.2). An unknown origin
+// fails closed.
+func (a B89Alert) IsHumanFalsePositive() bool {
+	return a.IsFalsePositive() && a.ClosureOrigin == "human"
 }
 
 // IsTruePositive reports a confirmed verdict.

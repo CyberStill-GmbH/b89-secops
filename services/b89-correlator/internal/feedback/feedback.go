@@ -196,8 +196,12 @@ func Evaluate(alerts []model.B89Alert, canonical func(string) string, p Policy, 
 				pairs[pk] = pr
 			}
 			if fp {
-				pr.fpTimes = append(pr.fpTimes, verdictTime(a))
-				pr.fpIDs = append(pr.fpIDs, a.ID)
+				// Only human closures count toward suppression; any origin still counts as
+				// reviewed in the quality totals above.
+				if a.IsHumanFalsePositive() {
+					pr.fpTimes = append(pr.fpTimes, verdictTime(a))
+					pr.fpIDs = append(pr.fpIDs, a.ID)
+				}
 			} else {
 				pr.tp++
 			}

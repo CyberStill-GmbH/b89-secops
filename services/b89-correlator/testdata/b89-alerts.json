@@ -1,6 +1,7 @@
 {
  "items": [
   {
+   "closureOrigin": "human",
    "entityKeys": [
     "ip:192.0.2.200"
    ],
@@ -16,6 +17,7 @@
    "verdict": "false_positive"
   },
   {
+   "closureOrigin": "human",
    "entityKeys": [
     "ip:192.0.2.200"
    ],
@@ -31,6 +33,7 @@
    "verdict": "false_positive"
   },
   {
+   "closureOrigin": "human",
    "entityKeys": [
     "ip:192.0.2.200"
    ],
@@ -46,6 +49,7 @@
    "verdict": "false_positive"
   },
   {
+   "closureOrigin": "human",
    "entityKeys": [
     "ip:192.0.2.200"
    ],
@@ -61,6 +65,7 @@
    "verdict": "false_positive"
   },
   {
+   "closureOrigin": "human",
    "entityKeys": [
     "user:breakglass@b89.example"
    ],
@@ -76,6 +81,7 @@
    "verdict": "benign"
   },
   {
+   "closureOrigin": "human",
    "entityKeys": [
     "user:breakglass@b89.example"
    ],
@@ -91,6 +97,7 @@
    "verdict": "benign"
   },
   {
+   "closureOrigin": "human",
    "entityKeys": [
     "user:breakglass@b89.example"
    ],
@@ -106,6 +113,7 @@
    "verdict": "benign"
   },
   {
+   "closureOrigin": "human",
    "entityKeys": [
     "ip:198.51.100.50"
    ],
@@ -121,6 +129,7 @@
    "verdict": "false_positive"
   },
   {
+   "closureOrigin": "human",
    "entityKeys": [
     "ip:198.51.100.50"
    ],
@@ -136,6 +145,7 @@
    "verdict": "false_positive"
   },
   {
+   "closureOrigin": "human",
    "entityKeys": [
     "ip:198.51.100.50"
    ],
@@ -151,6 +161,7 @@
    "verdict": "false_positive"
   },
   {
+   "closureOrigin": "human",
    "entityKeys": [
     "ip:198.51.100.50"
    ],
@@ -166,6 +177,7 @@
    "verdict": "true_positive"
   },
   {
+   "closureOrigin": "human",
    "entityKeys": [
     "ip:198.51.100.50"
    ],

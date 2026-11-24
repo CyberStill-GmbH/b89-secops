@@ -251,6 +251,8 @@ export class CorrelatorController {
         priority: alert.priority,
         status: alert.status,
         verdict: alert.verdict ?? '',
+        // Aprendizaje SOC · etapa A: el correlador solo aprende de cierres humanos.
+        closureOrigin: alert.closureOrigin ?? '',
         signal: alert.signal ?? '',
         entityKeys: alert.entityKeys,
         incidentId: alert.incidentId ?? '',
