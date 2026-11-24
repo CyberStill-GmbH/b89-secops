@@ -61,14 +61,23 @@ import {
   entityKeysOf,
   PRIORITIZATION_RULESET_ID,
   PRIORITIZATION_RULESET_VERSION,
+  collidingRuleKeys,
   promotionKey,
   type CorrelationPolicy,
+  type DetectionCandidate,
   type PrioritizationContext,
   type SignalCatalog,
 } from '@b89/detection';
+import { OBSERVABLES_NORMALIZER_VERSION } from '@b89/contracts';
 import {
+  evaluateAlertWithLearning,
   InMemorySoc,
   ingestCandidate,
+  readinessSnapshotFrom,
+  refreshLearningPatterns,
+  type EngineContext,
+  type EngineSettings,
+  type ReadinessSnapshot,
   type EntityRefFactory,
   type OutboxLane,
   type SocDependencies,
@@ -112,7 +121,7 @@ import { csrfTokenFor } from '../http/csrf.js';
 import { DEFAULT_RETURN_TO } from '../http/return-to.js';
 import type { ProcessInfo } from '../soc/operations-health.js';
 import type { EventsReader } from './events-reader.js';
-import type { SourceHealthMonitor } from './source-health.js';
+import { evaluateMonitor, type SourceHealthMonitor } from './source-health.js';
 import type { DlpPolicyStore } from './dlp-policy-store.js';
 import { InMemoryAllowlistStore, type AllowlistStore } from './allowlist-store.js';
 import type { SourceSignalsService } from './source-signals.js';
@@ -244,6 +253,19 @@ function decisionDiagnostic(
   return reason;
 }
 
+/** Aprendizaje SOC · etapas D y E. Sin estas opciones no se refresca ni se evalúa nada. */
+export interface LearningRuntimeOptions {
+  readonly settings: EngineSettings;
+  readonly samplingKey: Buffer | null;
+  readonly changeCalendarAckUntil: Date | null;
+  readonly refreshMs: number;
+  /** Aprobadores designados (`B89_SOC_LEARNING_APPROVERS`). */
+  readonly approvers: readonly string[];
+}
+
+/** Ventana de evidencia para la cobertura de huella fina por fuente (compuerta 4). */
+const LEARNING_COVERAGE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
 export interface RuntimeOptions {
   readonly access: AccessConfig;
   /** Clave CSRF compartida entre réplicas; solo efímera en perfiles de memoria/tests. */
@@ -290,6 +312,8 @@ export interface RuntimeOptions {
   readonly entityRefs?: EntityRefFactory;
   /** Aprendizaje SOC · etapa A: `true` exige motivo estructurado al cerrar alertas. */
   readonly closureReasonRequired?: boolean;
+  /** Aprendizaje SOC · etapas D y E: refresco de patrones y motor de decisión. */
+  readonly learning?: LearningRuntimeOptions;
   /** Aprendizaje SOC · etapa C: ventana y tramo de la agrupación por huella; sin ella no se agrupa. */
   readonly alertGrouping?: {
     readonly windowMs: number;
@@ -428,6 +452,10 @@ export class SecOpsRuntime {
   private wazuhPushInboxDispatcher: NotificationDispatcher | undefined;
   private wazuhIngestionWakeup: (() => void) | undefined;
   private readonly digests: NotificationDispatcher;
+  /** Aprendizaje SOC · refresco periódico de patrones (solo con `learning`). */
+  private readonly learningLoop: NotificationDispatcher | undefined;
+  /** Último estado medido de la fuente de ingesta, para la guarda `GUARD_SOURCE`. */
+  private learningSourceState: { readonly state: string; readonly at: Date } | undefined;
   public readonly correlatorServiceToken: string | undefined;
   public readonly correlatorRead: { readonly baseUrl: string; readonly token: string } | undefined;
   public readonly ipReputation: IpReputationLookup | undefined;
@@ -508,6 +536,16 @@ export class SecOpsRuntime {
       intervalMs: DIGEST_INTERVAL_MS,
       onError: options.onDispatchError ?? (() => undefined),
     });
+    this.learningLoop = options.learning
+      ? new NotificationDispatcher({
+          drain: async () => {
+            await this.refreshLearning();
+            return 0;
+          },
+          intervalMs: options.learning.refreshMs,
+          onError: options.onDispatchError ?? (() => undefined),
+        })
+      : undefined;
     this.detectionContext = options.detectionContext ?? {
       privilegedIdentities: new Set(),
       criticalAssets: new Set(),
@@ -862,6 +900,8 @@ export class SecOpsRuntime {
       });
     }
     if (!ingested.value.created) return 'duplicate';
+    // Después del commit y en su propia transacción: un fallo del motor deja la alerta abierta.
+    await this.evaluateLearning(decision.candidate);
     this.dispatcher.kick();
     // Después del commit, nunca dentro de la transacción: un fallo del analista solo se registra.
     this.analyst?.alertCreated(ingested.value.alert);
@@ -957,11 +997,100 @@ export class SecOpsRuntime {
     return this.options.processInfo?.() ?? null;
   }
 
+  /* ------------------------------------------------ Aprendizaje SOC (D y E) */
+
+  public get learningEnabled(): boolean {
+    return this.options.learning !== undefined;
+  }
+
+  public get learningApprovers(): readonly string[] {
+    return this.options.learning?.approvers ?? [];
+  }
+
+  /** Contexto vigente del motor (§6.2). El estado de la fuente vence a los dos refrescos. */
+  public learningEngineContext(): EngineContext {
+    const learning = this.options.learning;
+    const now = this.now();
+    const measured = this.learningSourceState;
+    const fresh =
+      measured !== undefined &&
+      learning !== undefined &&
+      now.getTime() - measured.at.getTime() <= 2 * learning.refreshMs;
+    return {
+      criticalAssets: this.detectionContext.criticalAssets.size,
+      privilegedIdentities: this.detectionContext.privilegedIdentities.size,
+      changeCalendarAckUntil: learning?.changeCalendarAckUntil ?? null,
+      sourceState: fresh ? measured.state : null,
+      samplingKey: learning?.samplingKey ?? null,
+    };
+  }
+
+  /** Foto de las compuertas de preparación (precondiciones de la etapa D) en este momento. */
+  public async learningReadiness(): Promise<ReadinessSnapshot> {
+    const now = this.now();
+    const metrics = this.soc.readinessMetrics
+      ? await this.soc.readinessMetrics(
+          this.tenantId,
+          new Date(now.getTime() - LEARNING_COVERAGE_WINDOW_MS),
+        )
+      : { closedAlertsWithoutOrigin: Number.MAX_SAFE_INTEGER, sourceCoverage: new Map() };
+    return readinessSnapshotFrom({
+      closureReasonRequired: this.options.closureReasonRequired === true,
+      approvers: this.learningApprovers,
+      closedAlertsWithoutOrigin: metrics.closedAlertsWithoutOrigin,
+      sourceCoverage: metrics.sourceCoverage,
+      collidingRuleKeys: collidingRuleKeys(),
+      currentNormalizerVersion: OBSERVABLES_NORMALIZER_VERSION,
+    });
+  }
+
+  /** Una pasada: mide la fuente y refresca patrones (candidatos, activación por compuertas, vencimientos). */
+  public async refreshLearning(): Promise<void> {
+    if (!this.options.learning) return;
+    const monitor = this.options.sourceHealth;
+    if (monitor && monitor.key.tenantId === this.tenantId) {
+      const evaluation = await evaluateMonitor(monitor, this.soc.ingestion, this.now());
+      this.learningSourceState = { state: evaluation.state, at: this.now() };
+    }
+    const result = await refreshLearningPatterns(this.socDependencies(), this.soc, {
+      tenantId: this.tenantId,
+      readiness: await this.learningReadiness(),
+      correlationId: `learning-refresh:${randomUUID()}`,
+    });
+    if (!result.ok) {
+      throw Object.assign(new Error(`LEARNING_REFRESH_FAILED:${result.reason}`), {
+        code: result.code,
+      });
+    }
+  }
+
+  /** Motor de decisión sobre una alerta recién creada. Nunca propaga: la alerta ya está a salvo. */
+  private async evaluateLearning(candidate: DetectionCandidate): Promise<void> {
+    const learning = this.options.learning;
+    if (!learning || !candidate.fingerprint) return;
+    try {
+      await evaluateAlertWithLearning(
+        this.socDependencies(),
+        { settings: learning.settings, context: () => this.learningEngineContext() },
+        {
+          tenantId: candidate.tenantId,
+          alertId: candidate.id,
+          fingerprint: candidate.fingerprint,
+          signals: candidate.guardSignals,
+          correlationId: candidate.idempotencyKey,
+        },
+      );
+    } catch (error) {
+      this.options.onDispatchError?.(error);
+    }
+  }
+
   /** Arranca el despacho continuo. Lo llama el entrypoint, no las specs. */
   public startDispatcher(): void {
     this.urgentDispatcher.start();
     this.dispatcher.start();
     this.digests.start();
+    this.learningLoop?.start();
     this.wazuhPushInboxDispatcher?.start();
     this.options.channels?.start();
   }
@@ -972,6 +1101,7 @@ export class SecOpsRuntime {
       this.urgentDispatcher.stop(),
       this.dispatcher.stop(),
       this.digests.stop(),
+      this.learningLoop?.stop(),
       this.wazuhPushInboxDispatcher?.stop(),
     ]);
   }

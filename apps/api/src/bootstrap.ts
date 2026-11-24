@@ -1,9 +1,12 @@
+import { DEFAULT_ENGINE_SETTINGS } from '@b89/soc';
 import {
   loadAccessConfig,
   loadApiConfig,
   loadDetectionContextConfig,
+  loadLearningEngine,
   loadSocClosurePolicy,
   loadSocGrouping,
+  loadSocLearningApprovers,
   loadDirectoryConfig,
   loadEntityRefKey,
   loadIngestionConfig,
@@ -290,6 +293,36 @@ async function durableStoresFor(
   };
 }
 
+/**
+ * Etapas D y E: sin `B89_LEARNING_ENABLED=true` no se pasa `learning` y no se refresca ni se evalúa
+ * nada. Las listas de reglas y los topes vienen de la configuración; las guardas duras del motor
+ * (`LEARNING_HARD_GUARDS`) no se pueden aflojar desde aquí.
+ */
+function learningFrom(environment: Readonly<Record<string, string | undefined>>) {
+  const engine = loadLearningEngine(environment);
+  if (!engine.enabled) return {};
+  return {
+    learning: {
+      settings: {
+        ...DEFAULT_ENGINE_SETTINGS,
+        maxMode: engine.maxMode,
+        activeRules: new Set(engine.activeRules),
+        killSwitch: engine.killSwitch,
+        killedRules: new Set(engine.killedRules),
+        neverSuppressRules: new Set(engine.neverSuppressRules),
+        samplingPercent: engine.samplingPercent,
+        hourlyCap: engine.hourlyCap,
+        dailyCap: engine.dailyCap,
+        forcedReviewAfter: engine.forcedReviewAfter,
+      },
+      samplingKey: engine.samplingKey ? Buffer.from(engine.samplingKey.reveal(), 'utf8') : null,
+      changeCalendarAckUntil: engine.changeCalendarAckUntil,
+      refreshMs: engine.refreshMinutes * 60_000,
+      approvers: loadSocLearningApprovers(environment).approvers,
+    },
+  };
+}
+
 /** Etapa C: sin `enabled` no se pasa política y la ingesta no agrupa. */
 function alertGroupingFrom(config: {
   readonly enabled: boolean;
@@ -547,6 +580,7 @@ export async function buildApi(
     detectionContext: detectionContextFrom(detection),
     closureReasonRequired: loadSocClosurePolicy(environment).reasonRequired,
     ...alertGroupingFrom(loadSocGrouping(environment)),
+    ...learningFrom(environment),
     ...(entityRefSecret
       ? {
           entityRefs: entityRefFactory(entityRefSecret),

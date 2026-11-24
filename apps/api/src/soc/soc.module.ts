@@ -19,6 +19,7 @@ import { AssistantController } from '../assistant/assistant.controller.js';
 import { AssistantMcpController } from '../assistant/mcp.controller.js';
 import { AiInvestigationsController } from '../assistant/ai-investigations.controller.js';
 import { CorrelatorController } from './correlator.controller.js';
+import { LearningController } from './learning.controller.js';
 import { RiskController } from './risk.controller.js';
 import { LocalAuthController } from './local-auth.controller.js';
 import { NotificationChannelsController } from './notification-channels.controller.js';
@@ -56,6 +57,7 @@ export class SocModule {
         AssistantMcpController,
         AiInvestigationsController,
         CorrelatorController,
+        LearningController,
         RiskController,
         ...(runtime.canAcceptWazuhPush ? [WazuhPushController] : []),
         // Las rutas del emisor local solo se registran cuando ese emisor existe.
