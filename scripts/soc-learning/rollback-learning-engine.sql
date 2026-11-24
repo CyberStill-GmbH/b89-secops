@@ -31,6 +31,7 @@ BEGIN
         RAISE EXCEPTION 'Confirmación inválida: use -v confirm=rollback-soc-learning-engine';
     END IF;
     FOREACH name IN ARRAY ARRAY[
+        'soc_learning_jobs', 'soc_learning_config_events',
         'soc_learning_reversals', 'soc_learning_reviews', 'soc_learning_decisions',
         'soc_learning_pattern_events', 'soc_learning_pattern_approvals', 'soc_learning_patterns']
     LOOP
@@ -44,6 +45,10 @@ BEGIN
     END IF;
 END $$;
 
+-- Fase 2 (cola, latidos, configuración)
+DROP TABLE IF EXISTS soc_learning_config_events;
+DROP TABLE IF EXISTS soc_learning_worker_heartbeats;
+DROP TABLE IF EXISTS soc_learning_jobs;
 -- Etapa E
 ALTER TABLE soc_alerts DROP CONSTRAINT IF EXISTS soc_alerts_learning_engine_p4;
 DROP TABLE IF EXISTS soc_learning_reversals;
@@ -61,7 +66,8 @@ DELETE FROM _prisma_migrations
  WHERE migration_name IN (
     '20261124150000_soc_learning_patterns',
     '20261124160000_soc_learning_engine',
-    '20261124161000_soc_learning_engine_guards'
+    '20261124161000_soc_learning_engine_guards',
+    '20261124162000_soc_learning_queue'
  );
 
 COMMIT;

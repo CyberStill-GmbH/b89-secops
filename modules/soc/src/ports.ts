@@ -16,6 +16,7 @@ import type { AuditStore } from '@b89/audit';
 import type {
   AlertFingerprint,
   CorrelationWindowQuery,
+  GuardSignals,
   DetectionCandidateStore,
 } from '@b89/detection';
 
@@ -173,6 +174,75 @@ export interface LearningRecordStore {
   appendReversal(record: LearningReversalRecord): Promise<void>;
 }
 
+/* --------------------------------------------- Cola del motor (fase 2 de la sombra) */
+
+export const LEARNING_JOB_STATUSES = ['pending', 'leased', 'done', 'dead'] as const;
+export type LearningJobStatus = (typeof LEARNING_JOB_STATUSES)[number];
+
+/**
+ * Trabajo del motor para una alerta. Se escribe en la transacción de la ingesta; lo consume el
+ * worker fuera del camino crítico. `signals` viaja aquí porque la alerta no las conserva.
+ */
+export interface LearningJob {
+  readonly alertId: string;
+  readonly tenantId: string;
+  readonly fingerprint: AlertFingerprint;
+  readonly signals: GuardSignals | null;
+  readonly status: LearningJobStatus;
+  readonly attempts: number;
+  readonly availableAt: Date;
+  readonly leaseUntil: Date | null;
+  readonly claimId: string | null;
+  readonly lastError: string | null;
+  readonly enqueuedAt: Date;
+  readonly finishedAt: Date | null;
+}
+
+/** Dentro de la transacción de la ingesta: `false` si la alerta ya tenía trabajo. */
+export interface LearningJobStore {
+  enqueue(job: LearningJob): Promise<boolean>;
+}
+
+/** Fuera de transacción: lo usa el worker. */
+export interface LearningJobQueue {
+  /** Reclama pendientes vencidos y leases caducados (`SKIP LOCKED`); suma un intento a cada uno. */
+  claim(input: {
+    readonly limit: number;
+    readonly leaseMs: number;
+    readonly now: Date;
+    readonly claimId: string;
+  }): Promise<readonly LearningJob[]>;
+  complete(alertId: string, claimId: string, now: Date): Promise<boolean>;
+  /** `retryAt = null` ⇒ `dead` (dead-letter): la alerta sigue con personas. */
+  fail(
+    alertId: string,
+    claimId: string,
+    error: string,
+    now: Date,
+    retryAt: Date | null,
+  ): Promise<boolean>;
+  heartbeat(beat: {
+    readonly workerId: string;
+    readonly tenantId: string;
+    readonly at: Date;
+    readonly claimed: number;
+    readonly failed: number;
+  }): Promise<void>;
+  recordConfig(event: LearningConfigEvent): Promise<void>;
+}
+
+/** Configuración efectiva de un arranque: solo huella y contadores (sin claves ni listas). */
+export interface LearningConfigEvent {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly configHash: string;
+  readonly maxMode: 'off' | 'shadow' | 'dry_run' | 'active';
+  readonly activeRules: number;
+  readonly killSwitch: boolean;
+  readonly samplingKeyVersion: string | null;
+  readonly at: Date;
+}
+
 /** Evidencia para refrescar patrones: último cierre humano vigente por alerta, con su huella. */
 export interface LearningEvidence {
   readonly closures: readonly ClosureEvidence[];
@@ -239,6 +309,7 @@ export interface SocTransactionContext {
   readonly groups: AlertGroupStore;
   readonly patterns: LearningPatternStore;
   readonly learning: LearningRecordStore;
+  readonly learningJobs: LearningJobStore;
   readonly incidents: IncidentStore;
   readonly tasks: IncidentTaskStore;
   readonly notes: IncidentNoteStore;
@@ -455,6 +526,8 @@ export interface SocPersistence
   readonly audit: AuditStore;
   /** Cursor y observaciones de la ingesta de fuentes (Sprint 5 · fase 0). */
   readonly ingestion: IngestionStateStore;
+  /** Cola del motor de aprendizaje (fase 2): ausente en adapters que no la soportan. */
+  readonly learningQueue?: LearningJobQueue;
   /** Comprueba conectividad y esquema; lanza si el adapter no puede atender. */
   ready(): Promise<void>;
   close(): Promise<void>;

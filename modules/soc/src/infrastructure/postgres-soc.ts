@@ -23,6 +23,7 @@ import {
   PrismaAuditStore,
   PrismaIncidentWorkQueries,
   PrismaIngestionStateStore,
+  PrismaLearningJobQueue,
   PrismaWazuhPushInboxStore,
   PrismaSocQueries,
   PrismaSocUnitOfWork,
@@ -37,6 +38,7 @@ import {
   type IncidentWithAlertsRow,
   type LearningClosureRow,
   type LearningDecisionRow,
+  type LearningJobRow,
   type LearningPatternRow,
   type LearningReviewRow,
   type PatternApprovalRow,
@@ -46,7 +48,9 @@ import {
   FINGERPRINT_COMPONENTS,
   PRIORITIES,
   SIGNAL_CLASSES,
+  type AlertFingerprint,
   type FingerprintComponents,
+  type GuardSignals,
   type CorrelatableAlert,
   type DetectionCandidate,
   type DetectionCandidateStore,
@@ -110,6 +114,8 @@ import type {
   IncidentTaskStore,
   LearningDecisionRecord,
   LearningEvidence,
+  LearningJob,
+  LearningJobQueue,
   LearningPatternStore,
   LearningRecordStore,
   LearningReviewRecord,
@@ -122,7 +128,11 @@ import type {
   SocPersistence,
   SocTransactionContext,
 } from '../ports.js';
-import { LEARNING_REVIEW_KINDS, LEARNING_REVIEW_STATUSES } from '../ports.js';
+import {
+  LEARNING_JOB_STATUSES,
+  LEARNING_REVIEW_KINDS,
+  LEARNING_REVIEW_STATUSES,
+} from '../ports.js';
 
 /** Fila con un valor fuera del catálogo del dominio: la base y el código divergieron. */
 export class SocIntegrityError extends Error {
@@ -288,6 +298,60 @@ function toDecision(row: LearningDecisionRow): LearningDecisionRecord {
     confidence: oneOf(CONFIDENCES, row.confidence, table, 'confidence'),
     checks: toChecks(row.checks),
     drift: (row.drift ?? null) as LearningDecisionRecord['drift'],
+  };
+}
+
+/** Carga útil de un trabajo leída de JSONB: se valida antes de entregarla al motor. */
+function toJobFingerprint(value: unknown): AlertFingerprint {
+  const table = 'soc_learning_jobs';
+  const record = (typeof value === 'object' && value !== null ? value : {}) as Record<
+    string,
+    unknown
+  >;
+  const text = (key: string) => {
+    const item = record[key];
+    if (typeof item !== 'string' || item.length === 0)
+      throw new SocIntegrityError(table, 'fingerprint');
+    return item;
+  };
+  const ruleKey = record['ruleKey'];
+  if (ruleKey !== null && typeof ruleKey !== 'string')
+    throw new SocIntegrityError(table, 'fingerprint');
+  return {
+    fingerprint: text('fingerprint'),
+    level: oneOf(FINGERPRINT_LEVELS, text('level'), table, 'fingerprint'),
+    version: text('version'),
+    normalizerVersion: text('normalizerVersion'),
+    ruleKey: (ruleKey as string | null) ?? null,
+    components: toComponents(record['components'], table),
+  };
+}
+
+function toJobSignals(value: unknown): GuardSignals | null {
+  if (value === null || value === undefined) return null;
+  const record = value as Record<string, unknown>;
+  const tactics = record['mitreTactics'];
+  if (
+    typeof record['severity'] !== 'string' ||
+    typeof record['threatIntelHit'] !== 'boolean' ||
+    !Array.isArray(tactics) ||
+    !tactics.every((item) => typeof item === 'string')
+  ) {
+    throw new SocIntegrityError('soc_learning_jobs', 'signals');
+  }
+  return {
+    severity: record['severity'],
+    mitreTactics: tactics as string[],
+    threatIntelHit: record['threatIntelHit'],
+  };
+}
+
+function toJob(row: LearningJobRow): LearningJob {
+  return {
+    ...row,
+    fingerprint: toJobFingerprint(row.fingerprint),
+    signals: toJobSignals(row.signals),
+    status: oneOf(LEARNING_JOB_STATUSES, row.status, 'soc_learning_jobs', 'status'),
   };
 }
 
@@ -461,6 +525,7 @@ export class PostgresSocPersistence implements SocPersistence {
   public readonly kind = 'postgres' as const;
   public readonly audit: AuditStore;
   public readonly ingestion: IngestionStateStore;
+  public readonly learningQueue: LearningJobQueue;
   private readonly unitOfWork: PrismaSocUnitOfWork;
   private readonly queries: PrismaSocQueries;
   private readonly workQueries: PrismaIncidentWorkQueries;
@@ -471,6 +536,15 @@ export class PostgresSocPersistence implements SocPersistence {
     this.workQueries = new PrismaIncidentWorkQueries(client);
     this.audit = auditPort(new PrismaStandaloneAuditStore(client));
     this.ingestion = ingestionPort(new PrismaIngestionStateStore(client));
+    const queue = new PrismaLearningJobQueue(client);
+    this.learningQueue = {
+      claim: async (input) => (await queue.claim(input)).map(toJob),
+      complete: (alertId, claimId, now) => queue.complete(alertId, claimId, now),
+      fail: (alertId, claimId, error, now, retryAt) =>
+        queue.fail(alertId, claimId, error, now, retryAt),
+      heartbeat: (beat) => queue.heartbeat(beat),
+      recordConfig: (event) => queue.recordConfig(event),
+    };
   }
 
   public static connect(options: DatabaseConnectionOptions): PostgresSocPersistence {
@@ -599,7 +673,18 @@ export class PostgresSocPersistence implements SocPersistence {
           stores.learning.updateReview(record, expectedRevision),
         appendReversal: (record) => stores.learning.appendReversal(record),
       };
+      const learningJobs = {
+        enqueue: (job: LearningJob) =>
+          stores.learningJobs.enqueue({
+            ...job,
+            fingerprint: { ...job.fingerprint, components: { ...job.fingerprint.components } },
+            signals: job.signals
+              ? { ...job.signals, mitreTactics: [...job.signals.mitreTactics] }
+              : null,
+          }),
+      };
       return work({
+        learningJobs,
         alerts,
         closures,
         fingerprints,

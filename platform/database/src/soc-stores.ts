@@ -761,6 +761,144 @@ export class PrismaLearningRecordStore {
   }
 }
 
+/* ------------------------------------------- Cola del motor (aprendizaje SOC · fase 2) */
+
+export interface LearningJobRow {
+  readonly alertId: string;
+  readonly tenantId: string;
+  readonly fingerprint: unknown;
+  readonly signals: unknown;
+  readonly status: string;
+  readonly attempts: number;
+  readonly availableAt: Date;
+  readonly leaseUntil: Date | null;
+  readonly claimId: string | null;
+  readonly lastError: string | null;
+  readonly enqueuedAt: Date;
+  readonly finishedAt: Date | null;
+}
+
+/** Dentro de la transacción de la ingesta. */
+export class PrismaLearningJobStore {
+  public constructor(private readonly tx: Tx) {}
+
+  public async enqueue(row: LearningJobRow): Promise<boolean> {
+    const created = await this.tx.socLearningJob.createMany({
+      data: [
+        {
+          ...row,
+          fingerprint: row.fingerprint as Prisma.InputJsonValue,
+          signals: row.signals === null ? Prisma.DbNull : (row.signals as Prisma.InputJsonValue),
+        },
+      ],
+      skipDuplicates: true,
+    });
+    return created.count === 1;
+  }
+}
+
+/** Fuera de transacción: lo usa el worker. */
+export class PrismaLearningJobQueue {
+  public constructor(private readonly client: PrismaClient) {}
+
+  /** Reclama pendientes vencidos y leases caducados sin bloquear a otros workers. */
+  public claim(input: {
+    readonly limit: number;
+    readonly leaseMs: number;
+    readonly now: Date;
+    readonly claimId: string;
+  }): Promise<readonly LearningJobRow[]> {
+    const leaseUntil = new Date(input.now.getTime() + input.leaseMs);
+    return this.client.$queryRaw<LearningJobRow[]>`
+      WITH picked AS (
+        SELECT alert_id FROM soc_learning_jobs
+         WHERE (status = 'pending' AND available_at <= ${input.now})
+            OR (status = 'leased' AND lease_until < ${input.now})
+         ORDER BY available_at
+         LIMIT ${input.limit}
+         FOR UPDATE SKIP LOCKED
+      )
+      UPDATE soc_learning_jobs j
+         SET status = 'leased', lease_until = ${leaseUntil}, claim_id = ${input.claimId}::uuid,
+             attempts = j.attempts + 1
+        FROM picked
+       WHERE j.alert_id = picked.alert_id
+      RETURNING j.alert_id AS "alertId", j.tenant_id AS "tenantId", j.fingerprint, j.signals, j.status,
+                j.attempts, j.available_at AS "availableAt", j.lease_until AS "leaseUntil",
+                j.claim_id AS "claimId", j.last_error AS "lastError", j.enqueued_at AS "enqueuedAt",
+                j.finished_at AS "finishedAt"`;
+  }
+
+  public async complete(alertId: string, claimId: string, now: Date): Promise<boolean> {
+    const updated = await this.client.socLearningJob.updateMany({
+      where: { alertId, claimId, status: 'leased' },
+      data: { status: 'done', finishedAt: now, leaseUntil: null, claimId: null, lastError: null },
+    });
+    return updated.count === 1;
+  }
+
+  public async fail(
+    alertId: string,
+    claimId: string,
+    error: string,
+    now: Date,
+    retryAt: Date | null,
+  ): Promise<boolean> {
+    const updated = await this.client.socLearningJob.updateMany({
+      where: { alertId, claimId, status: 'leased' },
+      data:
+        retryAt === null
+          ? { status: 'dead', finishedAt: now, leaseUntil: null, claimId: null, lastError: error }
+          : {
+              status: 'pending',
+              availableAt: retryAt,
+              leaseUntil: null,
+              claimId: null,
+              lastError: error,
+            },
+    });
+    return updated.count === 1;
+  }
+
+  public async heartbeat(beat: {
+    readonly workerId: string;
+    readonly tenantId: string;
+    readonly at: Date;
+    readonly claimed: number;
+    readonly failed: number;
+  }): Promise<void> {
+    await this.client.socLearningWorkerHeartbeat.upsert({
+      where: { workerId: beat.workerId },
+      create: {
+        workerId: beat.workerId,
+        tenantId: beat.tenantId,
+        beatAt: beat.at,
+        claimed: beat.claimed,
+        failed: beat.failed,
+      },
+      update: {
+        tenantId: beat.tenantId,
+        beatAt: beat.at,
+        claimed: beat.claimed,
+        failed: beat.failed,
+      },
+    });
+  }
+
+  public async recordConfig(event: {
+    readonly id: string;
+    readonly tenantId: string;
+    readonly configHash: string;
+    readonly maxMode: string;
+    readonly activeRules: number;
+    readonly killSwitch: boolean;
+    readonly samplingKeyVersion: string | null;
+    readonly at: Date;
+  }): Promise<void> {
+    await this.client.socLearningConfigEvent.create({ data: { ...event } });
+  }
+}
+
 /** Último cierre vigente de una alerta con su huella (evidencia de la etapa D). */
 export interface LearningClosureRow {
   readonly alertId: string;
@@ -952,6 +1090,7 @@ export interface SocStores {
   readonly groups: PrismaAlertGroupStore;
   readonly patterns: PrismaLearningPatternStore;
   readonly learning: PrismaLearningRecordStore;
+  readonly learningJobs: PrismaLearningJobStore;
   readonly incidents: PrismaIncidentStore;
   readonly tasks: PrismaIncidentTaskStore;
   readonly notes: PrismaIncidentNoteStore;
@@ -973,6 +1112,7 @@ export class PrismaSocUnitOfWork {
         groups: new PrismaAlertGroupStore(tx),
         patterns: new PrismaLearningPatternStore(tx),
         learning: new PrismaLearningRecordStore(tx),
+        learningJobs: new PrismaLearningJobStore(tx),
         incidents: new PrismaIncidentStore(tx),
         tasks: new PrismaIncidentTaskStore(tx),
         notes: new PrismaIncidentNoteStore(tx),

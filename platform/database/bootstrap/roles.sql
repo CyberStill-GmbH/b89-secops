@@ -117,6 +117,9 @@ BEGIN
   IF to_regclass('public.soc_learning_reversals') IS NOT NULL THEN
     REVOKE UPDATE ON public.soc_learning_reversals FROM b89_soc_runtime;
   END IF;
+  IF to_regclass('public.soc_learning_config_events') IS NOT NULL THEN
+    REVOKE UPDATE ON public.soc_learning_config_events FROM b89_soc_runtime;
+  END IF;
   IF to_regclass('public._prisma_migrations') IS NOT NULL THEN
     REVOKE INSERT, UPDATE ON public._prisma_migrations FROM b89_soc_runtime;
   END IF;

@@ -199,6 +199,13 @@ export {
   type ReviewResolutionRequest,
   type RevertRequest,
 } from './learning-engine-use-cases.js';
+export {
+  DEFAULT_LEARNING_WORKER_POLICY,
+  drainLearningQueue,
+  errorCode as learningErrorCode,
+  type DrainSummary,
+  type LearningWorkerPolicy,
+} from './learning-worker.js';
 export { InMemorySoc } from './memory-unit-of-work.js';
 export { InMemoryIngestionState } from './memory-ingestion.js';
 export {
@@ -247,8 +254,13 @@ export type {
   IncidentQuery,
   IncidentStore,
   IncidentTaskStore,
+  LearningConfigEvent,
   LearningDecisionRecord,
   LearningEvidence,
+  LearningJob,
+  LearningJobQueue,
+  LearningJobStatus,
+  LearningJobStore,
   LearningPatternStore,
   LearningRecordStore,
   LearningReversalRecord,
@@ -270,6 +282,7 @@ export type {
 } from './ports.js';
 export {
   DEFAULT_FALSE_POSITIVE_ORIGINS,
+  LEARNING_JOB_STATUSES,
   LEARNING_REVIEW_KINDS,
   LEARNING_REVIEW_STATUSES,
 } from './ports.js';

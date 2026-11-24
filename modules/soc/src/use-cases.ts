@@ -139,6 +139,11 @@ export interface SocDependencies {
    * cambia estado ni prioridad de ninguna alerta.
    */
   readonly groupingPolicy?: AlertGroupingPolicy;
+  /**
+   * Aprendizaje SOC · fase 2: encola la evaluación del motor en la MISMA transacción que la alerta
+   * (la consume el worker fuera de la ingesta). Sin la bandera no se encola nada.
+   */
+  readonly learningEnqueue?: boolean;
 }
 
 type GroupingOutcome =
@@ -247,6 +252,22 @@ export async function ingestCandidate(
         computedAt: at,
       });
       grouping = await groupAlert(context, dependencies, alert, candidate.fingerprint, at);
+    }
+    if (dependencies.learningEnqueue === true && candidate.fingerprint) {
+      await context.learningJobs.enqueue({
+        alertId: alert.id,
+        tenantId: alert.tenantId,
+        fingerprint: candidate.fingerprint,
+        signals: candidate.guardSignals ?? null,
+        status: 'pending',
+        attempts: 0,
+        availableAt: at,
+        leaseUntil: null,
+        claimId: null,
+        lastError: null,
+        enqueuedAt: at,
+        finishedAt: null,
+      });
     }
     await recordAudit(
       context.audit,

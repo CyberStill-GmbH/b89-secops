@@ -41,6 +41,8 @@ BEGIN
         OR EXISTS (SELECT 1 FROM soc_learning_pattern_approvals)
         OR EXISTS (SELECT 1 FROM soc_learning_pattern_events)
     ) THEN populated := populated || ' soc_learning_patterns(D)'; END IF;
+    IF to_regclass('soc_learning_jobs') IS NOT NULL AND EXISTS (SELECT 1 FROM soc_learning_jobs)
+    THEN populated := populated || ' soc_learning_jobs'; END IF;
     IF to_regclass('soc_learning_decisions') IS NOT NULL AND (
         EXISTS (SELECT 1 FROM soc_learning_decisions)
         OR EXISTS (SELECT 1 FROM soc_learning_reviews)
@@ -61,6 +63,9 @@ BEGIN
 END $$;
 
 -- Etapas E y D (si existen)
+DROP TABLE IF EXISTS soc_learning_config_events;
+DROP TABLE IF EXISTS soc_learning_worker_heartbeats;
+DROP TABLE IF EXISTS soc_learning_jobs;
 ALTER TABLE soc_alerts DROP CONSTRAINT IF EXISTS soc_alerts_learning_engine_p4;
 DROP TABLE IF EXISTS soc_learning_reversals;
 DROP TABLE IF EXISTS soc_learning_reviews;
@@ -98,7 +103,8 @@ DELETE FROM _prisma_migrations
     '20261124140000_soc_learning_alert_groups',
     '20261124150000_soc_learning_patterns',
     '20261124160000_soc_learning_engine',
-    '20261124161000_soc_learning_engine_guards'
+    '20261124161000_soc_learning_engine_guards',
+    '20261124162000_soc_learning_queue'
  );
 
 COMMIT;

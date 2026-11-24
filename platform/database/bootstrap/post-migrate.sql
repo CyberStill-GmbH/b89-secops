@@ -34,6 +34,16 @@ BEGIN
     IF to_regclass('public.soc_learning_reversals') IS NOT NULL THEN
       REVOKE UPDATE, DELETE, TRUNCATE ON public.soc_learning_reversals FROM b89_soc_runtime;
     END IF;
+    IF to_regclass('public.soc_learning_config_events') IS NOT NULL THEN
+      REVOKE UPDATE, DELETE, TRUNCATE ON public.soc_learning_config_events FROM b89_soc_runtime;
+    END IF;
+    -- Cola y latidos: cambian de estado, pero no se borran desde el API.
+    IF to_regclass('public.soc_learning_jobs') IS NOT NULL THEN
+      REVOKE DELETE, TRUNCATE ON public.soc_learning_jobs FROM b89_soc_runtime;
+    END IF;
+    IF to_regclass('public.soc_learning_worker_heartbeats') IS NOT NULL THEN
+      REVOKE DELETE, TRUNCATE ON public.soc_learning_worker_heartbeats FROM b89_soc_runtime;
+    END IF;
     IF to_regclass('public.soc_learning_patterns') IS NOT NULL THEN
       REVOKE DELETE, TRUNCATE ON public.soc_learning_patterns FROM b89_soc_runtime;
     END IF;

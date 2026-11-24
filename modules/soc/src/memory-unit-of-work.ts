@@ -44,8 +44,12 @@ import type {
   AlertGroupQuery,
   AlertGroupStore,
   AlertStore,
+  LearningConfigEvent,
   LearningDecisionRecord,
   LearningEvidence,
+  LearningJob,
+  LearningJobQueue,
+  LearningJobStore,
   LearningPatternStore,
   LearningRecordStore,
   LearningReversalRecord,
@@ -76,6 +80,7 @@ interface Snapshot {
   readonly decisions: ReadonlyMap<string, LearningDecisionRecord>;
   readonly reviews: ReadonlyMap<string, LearningReviewRecord>;
   readonly reversals: readonly LearningReversalRecord[];
+  readonly jobs: ReadonlyMap<string, LearningJob>;
   readonly groupMembers: ReadonlyMap<string, GroupMember>;
   readonly incidents: ReadonlyMap<string, Incident>;
   readonly tasks: ReadonlyMap<string, IncidentTask>;
@@ -125,6 +130,90 @@ export class InMemorySoc implements SocPersistence {
   public readonly decisionRows = new Map<string, LearningDecisionRecord>();
   public readonly reviewRows = new Map<string, LearningReviewRecord>();
   public readonly reversalRows: LearningReversalRecord[] = [];
+  /** Fase 2: cola del motor por `tenant|alertId`, latidos y configuración de cada arranque. */
+  public readonly jobRows = new Map<string, LearningJob>();
+  public readonly heartbeatRows = new Map<
+    string,
+    { tenantId: string; at: Date; claimed: number; failed: number }
+  >();
+  public readonly configEventRows: LearningConfigEvent[] = [];
+
+  private readonly learningJobs: LearningJobStore = {
+    enqueue: (job) => {
+      const key = `${job.tenantId}|${job.alertId}`;
+      if (this.jobRows.has(key)) return Promise.resolve(false);
+      this.jobRows.set(key, job);
+      return Promise.resolve(true);
+    },
+  };
+
+  /** Fuera de transacción, como en PostgreSQL. Sin concurrencia real: la prueba es de contrato. */
+  public readonly learningQueue: LearningJobQueue = {
+    claim: ({ limit, leaseMs, now, claimId }) => {
+      const ready = [...this.jobRows.values()]
+        .filter(
+          (job) =>
+            (job.status === 'pending' && job.availableAt.getTime() <= now.getTime()) ||
+            (job.status === 'leased' &&
+              job.leaseUntil !== null &&
+              job.leaseUntil.getTime() < now.getTime()),
+        )
+        .sort((left, right) => left.availableAt.getTime() - right.availableAt.getTime())
+        .slice(0, limit);
+      const claimed = ready.map((job) => {
+        const next: LearningJob = {
+          ...job,
+          status: 'leased',
+          attempts: job.attempts + 1,
+          leaseUntil: new Date(now.getTime() + leaseMs),
+          claimId,
+        };
+        this.jobRows.set(`${job.tenantId}|${job.alertId}`, next);
+        return next;
+      });
+      return Promise.resolve(claimed);
+    },
+    complete: (alertId, claimId, now) => this.finishJob(alertId, claimId, now, null, null),
+    fail: (alertId, claimId, error, now, retryAt) =>
+      this.finishJob(alertId, claimId, now, error, retryAt ?? undefined),
+    heartbeat: (beat) => {
+      this.heartbeatRows.set(beat.workerId, {
+        tenantId: beat.tenantId,
+        at: beat.at,
+        claimed: beat.claimed,
+        failed: beat.failed,
+      });
+      return Promise.resolve();
+    },
+    recordConfig: (event) => {
+      this.configEventRows.push(event);
+      return Promise.resolve();
+    },
+  };
+
+  /** `error = null` ⇒ terminado; `retryAt` definido ⇒ vuelve a pendiente; `undefined` ⇒ `dead`. */
+  private finishJob(
+    alertId: string,
+    claimId: string,
+    now: Date,
+    error: string | null,
+    retryAt: Date | null | undefined,
+  ): Promise<boolean> {
+    const entry = [...this.jobRows.entries()].find(([, job]) => job.alertId === alertId);
+    if (!entry || entry[1].status !== 'leased' || entry[1].claimId !== claimId)
+      return Promise.resolve(false);
+    const [key, job] = entry;
+    const base = { ...job, leaseUntil: null, claimId: null, lastError: error };
+    this.jobRows.set(
+      key,
+      error === null
+        ? { ...base, status: 'done', finishedAt: now }
+        : retryAt instanceof Date
+          ? { ...base, status: 'pending', availableAt: retryAt }
+          : { ...base, status: 'dead', finishedAt: now },
+    );
+    return Promise.resolve(true);
+  }
   public readonly incidentRows = new Map<string, Incident>();
   public readonly taskRows = new Map<string, IncidentTask>();
   public readonly noteRows = new Map<string, IncidentNote>();
@@ -427,6 +516,7 @@ export class InMemorySoc implements SocPersistence {
       decisions: new Map(this.decisionRows),
       reviews: new Map(this.reviewRows),
       reversals: [...this.reversalRows],
+      jobs: new Map(this.jobRows),
       groupMembers: new Map(this.groupMemberRows),
       incidents: new Map(this.incidentRows),
       tasks: new Map(this.taskRows),
@@ -460,6 +550,7 @@ export class InMemorySoc implements SocPersistence {
     replace(this.decisionRows, snapshot.decisions);
     replace(this.reviewRows, snapshot.reviews);
     this.reversalRows.splice(0, this.reversalRows.length, ...snapshot.reversals);
+    replace(this.jobRows, snapshot.jobs);
     replace(this.groupMemberRows, snapshot.groupMembers);
     replace(this.incidentRows, snapshot.incidents);
     replace(this.taskRows, snapshot.tasks);
@@ -491,6 +582,7 @@ export class InMemorySoc implements SocPersistence {
         groups: this.groups,
         patterns: this.patterns,
         learning: this.learning,
+        learningJobs: this.learningJobs,
         incidents: this.incidents,
         tasks: this.tasks,
         notes: this.notes,

@@ -602,6 +602,51 @@ model SocLearningReversal {
   @@map("soc_learning_reversals")
 }
 
+// Aprendizaje SOC · fase 2 — cola del motor (un trabajo por alerta, escrito con la alerta).
+model SocLearningJob {
+  alertId     String    @id @map("alert_id") @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Text
+  fingerprint Json      @db.JsonB
+  signals     Json?     @db.JsonB
+  status      String    @db.Text
+  attempts    Int       @default(0)
+  availableAt DateTime  @map("available_at") @db.Timestamptz(3)
+  leaseUntil  DateTime? @map("lease_until") @db.Timestamptz(3)
+  claimId     String?   @map("claim_id") @db.Uuid
+  lastError   String?   @map("last_error") @db.Text
+  enqueuedAt  DateTime  @map("enqueued_at") @db.Timestamptz(3)
+  finishedAt  DateTime? @map("finished_at") @db.Timestamptz(3)
+
+  @@index([tenantId, enqueuedAt(sort: Desc)], map: "soc_learning_jobs_recent_idx")
+  @@map("soc_learning_jobs")
+}
+
+// Latido del worker del motor (dead man's switch).
+model SocLearningWorkerHeartbeat {
+  workerId String   @id @map("worker_id") @db.Text
+  tenantId String   @map("tenant_id") @db.Text
+  beatAt   DateTime @map("beat_at") @db.Timestamptz(3)
+  claimed  Int
+  failed   Int
+
+  @@map("soc_learning_worker_heartbeats")
+}
+
+// Configuración efectiva de cada arranque (append-only por trigger).
+model SocLearningConfigEvent {
+  id                 String   @id @db.Uuid
+  tenantId           String   @map("tenant_id") @db.Text
+  configHash         String   @map("config_hash") @db.Text
+  maxMode            String   @map("max_mode") @db.Text
+  activeRules        Int      @map("active_rules")
+  killSwitch         Boolean  @map("kill_switch")
+  samplingKeyVersion String?  @map("sampling_key_version") @db.Text
+  at                 DateTime @db.Timestamptz(3)
+
+  @@index([tenantId, at(sort: Desc)], map: "soc_learning_config_events_recent_idx")
+  @@map("soc_learning_config_events")
+}
+
 // C-17/C-20 — outbox del SOC: cola durable con lease que el despacho reclama de forma
 // atómica. Separado del outbox de admisión de C-04, que tiene FK a manifiestos de ingesta.
 model SocOutboxMessage {

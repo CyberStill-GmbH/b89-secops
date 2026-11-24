@@ -77,6 +77,7 @@ const APPEND_ONLY = [
   'soc_learning_pattern_events',
   'soc_learning_decisions',
   'soc_learning_reversals',
+  'soc_learning_config_events',
 ] as const;
 
 describe.skipIf(!databaseUrl)('Aprendizaje SOC D/E · roles e inmutabilidad', () => {
