@@ -457,6 +457,7 @@ export interface LearningPatternRow {
   readonly fingerprint: string;
   readonly normalizerVersion: string;
   readonly level: string;
+  readonly components: Readonly<Record<string, string | null>>;
   readonly maxAction: string;
   readonly closureReason: string;
   readonly status: string;
@@ -514,6 +515,7 @@ const OPEN_PATTERN_STATUSES = [
 function patternData(row: LearningPatternRow) {
   return {
     ...row,
+    components: row.components as Prisma.InputJsonValue,
     originAlertIds: [...row.originAlertIds],
     originClosers: [...row.originClosers],
     readinessBlockers: [...row.readinessBlockers],
@@ -526,7 +528,7 @@ export class PrismaLearningPatternStore {
   public async byId(tenantId: string, patternId: string): Promise<LearningPatternRow | undefined> {
     if (!UUID_PATTERN.test(patternId)) return undefined;
     const row = await this.tx.socLearningPattern.findFirst({ where: { id: patternId, tenantId } });
-    return row ?? undefined;
+    return (row as LearningPatternRow | null) ?? undefined;
   }
 
   /** Lee el patrón abierto de la huella bloqueando su fila hasta el fin de la transacción. */
@@ -542,7 +544,15 @@ export class PrismaLearningPatternStore {
     const id = rows[0]?.id;
     if (!id) return undefined;
     const row = await this.tx.socLearningPattern.findFirst({ where: { id, tenantId } });
-    return row ?? undefined;
+    return (row as LearningPatternRow | null) ?? undefined;
+  }
+
+  public activeByRule(tenantId: string, ruleKey: string): Promise<readonly LearningPatternRow[]> {
+    return this.tx.socLearningPattern.findMany({
+      where: { tenantId, ruleKey, status: 'active' },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      take: 200,
+    }) as Promise<LearningPatternRow[]>;
   }
 
   public listOpen(tenantId: string): Promise<readonly LearningPatternRow[]> {
@@ -550,7 +560,7 @@ export class PrismaLearningPatternStore {
       where: { tenantId, status: { in: OPEN_PATTERN_STATUSES } },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       take: SOC_QUERY_LIMITS.maximumListRows,
-    });
+    }) as Promise<LearningPatternRow[]>;
   }
 
   /** `false` si ya había un patrón abierto para la huella (índice único parcial). */
@@ -587,6 +597,161 @@ export class PrismaLearningPatternStore {
   }
 }
 
+/* ----------------------------------------- Registro del motor (aprendizaje SOC · E) */
+
+export interface LearningDecisionRow {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly alertId: string;
+  readonly mode: string;
+  readonly engineVersion: string;
+  readonly fingerprint: string;
+  readonly level: string;
+  readonly ruleKey: string | null;
+  readonly patternId: string | null;
+  readonly proposedAction: string;
+  readonly appliedAction: string;
+  readonly escalateReason: string | null;
+  readonly confidence: string;
+  readonly checks: unknown;
+  readonly drift: unknown;
+  readonly sampled: boolean;
+  readonly at: Date;
+}
+
+export interface LearningReviewRow {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly decisionId: string;
+  readonly alertId: string;
+  readonly patternId: string | null;
+  readonly kind: string;
+  readonly status: string;
+  readonly reviewerId: string | null;
+  readonly truePositive: boolean | null;
+  readonly comment: string | null;
+  readonly at: Date;
+  readonly resolvedAt: Date | null;
+  readonly revision: number;
+}
+
+export interface LearningReversalRow {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly decisionId: string;
+  readonly alertId: string;
+  readonly patternId: string | null;
+  readonly actorId: string;
+  readonly reason: string;
+  readonly reopened: boolean;
+  readonly at: Date;
+}
+
+export interface LearningCountersRow {
+  readonly autoClosedLastHour: number;
+  readonly autoClosedToday: number;
+  readonly autoClosedSinceReview: number;
+  readonly agreedSamplesLast30Days: number;
+}
+
+export class PrismaLearningRecordStore {
+  public constructor(private readonly tx: Tx) {}
+
+  /** `false` si la alerta ya tenía decisión (restricción única sobre `alert_id`). */
+  public async appendDecision(row: LearningDecisionRow): Promise<boolean> {
+    const created = await this.tx.socLearningDecision.createMany({
+      data: [
+        {
+          ...row,
+          checks: row.checks as Prisma.InputJsonValue,
+          drift: row.drift === null ? Prisma.DbNull : (row.drift as Prisma.InputJsonValue),
+        },
+      ],
+      skipDuplicates: true,
+    });
+    return created.count === 1;
+  }
+
+  public async decisionById(
+    tenantId: string,
+    id: string,
+  ): Promise<LearningDecisionRow | undefined> {
+    if (!UUID_PATTERN.test(id)) return undefined;
+    const row = await this.tx.socLearningDecision.findFirst({ where: { id, tenantId } });
+    return row ?? undefined;
+  }
+
+  /**
+   * Cierres propuestos fuera de sombra desde `since` (activación del patrón): última hora, día de
+   * Lima en curso y desde la última revisión resuelta; y muestras acordadas en 30 días.
+   */
+  public async counters(
+    tenantId: string,
+    patternId: string,
+    now: Date,
+    since: Date,
+    dayStart: Date,
+  ): Promise<LearningCountersRow> {
+    const hourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const rows = await this.tx.$queryRaw<
+      { hour: bigint; today: bigint; since_review: bigint; agreed: bigint }[]
+    >`
+      WITH last_review AS (
+        SELECT max(resolved_at) AS at FROM soc_learning_reviews
+         WHERE tenant_id = ${tenantId} AND pattern_id = ${patternId}::uuid AND resolved_at IS NOT NULL
+      ), closes AS (
+        SELECT at FROM soc_learning_decisions
+         WHERE tenant_id = ${tenantId} AND pattern_id = ${patternId}::uuid
+           AND proposed_action = 'AUTO_CLOSE' AND mode <> 'shadow' AND at >= ${since}
+      )
+      SELECT
+        (SELECT count(*) FROM closes WHERE at > ${hourAgo}) AS hour,
+        (SELECT count(*) FROM closes WHERE at >= ${dayStart}) AS today,
+        (SELECT count(*) FROM closes, last_review
+          WHERE last_review.at IS NULL OR closes.at > last_review.at) AS since_review,
+        (SELECT count(*) FROM soc_learning_reviews
+          WHERE tenant_id = ${tenantId} AND pattern_id = ${patternId}::uuid
+            AND kind = 'quality_sample' AND status = 'agreed' AND resolved_at > ${monthAgo}) AS agreed`;
+    const row = rows[0];
+    return {
+      autoClosedLastHour: Number(row?.hour ?? 0),
+      autoClosedToday: Number(row?.today ?? 0),
+      autoClosedSinceReview: Number(row?.since_review ?? 0),
+      agreedSamplesLast30Days: Number(row?.agreed ?? 0),
+    };
+  }
+
+  public async insertReview(row: LearningReviewRow): Promise<void> {
+    await this.tx.socLearningReview.create({ data: { ...row } });
+  }
+
+  public async reviewById(tenantId: string, id: string): Promise<LearningReviewRow | undefined> {
+    if (!UUID_PATTERN.test(id)) return undefined;
+    const row = await this.tx.socLearningReview.findFirst({ where: { id, tenantId } });
+    return row ?? undefined;
+  }
+
+  public async updateReview(row: LearningReviewRow, expectedRevision: number): Promise<boolean> {
+    const updated = await this.tx.socLearningReview.updateMany({
+      where: { id: row.id, tenantId: row.tenantId, revision: expectedRevision },
+      data: {
+        status: row.status,
+        reviewerId: row.reviewerId,
+        truePositive: row.truePositive,
+        comment: row.comment,
+        resolvedAt: row.resolvedAt,
+        revision: row.revision,
+      },
+    });
+    return updated.count === 1;
+  }
+
+  public async appendReversal(row: LearningReversalRow): Promise<void> {
+    await this.tx.socLearningReversal.create({ data: { ...row } });
+  }
+}
+
 /** Último cierre vigente de una alerta con su huella (evidencia de la etapa D). */
 export interface LearningClosureRow {
   readonly alertId: string;
@@ -600,6 +765,7 @@ export interface LearningClosureRow {
   readonly fingerprint: string;
   readonly level: string;
   readonly normalizerVersion: string;
+  readonly components: Readonly<Record<string, string | null>>;
 }
 
 export interface SourceCoverageRow {
@@ -776,6 +942,7 @@ export interface SocStores {
   readonly fingerprints: PrismaAlertFingerprintStore;
   readonly groups: PrismaAlertGroupStore;
   readonly patterns: PrismaLearningPatternStore;
+  readonly learning: PrismaLearningRecordStore;
   readonly incidents: PrismaIncidentStore;
   readonly tasks: PrismaIncidentTaskStore;
   readonly notes: PrismaIncidentNoteStore;
@@ -796,6 +963,7 @@ export class PrismaSocUnitOfWork {
         fingerprints: new PrismaAlertFingerprintStore(tx),
         groups: new PrismaAlertGroupStore(tx),
         patterns: new PrismaLearningPatternStore(tx),
+        learning: new PrismaLearningRecordStore(tx),
         incidents: new PrismaIncidentStore(tx),
         tasks: new PrismaIncidentTaskStore(tx),
         notes: new PrismaIncidentNoteStore(tx),
@@ -888,7 +1056,7 @@ export class PrismaSocQueries {
       SELECT c.alert_id AS "alertId", c.actor_id AS "actorId", c.at,
              c.closure_reason AS "closureReason", c.origin, c.decision_group_id AS "decisionGroupId",
              a.priority, f.rule_key AS "ruleKey", f.fingerprint, f.level,
-             f.normalizer_version AS "normalizerVersion"
+             f.normalizer_version AS "normalizerVersion", f.components
         FROM (
           SELECT DISTINCT ON (alert_id)
                  alert_id, kind, actor_id, at, closure_reason, origin, decision_group_id
@@ -901,6 +1069,108 @@ export class PrismaSocQueries {
        WHERE c.kind = 'close' AND c.at >= ${since}
        ORDER BY c.at DESC
        LIMIT ${SOC_QUERY_LIMITS.maximumLearningRows}`;
+  }
+
+  /** Etapa D/E · lecturas de la consola. */
+  public async listLearningPatterns(filter: {
+    readonly tenantId: string;
+    readonly status?: string;
+    readonly limit: number;
+  }): Promise<{ readonly items: readonly LearningPatternRow[]; readonly total: number }> {
+    const where = {
+      tenantId: filter.tenantId,
+      ...(filter.status ? { status: filter.status } : {}),
+    };
+    const [items, total] = await Promise.all([
+      this.client.socLearningPattern.findMany({
+        where,
+        orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
+        take: Math.min(filter.limit, SOC_QUERY_LIMITS.maximumListRows),
+      }),
+      this.client.socLearningPattern.count({ where }),
+    ]);
+    return { items: items as LearningPatternRow[], total };
+  }
+
+  public async learningPatternById(
+    tenantId: string,
+    patternId: string,
+  ): Promise<LearningPatternRow | undefined> {
+    if (!UUID_PATTERN.test(patternId)) return undefined;
+    const row = await this.client.socLearningPattern.findFirst({
+      where: { id: patternId, tenantId },
+    });
+    return (row as LearningPatternRow | null) ?? undefined;
+  }
+
+  public async learningPatternHistory(
+    tenantId: string,
+    patternId: string,
+  ): Promise<{
+    readonly approvals: readonly PatternApprovalRow[];
+    readonly events: readonly PatternEventRow[];
+  }> {
+    if (!UUID_PATTERN.test(patternId)) return { approvals: [], events: [] };
+    const [approvals, events] = await Promise.all([
+      this.client.socLearningPatternApproval.findMany({
+        where: { tenantId, patternId },
+        orderBy: [{ at: 'asc' }, { id: 'asc' }],
+      }),
+      this.client.socLearningPatternEvent.findMany({
+        where: { tenantId, patternId },
+        orderBy: [{ at: 'asc' }, { id: 'asc' }],
+        take: SOC_QUERY_LIMITS.maximumListRows,
+      }),
+    ]);
+    return { approvals, events };
+  }
+
+  public async listLearningDecisions(filter: {
+    readonly tenantId: string;
+    readonly alertId?: string;
+    readonly patternId?: string;
+    readonly limit: number;
+  }): Promise<{ readonly items: readonly LearningDecisionRow[]; readonly total: number }> {
+    if (
+      (filter.alertId && !UUID_PATTERN.test(filter.alertId)) ||
+      (filter.patternId && !UUID_PATTERN.test(filter.patternId))
+    ) {
+      return { items: [], total: 0 };
+    }
+    const where = {
+      tenantId: filter.tenantId,
+      ...(filter.alertId ? { alertId: filter.alertId } : {}),
+      ...(filter.patternId ? { patternId: filter.patternId } : {}),
+    };
+    const [items, total] = await Promise.all([
+      this.client.socLearningDecision.findMany({
+        where,
+        orderBy: [{ at: 'desc' }, { id: 'asc' }],
+        take: Math.min(filter.limit, SOC_QUERY_LIMITS.maximumListRows),
+      }),
+      this.client.socLearningDecision.count({ where }),
+    ]);
+    return { items, total };
+  }
+
+  public async listLearningReviews(filter: {
+    readonly tenantId: string;
+    readonly status?: string;
+    readonly limit: number;
+  }): Promise<{ readonly items: readonly LearningReviewRow[]; readonly total: number }> {
+    const where = {
+      tenantId: filter.tenantId,
+      ...(filter.status ? { status: filter.status } : {}),
+    };
+    const [items, total] = await Promise.all([
+      this.client.socLearningReview.findMany({
+        where,
+        orderBy: [{ at: 'desc' }, { id: 'asc' }],
+        take: Math.min(filter.limit, SOC_QUERY_LIMITS.maximumListRows),
+      }),
+      this.client.socLearningReview.count({ where }),
+    ]);
+    return { items, total };
   }
 
   /** Etapa D. Alertas cerradas sin `closure_origin` (etiquetado retroactivo pendiente). */

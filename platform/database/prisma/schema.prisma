@@ -476,6 +476,7 @@ model SocLearningPattern {
   fingerprint       String    @db.Text
   normalizerVersion String    @map("normalizer_version") @db.Text
   level             String    @db.Text
+  components        Json      @db.JsonB
   maxAction         String    @map("max_action") @db.Text
   closureReason     String    @map("closure_reason") @db.Text
   status            String    @db.Text
@@ -537,6 +538,68 @@ model SocLearningPatternEvent {
 
   @@index([tenantId, patternId, at], map: "soc_learning_pattern_events_pattern_idx")
   @@map("soc_learning_pattern_events")
+}
+
+// Aprendizaje SOC · etapa E — una decisión por alerta (append-only por trigger).
+model SocLearningDecision {
+  id             String   @id @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Text
+  alertId        String   @unique(map: "soc_learning_decisions_alert_key") @map("alert_id") @db.Uuid
+  mode           String   @db.Text
+  engineVersion  String   @map("engine_version") @db.Text
+  fingerprint    String   @db.Text
+  level          String   @db.Text
+  ruleKey        String?  @map("rule_key") @db.Text
+  patternId      String?  @map("pattern_id") @db.Uuid
+  proposedAction String   @map("proposed_action") @db.Text
+  appliedAction  String   @map("applied_action") @db.Text
+  escalateReason String?  @map("escalate_reason") @db.Text
+  confidence     String   @db.Text
+  checks         Json     @db.JsonB
+  drift          Json?    @db.JsonB
+  sampled        Boolean
+  at             DateTime @db.Timestamptz(3)
+
+  @@index([tenantId, patternId, at(sort: Desc)], map: "soc_learning_decisions_pattern_idx")
+  @@index([tenantId, at(sort: Desc)], map: "soc_learning_decisions_recent_idx")
+  @@map("soc_learning_decisions")
+}
+
+// Revisiones humanas de decisiones (muestra de calidad, dry-run, revisión forzada).
+model SocLearningReview {
+  id           String    @id @db.Uuid
+  tenantId     String    @map("tenant_id") @db.Text
+  decisionId   String    @map("decision_id") @db.Uuid
+  alertId      String    @map("alert_id") @db.Uuid
+  patternId    String?   @map("pattern_id") @db.Uuid
+  kind         String    @db.Text
+  status       String    @db.Text
+  reviewerId   String?   @map("reviewer_id") @db.Text
+  truePositive Boolean?  @map("true_positive")
+  comment      String?   @db.Text
+  at           DateTime  @db.Timestamptz(3)
+  resolvedAt   DateTime? @map("resolved_at") @db.Timestamptz(3)
+  revision     Int
+
+  @@index([tenantId, status, at(sort: Desc)], map: "soc_learning_reviews_queue_idx")
+  @@index([tenantId, patternId, resolvedAt], map: "soc_learning_reviews_pattern_idx")
+  @@map("soc_learning_reviews")
+}
+
+// Reversiones de autocierres (append-only por trigger).
+model SocLearningReversal {
+  id         String   @id @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Text
+  decisionId String   @map("decision_id") @db.Uuid
+  alertId    String   @map("alert_id") @db.Uuid
+  patternId  String?  @map("pattern_id") @db.Uuid
+  actorId    String   @map("actor_id") @db.Text
+  reason     String   @db.Text
+  reopened   Boolean
+  at         DateTime @db.Timestamptz(3)
+
+  @@index([tenantId, patternId, at], map: "soc_learning_reversals_pattern_idx")
+  @@map("soc_learning_reversals")
 }
 
 // C-17/C-20 — outbox del SOC: cola durable con lease que el despacho reclama de forma
