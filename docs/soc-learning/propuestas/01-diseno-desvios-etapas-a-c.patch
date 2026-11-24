@@ -1,0 +1,88 @@
+--- a/docs/soc-learning/01-diseno.md
++++ b/docs/soc-learning/01-diseno.md
+@@ -91,7 +91,10 @@
+ |---|---|
+ | `modules/detection` | Sin cambios de comportamiento. Aporta el `SecurityEvent` para la huella en el momento de promover. |
+ | `modules/soc` (`alert.ts`, `use-cases.ts`) | Cierre con motivo estructurado y `closure_origin`. Nuevos eventos de dominio. |
+-| Nuevo `modules/soc-learning` | Huella, normalización, ciclo de vida de patrones, `decide`, salvaguardas y reportes. Todo puro, con puertos para los stores. Sigue el patrón de `modules/assistant/src/investigations`. |
++| `@b89/contracts` (`src/observables`) | Contrato `b89.observables` v1: normalización y redacción, con SHA-256 inyectado por quien llama (el contrato no depende de Node). |
++| `@b89/detection` (`fingerprint.ts`, `rule-key.ts`) | Huella v1 y clave `fuente:rule_id`, puras. Rangos generados desde el catálogo (`rule-sources.generated.ts`). |
++| `modules/soc` (`closure.ts`, `alert-group.ts`) | Cierre estructurado y agrupación. |
++| Nuevo `modules/soc-learning` (etapas D–F) | Ciclo de vida de patrones, `decide`, salvaguardas y reportes. Todo puro, con puertos para los stores. Sigue el patrón de `modules/assistant/src/investigations`. Se crea cuando haya pnpm para enlazar el workspace; las etapas A–C viven en los paquetes de arriba. |
+ | `platform/database` | Migraciones aditivas y stores Prisma. |
+ | `platform/audit` | Toda acción del motor y toda aprobación quedan en `audit_events`. |
+ | Outbox SOC | Dispara el worker. En la etapa E se verifica el tipo de mensaje exacto de «alerta creada»; si no existe, se agrega uno aditivo. |
+@@ -111,11 +114,9 @@
+ | Columna | Tipo | Uso |
+ |---|---|---|
+ | `closure_reason` | text | Código del catálogo (§3.1). |
+-| `closure_origin` | text | `human`, `ai_analyst`, `bulk_script`, `learning_engine`, `legacy_unknown`. |
++| `closure_origin` | text | `human`, `ai_analyst`, `bulk_script`, `learning_engine`, `service_other` (identidad `svc:` desconocida), `legacy_unknown`. |
+ | `closed_by` | text | Actor del último cierre (copia de la auditoría para consultar sin join). |
+ | `closed_at` | timestamptz | Fecha del último cierre. |
+-| `rule_key` | text | `fuente:rule_id` (§4.1). Índice `(tenant_id, rule_key, created_at)`. |
+-| `group_id` | uuid | FK a `soc_alert_groups`. |
+ 
+ **`soc_alert_closures` (nueva, append-only)**
+ 
+@@ -137,7 +138,14 @@
+ 
+ ### 2.3 Agrupación (etapa C)
+ 
+-**`soc_alert_groups`**: `id, tenant_id, fingerprint, rule_key, level, status (open|closed), first_seen_at, last_seen_at, alert_count, primary_alert_id, highest_priority, window_ends_at, revision`.
++**`soc_alert_groups`**: `id, tenant_id, fingerprint, rule_key, level, status (open|closed), first_seen_at, last_seen_at, alert_count, primary_alert_id, highest_priority, revision`.
++
++- Un solo grupo abierto por `(tenant, huella)`: índice único parcial `WHERE status = 'open'`.
++- La pertenencia va en **`soc_alert_group_members`** (`alert_id` PK, `group_id`, append-only), no en una columna de `soc_alerts`: agrupar no cambia la revisión de la alerta.
++- La `rule_key` vive en `soc_alert_fingerprints` y en el grupo, no como columna de `soc_alerts`.
++- La agrupación corre **al ingerir**, en la misma transacción que crea la alerta, con la fila del grupo bloqueada (`FOR UPDATE`) e independiente del modo del motor: solo anota.
++- Tope de alertas por grupo (`B89_SOC_GROUPING_MAX_ALERTS`, por defecto 500): uno lleno se sella y la siguiente abre otro.
++- El resumen expone `coarse` (huella gruesa) y cada fila del listado `collapsible`; P1/P2 son siempre `collapsible: false`.
+ 
+ ### 2.4 Patrones (etapa D)
+ 
+@@ -249,7 +257,10 @@
+ `rule_key = <fuente>:<rule_id>`
+ 
+ - `fuente` sale de `detections/catalog.yaml#id_ranges` según el rango del ID (`ad`, `cloudflare`, `dlp`, `m365`, …).
+-- Si el rango no está catalogado, se usa el producto del primer salto `origin` de `provenance` en minúsculas y con guiones. Si tampoco hay, `wazuh`.
++- Los rangos se **generan** desde el catálogo (`scripts/soc-learning/generate-rule-sources.mjs` → `rule-sources.generated.ts`); una spec falla si se desalinean o se solapan.
++- Los rangos aplican solo si la regla la evaluó el SIEM colector (proveedor de la regla = producto del salto `collector`); el dominio no nombra al proveedor (C-23).
++- Si el rango no está catalogado, se usa el producto del primer salto `origin` de `provenance` en minúsculas y con guiones; si tampoco hay, `<proveedor>-custom`.
++- Deuda conocida: `wazuh/platform-monitoring` reutiliza 42 IDs del rango `network` (1018xx); hasta renumerarlos, esas alertas reciben `network:` y solo el nombre de la regla las distingue en la huella.
+ - Las reglas del correlador usan `b89-correlator:<pattern_id>`.
+ - La huella incluye además `rule_name_norm`: si una regla cambia de significado manteniendo el ID, la huella cambia y el patrón deja de aplicar.
+ 
+@@ -261,11 +272,12 @@
+ "extensions": { "b89.observables": {
+   "v": 1,
+   "agentId": "017",
+-  "process":  { "image": "c:\\windows\\system32\\svchost.exe", "cmdlineNorm": "...", "cmdlineHmac": "h1_…", "sha256": "…" },
++  "normalizer": "1",
++  "process":  { "image": "c:\\windows\\system32\\svchost.exe", "commandLine": "…normalizada y redactada…", "sha256": "…" },
+   "parent":   { "image": "…" },
+   "file":     { "path": "…", "sha256": "…" },
+   "destination": { "ip": "…", "port": 443, "domain": "api.example.com" },
+-  "mitre": [{ "technique": "T1558.003", "tactic": "credential-access", "from": "rule|catalog" }]
++  "mitre": { "techniques": ["T1558.003"], "tactics": ["credential-access"] }
+ }}
+ ```
+ 
+@@ -293,7 +305,7 @@
+ | Mayúsculas | Rutas e imágenes de Windows en minúsculas; dominios en minúsculas y sin punto final; UPN en minúsculas. |
+ | Espacios y comillas en la línea de comando | Espacios colapsados; comillas redundantes fuera. Se mantiene el orden de los argumentos. |
+ | **Secretos** | `password=`, `-p <x>`, `--token`, `Authorization: Bearer`, JWT (`eyJ…`), `AKIA…`, cadenas de conexión con `pwd=`, base64 de 40 o más en `-enc`/`-EncodedCommand` → `{REDACTED}`. Se redacta **antes** de persistir y antes del HMAC de la normalizada. |
+-| Línea de comando original | Nunca se guarda. Solo `cmdlineHmac = HMAC-SHA256(clave del tenant, original)`. Es un HMAC y no un SHA-256 simple para que no se pueda adivinar por fuerza bruta un secreto corto. La clave vive en el gestor de secretos: `B89_LEARNING_FINGERPRINT_KEY_REF`. |
++| Línea de comando original | Nunca se guarda en B89 (queda en el crudo del Indexer bajo su retención). El `cmdlineHmac` del original se **pospone**: sin la línea original persistida no aporta minimización; se retoma si una etapa necesita comparar originales. |
+ 
+ La normalización tiene una versión propia (`normalizerVersion`) y cada regla se prueba con fixtures. Si cambia la versión, cambia la huella: los patrones de la versión anterior pasan a `superseded` y hay que volver a validarlos. Nunca se migran en silencio.
+ 
+@@ -457,7 +469,7 @@
+ 
+ 1. **Modo efectivo** = `min(B89_LEARNING_MAX_MODE, settings.mode, ruleModes[rule_key])`. Si es `off` o hay kill switch → sin acción, solo se registra.
+ 2. **Huella**: se calcula o se lee de `soc_alert_fingerprints`. Si falla → `ESCALATE(FINGERPRINT_ERROR)`.
+-3. **Agrupación**: si hay un grupo abierto con la misma huella dentro de la ventana, se suma al grupo. Esto ocurre en cualquier prioridad y no oculta nada para P1/P2.
++3. **Agrupación**: ya ocurrió al ingerir (§2.3); el motor solo la lee. Ocurre en cualquier prioridad y no oculta nada para P1/P2.
+ 4. **Patrón**: búsqueda exacta por tenant, regla y huella. Comprobar revisión aprobada y vigencia, comparar componentes y repetir la comprobación de revisión, vigencia y paro en la transacción que aplica el efecto.
+ 5. **Casi coincidencia (deriva)**: si no hay patrón exacto pero sí uno activo con el mismo `rule_key` y el mismo sujeto, y algún componente de comportamiento distinto → `ESCALATE(DRIFT)`. La decisión muestra el detalle, p. ej. `process.sha256: a1…→9f…`. Lo mismo si coinciden la regla y el comportamiento pero **cambia el sujeto**: una cuenta o un equipo no heredan el patrón.
+ 6. **Salvaguardas** (§6.1 y §6.2). Ante una guarda activa o indeterminada, registrar `checks` y devolver `ESCALATE` a revisión humana. Evaluar:

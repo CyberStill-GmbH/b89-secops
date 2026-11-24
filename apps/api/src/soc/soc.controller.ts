@@ -23,6 +23,9 @@ import {
   type AlertStatus,
   type Incident,
   type IncidentStatus,
+  isCollapsible,
+  type AlertGroup,
+  type ClosureInput,
   type TriageVerdict,
 } from '@b89/soc';
 
@@ -35,6 +38,27 @@ import type { SecOpsRuntime } from '../runtime/secops-runtime.js';
 import { SOC_KNOWLEDGE } from '../assistant/soc-knowledge.generated.js';
 import { explainAlertFromKnowledge } from './alert-explanation.js';
 
+/** Aprendizaje SOC · etapa C: resumen del grupo por huella. Agrupar no oculta ni cierra nada. */
+export function alertGroupView(group: AlertGroup) {
+  return {
+    id: group.id,
+    status: group.status,
+    level: group.level,
+    ruleKey: group.ruleKey,
+    // Huella gruesa: el grupo junta alertas que solo comparten regla y sujeto (sin proceso,
+    // hash ni destino). La consola debe avisarlo; nunca es base para cerrar en bloque a ciegas.
+    coarse: group.level === 'coarse',
+    alertCount: group.alertCount,
+    firstSeenAt: group.firstSeenAt.toISOString(),
+    lastSeenAt: group.lastSeenAt.toISOString(),
+    highestPriority: group.highestPriority,
+    primaryAlertId: group.primaryAlertId,
+  };
+}
+
+/** Máximo de alertas de un grupo que devuelve `GET /api/alerts/:id/group`. */
+const GROUP_MEMBERS_LIMIT = 100;
+
 export function alertView(alert: Alert, capabilities: ReadonlySet<string>) {
   return projectFields(
     {
@@ -44,10 +68,18 @@ export function alertView(alert: Alert, capabilities: ReadonlySet<string>) {
       // El título ya no lleva «(wazuh N)»: la regla viaja aparte para la guía y el detalle técnico.
       ruleId: alert.ruleId,
       priority: alert.priority,
+      // Aprendizaje SOC · fase 3: la cola ordena por la efectiva y muestra la original.
+      effectivePriority: alert.effectivePriority ?? alert.priority,
+      demotedBy: alert.demotedBy ?? null,
       score: alert.score,
       status: alert.status,
       assigneeId: alert.assigneeId,
       verdict: alert.verdict,
+      // Aprendizaje SOC · etapa A: último cierre vigente (null mientras está abierta).
+      closureReason: alert.closureReason,
+      closureOrigin: alert.closureOrigin,
+      closedBy: alert.closedBy,
+      closedAt: alert.closedAt?.toISOString() ?? null,
       incidentId: alert.incidentId,
       occurredAt: alert.occurredAt.toISOString(),
       revision: alert.revision,
@@ -140,9 +172,29 @@ export class SocController {
       `alerts:status=${query.status ?? ''}:q=${search}:priority=${query.priority ?? ''}:entity=${entity ?? ''}`,
       correlationId,
     );
+    const groups =
+      (await this.runtime.soc.alertGroupsOf?.(
+        actor.tenantId,
+        page.items.map((alert) => alert.id),
+      )) ?? new Map<string, AlertGroup>();
     return {
       correlationId,
-      items: page.items.map((alert) => alertView(alert, actor.capabilities)),
+      items: page.items.map((alert) => {
+        const group = groups.get(alert.id);
+        return {
+          ...alertView(alert, actor.capabilities),
+          // Etapa C: la consola agrupa filas con el mismo `group.id`; P1/P2 nunca se colapsan.
+          // `collapsible: false` (P1/P2): la consola la muestra como fila propia siempre.
+          group: group
+            ? {
+                id: group.id,
+                alertCount: group.alertCount,
+                coarse: group.level === 'coarse',
+                collapsible: isCollapsible(alert.priority),
+              }
+            : null,
+        };
+      }),
       nextCursor: page.nextCursor,
       totalCount: result.total,
     };
@@ -156,14 +208,32 @@ export class SocController {
       // Mismo error para inexistente y no autorizado: la API no enumera.
       throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
     }
+    const group = await this.runtime.soc.alertGroupOf?.(actor.tenantId, alert.id);
     return {
       correlationId,
       alert: {
         ...alertView(alert, actor.capabilities),
         // Solo en el detalle: por qué salta esta regla, cuándo es falso positivo y qué hacer.
         explanation: explainAlertFromKnowledge(alert, SOC_KNOWLEDGE),
+        group: group ? alertGroupView(group) : null,
       },
     };
+  }
+
+  /** Aprendizaje SOC · etapa C: grupo de la alerta y sus alertas (las más recientes primero). */
+  @Get('alerts/:id/group')
+  public async alertGroup(@Req() request: IncomingRequest, @Param('id') id: string) {
+    const { actor, correlationId } = await readingActor(this.runtime, request);
+    const alert = await this.runtime.soc.alertById(actor.tenantId, id);
+    if (!alert || !actor.capabilities.has('alerts.read')) {
+      throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
+    }
+    const group = await this.runtime.soc.alertGroupOf?.(actor.tenantId, alert.id);
+    if (!group) return { correlationId, group: null, alertIds: [] };
+    const alertIds =
+      (await this.runtime.soc.alertGroupMembers?.(actor.tenantId, group.id, GROUP_MEMBERS_LIMIT)) ??
+      [];
+    return { correlationId, group: alertGroupView(group), alertIds };
   }
 
   @Post('alerts/:id/commands')
@@ -177,6 +247,8 @@ export class SocController {
       verdict?: TriageVerdict;
       note?: string;
       assigneeId?: string;
+      /** Cierre estructurado `{ reason, justification, evidenceRefs }`; lo valida el dominio. */
+      closure?: unknown;
     },
   ) {
     const { actor, correlationId } = await mutatingActor(this.runtime, request);
@@ -194,8 +266,14 @@ export class SocController {
         ...(body.verdict === undefined ? {} : { verdict: body.verdict }),
         ...(body.note === undefined ? {} : { note: body.note }),
         ...(body.assigneeId === undefined ? {} : { assigneeId: body.assigneeId }),
+        // La forma se valida en el dominio (`validateClosure`): aquí solo se reenvía.
+        ...(body.closure === undefined ? {} : { closure: body.closure as ClosureInput }),
       },
     });
+    if (!result.ok && result.reason.startsWith('CLOSURE_')) {
+      // La consola necesita saber que falló el cierre y por qué (motivo, veredicto o triaje).
+      throw new ApiError('VALIDATION_FAILED', correlationId, ['closure', result.reason]);
+    }
     if (!result.ok) throw fromSocFailure(result.code, correlationId);
     this.runtime.dispatcher.kick();
     return { correlationId, alert: alertView(result.value, actor.capabilities) };

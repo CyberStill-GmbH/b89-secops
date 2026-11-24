@@ -138,6 +138,15 @@ ALTER ROLE b89_monitor SET default_transaction_read_only = on;
 GRANT CONNECT ON DATABASE b89_secops TO b89_monitor;
 GRANT USAGE ON SCHEMA public TO b89_monitor;
 GRANT SELECT ON public.source_poll_observations, public.source_stream_activity, public.source_health_transitions TO b89_monitor;
+-- Motor de aprendizaje SOC (fase 2): solo si las tablas ya existen (migración aplicada).
+DO $$ DECLARE t text; BEGIN
+  FOREACH t IN ARRAY ARRAY['soc_learning_config_events', 'soc_learning_worker_heartbeats',
+                           'soc_learning_jobs', 'soc_learning_pattern_events'] LOOP
+    IF to_regclass('public.' || t) IS NOT NULL THEN
+      EXECUTE format('GRANT SELECT ON public.%I TO b89_monitor', t);
+    END IF;
+  END LOOP;
+END $$;
 SQL
 docker exec "$PG" psql -X -At -U b89_monitor -d b89_secops -c 'select count(*) from source_poll_observations' >/dev/null \
   || fail 'autoprueba Postgres b89_monitor'

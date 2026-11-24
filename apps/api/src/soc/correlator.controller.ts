@@ -251,6 +251,8 @@ export class CorrelatorController {
         priority: alert.priority,
         status: alert.status,
         verdict: alert.verdict ?? '',
+        // Aprendizaje SOC · etapa A: el correlador solo aprende de cierres humanos.
+        closureOrigin: alert.closureOrigin ?? '',
         signal: alert.signal ?? '',
         entityKeys: alert.entityKeys,
         incidentId: alert.incidentId ?? '',
@@ -336,7 +338,8 @@ export class CorrelatorController {
           code: 'CORRELATED_ENTITY',
           delta: 0,
           // Stable ID used by the Go archive (risk.candidateID).
-          detail: 'Expediente del correlador: rc_' +
+          detail:
+            'Expediente del correlador: rc_' +
             createHash('sha256').update(body['idempotencyKey']).digest('hex').slice(0, 24),
         },
         ...explanation,

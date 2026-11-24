@@ -43,13 +43,14 @@ func TestRefreshFeedbackKeepsMetricsButDisablesSuppressionsForTruncatedFeed(t *t
 	for index := 0; index < 3; index++ {
 		at := now.Add(-time.Duration(index+1) * time.Hour)
 		alerts = append(alerts, model.B89Alert{
-			ID:         []string{"fp-a", "fp-b", "fp-c"}[index],
-			RuleID:     "101501",
-			Priority:   "P3",
-			Verdict:    "false_positive",
-			EntityKeys: []string{"ip:192.0.2.200"},
-			OccurredAt: at,
-			UpdatedAt:  at.Add(10 * time.Minute),
+			ID:            []string{"fp-a", "fp-b", "fp-c"}[index],
+			RuleID:        "101501",
+			Priority:      "P3",
+			Verdict:       "false_positive",
+			ClosureOrigin: "human",
+			EntityKeys:    []string{"ip:192.0.2.200"},
+			OccurredAt:    at,
+			UpdatedAt:     at.Add(10 * time.Minute),
 		})
 	}
 	policy := feedback.DefaultPolicy()

@@ -17,6 +17,7 @@ import { createHash } from 'node:crypto';
 import type { SecurityEvent } from '@b89/contracts';
 
 import { entityKeysOf, signalOf, type SignalClass } from './correlation.js';
+import { computeFingerprint, type AlertFingerprint } from './fingerprint.js';
 import {
   prioritize,
   PROMOTION_THRESHOLD,
@@ -28,6 +29,34 @@ import {
 
 export const PROMOTION_OUTCOMES = ['promoted', 'duplicate', 'not_promoted'] as const;
 export type PromotionOutcomeCode = (typeof PROMOTION_OUTCOMES)[number];
+
+/**
+ * Aprendizaje SOC · etapa E — señales del evento que la alerta no conserva y que el motor necesita
+ * para sus guardas. No se persisten con el candidato: el motor corre justo después de la ingesta.
+ */
+export interface GuardSignals {
+  /** Severidad normalizada del evento. */
+  readonly severity: string;
+  /** Grupos de la regla normalizados (`lateral_movement` → `lateral-movement`): tácticas MITRE. */
+  readonly mitreTactics: readonly string[];
+  /** La regla pertenece a un grupo de inteligencia de amenazas (`b89-ti-*`). */
+  readonly threatIntelHit: boolean;
+}
+
+/** Señales de guarda de un evento (función pura). */
+export function guardSignalsOf(event: SecurityEvent): GuardSignals {
+  const groups = (event.detection?.rule.groups ?? []).map((group) =>
+    group
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_]+/gu, '-'),
+  );
+  return {
+    severity: event.severity.normalized,
+    mitreTactics: groups,
+    threatIntelHit: groups.some((group) => group.startsWith('b89-ti')),
+  };
+}
 
 export interface DetectionCandidate {
   readonly id: string;
@@ -54,6 +83,13 @@ export interface DetectionCandidate {
    * esta vista y debe poder explicarse tal como fue.
    */
   readonly relatedAlertIds: readonly string[];
+  /**
+   * Aprendizaje SOC · etapa B: huella del evento al promover. Ausente en candidatos que no
+   * nacen de un SecurityEvent (p. ej. el correlador) o anteriores a la etapa B.
+   */
+  readonly fingerprint?: AlertFingerprint;
+  /** Aprendizaje SOC · etapa E: señales para las guardas del motor. */
+  readonly guardSignals?: GuardSignals;
 }
 
 export type PromotionDecision =
@@ -100,11 +136,20 @@ export function candidateId(key: string, occurredAt: Date): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-function titleFor(event: SecurityEvent): string {
+/**
+ * Opciones del borde (C-23): el dominio no nombra proveedores. El composition root declara qué
+ * proveedores usan IDs internos que no ayudan al analista en el título.
+ */
+export interface PromotionOptions {
+  /** Proveedores cuyo título es solo el nombre de la regla, sin `(proveedor id)`. */
+  readonly bareTitleProviders?: ReadonlySet<string>;
+}
+
+function titleFor(event: SecurityEvent, options: PromotionOptions): string {
   const rule = event.detection?.rule;
-  // El ID interno del detector no ayuda al analista: la razón visible ya conserva
+  // El ID interno de algunos detectores no ayuda al analista: la razón visible ya conserva
   // grado/confianza y la evidencia mantiene el identificador técnico completo.
-  if (rule?.provider === 'OpenSearch Anomaly Detection') return rule.name;
+  if (rule && options.bareTitleProviders?.has(rule.provider)) return rule.name;
   if (rule) return `${rule.name} (${rule.provider} ${rule.id})`;
   return `${event.source.product} · ${event.action ?? event.category[0]}`;
 }
@@ -114,6 +159,7 @@ export function decidePromotion(
   context: PrioritizationContext,
   existing: DetectionCandidate | undefined,
   now: Date,
+  options: PromotionOptions = {},
 ): PromotionDecision {
   const evaluation = prioritize(event, context);
   const key = promotionKey(event.tenant.id, event.recordId, evaluation.rulesetVersion);
@@ -145,11 +191,13 @@ export function decidePromotion(
       rulesetVersion: evaluation.rulesetVersion,
       occurredAt,
       createdAt: now,
-      title: titleFor(event),
+      title: titleFor(event, options),
       entityKeys: context.correlation?.entityKeys ?? entityKeysOf(event),
       signal: context.correlation?.signal ?? signalOf(event),
       ruleId: event.detection?.rule.id ?? null,
       relatedAlertIds: context.correlation?.relatedAlertIds ?? [],
+      fingerprint: computeFingerprint(event),
+      guardSignals: guardSignalsOf(event),
     },
   };
 }

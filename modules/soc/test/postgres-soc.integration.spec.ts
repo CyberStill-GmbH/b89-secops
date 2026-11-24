@@ -33,6 +33,7 @@ import { openIncident } from '../src/incident.js';
 import {
   addIncidentNote,
   createIncidentTask,
+  executeAlertCommand,
   executeIncidentCommand,
   executeTaskCommand,
   ingestCandidate,
@@ -574,6 +575,250 @@ describe.skipIf(!databaseUrl)('C-17 · persistencia SOC sobre PostgreSQL', () =>
       );
     } finally {
       await admin.query(`UPDATE soc_alerts SET priority = 'P2' WHERE id = $1`, [target.id]);
+      await admin.end();
+    }
+  });
+
+  it('aprendizaje SOC · 50 ingestas concurrentes de la misma huella: 1 grupo, contador exacto, 0 alertas perdidas', async () => {
+    const fingerprint = {
+      fingerprint: `fp1_${'c'.repeat(64)}`,
+      level: 'fine' as const,
+      version: '1',
+      normalizerVersion: '1',
+      ruleKey: 'windows:101150',
+      components: {
+        ruleKey: 'windows:101150',
+        ruleName: 'regla',
+        user: 'usuario.sintetico@b89-lab.example',
+        host: '017',
+        srcIp: null,
+        processImage: 'x.exe',
+        parentImage: null,
+        commandLine: null,
+        sha256: null,
+        filePath: null,
+        destination: null,
+        destinationPort: null,
+      },
+    };
+    const deps = {
+      ...dependencies(persistence),
+      groupingPolicy: { windowMs: 24 * 60 * 60 * 1000, maxSpanMs: 7 * 24 * 60 * 60 * 1000 },
+    };
+    const CONCURRENT = 50;
+    const targets = Array.from({ length: CONCURRENT }, (_, index) =>
+      candidate(100 + index, { priority: index === 7 ? 'P2' : 'P4', score: 35, fingerprint }),
+    );
+    const results = await Promise.all(targets.map((target) => ingestCandidate(deps, target)));
+    expect(results.filter((result) => !result.ok)).toEqual([]);
+
+    const admin = new Client(database!.url);
+    await admin.connect();
+    try {
+      const groups = await admin.query(
+        `SELECT id, status, alert_count, highest_priority FROM soc_alert_groups WHERE fingerprint = $1`,
+        [fingerprint.fingerprint],
+      );
+      expect(groups.rows).toHaveLength(1);
+      expect(groups.rows[0]).toMatchObject({
+        status: 'open',
+        alert_count: CONCURRENT,
+        highest_priority: 'P2',
+      });
+      const members = await admin.query(
+        `SELECT count(*)::int AS n FROM soc_alert_group_members WHERE group_id = $1`,
+        [groups.rows[0].id],
+      );
+      expect(members.rows[0].n).toBe(CONCURRENT);
+      const alerts = await admin.query(
+        `SELECT count(*)::int AS n FROM soc_alerts WHERE id = ANY($1::uuid[])`,
+        [targets.map((target) => target.id)],
+      );
+      expect(alerts.rows[0].n).toBe(CONCURRENT);
+      for (const target of targets) {
+        expect(await persistence.alertGroupOf(TENANT, target.id)).toMatchObject({
+          id: groups.rows[0].id,
+        });
+      }
+    } finally {
+      await admin.end();
+    }
+  });
+
+  it('aprendizaje SOC · la huella se guarda con la alerta, una vez y append-only', async () => {
+    const fingerprint = {
+      fingerprint: `fp1_${'b'.repeat(64)}`,
+      level: 'fine' as const,
+      version: '1',
+      normalizerVersion: '1',
+      ruleKey: 'windows:101150',
+      components: {
+        ruleKey: 'windows:101150',
+        ruleName: 'b89 windows: powershell',
+        user: 'usuario.sintetico@b89-lab.example',
+        host: '017',
+        srcIp: null,
+        processImage: 'c:\\windows\\system32\\windowspowershell\\v1.0\\powershell.exe',
+        parentImage: null,
+        commandLine: 'powershell.exe -file {TMP}\\tmp{N}.ps{N}',
+        sha256: null,
+        filePath: null,
+        destination: null,
+        destinationPort: null,
+      },
+    };
+    const target = candidate(42, { priority: 'P4', score: 35, fingerprint });
+    const deps = dependencies(persistence);
+    await ingestCandidate(deps, target);
+    await ingestCandidate(deps, target);
+
+    const admin = new Client(database!.url);
+    await admin.connect();
+    try {
+      const rows = await admin.query(
+        `SELECT rule_key, fingerprint, level, components FROM soc_alert_fingerprints WHERE alert_id = $1`,
+        [target.id],
+      );
+      expect(rows.rows).toEqual([
+        {
+          rule_key: 'windows:101150',
+          fingerprint: fingerprint.fingerprint,
+          level: 'fine',
+          components: fingerprint.components,
+        },
+      ]);
+      await expect(
+        admin.query(`UPDATE soc_alert_fingerprints SET level = 'coarse' WHERE alert_id = $1`, [
+          target.id,
+        ]),
+      ).rejects.toThrow(/append-only/u);
+      await expect(
+        admin.query(
+          `INSERT INTO soc_alert_fingerprints (alert_id, tenant_id, fingerprint, level, version, normalizer_version, components, computed_at)
+           VALUES ($1, $2, 'fp1_x', 'fine', '1', '1', '{}', now())`,
+          [randomUUID(), TENANT],
+        ),
+      ).rejects.toThrow();
+    } finally {
+      await admin.end();
+    }
+  });
+
+  it('aprendizaje SOC · el cierre estructurado persiste, su bitácora es append-only y solo cuenta lo humano', async () => {
+    const target = candidate(41, { priority: 'P4', score: 30 });
+    const deps = dependencies(persistence);
+    await ingestCandidate(deps, target);
+    const analyst = {
+      subjectId: 'sub-analista-cierre',
+      tenantId: TENANT,
+      sessionId: 'session-cierre',
+      roles: ['b89.soc.analyst'],
+      capabilities: capabilitiesForRoles(['b89.soc.analyst']),
+    };
+    const run = async (command: Parameters<typeof executeAlertCommand>[1]['command']) => {
+      const result = await executeAlertCommand(deps, {
+        actor: analyst,
+        alertId: target.id,
+        correlationId: 'corr-cierre',
+        command,
+      });
+      if (!result.ok) throw new Error(`${command.name}:${result.reason}`);
+      return result.value;
+    };
+    let alert = await run({ name: 'acknowledge', expectedRevision: 1 });
+    alert = await run({
+      name: 'triage',
+      verdict: 'false_positive',
+      note: 'Respaldo programado conocido.',
+      expectedRevision: alert.revision,
+    });
+    alert = await run({
+      name: 'close',
+      expectedRevision: alert.revision,
+      closure: {
+        reason: 'FP_ACTIVIDAD_LEGITIMA_CONOCIDA',
+        justification: {
+          evidenceType: 'scheduled_job',
+          statement: 'Tarea de respaldo documentada en el runbook de backups.',
+          legitimacyField: 'process.image',
+        },
+        evidenceRefs: [{ kind: 'ticket', ref: 'CHG-1042' }],
+      },
+    });
+
+    const stored = await persistence.alertById(TENANT, target.id);
+    expect(stored).toMatchObject({
+      status: 'closed',
+      closureReason: 'FP_ACTIVIDAD_LEGITIMA_CONOCIDA',
+      closureOrigin: 'human',
+      closedBy: 'sub-analista-cierre',
+    });
+    const stats = await persistence.alertStats({
+      tenantId: TENANT,
+      entityRef: refOf(TENANT, USER_KEY),
+      ruleId: '100510',
+    });
+    expect(stats.falsePositive).toBeGreaterThanOrEqual(1);
+
+    const admin = new Client(database!.url);
+    await admin.connect();
+    try {
+      const rows = await admin.query(
+        `SELECT kind, origin, closure_reason, evidence_refs FROM soc_alert_closures WHERE alert_id = $1`,
+        [target.id],
+      );
+      expect(rows.rows).toEqual([
+        {
+          kind: 'close',
+          origin: 'human',
+          closure_reason: 'FP_ACTIVIDAD_LEGITIMA_CONOCIDA',
+          evidence_refs: [{ kind: 'ticket', ref: 'CHG-1042' }],
+        },
+      ]);
+      await expect(
+        admin.query(`UPDATE soc_alert_closures SET origin = 'ai_analyst' WHERE alert_id = $1`, [
+          target.id,
+        ]),
+      ).rejects.toThrow(/append-only/u);
+      await expect(
+        admin.query(`DELETE FROM soc_alert_closures WHERE alert_id = $1`, [target.id]),
+      ).rejects.toThrow(/append-only/u);
+      // Un cierre de servicio no cuenta como historial de falso positivo.
+      await admin.query(`UPDATE soc_alerts SET closure_origin = 'ai_analyst' WHERE id = $1`, [
+        target.id,
+      ]);
+      const afterAi = await persistence.alertStats({
+        tenantId: TENANT,
+        entityRef: refOf(TENANT, USER_KEY),
+        ruleId: '100510',
+        excludeIds: [],
+      });
+      expect(afterAi.falsePositive).toBe(stats.falsePositive - 1);
+    } finally {
+      await admin.end();
+    }
+    expect(alert.revision).toBeGreaterThan(1);
+  });
+
+  it('aprendizaje SOC · huellas y pertenencias son inmutables (UPDATE, DELETE y TRUNCATE)', async () => {
+    const admin = new Client(database!.url);
+    await admin.connect();
+    try {
+      for (const table of [
+        'soc_alert_fingerprints',
+        'soc_alert_group_members',
+        'soc_alert_closures',
+      ]) {
+        // Un UPDATE/DELETE sobre 0 filas no dispara triggers de fila: la prueba exige filas reales.
+        const rows = await admin.query(`SELECT count(*)::int AS n FROM ${table}`);
+        expect(rows.rows[0].n, table).toBeGreaterThan(0);
+        await expect(admin.query(`UPDATE ${table} SET tenant_id = tenant_id`)).rejects.toThrow(
+          /append-only/u,
+        );
+        await expect(admin.query(`DELETE FROM ${table}`)).rejects.toThrow(/append-only/u);
+        await expect(admin.query(`TRUNCATE ${table} CASCADE`)).rejects.toThrow(/append-only/u);
+      }
+    } finally {
       await admin.end();
     }
   });

@@ -22,7 +22,16 @@ export {
 export { PrismaSecretMetadataStore, createUuidV7 } from './secret-metadata.store.js';
 export {
   PrismaAlertStore,
+  PrismaAlertClosureStore,
+  PrismaAlertFingerprintStore,
+  PrismaAlertGroupStore,
   PrismaAuditStore,
+  PrismaLearningPatternStore,
+  PrismaLearningEngineStateStore,
+  PrismaLearningGovernanceStore,
+  PrismaLearningJobQueue,
+  PrismaLearningJobStore,
+  PrismaLearningRecordStore,
   PrismaCandidateStore,
   PrismaIncidentStore,
   PrismaSocOutboxStore,
@@ -30,6 +39,9 @@ export {
   PrismaSocUnitOfWork,
   PrismaStandaloneAuditStore,
   SOC_QUERY_LIMITS,
+  type AlertClosureRow,
+  type AlertFingerprintRow,
+  type AlertGroupRow,
   type AlertListFilter,
   type AlertRow,
   type CandidateRow,
@@ -37,7 +49,20 @@ export {
   type IncidentListFilter,
   type IncidentRow,
   type IncidentWithAlertsRow,
+  type LearningClosureRow,
+  type LearningCountersRow,
+  type LearningDecisionRow,
+  type LearningEngineStateRow,
+  type RuleEnablementRow,
+  type ContextEntryRow,
+  type LearningJobRow,
+  type LearningPatternRow,
+  type LearningReversalRow,
+  type LearningReviewRow,
+  type PatternApprovalRow,
+  type PatternEventRow,
   type SealedAuditRow,
+  type SourceCoverageRow,
   type SocOutboxRow,
   type SocStores,
 } from './soc-stores.js';
@@ -58,7 +83,11 @@ export {
   type SourcePollObservationRow,
 } from './ingestion-stores.js';
 export { PrismaWazuhPushInboxStore } from './wazuh-push-inbox-store.js';
-export { PrismaDlpPolicyStore, type DlpPolicyRow, type DlpEndpointRow } from './dlp-policy-store.js';
+export {
+  PrismaDlpPolicyStore,
+  type DlpPolicyRow,
+  type DlpEndpointRow,
+} from './dlp-policy-store.js';
 export { PrismaAllowlistStore, type AllowlistRow } from './allowlist-store.js';
 export {
   DIRECTORY_QUERY_LIMIT,

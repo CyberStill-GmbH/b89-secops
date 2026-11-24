@@ -23,10 +23,12 @@ import {
   PrismaAuditStore,
   PrismaIncidentWorkQueries,
   PrismaIngestionStateStore,
+  PrismaLearningJobQueue,
   PrismaWazuhPushInboxStore,
   PrismaSocQueries,
   PrismaSocUnitOfWork,
   PrismaStandaloneAuditStore,
+  type AlertGroupRow,
   type AlertRow,
   type CandidateRow,
   type DatabaseConnectionOptions,
@@ -34,11 +36,24 @@ import {
   type IncidentRow,
   type IncidentTaskRow,
   type IncidentWithAlertsRow,
+  type LearningClosureRow,
+  type LearningDecisionRow,
+  type LearningEngineStateRow,
+  type RuleEnablementRow,
+  type ContextEntryRow,
+  type LearningJobRow,
+  type LearningPatternRow,
+  type LearningReviewRow,
+  type PatternApprovalRow,
   type SealedAuditRow,
 } from '@b89/database';
 import {
+  FINGERPRINT_COMPONENTS,
   PRIORITIES,
   SIGNAL_CLASSES,
+  type AlertFingerprint,
+  type FingerprintComponents,
+  type GuardSignals,
   type CorrelatableAlert,
   type DetectionCandidate,
   type DetectionCandidateStore,
@@ -48,6 +63,32 @@ import {
 } from '@b89/detection';
 
 import { ALERT_STATUSES, TRIAGE_VERDICTS, type Alert } from '../alert.js';
+import { ALERT_GROUP_STATUSES, type AlertGroup } from '../alert-group.js';
+import { CLOSURE_ORIGINS, CLOSURE_REASONS, LEARNABLE_CLOSURE_REASONS } from '../closure.js';
+import {
+  PATTERN_STATUSES,
+  READINESS_BLOCKERS,
+  type ApprovalRecord,
+  type ClosureEvidence,
+  type LearningPattern,
+} from '../learning-pattern.js';
+import {
+  ENGINE_ACTIONS,
+  ESCALATE_REASONS,
+  LEARNING_MODES,
+  limaDayStart,
+  type EngineCheck,
+} from '../learning-engine.js';
+import type { ShadowRow } from '../learning-shadow-report.js';
+import { ENGINE_PAUSE_REASONS, type LearningEngineState } from '../learning-engine-state.js';
+import {
+  CONTEXT_KINDS,
+  ENABLEMENT_MODES,
+  ENABLEMENT_STATUSES,
+  type ContextEntry,
+  type LearningGovernanceStore,
+  type RuleEnablement,
+} from '../learning-governance.js';
 import type {
   ClaimedWazuhPushHint,
   WazuhPushHint,
@@ -73,6 +114,10 @@ import type {
   AlertQuery,
   AlertStats,
   AlertStatsQuery,
+  AlertClosureStore,
+  AlertFingerprintStore,
+  AlertGroupQuery,
+  AlertGroupStore,
   AlertStore,
   ClaimedOutboxMessage,
   OutboxHealth,
@@ -80,11 +125,27 @@ import type {
   IncidentQuery,
   IncidentStore,
   IncidentTaskStore,
+  LearningDecisionRecord,
+  LearningEvidence,
+  LearningHealthCounts,
+  LearningJob,
+  LearningJobQueue,
+  LearningPatternStore,
+  LearningRecordStore,
+  LearningReviewRecord,
+  LearningReviewStatus,
+  PatternEventRecord,
   OutboxLane,
   OutboxStore,
   QueryResult,
+  ReadinessMetrics,
   SocPersistence,
   SocTransactionContext,
+} from '../ports.js';
+import {
+  LEARNING_JOB_STATUSES,
+  LEARNING_REVIEW_KINDS,
+  LEARNING_REVIEW_STATUSES,
 } from '../ports.js';
 
 /** Fila con un valor fuera del catálogo del dominio: la base y el código divergieron. */
@@ -143,6 +204,225 @@ function toAlert(row: AlertRow): Alert {
     signal: optionalOneOf(SIGNAL_CLASSES, row.signal, 'soc_alerts', 'signal'),
     ruleId: row.ruleId,
     relatedAlertIds: [...row.relatedAlertIds],
+    closureReason: optionalOneOf(
+      CLOSURE_REASONS,
+      row.closureReason,
+      'soc_alerts',
+      'closure_reason',
+    ),
+    closureOrigin: optionalOneOf(
+      CLOSURE_ORIGINS,
+      row.closureOrigin,
+      'soc_alerts',
+      'closure_origin',
+    ),
+    closedBy: row.closedBy,
+    closedAt: row.closedAt,
+    effectivePriority: optionalOneOf(
+      PRIORITIES,
+      row.effectivePriority ?? null,
+      'soc_alerts',
+      'effective_priority',
+    ),
+    demotedBy: row.demotedBy ?? null,
+  };
+}
+
+const FINGERPRINT_LEVELS = ['fine', 'coarse'] as const;
+
+function toAlertGroup(row: AlertGroupRow): AlertGroup {
+  return {
+    ...row,
+    level: oneOf(FINGERPRINT_LEVELS, row.level, 'soc_alert_groups', 'level'),
+    status: oneOf(ALERT_GROUP_STATUSES, row.status, 'soc_alert_groups', 'status'),
+    highestPriority: oneOf(PRIORITIES, row.highestPriority, 'soc_alert_groups', 'highest_priority'),
+  };
+}
+
+const PATTERN_ACTIONS = ['auto_close', 'demote'] as const;
+const APPROVAL_STAGES = ['first', 'second'] as const;
+const APPROVAL_DECISIONS = ['approve', 'reject'] as const;
+
+/** Componentes de huella leídos de JSONB: exactamente las claves del catálogo, texto o null. */
+function toComponents(value: unknown, table: string): FingerprintComponents {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new SocIntegrityError(table, 'components');
+  }
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record);
+  if (keys.some((key) => !(FINGERPRINT_COMPONENTS as readonly string[]).includes(key))) {
+    throw new SocIntegrityError(table, 'components');
+  }
+  const result: Record<string, string | null> = {};
+  for (const name of FINGERPRINT_COMPONENTS) {
+    const item = record[name] ?? null;
+    if (item !== null && typeof item !== 'string') throw new SocIntegrityError(table, 'components');
+    result[name] = item;
+  }
+  return result as FingerprintComponents;
+}
+
+function toPattern(row: LearningPatternRow): LearningPattern {
+  const table = 'soc_learning_patterns';
+  return {
+    ...row,
+    components: toComponents(row.components, table),
+    level: oneOf(FINGERPRINT_LEVELS, row.level, table, 'level'),
+    maxAction: oneOf(PATTERN_ACTIONS, row.maxAction, table, 'max_action'),
+    closureReason: oneOf(LEARNABLE_CLOSURE_REASONS, row.closureReason, table, 'closure_reason'),
+    status: oneOf(PATTERN_STATUSES, row.status, table, 'status'),
+    priorityCeiling: oneOf(PRIORITIES, row.priorityCeiling, table, 'priority_ceiling'),
+    originAlertIds: [...row.originAlertIds],
+    originClosers: [...row.originClosers],
+    readinessBlockers: row.readinessBlockers.map((blocker) =>
+      oneOf(READINESS_BLOCKERS, blocker, table, 'readiness_blockers'),
+    ),
+  };
+}
+
+function toApproval(row: PatternApprovalRow): ApprovalRecord {
+  const table = 'soc_learning_pattern_approvals';
+  return {
+    ...row,
+    stage: oneOf(APPROVAL_STAGES, row.stage, table, 'stage'),
+    decision: oneOf(APPROVAL_DECISIONS, row.decision, table, 'decision'),
+  };
+}
+
+const CONFIDENCES = ['high', 'medium', 'low'] as const;
+
+function toChecks(value: unknown): readonly EngineCheck[] {
+  if (!Array.isArray(value)) throw new SocIntegrityError('soc_learning_decisions', 'checks');
+  return value.map((item) => {
+    const entry = item as Record<string, unknown>;
+    if (
+      typeof entry['id'] !== 'string' ||
+      typeof entry['ok'] !== 'boolean' ||
+      typeof entry['detail'] !== 'string'
+    ) {
+      throw new SocIntegrityError('soc_learning_decisions', 'checks');
+    }
+    return { id: entry['id'], ok: entry['ok'], detail: entry['detail'] };
+  });
+}
+
+function toDecision(row: LearningDecisionRow): LearningDecisionRecord {
+  const table = 'soc_learning_decisions';
+  const modes = LEARNING_MODES.filter((mode) => mode !== 'off');
+  return {
+    ...row,
+    mode: oneOf(modes, row.mode, table, 'mode'),
+    level: oneOf(FINGERPRINT_LEVELS, row.level, table, 'level'),
+    proposedAction: oneOf(ENGINE_ACTIONS, row.proposedAction, table, 'proposed_action'),
+    appliedAction: oneOf(ENGINE_ACTIONS, row.appliedAction, table, 'applied_action'),
+    escalateReason: optionalOneOf(ESCALATE_REASONS, row.escalateReason, table, 'escalate_reason'),
+    confidence: oneOf(CONFIDENCES, row.confidence, table, 'confidence'),
+    checks: toChecks(row.checks),
+    drift: (row.drift ?? null) as LearningDecisionRecord['drift'],
+  };
+}
+
+/** Carga útil de un trabajo leída de JSONB: se valida antes de entregarla al motor. */
+function toJobFingerprint(value: unknown): AlertFingerprint {
+  const table = 'soc_learning_jobs';
+  const record = (typeof value === 'object' && value !== null ? value : {}) as Record<
+    string,
+    unknown
+  >;
+  const text = (key: string) => {
+    const item = record[key];
+    if (typeof item !== 'string' || item.length === 0)
+      throw new SocIntegrityError(table, 'fingerprint');
+    return item;
+  };
+  const ruleKey = record['ruleKey'];
+  if (ruleKey !== null && typeof ruleKey !== 'string')
+    throw new SocIntegrityError(table, 'fingerprint');
+  return {
+    fingerprint: text('fingerprint'),
+    level: oneOf(FINGERPRINT_LEVELS, text('level'), table, 'fingerprint'),
+    version: text('version'),
+    normalizerVersion: text('normalizerVersion'),
+    ruleKey: (ruleKey as string | null) ?? null,
+    components: toComponents(record['components'], table),
+  };
+}
+
+function toJobSignals(value: unknown): GuardSignals | null {
+  if (value === null || value === undefined) return null;
+  const record = value as Record<string, unknown>;
+  const tactics = record['mitreTactics'];
+  if (
+    typeof record['severity'] !== 'string' ||
+    typeof record['threatIntelHit'] !== 'boolean' ||
+    !Array.isArray(tactics) ||
+    !tactics.every((item) => typeof item === 'string')
+  ) {
+    throw new SocIntegrityError('soc_learning_jobs', 'signals');
+  }
+  return {
+    severity: record['severity'],
+    mitreTactics: tactics as string[],
+    threatIntelHit: record['threatIntelHit'],
+  };
+}
+
+function toJob(row: LearningJobRow): LearningJob {
+  return {
+    ...row,
+    fingerprint: toJobFingerprint(row.fingerprint),
+    signals: toJobSignals(row.signals),
+    status: oneOf(LEARNING_JOB_STATUSES, row.status, 'soc_learning_jobs', 'status'),
+  };
+}
+
+function toEnablement(row: RuleEnablementRow): RuleEnablement {
+  const table = 'soc_learning_rule_enablements';
+  return {
+    ...row,
+    mode: oneOf(ENABLEMENT_MODES, row.mode, table, 'mode'),
+    status: oneOf(ENABLEMENT_STATUSES, row.status, table, 'status'),
+  };
+}
+
+function toContextEntry(row: ContextEntryRow): ContextEntry {
+  return { ...row, kind: oneOf(CONTEXT_KINDS, row.kind, 'soc_learning_context_entries', 'kind') };
+}
+
+function toEngineState(row: LearningEngineStateRow): LearningEngineState {
+  return {
+    ...row,
+    reason: optionalOneOf(ENGINE_PAUSE_REASONS, row.reason, 'soc_learning_engine_state', 'reason'),
+  };
+}
+
+function toReview(row: LearningReviewRow): LearningReviewRecord {
+  const table = 'soc_learning_reviews';
+  return {
+    ...row,
+    kind: oneOf(LEARNING_REVIEW_KINDS, row.kind, table, 'kind'),
+    status: oneOf(LEARNING_REVIEW_STATUSES, row.status, table, 'status'),
+  };
+}
+
+function toClosureEvidence(row: LearningClosureRow): ClosureEvidence {
+  return {
+    alertId: row.alertId,
+    actorId: row.actorId,
+    at: row.at,
+    closureReason: optionalOneOf(
+      CLOSURE_REASONS,
+      row.closureReason,
+      'soc_alert_closures',
+      'closure_reason',
+    ),
+    decisionGroupId: row.decisionGroupId,
+    priority: oneOf(PRIORITIES, row.priority, 'soc_alerts', 'priority'),
+    ruleKey: row.ruleKey,
+    fingerprint: row.fingerprint,
+    level: oneOf(FINGERPRINT_LEVELS, row.level, 'soc_alert_fingerprints', 'level'),
+    normalizerVersion: row.normalizerVersion,
+    components: toComponents(row.components, 'soc_alert_fingerprints'),
   };
 }
 
@@ -286,6 +566,7 @@ export class PostgresSocPersistence implements SocPersistence {
   public readonly kind = 'postgres' as const;
   public readonly audit: AuditStore;
   public readonly ingestion: IngestionStateStore;
+  public readonly learningQueue: LearningJobQueue;
   private readonly unitOfWork: PrismaSocUnitOfWork;
   private readonly queries: PrismaSocQueries;
   private readonly workQueries: PrismaIncidentWorkQueries;
@@ -296,6 +577,15 @@ export class PostgresSocPersistence implements SocPersistence {
     this.workQueries = new PrismaIncidentWorkQueries(client);
     this.audit = auditPort(new PrismaStandaloneAuditStore(client));
     this.ingestion = ingestionPort(new PrismaIngestionStateStore(client));
+    const queue = new PrismaLearningJobQueue(client);
+    this.learningQueue = {
+      claim: async (input) => (await queue.claim(input)).map(toJob),
+      complete: (alertId, claimId, now) => queue.complete(alertId, claimId, now),
+      fail: (alertId, claimId, error, now, retryAt) =>
+        queue.fail(alertId, claimId, error, now, retryAt),
+      heartbeat: (beat) => queue.heartbeat(beat),
+      recordConfig: (event) => queue.recordConfig(event),
+    };
   }
 
   public static connect(options: DatabaseConnectionOptions): PostgresSocPersistence {
@@ -314,6 +604,56 @@ export class PostgresSocPersistence implements SocPersistence {
           stores.alerts.update(fromAlert(alert), expectedRevision),
         byIncident: async (tenantId, incidentId) =>
           (await stores.alerts.byIncident(tenantId, incidentId)).map(toAlert),
+      };
+      const closures: AlertClosureStore = {
+        append: (record) =>
+          stores.closures.append({
+            ...record,
+            justification: record.justification,
+            evidenceRefs: [...record.evidenceRefs],
+          }),
+      };
+      const fingerprints: AlertFingerprintStore = {
+        insertIfAbsent: (record) =>
+          stores.fingerprints.insertIfAbsent({ ...record, components: { ...record.components } }),
+      };
+      const groups: AlertGroupStore = {
+        openByFingerprint: async (tenantId, fingerprint) => {
+          const row = await stores.groups.openByFingerprint(tenantId, fingerprint);
+          return row ? toAlertGroup(row) : undefined;
+        },
+        insertIfAbsent: (group) => stores.groups.insertIfAbsent(group),
+        update: (group, expectedRevision) => stores.groups.update(group, expectedRevision),
+        addMember: (member) => stores.groups.addMember(member),
+      };
+      const patterns: LearningPatternStore = {
+        byId: async (tenantId, patternId) => {
+          const row = await stores.patterns.byId(tenantId, patternId);
+          return row ? toPattern(row) : undefined;
+        },
+        openByFingerprint: async (tenantId, fingerprint) => {
+          const row = await stores.patterns.openByFingerprint(tenantId, fingerprint);
+          return row ? toPattern(row) : undefined;
+        },
+        listOpen: async (tenantId) => (await stores.patterns.listOpen(tenantId)).map(toPattern),
+        activeByRule: async (tenantId, ruleKey) =>
+          (await stores.patterns.activeByRule(tenantId, ruleKey)).map(toPattern),
+        insertIfAbsent: (pattern) => stores.patterns.insertIfAbsent(pattern),
+        update: (pattern, expectedRevision) => stores.patterns.update(pattern, expectedRevision),
+        approvals: async (tenantId, patternId) =>
+          (await stores.patterns.approvals(tenantId, patternId)).map(toApproval),
+        appendApproval: (record) => stores.patterns.appendApproval(record),
+        appendEvent: (record) =>
+          stores.patterns.appendEvent({
+            id: record.id,
+            tenantId: record.tenantId,
+            patternId: record.patternId,
+            fromStatus: record.from,
+            toStatus: record.to,
+            reason: record.reason,
+            actorId: record.actorId,
+            at: record.at,
+          }),
       };
       const incidents: IncidentStore = {
         byId: async (tenantId, incidentId) => {
@@ -353,8 +693,71 @@ export class PostgresSocPersistence implements SocPersistence {
         },
         insertIfAbsent: (candidate) => stores.candidates.insertIfAbsent(candidate),
       };
+      const learning: LearningRecordStore = {
+        appendDecision: (record) => stores.learning.appendDecision(record),
+        decisionById: async (tenantId, decisionId) => {
+          const row = await stores.learning.decisionById(tenantId, decisionId);
+          return row ? toDecision(row) : undefined;
+        },
+        decisionByAlert: async (tenantId, alertId) => {
+          const row = await stores.learning.decisionByAlert(tenantId, alertId);
+          return row ? toDecision(row) : undefined;
+        },
+        counters: (tenantId, patternId, now, since) =>
+          stores.learning.counters(tenantId, patternId, now, since, limaDayStart(now)),
+        insertReview: (record) => stores.learning.insertReview(record),
+        reviewById: async (tenantId, reviewId) => {
+          const row = await stores.learning.reviewById(tenantId, reviewId);
+          return row ? toReview(row) : undefined;
+        },
+        updateReview: (record, expectedRevision) =>
+          stores.learning.updateReview(record, expectedRevision),
+        appendReversal: (record) => stores.learning.appendReversal(record),
+      };
+      const learningJobs = {
+        enqueue: (job: LearningJob) =>
+          stores.learningJobs.enqueue({
+            ...job,
+            fingerprint: { ...job.fingerprint, components: { ...job.fingerprint.components } },
+            signals: job.signals
+              ? { ...job.signals, mitreTactics: [...job.signals.mitreTactics] }
+              : null,
+          }),
+      };
+      const learningState = {
+        get: async (tenantId: string) => {
+          const row = await stores.learningState.get(tenantId);
+          return row ? toEngineState(row) : undefined;
+        },
+        save: (state: LearningEngineState, expectedRevision: number | null) =>
+          stores.learningState.save(state, expectedRevision),
+      };
+      const learningGovernance: LearningGovernanceStore = {
+        enablementById: async (tenantId, id) => {
+          const row = await stores.learningGovernance.enablementById(tenantId, id);
+          return row ? toEnablement(row) : undefined;
+        },
+        insertEnablement: (row) => stores.learningGovernance.insertEnablement(row),
+        updateEnablement: (row, expectedRevision) =>
+          stores.learningGovernance.updateEnablement(row, expectedRevision),
+        contextById: async (tenantId, id) => {
+          const row = await stores.learningGovernance.contextById(tenantId, id);
+          return row ? toContextEntry(row) : undefined;
+        },
+        insertContext: (row) => stores.learningGovernance.insertContext(row),
+        updateContext: (row, expectedRevision) =>
+          stores.learningGovernance.updateContext(row, expectedRevision),
+      };
       return work({
+        learningGovernance,
+        learningState,
+        learningJobs,
         alerts,
+        closures,
+        fingerprints,
+        groups,
+        patterns,
+        learning,
         incidents,
         tasks,
         notes,
@@ -387,6 +790,165 @@ export class PostgresSocPersistence implements SocPersistence {
       ...(query.entityRef ? { entityRef: query.entityRef } : {}),
     });
     return { items: result.rows.map(toAlert), total: result.total };
+  }
+
+  public async alertGroupById(tenantId: string, groupId: string): Promise<AlertGroup | undefined> {
+    const row = await this.queries.alertGroupById(tenantId, groupId);
+    return row ? toAlertGroup(row) : undefined;
+  }
+
+  public async alertGroupOf(tenantId: string, alertId: string): Promise<AlertGroup | undefined> {
+    const row = await this.queries.alertGroupOf(tenantId, alertId);
+    return row ? toAlertGroup(row) : undefined;
+  }
+
+  public async alertGroupsOf(
+    tenantId: string,
+    alertIds: readonly string[],
+  ): Promise<ReadonlyMap<string, AlertGroup>> {
+    const rows = await this.queries.alertGroupsOf(tenantId, alertIds);
+    return new Map([...rows].map(([alertId, row]) => [alertId, toAlertGroup(row)]));
+  }
+
+  public async listAlertGroups(query: AlertGroupQuery): Promise<QueryResult<AlertGroup>> {
+    const result = await this.queries.listAlertGroups(query);
+    return { items: result.items.map(toAlertGroup), total: result.total };
+  }
+
+  public async listLearningPatterns(query: {
+    readonly tenantId: string;
+    readonly status?: LearningPattern['status'];
+    readonly limit: number;
+  }): Promise<QueryResult<LearningPattern>> {
+    const result = await this.queries.listLearningPatterns(query);
+    return { items: result.items.map(toPattern), total: result.total };
+  }
+
+  public async learningPatternById(
+    tenantId: string,
+    patternId: string,
+  ): Promise<LearningPattern | undefined> {
+    const row = await this.queries.learningPatternById(tenantId, patternId);
+    return row ? toPattern(row) : undefined;
+  }
+
+  public async learningPatternHistory(
+    tenantId: string,
+    patternId: string,
+  ): Promise<{
+    readonly approvals: readonly ApprovalRecord[];
+    readonly events: readonly PatternEventRecord[];
+  }> {
+    const history = await this.queries.learningPatternHistory(tenantId, patternId);
+    return {
+      approvals: history.approvals.map(toApproval),
+      events: history.events.map((row) => ({
+        id: row.id,
+        tenantId: row.tenantId,
+        patternId: row.patternId,
+        from:
+          row.fromStatus === null
+            ? null
+            : oneOf(PATTERN_STATUSES, row.fromStatus, 'soc_learning_pattern_events', 'from_status'),
+        to: oneOf(PATTERN_STATUSES, row.toStatus, 'soc_learning_pattern_events', 'to_status'),
+        reason: row.reason,
+        actorId: row.actorId,
+        at: row.at,
+      })),
+    };
+  }
+
+  public async listLearningDecisions(query: {
+    readonly tenantId: string;
+    readonly alertId?: string;
+    readonly patternId?: string;
+    readonly limit: number;
+  }): Promise<QueryResult<LearningDecisionRecord>> {
+    const result = await this.queries.listLearningDecisions(query);
+    return { items: result.items.map(toDecision), total: result.total };
+  }
+
+  public async listLearningReviews(query: {
+    readonly tenantId: string;
+    readonly status?: LearningReviewStatus;
+    readonly limit: number;
+  }): Promise<QueryResult<LearningReviewRecord>> {
+    const result = await this.queries.listLearningReviews(query);
+    return { items: result.items.map(toReview), total: result.total };
+  }
+
+  /** Etapa D. Último cierre vigente por alerta; TP_REAL de cualquier origen, el resto solo humano. */
+  public async learningEvidence(tenantId: string, since: Date): Promise<LearningEvidence> {
+    const rows = await this.queries.learningClosures(tenantId, since);
+    const closures: ClosureEvidence[] = [];
+    const truePositivesByFingerprint = new Map<string, number>();
+    for (const row of rows) {
+      if (row.closureReason === 'TP_REAL') {
+        truePositivesByFingerprint.set(
+          row.fingerprint,
+          (truePositivesByFingerprint.get(row.fingerprint) ?? 0) + 1,
+        );
+      }
+      if (row.origin === 'human') closures.push(toClosureEvidence(row));
+    }
+    return { closures, truePositivesByFingerprint };
+  }
+
+  public async listRuleEnablements(tenantId: string): Promise<readonly RuleEnablement[]> {
+    return (await this.queries.listRuleEnablements(tenantId)).map(toEnablement);
+  }
+
+  public async listContextEntries(tenantId: string): Promise<readonly ContextEntry[]> {
+    return (await this.queries.listContextEntries(tenantId)).map(toContextEntry);
+  }
+
+  public learningUndeliveredNotices(tenantId: string, now: Date) {
+    return this.queries.learningUndeliveredNotices(tenantId, now);
+  }
+
+  public async learningEngineState(tenantId: string): Promise<LearningEngineState | undefined> {
+    const row = await this.queries.learningEngineState(tenantId);
+    return row ? toEngineState(row) : undefined;
+  }
+
+  public async learningShadowRows(
+    tenantId: string,
+    from: Date,
+    to: Date,
+  ): Promise<readonly ShadowRow[]> {
+    return this.queries.learningShadowRows(tenantId, from, to);
+  }
+
+  public async learningHealthCounts(tenantId: string, now: Date): Promise<LearningHealthCounts> {
+    const counts = await this.queries.learningHealthCounts(tenantId, now);
+    const byApplied: LearningHealthCounts['lastHour']['byApplied'] = Object.fromEntries(
+      Object.entries(counts.lastHour.byApplied).map(([action, n]) => [
+        oneOf(ENGINE_ACTIONS, action, 'soc_learning_decisions', 'applied_action'),
+        n,
+      ]),
+    );
+    return { ...counts, lastHour: { ...counts.lastHour, byApplied } };
+  }
+
+  public async readinessMetrics(tenantId: string, since: Date): Promise<ReadinessMetrics> {
+    const [closedAlertsWithoutOrigin, coverage] = await Promise.all([
+      this.queries.closedAlertsWithoutOrigin(tenantId),
+      this.queries.sourceCoverage(tenantId, since),
+    ]);
+    return {
+      closedAlertsWithoutOrigin,
+      sourceCoverage: new Map(
+        coverage.map((row) => [row.source, { fine: row.fine, total: row.total }]),
+      ),
+    };
+  }
+
+  public alertGroupMembers(
+    tenantId: string,
+    groupId: string,
+    limit: number,
+  ): Promise<readonly string[]> {
+    return this.queries.alertGroupMembers(tenantId, groupId, limit);
   }
 
   public alertStats(query: AlertStatsQuery): Promise<AlertStats> {

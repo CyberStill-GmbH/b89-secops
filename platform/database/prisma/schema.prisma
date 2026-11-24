@@ -364,9 +364,19 @@ model SocAlert {
   signal          String?  @db.Text
   ruleId          String?  @map("rule_id") @db.Text
   relatedAlertIds String[] @default([]) @map("related_alert_ids") @db.Uuid
+  // Aprendizaje SOC · etapa A — último cierre vigente (historia en soc_alert_closures).
+  closureReason   String?   @map("closure_reason") @db.Text
+  closureOrigin   String?   @map("closure_origin") @db.Text
+  closedBy        String?   @map("closed_by") @db.Text
+  closedAt        DateTime? @map("closed_at") @db.Timestamptz(3)
+  effectivePriority String? @map("effective_priority") @db.Text
+  demotedBy         String? @map("demoted_by") @db.Uuid
 
   candidate DetectionCandidate @relation(fields: [candidateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "soc_alerts_candidate_fkey")
   incident  SocIncident?       @relation(fields: [incidentId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "soc_alerts_incident_fkey")
+  closures  SocAlertClosure[]
+  fingerprint SocAlertFingerprint?
+  groupMember SocAlertGroupMember?
 
   @@index([tenantId, status, occurredAt], map: "soc_alerts_board_idx")
   @@index([tenantId, incidentId], map: "soc_alerts_incident_idx")
@@ -374,7 +384,318 @@ model SocAlert {
   @@index([entityRefs], map: "soc_alerts_entity_refs_idx", type: Gin)
   @@index([tenantId, occurredAt(sort: Desc), id], map: "soc_alerts_tenant_time_idx")
   @@index([tenantId, eventRecordId], map: "soc_alerts_event_record_idx")
+  @@index([tenantId, closureOrigin, closureReason, closedAt], map: "soc_alerts_closure_idx")
   @@map("soc_alerts")
+}
+
+// Aprendizaje SOC · etapa A — bitácora append-only de cierres y reaperturas. Triggers SQL
+// impiden UPDATE/DELETE/TRUNCATE: es la evidencia de la que aprende el SOC.
+model SocAlertClosure {
+  id              String   @id @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Text
+  alertId         String   @map("alert_id") @db.Uuid
+  kind            String   @db.Text
+  verdict         String?  @db.Text
+  closureReason   String?  @map("closure_reason") @db.Text
+  origin          String   @db.Text
+  actorId         String   @map("actor_id") @db.Text
+  justification   Json?    @db.JsonB
+  evidenceRefs    Json     @default("[]") @map("evidence_refs") @db.JsonB
+  decisionGroupId String?  @map("decision_group_id") @db.Uuid
+  correlationId   String   @map("correlation_id") @db.Text
+  at              DateTime @db.Timestamptz(3)
+  recordedAt      DateTime @default(now()) @map("recorded_at") @db.Timestamptz(3)
+
+  alert SocAlert @relation(fields: [alertId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "soc_alert_closures_alert_fkey")
+
+  @@index([tenantId, alertId, at], map: "soc_alert_closures_alert_idx")
+  @@index([tenantId, origin, closureReason, at], map: "soc_alert_closures_learning_idx")
+  @@map("soc_alert_closures")
+}
+
+// Aprendizaje SOC · etapa B — huella de la alerta al promoverla (una por alerta). Los
+// componentes van normalizados y redactados; la línea de comando original nunca se guarda.
+model SocAlertFingerprint {
+  alertId           String   @id @map("alert_id") @db.Uuid
+  tenantId          String   @map("tenant_id") @db.Text
+  ruleKey           String?  @map("rule_key") @db.Text
+  fingerprint       String   @db.Text
+  level             String   @db.Text
+  version           String   @db.Text
+  normalizerVersion String   @map("normalizer_version") @db.Text
+  components        Json     @db.JsonB
+  computedAt        DateTime @map("computed_at") @db.Timestamptz(3)
+
+  alert SocAlert @relation(fields: [alertId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "soc_alert_fingerprints_alert_fkey")
+
+  @@index([tenantId, fingerprint, computedAt], map: "soc_alert_fingerprints_lookup_idx")
+  @@index([tenantId, ruleKey, level], map: "soc_alert_fingerprints_rule_idx")
+  @@map("soc_alert_fingerprints")
+}
+
+// Aprendizaje SOC · etapa C — grupo de alertas con la misma huella dentro de una ventana. Como
+// máximo uno abierto por (tenant, huella): índice único parcial en SQL. `revision` sostiene CAS.
+model SocAlertGroup {
+  id              String   @id @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Text
+  fingerprint     String   @db.Text
+  ruleKey         String?  @map("rule_key") @db.Text
+  level           String   @db.Text
+  status          String   @db.Text
+  firstSeenAt     DateTime @map("first_seen_at") @db.Timestamptz(3)
+  lastSeenAt      DateTime @map("last_seen_at") @db.Timestamptz(3)
+  alertCount      Int      @map("alert_count")
+  primaryAlertId  String   @map("primary_alert_id") @db.Uuid
+  highestPriority String   @map("highest_priority") @db.Text
+  revision        Int
+
+  members SocAlertGroupMember[]
+
+  @@index([tenantId, status, lastSeenAt(sort: Desc)], map: "soc_alert_groups_board_idx")
+  @@map("soc_alert_groups")
+}
+
+// Pertenencia append-only: una alerta entra a un grupo una sola vez.
+model SocAlertGroupMember {
+  alertId  String   @id @map("alert_id") @db.Uuid
+  tenantId String   @map("tenant_id") @db.Text
+  groupId  String   @map("group_id") @db.Uuid
+  joinedAt DateTime @map("joined_at") @db.Timestamptz(3)
+
+  alert SocAlert      @relation(fields: [alertId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "soc_alert_group_members_alert_fkey")
+  group SocAlertGroup @relation(fields: [groupId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "soc_alert_group_members_group_fkey")
+
+  @@index([tenantId, groupId, joinedAt(sort: Desc)], map: "soc_alert_group_members_group_idx")
+  @@map("soc_alert_group_members")
+}
+
+// Aprendizaje SOC · etapa D — patrones de falso positivo. Un patrón aprobado solo se activa si
+// las compuertas de preparación no bloquean (fail-closed); vence siempre; no se borra.
+model SocLearningPattern {
+  id                String    @id @db.Uuid
+  tenantId          String    @map("tenant_id") @db.Text
+  ruleKey           String    @map("rule_key") @db.Text
+  fingerprint       String    @db.Text
+  normalizerVersion String    @map("normalizer_version") @db.Text
+  level             String    @db.Text
+  components        Json      @db.JsonB
+  maxAction         String    @map("max_action") @db.Text
+  closureReason     String    @map("closure_reason") @db.Text
+  status            String    @db.Text
+  proposedBy        String    @map("proposed_by") @db.Text
+  ownerId           String?   @map("owner_id") @db.Text
+  originAlertIds    String[]  @map("origin_alert_ids") @db.Text
+  originClosers     String[]  @map("origin_closers") @db.Text
+  confirmations     Int
+  distinctAlerts    Int       @map("distinct_alerts")
+  distinctDays      Int       @map("distinct_days")
+  distinctAnalysts  Int       @map("distinct_analysts")
+  truePositiveSeen  Int       @map("true_positive_seen")
+  priorityCeiling   String    @map("priority_ceiling") @db.Text
+  readinessBlockers String[]  @map("readiness_blockers") @db.Text
+  createdAt         DateTime  @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime  @map("updated_at") @db.Timestamptz(3)
+  activatedAt       DateTime? @map("activated_at") @db.Timestamptz(3)
+  expiresAt         DateTime? @map("expires_at") @db.Timestamptz(3)
+  renewalCount      Int       @map("renewal_count")
+  revision          Int
+
+  approvals SocLearningPatternApproval[]
+  events    SocLearningPatternEvent[]
+
+  @@index([tenantId, status, updatedAt(sort: Desc)], map: "soc_learning_patterns_board_idx")
+  @@map("soc_learning_patterns")
+}
+
+// Firmas append-only (triggers en SQL).
+model SocLearningPatternApproval {
+  id              String   @id @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Text
+  patternId       String   @map("pattern_id") @db.Uuid
+  patternRevision Int      @map("pattern_revision")
+  stage           String   @db.Text
+  approverId      String   @map("approver_id") @db.Text
+  decision        String   @db.Text
+  comment         String   @db.Text
+  at              DateTime @db.Timestamptz(3)
+
+  pattern SocLearningPattern @relation(fields: [patternId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "soc_learning_pattern_approvals_pattern_fkey")
+
+  @@index([tenantId, patternId, at], map: "soc_learning_pattern_approvals_pattern_idx")
+  @@map("soc_learning_pattern_approvals")
+}
+
+// Transiciones de estado append-only (triggers en SQL).
+model SocLearningPatternEvent {
+  id         String   @id @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Text
+  patternId  String   @map("pattern_id") @db.Uuid
+  fromStatus String?  @map("from_status") @db.Text
+  toStatus   String   @map("to_status") @db.Text
+  reason     String   @db.Text
+  actorId    String   @map("actor_id") @db.Text
+  at         DateTime @db.Timestamptz(3)
+
+  pattern SocLearningPattern @relation(fields: [patternId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "soc_learning_pattern_events_pattern_fkey")
+
+  @@index([tenantId, patternId, at], map: "soc_learning_pattern_events_pattern_idx")
+  @@map("soc_learning_pattern_events")
+}
+
+// Aprendizaje SOC · etapa E — una decisión por alerta (append-only por trigger).
+model SocLearningDecision {
+  id             String   @id @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Text
+  alertId        String   @unique(map: "soc_learning_decisions_alert_key") @map("alert_id") @db.Uuid
+  mode           String   @db.Text
+  engineVersion  String   @map("engine_version") @db.Text
+  fingerprint    String   @db.Text
+  level          String   @db.Text
+  ruleKey        String?  @map("rule_key") @db.Text
+  patternId      String?  @map("pattern_id") @db.Uuid
+  proposedAction String   @map("proposed_action") @db.Text
+  appliedAction  String   @map("applied_action") @db.Text
+  escalateReason String?  @map("escalate_reason") @db.Text
+  confidence     String   @db.Text
+  checks         Json     @db.JsonB
+  drift          Json?    @db.JsonB
+  sampled        Boolean
+  samplingKeyVersion String? @map("sampling_key_version") @db.Text
+  at             DateTime @db.Timestamptz(3)
+
+  @@index([tenantId, patternId, at(sort: Desc)], map: "soc_learning_decisions_pattern_idx")
+  @@index([tenantId, at(sort: Desc)], map: "soc_learning_decisions_recent_idx")
+  @@map("soc_learning_decisions")
+}
+
+// Revisiones humanas de decisiones (muestra de calidad, dry-run, revisión forzada).
+model SocLearningReview {
+  id           String    @id @db.Uuid
+  tenantId     String    @map("tenant_id") @db.Text
+  decisionId   String    @map("decision_id") @db.Uuid
+  alertId      String    @map("alert_id") @db.Uuid
+  patternId    String?   @map("pattern_id") @db.Uuid
+  kind         String    @db.Text
+  status       String    @db.Text
+  reviewerId   String?   @map("reviewer_id") @db.Text
+  truePositive Boolean?  @map("true_positive")
+  comment      String?   @db.Text
+  at           DateTime  @db.Timestamptz(3)
+  resolvedAt   DateTime? @map("resolved_at") @db.Timestamptz(3)
+  revision     Int
+
+  @@index([tenantId, status, at(sort: Desc)], map: "soc_learning_reviews_queue_idx")
+  @@index([tenantId, patternId, resolvedAt], map: "soc_learning_reviews_pattern_idx")
+  @@map("soc_learning_reviews")
+}
+
+// Reversiones de autocierres (append-only por trigger).
+model SocLearningReversal {
+  id         String   @id @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Text
+  decisionId String   @map("decision_id") @db.Uuid
+  alertId    String   @map("alert_id") @db.Uuid
+  patternId  String?  @map("pattern_id") @db.Uuid
+  actorId    String   @map("actor_id") @db.Text
+  reason     String   @db.Text
+  reopened   Boolean
+  at         DateTime @db.Timestamptz(3)
+
+  @@index([tenantId, patternId, at], map: "soc_learning_reversals_pattern_idx")
+  @@map("soc_learning_reversals")
+}
+
+// Aprendizaje SOC · fase 2 — cola del motor (un trabajo por alerta, escrito con la alerta).
+model SocLearningJob {
+  alertId     String    @id @map("alert_id") @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Text
+  fingerprint Json      @db.JsonB
+  signals     Json?     @db.JsonB
+  status      String    @db.Text
+  attempts    Int       @default(0)
+  availableAt DateTime  @map("available_at") @db.Timestamptz(3)
+  leaseUntil  DateTime? @map("lease_until") @db.Timestamptz(3)
+  claimId     String?   @map("claim_id") @db.Uuid
+  lastError   String?   @map("last_error") @db.Text
+  enqueuedAt  DateTime  @map("enqueued_at") @db.Timestamptz(3)
+  finishedAt  DateTime? @map("finished_at") @db.Timestamptz(3)
+
+  @@index([tenantId, enqueuedAt(sort: Desc)], map: "soc_learning_jobs_recent_idx")
+  @@map("soc_learning_jobs")
+}
+
+// Latido del worker del motor (dead man's switch).
+model SocLearningWorkerHeartbeat {
+  workerId String   @id @map("worker_id") @db.Text
+  tenantId String   @map("tenant_id") @db.Text
+  beatAt   DateTime @map("beat_at") @db.Timestamptz(3)
+  claimed  Int
+  failed   Int
+
+  @@map("soc_learning_worker_heartbeats")
+}
+
+// Configuración efectiva de cada arranque (append-only por trigger).
+model SocLearningConfigEvent {
+  id                 String   @id @db.Uuid
+  tenantId           String   @map("tenant_id") @db.Text
+  configHash         String   @map("config_hash") @db.Text
+  maxMode            String   @map("max_mode") @db.Text
+  activeRules        Int      @map("active_rules")
+  killSwitch         Boolean  @map("kill_switch")
+  samplingKeyVersion String?  @map("sampling_key_version") @db.Text
+  at                 DateTime @db.Timestamptz(3)
+
+  @@index([tenantId, at(sort: Desc)], map: "soc_learning_config_events_recent_idx")
+  @@map("soc_learning_config_events")
+}
+
+// Estado del motor por tenant (pausa automática si sus avisos no llegan).
+model SocLearningEngineState {
+  tenantId String    @id @map("tenant_id") @db.Text
+  paused   Boolean
+  reason   String?   @db.Text
+  since    DateTime? @db.Timestamptz(3)
+  revision Int
+
+  @@map("soc_learning_engine_state")
+}
+
+// Habilitación por regla y tenant (capa 2): dos personas, vencimiento obligatorio.
+model SocLearningRuleEnablement {
+  id          String    @id @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Text
+  ruleKey     String    @map("rule_key") @db.Text
+  mode        String    @db.Text
+  status      String    @db.Text
+  reason      String    @db.Text
+  requestedBy String    @map("requested_by") @db.Text
+  requestedAt DateTime  @map("requested_at") @db.Timestamptz(3)
+  approvedBy  String?   @map("approved_by") @db.Text
+  approvedAt  DateTime? @map("approved_at") @db.Timestamptz(3)
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedBy   String?   @map("revoked_by") @db.Text
+  revokedAt   DateTime? @map("revoked_at") @db.Timestamptz(3)
+  revision    Int
+
+  @@map("soc_learning_rule_enablements")
+}
+
+// Contexto del tenant (se suma a las listas del entorno).
+model SocLearningContextEntry {
+  id        String    @id @db.Uuid
+  tenantId  String    @map("tenant_id") @db.Text
+  kind      String    @db.Text
+  value     String    @db.Text
+  reason    String    @db.Text
+  createdBy String    @map("created_by") @db.Text
+  createdAt DateTime  @map("created_at") @db.Timestamptz(3)
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedBy String?   @map("revoked_by") @db.Text
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(3)
+  revision  Int
+
+  @@map("soc_learning_context_entries")
 }
 
 // C-17/C-20 — outbox del SOC: cola durable con lease que el despacho reclama de forma
@@ -792,6 +1113,7 @@ model AssistantConversation {
 // aislados por (tenant, dueno). Borrado real: el runtime recibe DELETE solo sobre esta tabla y
 // `assistant_conversations` (`post-migrate.sql`).
 model AssistantArtifact {
+  reportId       String?  @map("report_id") @db.Uuid
   id             String   @id @db.Uuid
   tenantId       String   @map("tenant_id") @db.Text
   ownerId        String   @map("owner_id") @db.Text

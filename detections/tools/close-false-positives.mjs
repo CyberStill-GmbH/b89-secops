@@ -7,7 +7,13 @@
 //   docker run --rm --network b89_default --env-file <env de b89-api-1> \
 //     -v "$PWD/detections/tools/close-false-positives.mjs:/app/dist/b89-close-fp.mjs:ro" \
 //     b89/api:local dist/b89-close-fp.mjs --rule 521 --search rootkit \
-//     --reason "falso positivo: rootcheck sobre overlay de Docker (regla 521)" [--apply]
+//     --reason "falso positivo: rootcheck sobre overlay de Docker (regla 521)" --evidence "https://.../PR-o-ticket-del-ajuste" [--apply]
+//
+// Aprendizaje SOC · etapa A: el cierre lleva motivo FP_REGLA_MAL_AFINADA y la referencia de
+// --evidence. El backend lo registra con origen `bulk_script`: nunca cuenta para patrones.
+// Toda la corrida comparte un decisionGroupId (una sola decisión, no N).
+import { randomUUID } from 'node:crypto';
+
 import { executeAlertCommand } from '@b89/soc';
 import { buildApi } from './bootstrap.js';
 
@@ -19,10 +25,14 @@ const opt = (name, fallback) => {
 const rule = opt('rule');
 const reason = opt('reason');
 const search = opt('search', '');
+const evidence = opt('evidence');
 const apply = args.includes('--apply');
 const limit = Number(opt('limit', '100000'));
-if (!rule || !reason || reason.length < 10) {
-  console.error('uso: --rule <id> --reason "<motivo de al menos 10 caracteres>" [--search texto] [--apply] [--limit n]');
+if (!rule || !reason || reason.length < 20 || !evidence) {
+  console.error(
+    'uso: --rule <id> --reason "<motivo de al menos 20 caracteres>" --evidence <url o ticket> ' +
+      '[--search texto] [--apply] [--limit n]',
+  );
   process.exit(2);
 }
 
@@ -38,10 +48,29 @@ const actor = {
   roles: ['b89.service.detection-engineering'],
 };
 const correlationId = `close-fp-${rule}-${stamp}`;
+const decisionGroupId = randomUUID();
+const closure = {
+  reason: 'FP_REGLA_MAL_AFINADA',
+  justification: { evidenceType: 'other', statement: reason },
+  evidenceRefs: [{ kind: /^https?:\/\//u.test(evidence) ? 'url' : 'ticket', ref: evidence }],
+};
 
-const { items, total } = await runtime.soc.listAlerts({ tenantId, status: 'open', ...(search ? { search } : {}) });
+const { items, total } = await runtime.soc.listAlerts({
+  tenantId,
+  status: 'open',
+  ...(search ? { search } : {}),
+});
 const targets = items.filter((alert) => alert.ruleId === rule).slice(0, limit);
-console.log(JSON.stringify({ event: 'close-fp.plan', rule, open: total, matching: targets.length, apply, correlationId }));
+console.log(
+  JSON.stringify({
+    event: 'close-fp.plan',
+    rule,
+    open: total,
+    matching: targets.length,
+    apply,
+    correlationId,
+  }),
+);
 
 let closed = 0;
 const failures = {};
@@ -52,6 +81,7 @@ for (const original of targets) {
       actor,
       alertId: alert.id,
       correlationId,
+      decisionGroupId,
       command: { ...command, expectedRevision: alert.revision },
     });
     if (!result.ok) throw new Error(`${command.name}:${result.code}`);
@@ -62,8 +92,9 @@ for (const original of targets) {
     if (alert.status === 'new' || alert.assigneeId !== actor.subjectId) {
       await run({ name: 'assign', assigneeId: actor.subjectId });
     }
-    if (alert.status === 'acknowledged') await run({ name: 'triage', verdict: 'false_positive', note: reason });
-    await run({ name: 'close', note: reason });
+    if (alert.status === 'acknowledged')
+      await run({ name: 'triage', verdict: 'false_positive', note: reason });
+    await run({ name: 'close', note: reason, closure });
     closed += 1;
   } catch (error) {
     const code = error instanceof Error ? error.message : 'UNKNOWN';

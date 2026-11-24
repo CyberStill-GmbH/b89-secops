@@ -42,6 +42,8 @@ const PROVIDER_AWARE: Readonly<Record<string, string>> = {
   'modules/connectors/src/public/index.ts': 'Expone la fábrica del adapter existente.',
   'modules/telemetry/src/wazuh-normalization.ts': 'Mapping versionado hacia el contrato.',
   'modules/telemetry/src/wazuh-office365.ts': 'Sub-mapping Office 365 del mapping versionado.',
+  'modules/telemetry/src/wazuh-observables.ts':
+    'Sub-mapping de observables (b89.observables) del mapping versionado.',
   'modules/telemetry/src/index.ts': 'Reexporta el mapping versionado.',
   'modules/telemetry/src/quarantine-reprocess.ts': 'Linaje de cuarentena del mapping.',
   'modules/telemetry/src/event-projection.ts': 'Proyección al índice de consulta elegido.',

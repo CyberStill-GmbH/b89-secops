@@ -2,8 +2,10 @@ import {
   SECURITY_EVENT_LIMITS,
   SECURITY_EVENT_SCHEMA_VERSION,
   validateSecurityEvent,
+  OBSERVABLES_EXTENSION_NAMESPACE,
   type Identity,
   type IngestionHop,
+  type JsonValue,
   type Raw,
   type Resource,
   type SecurityEvent,
@@ -12,6 +14,7 @@ import {
 } from '@b89/contracts';
 
 import { deterministicUuid7 } from './deterministic-id.js';
+import { projectWazuhObservables } from './wazuh-observables.js';
 import type { TelemetryProviderRecord } from './admission.js';
 import {
   normalizeClientIp,
@@ -47,11 +50,14 @@ import {
  *   `origin` de `provenance.ingestionPath`. Aditivo, como 1.1.0.
  * - 1.3.0: Office 365 proyecta metadatos opcionales de correo bajo allowlist, con tope de
  *   50 destinatarios y sin Parameters, ModifiedProperties, cuerpo o adjuntos.
+ * - 1.4.0: extensión `b89.observables` v1 (aprendizaje SOC · etapa B): proceso, proceso padre,
+ *   línea de comando normalizada y redactada, hashes, destino y MITRE, solo si el decoder los
+ *   trae. Aditivo dentro del contrato 1.0.0, como 1.1.0.
  */
 
 export const WAZUH_MAPPING_ID = 'wazuh.alerts' as const;
-export const WAZUH_MAPPING_VERSION = '1.3.0' as const;
-export const WAZUH_PARSER_VERSION = '1.3.0' as const;
+export const WAZUH_MAPPING_VERSION = '1.4.0' as const;
+export const WAZUH_PARSER_VERSION = '1.4.0' as const;
 export const WAZUH_SEVERITY_MAPPING_ID = 'wazuh.alerts.severity' as const;
 export const WAZUH_SEVERITY_SCALE = 'provider-level-0-15' as const;
 
@@ -555,6 +561,15 @@ export function normalizeWazuhAlert(
   const severity = mapSeverity(level);
   const origin = originHop(groups);
   const office365 = projectOffice365(readObject(source['data']));
+  const observables = projectWazuhObservables(source);
+  const extensions: Record<string, JsonValue> = {
+    ...(office365 && Object.keys(office365.extension).length > 0
+      ? { [OFFICE365_EXTENSION_NAMESPACE]: office365.extension as JsonValue }
+      : {}),
+    ...(observables
+      ? { [OBSERVABLES_EXTENSION_NAMESPACE]: observables as unknown as JsonValue }
+      : {}),
+  };
   const occurredAt = providerOccurredAt(readObject(source['data']), timestamp);
   const observedAt = new Date(record.collectedAt).toISOString();
   const receivedAt = context.receivedAt.toISOString();
@@ -622,9 +637,7 @@ export function normalizeWazuhAlert(
         { kind: 'adapter', vendor: 'B89', product: 'B89 SecOps' },
       ]),
     },
-    ...(office365 && Object.keys(office365.extension).length > 0
-      ? { extensions: { [OFFICE365_EXTENSION_NAMESPACE]: office365.extension } }
-      : {}),
+    ...(Object.keys(extensions).length > 0 ? { extensions } : {}),
   };
 
   // El contrato es el árbitro final: si el documento construido no valida, no sale.

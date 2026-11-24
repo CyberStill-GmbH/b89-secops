@@ -104,6 +104,22 @@ BEGIN
   IF to_regclass('public.source_health_transitions') IS NOT NULL THEN
     REVOKE UPDATE ON public.source_health_transitions FROM b89_soc_runtime;
   END IF;
+  -- Aprendizaje SOC · etapas D/E (append-only).
+  IF to_regclass('public.soc_learning_pattern_approvals') IS NOT NULL THEN
+    REVOKE UPDATE ON public.soc_learning_pattern_approvals FROM b89_soc_runtime;
+  END IF;
+  IF to_regclass('public.soc_learning_pattern_events') IS NOT NULL THEN
+    REVOKE UPDATE ON public.soc_learning_pattern_events FROM b89_soc_runtime;
+  END IF;
+  IF to_regclass('public.soc_learning_decisions') IS NOT NULL THEN
+    REVOKE UPDATE ON public.soc_learning_decisions FROM b89_soc_runtime;
+  END IF;
+  IF to_regclass('public.soc_learning_reversals') IS NOT NULL THEN
+    REVOKE UPDATE ON public.soc_learning_reversals FROM b89_soc_runtime;
+  END IF;
+  IF to_regclass('public.soc_learning_config_events') IS NOT NULL THEN
+    REVOKE UPDATE ON public.soc_learning_config_events FROM b89_soc_runtime;
+  END IF;
   IF to_regclass('public._prisma_migrations') IS NOT NULL THEN
     REVOKE INSERT, UPDATE ON public._prisma_migrations FROM b89_soc_runtime;
   END IF;

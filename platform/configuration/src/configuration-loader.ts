@@ -15,6 +15,16 @@ import { rejectUnknownB89Variables } from './schema/environment.schema.js';
 import { validateAssistantEnvironment } from './schema/assistant.schema.js';
 import { parseAccess, type AccessConfig } from './schema/access.schema.js';
 import { parseDetectionContext, type DetectionContextConfig } from './schema/detection.schema.js';
+import {
+  parseSocClosurePolicy,
+  parseSocGrouping,
+  parseSocLearningApprovers,
+  parseLearningEngine,
+  type LearningEngineConfig,
+  type SocClosurePolicyConfig,
+  type SocGroupingConfig,
+  type SocLearningApproversConfig,
+} from './schema/soc-learning.schema.js';
 import { parseIngestionConfig, type IngestionConfig } from './schema/ingestion.schema.js';
 import { parseRoleGrants, type RoleGrantsConfig } from './schema/role-grants.schema.js';
 import { parseDirectoryConfig, type DirectoryConfig } from './schema/directory.schema.js';
@@ -173,6 +183,32 @@ export function loadDetectionContextConfig(environment: EnvironmentInput): Detec
   return deepFreeze(parseDetectionContext(environment, profile));
 }
 
+/** Aprendizaje SOC · etapa A — si el cierre de alertas exige motivo estructurado. */
+export function loadSocClosurePolicy(environment: EnvironmentInput): SocClosurePolicyConfig {
+  const profile = profileFrom(environment);
+  return deepFreeze(parseSocClosurePolicy(environment, profile));
+}
+
+/** Aprendizaje SOC · etapa C — agrupación de alertas por huella. */
+export function loadSocGrouping(environment: EnvironmentInput): SocGroupingConfig {
+  const profile = profileFrom(environment);
+  return deepFreeze(parseSocGrouping(environment, profile));
+}
+
+/** Aprendizaje SOC · etapa D — aprobadores designados de patrones (vacío: activación bloqueada). */
+export function loadSocLearningApprovers(
+  environment: EnvironmentInput,
+): SocLearningApproversConfig {
+  const profile = profileFrom(environment);
+  return deepFreeze(parseSocLearningApprovers(environment, profile));
+}
+
+/** Aprendizaje SOC · etapa E — motor de decisión (apagado por defecto). */
+export function loadLearningEngine(environment: EnvironmentInput): LearningEngineConfig {
+  const profile = profileFrom(environment);
+  return deepFreeze(parseLearningEngine(environment, profile));
+}
+
 /** Sprint 5 · fase 0 — fuente de ingesta del SOC; `disabled` si el ambiente no la declara. */
 export function loadIngestionConfig(environment: EnvironmentInput): IngestionConfig {
   const profile = profileFrom(environment);
@@ -210,7 +246,12 @@ export interface NotificationPolicyEnvironment {
   readonly timeZone?: string;
 }
 
-const NOTIFY_INTEGERS: readonly (readonly [keyof NotificationPolicyEnvironment, string, number, number])[] = [
+const NOTIFY_INTEGERS: readonly (readonly [
+  keyof NotificationPolicyEnvironment,
+  string,
+  number,
+  number,
+])[] = [
   ['quietP1Minutes', 'B89_NOTIFY_QUIET_P1_MINUTES', 1, 1_440],
   ['quietP2Minutes', 'B89_NOTIFY_QUIET_P2_MINUTES', 1, 1_440],
   ['staleMinutes', 'B89_NOTIFY_STALE_MINUTES', 5, 10_080],
@@ -218,7 +259,9 @@ const NOTIFY_INTEGERS: readonly (readonly [keyof NotificationPolicyEnvironment, 
   ['digestMinutes', 'B89_NOTIFY_DIGEST_MINUTES', 0, 10_080],
 ];
 
-export function loadNotificationPolicy(environment: EnvironmentInput): NotificationPolicyEnvironment {
+export function loadNotificationPolicy(
+  environment: EnvironmentInput,
+): NotificationPolicyEnvironment {
   const profile = profileFrom(environment);
   const result: Record<string, number | string> = {};
   for (const [field, name, minimum, maximum] of NOTIFY_INTEGERS) {
@@ -238,7 +281,8 @@ export function loadNotificationPolicy(environment: EnvironmentInput): Notificat
     } catch {
       valid = false;
     }
-    if (!valid) throw configurationError('CONFIG_VALUE_INVALID', 'B89_NOTIFY_TIME_ZONE', profile.name);
+    if (!valid)
+      throw configurationError('CONFIG_VALUE_INVALID', 'B89_NOTIFY_TIME_ZONE', profile.name);
     result['timeZone'] = timeZone;
   }
   return deepFreeze(result) as NotificationPolicyEnvironment;

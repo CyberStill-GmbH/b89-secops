@@ -23,6 +23,9 @@ import {
   type AlertErrorCode,
   type TriageVerdict,
 } from './alert.js';
+import { assignToGroup, type AlertGroupingPolicy } from './alert-group.js';
+import { closureOriginFor } from './closure.js';
+import { recordManualReopen } from './learning-reversal.js';
 import {
   applyIncidentCommand,
   openIncident,
@@ -126,7 +129,81 @@ export interface SocDependencies {
   readonly ids: IdFactory;
   /** Sin factory, la alerta no tiene referencias y no se puede pivotar por entidad. */
   readonly entityRefs?: EntityRefFactory;
+  /**
+   * Aprendizaje SOC · etapa A (`B89_SOC_CLOSURE_REASON_REQUIRED`). Sin política, el cierre sin
+   * motivo se acepta como heredado: es el comportamiento anterior.
+   */
+  readonly closurePolicy?: { readonly reasonRequired: boolean };
+  /**
+   * Aprendizaje SOC · etapa C. Sin política no se agrupa (comportamiento anterior). Agrupar no
+   * cambia estado ni prioridad de ninguna alerta.
+   */
+  readonly groupingPolicy?: AlertGroupingPolicy;
+  /**
+   * Aprendizaje SOC · fase 2: encola la evaluación del motor en la MISMA transacción que la alerta
+   * (la consume el worker fuera de la ingesta). Sin la bandera no se encola nada.
+   */
+  readonly learningEnqueue?: boolean;
 }
+
+type GroupingOutcome =
+  | { readonly groupId: string; readonly kind: 'join' | 'open' }
+  | { readonly groupId: null; readonly kind: 'none' | 'conflict' };
+
+/**
+ * Suma la alerta recién creada a su grupo. Si otro proceso movió el grupo entre la lectura y la
+ * escritura, la alerta queda sin grupo en vez de fallar: una alerta sin grupo sigue visible, y
+ * perder la alerta por un contador sería peor.
+ */
+async function groupAlert(
+  context: SocTransactionContext,
+  dependencies: SocDependencies,
+  alert: Alert,
+  fingerprint: NonNullable<DetectionCandidate['fingerprint']>,
+  at: Date,
+): Promise<GroupingOutcome> {
+  const policy = dependencies.groupingPolicy;
+  if (!policy) return { groupId: null, kind: 'none' };
+  const groupable = {
+    id: alert.id,
+    tenantId: alert.tenantId,
+    priority: alert.priority,
+    occurredAt: alert.occurredAt,
+    fingerprint: fingerprint.fingerprint,
+    ruleKey: fingerprint.ruleKey,
+    level: fingerprint.level,
+  };
+  // El store bloquea el grupo abierto al leerlo; el único conflicto esperable es que otra
+  // ingesta abra el grupo entre nuestra lectura (vacía) y nuestra inserción. Se relee una vez:
+  // la segunda lectura ya ve el grupo confirmado y se une a él.
+  for (let attempt = 0; attempt < GROUPING_ATTEMPTS; attempt += 1) {
+    const open = await context.groups.openByFingerprint(alert.tenantId, fingerprint.fingerprint);
+    const assignment = assignToGroup(groupable, open, policy, dependencies.ids.next());
+    if (assignment.kind === 'none') return { groupId: null, kind: 'none' };
+    if (assignment.kind === 'join') {
+      if (!(await context.groups.update(assignment.group, assignment.expectedRevision))) continue;
+    } else {
+      if (
+        assignment.seal &&
+        !(await context.groups.update(assignment.seal.group, assignment.seal.expectedRevision))
+      ) {
+        continue;
+      }
+      if (!(await context.groups.insertIfAbsent(assignment.group))) continue;
+    }
+    await context.groups.addMember({
+      tenantId: alert.tenantId,
+      groupId: assignment.group.id,
+      alertId: alert.id,
+      joinedAt: at,
+    });
+    return { groupId: assignment.group.id, kind: assignment.kind };
+  }
+  return { groupId: null, kind: 'conflict' };
+}
+
+/** Intentos de agrupar ante una carrera al abrir el grupo (ver `groupAlert`). */
+const GROUPING_ATTEMPTS = 3;
 
 /** Materializa un candidato de C-16 como alerta. Repetirlo no crea una segunda. */
 export async function ingestCandidate(
@@ -165,6 +242,33 @@ export async function ingestCandidate(
         ? { ok: true as const, value: { alert: existing, created: false } }
         : failure('CONFLICT', 'ALERT_RACE', 'La alerta existía y dejó de estar disponible.');
     }
+    // Aprendizaje SOC · etapas B y C: huella y grupo entran en la misma transacción que la alerta.
+    let grouping: GroupingOutcome = { groupId: null, kind: 'none' };
+    if (candidate.fingerprint) {
+      await context.fingerprints.insertIfAbsent({
+        ...candidate.fingerprint,
+        alertId: alert.id,
+        tenantId: alert.tenantId,
+        computedAt: at,
+      });
+      grouping = await groupAlert(context, dependencies, alert, candidate.fingerprint, at);
+    }
+    if (dependencies.learningEnqueue === true && candidate.fingerprint) {
+      await context.learningJobs.enqueue({
+        alertId: alert.id,
+        tenantId: alert.tenantId,
+        fingerprint: candidate.fingerprint,
+        signals: candidate.guardSignals ?? null,
+        status: 'pending',
+        attempts: 0,
+        availableAt: at,
+        leaseUntil: null,
+        claimId: null,
+        lastError: null,
+        enqueuedAt: at,
+        finishedAt: null,
+      });
+    }
     await recordAudit(
       context.audit,
       auditDraft({
@@ -186,6 +290,9 @@ export async function ingestCandidate(
           score: alert.score,
           signal: alert.signal,
           relatedAlerts: alert.relatedAlertIds.length,
+          ...(grouping.kind === 'none'
+            ? {}
+            : { groupId: grouping.groupId, grouping: grouping.kind }),
         },
       }),
     );
@@ -218,7 +325,9 @@ export interface AlertCommandRequest {
   readonly actor: Actor;
   readonly alertId: string;
   readonly correlationId: string;
-  readonly command: Omit<AlertCommand, 'actorId' | 'at'>;
+  readonly command: Omit<AlertCommand, 'actorId' | 'at' | 'closureReasonRequired'>;
+  /** Cierres en bloque (grupo o selección) comparten este id: cuentan como una decisión. */
+  readonly decisionGroupId?: string;
 }
 
 const COMMAND_CAPABILITY = {
@@ -274,6 +383,7 @@ export async function executeAlertCommand(
       ...request.command,
       actorId: request.actor.subjectId,
       at,
+      closureReasonRequired: dependencies.closurePolicy?.reasonRequired === true,
     });
     if (!transition.ok) {
       await recordAudit(
@@ -309,9 +419,46 @@ export async function executeAlertCommand(
           from: transition.from,
           to: transition.alert.status,
           verdict: transition.alert.verdict,
+          ...(request.command.name === 'close'
+            ? {
+                closureReason: transition.alert.closureReason,
+                closureOrigin: transition.alert.closureOrigin,
+                evidenceRefs: request.command.closure?.evidenceRefs.length ?? 0,
+              }
+            : {}),
         },
       }),
     );
+    // Aprendizaje SOC · etapa E: reabrir un cierre del motor es un desacuerdo con él (reversión y
+    // pausa del patrón), por cualquier vía que se reabra.
+    if (request.command.name === 'reopen' && alert.closureOrigin === 'learning_engine') {
+      await recordManualReopen(context, dependencies.ids, auditDraft, {
+        tenantId: alert.tenantId,
+        alertId: alert.id,
+        actor: request.actor,
+        note: request.command.note,
+        correlationId: request.correlationId,
+        at,
+      });
+    }
+    if (request.command.name === 'close' || request.command.name === 'reopen') {
+      const closed = request.command.name === 'close';
+      await context.closures.append({
+        id: dependencies.ids.next(),
+        tenantId: alert.tenantId,
+        alertId: alert.id,
+        kind: closed ? 'close' : 'reopen',
+        verdict: transition.alert.verdict,
+        closureReason: closed ? transition.alert.closureReason : null,
+        origin: closureOriginFor(request.actor.subjectId),
+        actorId: request.actor.subjectId,
+        justification: closed ? (request.command.closure?.justification ?? null) : null,
+        evidenceRefs: closed ? (request.command.closure?.evidenceRefs ?? []) : [],
+        decisionGroupId: request.decisionGroupId ?? null,
+        correlationId: request.correlationId,
+        at,
+      });
+    }
     const type =
       request.command.name === 'triage'
         ? 'soc.alert.triaged'
@@ -1031,3 +1178,6 @@ export async function addIncidentNote(
     return { ok: true as const, value: created.value };
   });
 }
+
+/** Uso interno del módulo (casos de uso de aprendizaje); no se reexporta en `index.ts`. */
+export { auditDraft as socAuditDraft, failure as socFailure, publish as socPublish };

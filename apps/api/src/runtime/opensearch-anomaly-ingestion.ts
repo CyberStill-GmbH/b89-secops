@@ -6,6 +6,9 @@ import { deterministicUuid7 } from '@b89/telemetry';
 
 import { NotificationDispatcher } from './notification-dispatcher.js';
 
+/** Proveedor de las reglas de Anomaly Detection; su ID de detector no va en el título (C-23). */
+export const ANOMALY_DETECTION_PROVIDER = 'OpenSearch Anomaly Detection';
+
 const POLL_MS = 5_000;
 const REQUEST_TIMEOUT_MS = 4_000;
 const INITIAL_LOOKBACK_MS = 15 * 60_000;
@@ -164,7 +167,7 @@ function eventFromHit(input: {
     outcome: 'unknown', action: 'anomaly.detected',
     entities: identity,
     detection: { rule: {
-      id: detectorId, name: input.presentation.title, provider: 'OpenSearch Anomaly Detection',
+      id: detectorId, name: input.presentation.title, provider: ANOMALY_DETECTION_PROVIDER,
       version: '1', groups: ['anomaly_detection', input.presentation.vendor.toLowerCase().replaceAll(' ', '_')],
     } },
     raw: {

@@ -16,7 +16,7 @@ func verdicts(rule, prio, key, verdict string, n int, start time.Time) []model.B
 	for i := 0; i < n; i++ {
 		at := start.Add(time.Duration(i) * time.Hour)
 		out = append(out, model.B89Alert{ID: fmt.Sprintf("%s-%s-%d-%s", rule, verdict, i, key), RuleID: rule, Priority: prio,
-			Verdict: verdict, Status: "closed", EntityKeys: []string{key}, OccurredAt: at, UpdatedAt: at.Add(10 * time.Minute)})
+			Verdict: verdict, ClosureOrigin: "human", Status: "closed", EntityKeys: []string{key}, OccurredAt: at, UpdatedAt: at.Add(10 * time.Minute)})
 	}
 	return out
 }
@@ -96,6 +96,22 @@ func TestRepeatedFalsePositivesProposeAllowlist(t *testing.T) {
 	}
 	if got := res.CDB(); got != "192.0.2.200:101501\n" {
 		t.Fatalf("cdb = %q", got)
+	}
+}
+
+func TestNonHumanFalsePositivesNeverProposeSuppression(t *testing.T) {
+	for _, origin := range []string{"ai_analyst", "bulk_script", "learning_engine", "service_other", ""} {
+		alerts := verdicts("101501", "P3", "ip:192.0.2.201", "false_positive", 6, now.Add(-48*time.Hour))
+		for i := range alerts {
+			alerts[i].ClosureOrigin = origin
+		}
+		res := Evaluate(alerts, nil, DefaultPolicy(), now)
+		if len(res.Proposals) != 0 {
+			t.Fatalf("origin %q must not feed suppression: %+v", origin, res.Proposals)
+		}
+		if res.FalsePos != 6 {
+			t.Fatalf("origin %q still counts as reviewed FP quality: %+v", origin, res)
+		}
 	}
 }
 

@@ -54,6 +54,27 @@ describe('C-16 · promoción', () => {
     expect(store.rows.size).toBe(1);
   });
 
+  it('C-23: el título sin ID lo decide el borde, no el dominio', () => {
+    const event = withSeverity('high', {
+      detection: {
+        rule: {
+          id: 'detector-7f3a',
+          name: 'Volumen anómalo de inicios',
+          provider: 'detector-x',
+          groups: [],
+        },
+      },
+    });
+    const plain = decidePromotion(event, CONTEXT, undefined, NOW);
+    const bare = decidePromotion(event, CONTEXT, undefined, NOW, {
+      bareTitleProviders: new Set(['detector-x']),
+    });
+    expect(plain.outcome === 'promoted' && plain.candidate.title).toBe(
+      'Volumen anómalo de inicios (detector-x detector-7f3a)',
+    );
+    expect(bare.outcome === 'promoted' && bare.candidate.title).toBe('Volumen anómalo de inicios');
+  });
+
   it('no promueve por debajo del umbral y declara el motivo', async () => {
     const store = new MemoryCandidateStore();
     const decision = await promote(

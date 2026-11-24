@@ -634,3 +634,236 @@ cliente **sin IPs** = sin alerta.
   cambios, conflicto/sesión reciente/validación.
 - Validación: plugin 621/622 (falla previa), typecheck OK, suite raíz 1540/1542 (`provider-coupling`
   previa), API 6/6 nuevas, pytest colector 80/82 (2 de aprovisionamiento Logpush fallan igual en `main`).
+
+### Claude · 2026-11-24 · Aprendizaje SOC · etapa A: cierre estructurado de alertas (contrato para la consola)
+
+Lo pidió el dueño (diseño aprobado en `docs/soc-learning/01-diseno.md`). Local, sin commit al escribir.
+Backend de Claude; **la consola es de Codex** y no se tocó.
+
+- **Contrato nuevo** `POST /api/alerts/:id/commands` con `name: 'close'` acepta `closure`:
+  `{ reason, justification: { evidenceType, statement (20–2000), legitimacyField?, legitimacyValue? },
+  evidenceRefs: [{ kind, ref }] (1–10) }`. Catálogos en `modules/soc/src/closure.ts`:
+  motivos `FP_ACTIVIDAD_LEGITIMA_CONOCIDA | FP_REGLA_MAL_AFINADA | FP_DATOS_ERRONEOS |
+  TP_BENIGNO_PRUEBA_O_PENTEST | TP_RIESGO_ACEPTADO | DUPLICADA | TP_REAL`, con veredicto compatible
+  (`CLOSURE_REASON_VERDICTS`); `evidenceType` y `kind` cerrados. Sin triaje solo se cierra `DUPLICADA`.
+  Errores: `VALIDATION_FAILED` con `fields: ['closure', <CLOSURE_REASON_REQUIRED | CLOSURE_INVALID |
+  CLOSURE_VERDICT_MISMATCH | CLOSURE_REQUIRES_TRIAGE>]`.
+- **Lectura:** `alert` agrega `closureReason`, `closureOrigin` (`human | ai_analyst | bulk_script |
+  learning_engine | service_other | legacy_unknown`, lo fija el backend por el actor), `closedBy`, `closedAt`.
+- **Bandera** `B89_SOC_CLOSURE_REASON_REQUIRED` (por defecto `false`: el cierre sin `closure` sigue
+  funcionando y queda sin motivo). Se pasa a `true` cuando la consola envíe `closure`.
+- **Persistencia:** migración `20261124120000_soc_learning_closure` (columnas nulas en `soc_alerts` y
+  `soc_alert_closures` append-only con triggers). Script de etiquetado retroactivo
+  `scripts/soc-learning/backfill-closure-origin.sql` (simulación por defecto).
+- **Cambio de comportamiento:** el historial de FP del Analista IA (`alertStats`) y el feedback del
+  correlador cuentan **solo cierres humanos**. Hasta correr el etiquetado retroactivo, el historial previo
+  cuenta 0 y el Analista IA no propone `KNOWN_BENIGN_PATTERN` (falla cerrado).
+- Validación: suite raíz 1567/1569 (`provider-coupling` previa), typecheck OK en soc/database/configuration/api,
+  Go `feedback` y `engine` OK salvo 6 tests con `fsync` de directorio que fallan en Windows. **Migración,
+  script SQL e integración Postgres no corridos** (sin Docker en esta máquina).
+- **Pedido a Codex:** en «Cerrar» de `alerts_view.tsx`/`alert_actions.ts`, selector de motivo según el
+  veredicto, justificación, dato de legitimidad y evidencia (ticket/URL/alerta), y mostrar
+  `closureReason`/`closureOrigin` en el detalle. Revisión del contrato antes de activar la bandera.
+
+### Claude · 2026-11-24 · Aprendizaje SOC · etapa B: huella de alerta y extensión `b89.observables`
+
+Lo pidió el dueño. Commits locales en `feat/soc-learning-stage-a` (sin push). Solo backend.
+
+- **Contrato:** extensión `extensions['b89.observables']` v1 (`packages/contracts/src/observables`),
+  aditiva dentro de SecurityEvent 1.0.0. Proceso, padre, línea de comando **normalizada y redactada**,
+  hashes, destino y MITRE. El contrato no usa Node: el SHA-256 lo inyecta quien normaliza.
+- **Mapping Wazuh 1.4.0** (`wazuh-observables.ts`, declarado en el inventario C-23 como sub-mapping).
+- **Huella v1** en `modules/detection/src/fingerprint.ts` y clave `fuente:rule_id` en `rule-key.ts`
+  (rangos de `detections/catalog.yaml`; una spec falla si se desalinean: **quien edite `id_ranges` debe
+  actualizar `RULE_SOURCE_RANGES`**). Se calcula al promover y se guarda en `soc_alert_fingerprints`
+  (migración `20261124130000`, append-only).
+- **Desvíos del diseño** (no edité `01-diseno.md`: tiene cambios de otra sesión sin commit):
+  el código vive en `@b89/contracts` + `@b89/detection` y no en un paquete `@b89/soc-learning` nuevo
+  (sin pnpm en esta máquina para enlazar un workspace); `cmdlineHmac` aplazado (la línea original ya no
+  se persiste en B89; queda en el crudo del Indexer bajo su retención); `rule_key` vive en
+  `soc_alert_fingerprints`, no como columna de `soc_alerts`; MITRE se guarda como listas
+  `techniques`/`tactics` (Wazuh no las empareja).
+- Validación: suite 1609/1611 (`provider-coupling` previa, `promotion.ts`), typecheck OK. Migraciones e
+  integración Postgres **no corridas** (sin Docker).
+- Para Codex: nada que cambiar en la consola todavía; la huella se expondrá con el motor (etapa E).
+
+### Claude · 2026-11-24 · Aprendizaje SOC · etapa C: agrupación por huella (contrato para la consola)
+
+Lo pidió el dueño. Commits locales en `feat/soc-learning-stage-a` (sin push).
+
+- **Comportamiento:** alertas con la misma huella dentro de la ventana (24 h, tramo máx. 7 d,
+  `B89_SOC_GROUPING_*`) se suman a un grupo abierto. **Agrupar no cambia estado, prioridad ni revisión**
+  de ninguna alerta. Tablas `soc_alert_groups` y `soc_alert_group_members` (migración `20261124140000`).
+- **Contrato:** `GET /api/alerts` → cada item agrega `group: { id, alertCount } | null`;
+  `GET /api/alerts/:id` → `alert.group: { id, status, level, ruleKey, alertCount, firstSeenAt, lastSeenAt,
+  highestPriority, primaryAlertId } | null`; nuevo `GET /api/alerts/:id/group` → `{ group, alertIds (≤100) }`
+  (ruta KrakenD declarada; el edge ya cubre `/api/alerts`).
+- **Pedido a Codex:** en la cola, agrupar visualmente filas con el mismo `group.id` («N alertas iguales,
+  primera/última vez»), **sin colapsar nunca P1/P2**, y en el detalle mostrar el grupo con enlace a sus
+  alertas. El proxy del plugin necesita la ruta `/alerts/:id/group` si no reenvía todo `/alerts/*`.
+  El cierre en bloque de un grupo queda para cuando exista la UI (backend ya soporta `decisionGroupId`).
+- Validación: suite 1627/1630 (`provider-coupling` previa; `demo-admin-login` y `bff` pasan solas, fallan
+  por tiempo bajo carga), gateway 14/14. Integración Postgres (concurrencia del grupo) **no corrida** (sin Docker).
+
+### Claude · 2026-11-24 · Aprendizaje SOC · cierre de pendientes B–C, registro de desvíos y traspaso a Codex
+
+Lo pidió el dueño. Commits locales en `feat/soc-learning-stage-a` (sin push). No se tocaron `01-diseno.md`,
+`05`–`07`, `10`–`13`, `adr/` ni `services/b89-reports/app/server.py` (otras sesiones).
+
+**Registro de desvíos respecto de `01-diseno.md`** (parche propuesto, sin aplicar:
+`docs/soc-learning/propuestas/01-diseno-desvios-etapas-a-c.patch`, aplica sobre la versión actual con
+`git apply`):
+
+| # | Diseño | Implementado | Motivo |
+|---|---|---|---|
+| D1 | Paquete nuevo `@b89/soc-learning` | Huella en `@b89/detection`, observables en `@b89/contracts`, cierre y grupos en `modules/soc` | Sin pnpm en la máquina para enlazar un workspace nuevo; el motor (D–F) sí irá en `modules/soc-learning` |
+| D2 | `cmdlineHmac` del original | Pospuesto | La línea original no se persiste en B89; el HMAC no minimiza nada hoy |
+| D3 | SHA-256 dentro de la normalización | Inyectado por quien llama (`Sha256Hex`) | El contrato no depende de Node; un hash no criptográfico permitiría fabricar colisiones |
+| D4 | `soc_alerts.rule_key` y `group_id` | `rule_key` en `soc_alert_fingerprints`/grupo; pertenencia en `soc_alert_group_members` | Agrupar no cambia la revisión de la alerta |
+| D5 | MITRE `[{technique,tactic}]` | `{techniques[], tactics[]}` | Wazuh no las empareja |
+| D6 | Agrupación en el paso 3 de `decide` | Al ingerir, misma transacción, fila del grupo con `FOR UPDATE` | Concurrencia correcta e independiente del modo del motor |
+| D7 | Sin tope de grupo | `B89_SOC_GROUPING_MAX_ALERTS` (500), `coarse`, `collapsible` | Grupos gruesos demasiado amplios |
+| D8 | `LEGACY_SIN_MOTIVO` | `closure_reason` NULL | No ampliar el catálogo con un valor que nadie elige |
+
+**Contradicciones con la versión de `01-diseno.md` editada por otra sesión** (afectan D–E, no A–C):
+D7 de ese texto («guarda → persona, sin bajar prioridad») anula `DEMOTE` como salida de una guarda; «dos
+aprobadores siempre» sustituye la regla A/A+B; la vigencia se comprueba con reloj del servidor en la decisión
+y en la escritura del efecto. Lo implementado en A–C no contradice nada de eso.
+
+**Traspaso a Codex (consola).** Contratos y criterios verificables. Las rutas backend las implementa Claude
+cuando Codex confirme el diseño de pantalla (son `/api/alerts/...` para no tocar los edges).
+
+1. **Filas agrupadas en la cola** (Codex). Fuente: `GET /api/alerts` ya devuelve por item
+   `"group": { "id": "0199…", "alertCount": 37, "coarse": true, "collapsible": true } | null`.
+   Criterios: (a) filas con el mismo `group.id` y `collapsible: true` se muestran como una fila «37 alertas
+   iguales · primera/última vez» desplegable; (b) toda fila con `collapsible: false` (P1/P2) se muestra
+   siempre suelta, aunque comparta grupo; (c) `coarse: true` muestra «agrupadas solo por regla y sujeto»;
+   (d) el total de la cola no cambia al agrupar; (e) prueba de componente con un P1 y tres P4 del mismo grupo.
+2. **Detalle y miembros** (Codex + proxy). `GET /api/alerts/:id/group` →
+   `{ "correlationId": "…", "group": { "id": "…", "status": "open", "level": "coarse", "coarse": true,
+   "ruleKey": "network:101830", "alertCount": 37, "firstSeenAt": "2026-11-24T08:00:00.000Z",
+   "lastSeenAt": "2026-11-24T11:42:10.000Z", "highestPriority": "P3", "primaryAlertId": "…" },
+   "alertIds": ["…"] }` (≤ 100). Criterio: el proxy del plugin (`wazuh/dashboard/plugins/b89_ops/server`)
+   reenvía `GET /alerts/:id/group` con la sesión del usuario; 404/`group: null` muestran «sin grupo».
+3. **Listado de grupos** (backend Claude, consola Codex). Propuesta: `GET /api/alerts/groups?status=open&limit=50`
+   → `{ "items": [<group>], "totalCount": 12 }`, orden `lastSeenAt` desc. Requiere declarar la ruta en
+   KrakenD **antes** de `/api/alerts/{id}` y probar que no choca (contrato del gateway). Criterio: misma
+   capacidad `alerts.read`, sin datos de entidad en la URL.
+4. **Cierre en bloque como una sola decisión** (backend Claude, consola Codex). Propuesta:
+   `POST /api/alerts/:id/group/close` con `{ "expectedAlertCount": 37, "verdict": "false_positive",
+   "closure": { "reason": "FP_ACTIVIDAD_LEGITIMA_CONOCIDA", "justification": {…}, "evidenceRefs": [ … ] } }`
+   → `{ "decisionGroupId": "…", "closed": 35, "skipped": [{ "alertId": "…", "reason": "PRIORITY_P1" }] }`.
+   Reglas: nunca cierra P1/P2 (van en `skipped`), ni alertas vinculadas a incidente, ni si `alertCount`
+   cambió (`409` con el conteo nuevo); cada alerta pasa por los comandos normales; todas comparten
+   `decisionGroupId` y cuentan **como una** confirmación. Criterio: prueba backend con 1 P1 + 3 P4 → 3
+   cerradas, 1 omitida, 3 filas en `soc_alert_closures` con el mismo `decisionGroupId`.
+
+**Verificación:** ver la tabla final del reporte al dueño. Lo de PostgreSQL real (migraciones, concurrencia de
+50 ingestas, rollback) queda **NO VERIFICADO** hasta que corra el job `soc-learning-postgres` en CI; en local
+se verificó parcialmente con PGlite (PG 17 WASM): 38 migraciones, 12/12 comprobaciones.
+
+## Etapa D — patrones de FP (Claude, 2026-11-24)
+
+Commits `fb759e0` `2d5ef89` `c45d44d` `7352cdc`. Regla de aprobación: **A / A+B del diseño original**
+(elegida por el dueño; contradice el «dos aprobadores siempre» del 01-diseno editado por otra sesión).
+
+- **La etapa D no activa patrones por sí misma.** Un patrón `approved` pasa a `active` solo si las
+  compuertas de preparación no bloquean; un `active` se pausa si alguna retrocede (fail-closed).
+  Compuertas = precondiciones comprobables en ejecución: `CLOSURE_REASON_NOT_REQUIRED` (3),
+  `APPROVERS_NOT_CONFIGURED` (7, <2 personas en `B89_SOC_LEARNING_APPROVERS`), `BACKFILL_PENDING` (2),
+  `SOURCE_COVERAGE_UNMEASURED/BELOW_THRESHOLD` (4, <100 huellas o <50 % finas por fuente),
+  `RULE_ID_COLLISION` (8, lista única `COLLIDING_RULE_IDS` en `@b89/detection`), `NORMALIZER_OUTDATED`.
+- **Fuera de las compuertas (checklist de despliegue, no de código):** 1 CI verde (rama sin push),
+  5 mejoras del extractor, 6 diseño commiteado.
+- Un patrón `active` **no tiene efecto** hasta el motor (etapa E). Aún no hay endpoints ni tarea que
+  llame a `refreshLearningPatterns`: pendiente de diseño de pantalla (Codex) y de decidir el disparador.
+- Sin reanudación automática: un patrón `paused` solo sale por revocación (y luego vuelve a proponerse).
+  Renovación (90 días) definida en el dominio, sin flujo todavía.
+- **Verificación:** unitarias en memoria (`modules/soc/test/learning-patterns.spec.ts`); migración y
+  consulta de evidencia con PGlite (PG 17 WASM): 39 migraciones, 11/11. Las rutas Prisma del store
+  (`createMany` con arreglos, CAS con `updateMany`) y la concurrencia: **NO VERIFICADO** sin PostgreSQL real.
+
+## Etapas D (resto) y E — motor de decisión (Claude, 2026-11-24)
+
+Commits `8321dcd` `4a07555` `dd3b574` `f1070e7` `5eb844c` `112d6f8`.
+
+- **Todo apagado por defecto.** `B89_LEARNING_ENABLED=false`; con `true`, techo `B89_LEARNING_MAX_MODE`
+  (por defecto `shadow`) y por encima de sombra solo las reglas de `B89_LEARNING_ACTIVE_RULES`. En
+  producción `dry_run`/`active` exigen `B89_LEARNING_PROMOTION_REF` y `B89_LEARNING_SAMPLING_KEY`.
+- **D:** reanudar (`paused → approved`, conserva el vencimiento) y renovar (`expired →` ciclo A o A+B,
+  90 días). Refresco periódico en el runtime (`B89_LEARNING_REFRESH_MINUTES`, 15).
+- **E:** el motor evalúa cada alerta nueva **después** del commit de la ingesta, en su propia
+  transacción (un fallo deja la alerta abierta y nunca bloquea la ingesta). Guardas del §7.1, todas
+  fail-closed; sin listas de activos/identidades, sin calendario de cambios confirmado
+  (`B89_LEARNING_CHANGE_CALENDAR_ACK_UNTIL`) o sin salud de fuente medida, escala. Topes: por hora
+  (pausa el patrón), diario, revisión forzada tras N; muestreo HMAC con clave.
+- **Consola (Codex):** `GET /api/learning/{readiness,patterns,patterns/:id,decisions,reviews}`;
+  `POST /api/learning/patterns/:id/{approve,reject,revoke,resume,renew}` `{expectedRevision, comment}`;
+  `POST /api/learning/decisions/:id/revert` `{reason}`; `POST /api/learning/reviews/:id/resolve`
+  `{expectedRevision, outcome: agree|disagree, truePositive, comment}`. Rutas declaradas en KrakenD.
+  Un rechazo por separación de funciones vuelve como 422 con `["learning", "<motivo>"]`.
+- **Pendiente:** `DEMOTE` sin efecto (falta `effective_priority`); `ESCALATE` no sube la alerta en
+  `attention-ranking.ts` (archivo de otra sesión); aviso inmediato por SOAR al pausar; ajustes por
+  tenant en base (`soc_learning_settings`) y entradas de contexto (`soc_context_entries`).
+- **F3a (laboratorio, sintético):** con orden de llegada aleatorio, el tope diario reduce poco la
+  supresión del atacante y casi nada si el atacante elige el orden. Los topes son defensa secundaria.
+- **Verificación:** 38 casos del contrato (doc 16) contra el motor en memoria; PGlite (PG 17) 40
+  migraciones, 17/17 comprobaciones D+E; contrato del gateway 14/14. **NO VERIFICADO** en PostgreSQL
+  real (stores Prisma, concurrencia) ni en sombra.
+
+## Verificación del motor (fase 1) — contrato de archivos compartidos (Claude, 2026-11-24)
+
+Rama `feat/soc-learning-verify` (worktree `C:\projects\b89-wt-verify`). Detalle: `docs/soc-learning/22-verificacion-motor.md`.
+
+**Archivos que tocamos las dos sesiones.** Mis líneas están commiteadas; las de la otra sesión no:
+`apps/api/src/bootstrap.ts`, `apps/api/src/runtime/secops-runtime.ts`, `apps/api/src/soc/soc.module.ts`,
+`platform/database/bootstrap/post-migrate.sql`. Simulado con `git merge-file`: combinan sin conflictos.
+
+**Orden de merge propuesto (sin pérdidas):**
+
+1. La otra sesión commitea su trabajo en su rama (incluidos esos cuatro archivos).
+2. Se integra `feat/soc-learning-verify` encima (`git merge --no-ff`); si un `post-migrate.sql` o un
+   `roles.sql` choca, se conservan **ambos** bloques de REVOKE.
+3. Se corre `bash scripts/soc-learning/verify-engine.sh` sobre el resultado (suites ×3 «integradas»).
+
+**Pedidos a la otra sesión:**
+
+- `listClosureMemory` (memoria de cierres del Analista IA) debe contar solo `closure_origin = 'human'`,
+  igual que `DEFAULT_FALSE_POSITIVE_ORIGINS`: un cierre del motor nunca es evidencia.
+- Cualquier tabla nueva append-only debe revocar UPDATE/DELETE/TRUNCATE al runtime en `post-migrate.sql`
+  **y** en `roles.sql`.
+- `attention-ranking.ts` es suyo: la fase 3 (`AttentionPort`) necesita un contrato antes de tocarlo.
+
+## Fase 2 · sombra preparada, no lanzada (Claude, 2026-11-24)
+
+Detalle y veredicto: `docs/soc-learning/24-despliegue-sombra.md`; runbooks: `25-runbooks-motor.md`.
+
+- La ingesta ya no evalúa: escribe un trabajo en `soc_learning_jobs` (misma transacción) y un worker lo
+  consume. `apps/api/src/runtime/secops-runtime.ts` y `apps/api/src/bootstrap.ts` cambian **solo** en
+  líneas de aprendizaje (rama `feat/soc-learning-verify`); el merge sigue el orden de arriba.
+- **Consola (Codex), contratos nuevos** (lectura; sin mutaciones nuevas):
+  - `GET /api/learning/health` (`observability.read_soc`) → `{ status: OK|DEGRADED|CRITICAL|OFF,
+    alerts: [{ id, severity, summary, runbook }], metrics: {...} }`. Panel de salud del motor.
+  - `GET /api/learning/shadow-report?period=daily|weekly` (`learning.read`) → `{ report: { totals,
+    byRule[], byPattern[], unsafePatterns[], goldSet: "NOT_AVAILABLE", threshold } }`. Panel de sombra.
+- **Monitor de plataforma (dueño del monitor):** nuevo chequeo `learning` (lee la base); al reinstalar,
+  `b89_monitor` recibe SELECT en las tablas de aprendizaje si existen. Sin IDs de regla nuevos (usa la
+  genérica 101829); IDs propios con más nivel los asigna el dueño.
+
+## Fase 3 · bloqueantes de dry_run resueltos en código (Claude, 2026-11-24)
+
+Detalle: `docs/soc-learning/24-despliegue-sombra.md` §7.
+
+- **Cola de atención (`apps/api/src/soc/attention-ranking.ts`, otra sesión):** ordenar por
+  `effectivePriority ?? priority` y mostrar `priority` (la original). Una alerta con
+  `effectivePriority = P4` y `priority = P3` fue bajada por el motor (`demotedBy` = decisión).
+- **Avisos del motor:** usan `soc.alert.review_requested` (ruta a analista y líder ya existente) con
+  `reasonCodes = LEARNING_<MOTIVO>`, `urgency` immediate (HOT) o digest (WARM) y `groupKey`
+  `learning:<motivo>:<regla>:<hora>`. No hay tipo de evento nuevo ni cambio en SOAR.
+- **Consola (Codex), contratos nuevos:**
+  - `GET/POST /api/learning/enablements`, `POST …/:id/approve|revoke` `{expectedRevision}`:
+    habilitación por regla (dos personas, vencimiento ≤ 90 días).
+  - `GET/POST /api/learning/context`, `POST …/:id/revoke`: contexto (solo `learning.patterns.approve`
+    ve los valores).
+  - `POST /api/learning/engine/resume` `{comment}`: reanudar tras auto-pausa.
+  - La vista de alerta añade `effectivePriority` y `demotedBy`.

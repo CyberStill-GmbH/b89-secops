@@ -1,7 +1,14 @@
+import { createHash } from 'node:crypto';
+import { isHighImpactRuleKey } from '@b89/detection';
+import { DEFAULT_ENGINE_SETTINGS } from '@b89/soc';
 import {
   loadAccessConfig,
   loadApiConfig,
   loadDetectionContextConfig,
+  loadLearningEngine,
+  loadSocClosurePolicy,
+  loadSocGrouping,
+  loadSocLearningApprovers,
   loadDirectoryConfig,
   loadEntityRefKey,
   loadIngestionConfig,
@@ -96,7 +103,7 @@ import {
   recordSourceHealth,
   sourceHealthMonitor,
 } from './runtime/source-health.js';
- import { SourceSignalsService } from './runtime/source-signals.js';
+import { SourceSignalsService } from './runtime/source-signals.js';
 
 /** Límite de cierre de C-02: 5 segundos, incluidos el despacho en curso y los pools. */
 export const API_SHUTDOWN_TIMEOUT_MS = 5_000;
@@ -179,7 +186,13 @@ async function durableStoresFor(
   const [
     { PostgresSocPersistence, PostgresWazuhPushInboxStore },
     { PostgresNotificationAttemptStore, PostgresPushSubscriptionStore },
-    { PostgresSessionStore, PostgresDirectoryStore, PostgresRoleAdministration, PrismaDlpPolicyStore, PrismaAllowlistStore },
+    {
+      PostgresSessionStore,
+      PostgresDirectoryStore,
+      PostgresRoleAdministration,
+      PrismaDlpPolicyStore,
+      PrismaAllowlistStore,
+    },
   ] = await Promise.all([
     import('@b89/soc/postgres'),
     import('@b89/soar/postgres'),
@@ -280,6 +293,98 @@ async function durableStoresFor(
     allowlist,
     ...(wazuhPushInbox ? { wazuhPushInbox } : {}),
   };
+}
+
+/**
+ * Etapas D y E: sin `B89_LEARNING_ENABLED=true` no se pasa `learning` y no se refresca ni se evalúa
+ * nada. Las listas de reglas y los topes vienen de la configuración; las guardas duras del motor
+ * (`LEARNING_HARD_GUARDS`) no se pueden aflojar desde aquí.
+ */
+function learningFrom(environment: Readonly<Record<string, string | undefined>>) {
+  const engine = loadLearningEngine(environment);
+  // Piso de impacto inconfigurable (fase 3): una regla de alto impacto no se habilita nunca.
+  const forbidden = engine.activeRules.filter((ruleKey) => isHighImpactRuleKey(ruleKey));
+  if (forbidden.length > 0) {
+    throw new Error(
+      `B89_LEARNING_ACTIVE_RULES incluye reglas de alto impacto (${forbidden.join(', ')}): el motor no puede habilitarlas.`,
+    );
+  }
+  // Identificador de la clave de muestreo (nunca la clave): permite ver rotaciones en la bitácora.
+  const samplingKeyVersion =
+    engine.samplingKeyId ??
+    (engine.samplingKey
+      ? `kid-${createHash('sha256').update(engine.samplingKey.reveal(), 'utf8').digest('hex').slice(0, 12)}`
+      : null);
+  const effectiveMode = engine.enabled ? engine.maxMode : 'off';
+  // Huella de lo que decide el comportamiento (sin secretos): un cambio genera una alerta de salud.
+  const hash = createHash('sha256')
+    .update(
+      JSON.stringify({
+        mode: effectiveMode,
+        activeRules: [...engine.activeRules].sort(),
+        killSwitch: engine.killSwitch,
+        killedRules: [...engine.killedRules].sort(),
+        neverSuppressRules: [...engine.neverSuppressRules].sort(),
+        caps: [engine.samplingPercent, engine.hourlyCap, engine.dailyCap, engine.forcedReviewAfter],
+        samplingKeyVersion,
+        promotionRef: engine.promotionRef ?? null,
+      }),
+      'utf8',
+    )
+    .digest('hex');
+  const learningConfig = {
+    hash,
+    maxMode: effectiveMode,
+    activeRules: engine.activeRules.length,
+    killSwitch: engine.killSwitch,
+    samplingKeyVersion,
+  };
+  if (!engine.enabled) return { learningConfig };
+  // Fase 3: sin canal de notificación la escalada no llega a nadie: el techo queda en sombra.
+  const channel = loadTeamsWorkflowUrl(environment) !== undefined;
+  const channelMissing = !channel && (engine.maxMode === 'dry_run' || engine.maxMode === 'active');
+  return {
+    learningConfig,
+    learning: {
+      settings: {
+        ...DEFAULT_ENGINE_SETTINGS,
+        maxMode: channelMissing ? ('shadow' as const) : engine.maxMode,
+        activeRules: new Set(engine.activeRules),
+        killSwitch: engine.killSwitch,
+        killedRules: new Set(engine.killedRules),
+        neverSuppressRules: new Set(engine.neverSuppressRules),
+        samplingPercent: engine.samplingPercent,
+        hourlyCap: engine.hourlyCap,
+        dailyCap: engine.dailyCap,
+        forcedReviewAfter: engine.forcedReviewAfter,
+      },
+      samplingKey: engine.samplingKey ? Buffer.from(engine.samplingKey.reveal(), 'utf8') : null,
+      samplingKeyVersion,
+      samplingKeyIssuedAt: engine.samplingKeyIssuedAt,
+      changeCalendarAckUntil: engine.changeCalendarAckUntil,
+      refreshMs: engine.refreshMinutes * 60_000,
+      approvers: loadSocLearningApprovers(environment).approvers,
+      channelMissing,
+    },
+  };
+}
+
+/** Etapa C: sin `enabled` no se pasa política y la ingesta no agrupa. */
+function alertGroupingFrom(config: {
+  readonly enabled: boolean;
+  readonly windowMs: number;
+  readonly maxSpanMs: number;
+  readonly maxAlerts: number;
+}) {
+  return config.enabled
+    ? {
+        alertGrouping: {
+          windowMs: config.windowMs,
+          maxSpanMs: config.maxSpanMs,
+          maxAlerts: config.maxAlerts,
+        },
+      }
+    : {};
 }
 
 export async function buildApi(
@@ -519,6 +624,9 @@ export async function buildApi(
     ...(demoAdminLogin ? { demoAdminLogin } : {}),
     profile: config.profile,
     detectionContext: detectionContextFrom(detection),
+    closureReasonRequired: loadSocClosurePolicy(environment).reasonRequired,
+    ...alertGroupingFrom(loadSocGrouping(environment)),
+    ...learningFrom(environment),
     ...(entityRefSecret
       ? {
           entityRefs: entityRefFactory(entityRefSecret),
@@ -530,7 +638,8 @@ export async function buildApi(
       : {}),
     ...(durable?.wazuhPushInbox ? { wazuhPushInbox: durable.wazuhPushInbox } : {}),
     ...(durable ? { dlpPolicyStore: durable.dlpPolicy, allowlistStore: durable.allowlist } : {}),
-    ...(environment['B89_ALLOWLIST_FEED_TOKEN'] && environment['B89_ALLOWLIST_FEED_TOKEN'].length >= 32
+    ...(environment['B89_ALLOWLIST_FEED_TOKEN'] &&
+    environment['B89_ALLOWLIST_FEED_TOKEN'].length >= 32
       ? { allowlistFeedToken: environment['B89_ALLOWLIST_FEED_TOKEN'] }
       : {}),
     ...(onDispatchError ? { onDispatchError } : {}),
@@ -685,15 +794,20 @@ export async function buildApi(
           sourceId: ingestionConfig.sourceId,
           now: () => runtime.now(),
           promote: (event) => runtime.promoteEvent(event),
-          onError: onIngestionError ?? ((error) => {
-            const code = (error as { code?: unknown } | undefined)?.code;
-            console.error(JSON.stringify({
-              event: 'b89_opensearch_anomaly_ingestion_error',
-              code: typeof code === 'string' && /^ANOMALY_[A-Z0-9_]+$/u.test(code)
-                ? code
-                : 'ANOMALY_INGESTION_FAILED',
-            }));
-          }),
+          onError:
+            onIngestionError ??
+            ((error) => {
+              const code = (error as { code?: unknown } | undefined)?.code;
+              console.error(
+                JSON.stringify({
+                  event: 'b89_opensearch_anomaly_ingestion_error',
+                  code:
+                    typeof code === 'string' && /^ANOMALY_[A-Z0-9_]+$/u.test(code)
+                      ? code
+                      : 'ANOMALY_INGESTION_FAILED',
+                }),
+              );
+            }),
         })
       : undefined;
   const channelInitialization = await channels.initialize({ audit: runtime.audit });
