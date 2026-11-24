@@ -56,4 +56,10 @@ export {
   type FingerprintComponents,
   type FingerprintLevel,
 } from './fingerprint.js';
-export { RULE_SOURCE_RANGES, ruleKeyOf, type RuleSourceRange } from './rule-key.js';
+export {
+  COLLIDING_RULE_IDS,
+  collidingRuleKeys,
+  RULE_SOURCE_RANGES,
+  ruleKeyOf,
+  type RuleSourceRange,
+} from './rule-key.js';

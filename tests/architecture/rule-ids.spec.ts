@@ -16,7 +16,7 @@ import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { RULE_SOURCE_RANGES } from '../../modules/detection/src/rule-key.js';
+import { COLLIDING_RULE_IDS, RULE_SOURCE_RANGES } from '../../modules/detection/src/rule-key.js';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 
@@ -63,6 +63,13 @@ function definedIds(file: string): readonly number[] {
 }
 
 describe('T5 · rangos e IDs de regla', () => {
+  it('COLLIDING_RULE_IDS (usada por la etapa D) es exactamente la deuda conocida', () => {
+    const known = Object.values(KNOWN_COLLISIONS)
+      .flat()
+      .sort((a, b) => a - b);
+    expect([...COLLIDING_RULE_IDS].sort((a, b) => a - b)).toEqual(known);
+  });
+
   it('los rangos del catálogo no se solapan ni están invertidos', () => {
     const sorted = [...RULE_SOURCE_RANGES].sort((left, right) => left.from - right.from);
     const problems: string[] = [];
