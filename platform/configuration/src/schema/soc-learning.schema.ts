@@ -33,11 +33,14 @@ export function parseSocClosurePolicy(
  *   ninguna alerta; solo las anota. Se puede apagar sin efectos sobre las alertas existentes.
  * - `B89_SOC_GROUPING_WINDOW_HOURS` (1–168, por defecto 24) y
  *   `B89_SOC_GROUPING_MAX_SPAN_DAYS` (1–30, por defecto 7, y nunca menor que la ventana).
+ * - `B89_SOC_GROUPING_MAX_ALERTS` (2–10000, por defecto 500): un grupo lleno se sella y la
+ *   siguiente alerta abre otro. Acota los grupos de huella gruesa demasiado amplios.
  */
 export interface SocGroupingConfig {
   readonly enabled: boolean;
   readonly windowMs: number;
   readonly maxSpanMs: number;
+  readonly maxAlerts: number;
 }
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -84,9 +87,18 @@ export function parseSocGrouping(
       profile.name,
     );
   }
+  const maxAlerts = boundedInteger(
+    environment,
+    profile,
+    'B89_SOC_GROUPING_MAX_ALERTS',
+    500,
+    2,
+    10_000,
+  );
   return {
     enabled: enabledRaw !== 'false',
     windowMs: windowHours * HOUR_MS,
     maxSpanMs: spanDays * 24 * HOUR_MS,
+    maxAlerts,
   };
 }

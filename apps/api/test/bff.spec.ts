@@ -595,14 +595,17 @@ describe('C-16/C-17 · recorrido operativo sobre HTTP', () => {
     const list = await get('/api/alerts');
     expect(list.items).toHaveLength(2);
     const [first, second] = list.items;
-    expect(first.group).toMatchObject({ alertCount: 2 });
-    expect(second.group?.id).toBe(first.group.id);
+    // Las dos alertas siguen en el listado: agrupar nunca oculta filas. Son P1: no colapsables.
+    // Sin proceso, hash ni destino la huella es gruesa y el grupo lo declara.
+    expect(first.group).toMatchObject({ alertCount: 2, coarse: true, collapsible: false });
+    expect(second.group).toMatchObject({ id: first.group.id, collapsible: false });
     // Agrupar no cambia estado ni prioridad.
     expect(first).toMatchObject({ status: 'new', priority: 'P1' });
 
     const detail = await get(`/api/alerts/${first.id}`);
     expect(detail.alert.group).toMatchObject({
       id: first.group.id,
+      coarse: true,
       status: 'open',
       alertCount: 2,
       highestPriority: 'P1',

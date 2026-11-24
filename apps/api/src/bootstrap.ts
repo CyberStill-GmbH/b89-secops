@@ -295,9 +295,16 @@ function alertGroupingFrom(config: {
   readonly enabled: boolean;
   readonly windowMs: number;
   readonly maxSpanMs: number;
+  readonly maxAlerts: number;
 }) {
   return config.enabled
-    ? { alertGrouping: { windowMs: config.windowMs, maxSpanMs: config.maxSpanMs } }
+    ? {
+        alertGrouping: {
+          windowMs: config.windowMs,
+          maxSpanMs: config.maxSpanMs,
+          maxAlerts: config.maxAlerts,
+        },
+      }
     : {};
 }
 

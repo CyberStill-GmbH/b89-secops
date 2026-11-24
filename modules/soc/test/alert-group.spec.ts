@@ -5,6 +5,7 @@ import type { AlertFingerprint, DetectionCandidate } from '@b89/detection';
 import {
   assignToGroup,
   DEFAULT_ALERT_GROUPING_POLICY,
+  isCollapsible,
   validateGroupingPolicy,
   type AlertGroup,
   type GroupableAlert,
@@ -104,10 +105,35 @@ describe('Aprendizaje SOC · etapa C · política de agrupación', () => {
     ).toThrow();
   });
 
+  it('un grupo lleno se sella y la siguiente alerta abre otro (nunca se descarta)', () => {
+    const small = { ...POLICY, maxAlerts: 2 };
+    let group = opened(alert('a1', 0));
+    const second = assignToGroup(alert('a2', 1), group, small, 'unused');
+    if (second.kind !== 'join') throw new Error('setup');
+    group = second.group;
+    expect(assignToGroup(alert('a3', 2), group, small, 'group-2')).toMatchObject({
+      kind: 'open',
+      group: { id: 'group-2', alertCount: 1, primaryAlertId: 'a3' },
+      seal: { group: { id: 'group-1', status: 'closed', alertCount: 2 } },
+    });
+  });
+
+  it('P1 y P2 nunca son colapsables; P3 y P4 sí', () => {
+    expect(['P1', 'P2', 'P3', 'P4'].map((p) => isCollapsible(p as never))).toEqual([
+      false,
+      false,
+      true,
+      true,
+    ]);
+  });
+
   it('valida la política', () => {
     expect(validateGroupingPolicy(POLICY)).toBe(true);
     expect(validateGroupingPolicy({ windowMs: 1000, maxSpanMs: 2000 })).toBe(false);
     expect(validateGroupingPolicy({ windowMs: 48 * HOUR, maxSpanMs: 24 * HOUR })).toBe(false);
+    expect(validateGroupingPolicy({ ...POLICY, maxAlerts: 1 })).toBe(false);
+    expect(validateGroupingPolicy({ ...POLICY, maxAlerts: 10_001 })).toBe(false);
+    expect(validateGroupingPolicy({ ...POLICY, maxAlerts: 50 })).toBe(true);
   });
 });
 

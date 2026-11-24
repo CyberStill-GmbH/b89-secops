@@ -291,7 +291,11 @@ export interface RuntimeOptions {
   /** Aprendizaje SOC · etapa A: `true` exige motivo estructurado al cerrar alertas. */
   readonly closureReasonRequired?: boolean;
   /** Aprendizaje SOC · etapa C: ventana y tramo de la agrupación por huella; sin ella no se agrupa. */
-  readonly alertGrouping?: { readonly windowMs: number; readonly maxSpanMs: number };
+  readonly alertGrouping?: {
+    readonly windowMs: number;
+    readonly maxSpanMs: number;
+    readonly maxAlerts?: number;
+  };
   /** Sesiones del BFF (C-18). Sin él, memoria: un reinicio cierra todas las sesiones. */
   readonly sessions?: SessionStore;
   /** Intentos de notificación de C-20. Sin él, memoria. */

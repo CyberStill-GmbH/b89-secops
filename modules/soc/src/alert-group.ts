@@ -41,18 +41,38 @@ export interface AlertGroupingPolicy {
   readonly windowMs: number;
   /** Tramo máximo (primera → última) de un grupo; después se abre otro. */
   readonly maxSpanMs: number;
+  /**
+   * Tope de alertas por grupo: uno lleno se sella y la siguiente abre otro. Acota los grupos
+   * demasiado amplios (p. ej. una huella gruesa de solo regla). Sin valor, `DEFAULT_GROUP_MAX_ALERTS`.
+   */
+  readonly maxAlerts?: number;
 }
+
+export const DEFAULT_GROUP_MAX_ALERTS = 500;
 
 export const DEFAULT_ALERT_GROUPING_POLICY: AlertGroupingPolicy = Object.freeze({
   windowMs: 24 * 60 * 60 * 1000,
   maxSpanMs: 7 * 24 * 60 * 60 * 1000,
+  maxAlerts: DEFAULT_GROUP_MAX_ALERTS,
 });
 
 export const ALERT_GROUPING_LIMITS = Object.freeze({
   minimumWindowMs: 5 * 60 * 1000,
   maximumWindowMs: 7 * 24 * 60 * 60 * 1000,
   maximumSpanMs: 30 * 24 * 60 * 60 * 1000,
+  minimumAlerts: 2,
+  maximumAlerts: 10_000,
 });
+
+/**
+ * Prioridades que la consola nunca colapsa dentro de un grupo: cada alerta P1/P2 se muestra como
+ * su propia fila aunque comparta huella con otras. El backend nunca omite alertas por agruparlas.
+ */
+export const NEVER_COLLAPSED_PRIORITIES: readonly Priority[] = Object.freeze(['P1', 'P2']);
+
+export function isCollapsible(priority: Priority): boolean {
+  return !NEVER_COLLAPSED_PRIORITIES.includes(priority);
+}
 
 export interface GroupableAlert {
   readonly id: string;
@@ -92,7 +112,11 @@ export function validateGroupingPolicy(policy: AlertGroupingPolicy): boolean {
     policy.windowMs >= ALERT_GROUPING_LIMITS.minimumWindowMs &&
     policy.windowMs <= ALERT_GROUPING_LIMITS.maximumWindowMs &&
     policy.maxSpanMs >= policy.windowMs &&
-    policy.maxSpanMs <= ALERT_GROUPING_LIMITS.maximumSpanMs
+    policy.maxSpanMs <= ALERT_GROUPING_LIMITS.maximumSpanMs &&
+    (policy.maxAlerts === undefined ||
+      (Number.isSafeInteger(policy.maxAlerts) &&
+        policy.maxAlerts >= ALERT_GROUPING_LIMITS.minimumAlerts &&
+        policy.maxAlerts <= ALERT_GROUPING_LIMITS.maximumAlerts))
   );
 }
 
@@ -137,6 +161,18 @@ export function assignToGroup(
   const nextLast = Math.max(last, at);
   const withinWindow = at <= last + policy.windowMs;
   const withinSpan = nextLast - nextFirst <= policy.maxSpanMs;
+  const full = open.alertCount >= (policy.maxAlerts ?? DEFAULT_GROUP_MAX_ALERTS);
+  if (withinWindow && withinSpan && full) {
+    // Lleno: se sella y la alerta abre otro grupo de la misma huella (nunca se descarta).
+    return {
+      kind: 'open',
+      group: openNew(alert, newGroupId),
+      seal: {
+        expectedRevision: open.revision,
+        group: { ...open, status: 'closed', revision: open.revision + 1 },
+      },
+    };
+  }
   if (withinWindow && withinSpan) {
     return {
       kind: 'join',

@@ -23,6 +23,7 @@ import {
   type AlertStatus,
   type Incident,
   type IncidentStatus,
+  isCollapsible,
   type AlertGroup,
   type ClosureInput,
   type TriageVerdict,
@@ -44,6 +45,9 @@ export function alertGroupView(group: AlertGroup) {
     status: group.status,
     level: group.level,
     ruleKey: group.ruleKey,
+    // Huella gruesa: el grupo junta alertas que solo comparten regla y sujeto (sin proceso,
+    // hash ni destino). La consola debe avisarlo; nunca es base para cerrar en bloque a ciegas.
+    coarse: group.level === 'coarse',
     alertCount: group.alertCount,
     firstSeenAt: group.firstSeenAt.toISOString(),
     lastSeenAt: group.lastSeenAt.toISOString(),
@@ -177,7 +181,15 @@ export class SocController {
         return {
           ...alertView(alert, actor.capabilities),
           // Etapa C: la consola agrupa filas con el mismo `group.id`; P1/P2 nunca se colapsan.
-          group: group ? { id: group.id, alertCount: group.alertCount } : null,
+          // `collapsible: false` (P1/P2): la consola la muestra como fila propia siempre.
+          group: group
+            ? {
+                id: group.id,
+                alertCount: group.alertCount,
+                coarse: group.level === 'coarse',
+                collapsible: isCollapsible(alert.priority),
+              }
+            : null,
         };
       }),
       nextCursor: page.nextCursor,
