@@ -1,4 +1,7 @@
--- Aprendizaje SOC · etapas A–C — rollback del esquema SOLO para un despliegue abortado.
+-- Aprendizaje SOC · etapas A–E — rollback del esquema SOLO para un despliegue abortado.
+--
+-- Si existen las tablas de D/E, también se comprueban y se eliminan primero (dependen de
+-- `soc_alerts`). Para volver solo al estado de la etapa C use `rollback-learning-engine.sql`.
 --
 -- Rollback normal (convención del repo, docs/06-operacion.md): las migraciones son aditivas y
 -- no se revierten. Se vuelve atrás con banderas y la imagen anterior de la API:
@@ -32,6 +35,17 @@ BEGIN
     IF confirm IS DISTINCT FROM 'rollback-soc-learning' THEN
         RAISE EXCEPTION 'Confirmación inválida: use -v confirm=rollback-soc-learning';
     END IF;
+    -- Etapas D/E: pueden no existir (base migrada solo hasta C).
+    IF to_regclass('soc_learning_patterns') IS NOT NULL AND (
+        EXISTS (SELECT 1 FROM soc_learning_patterns)
+        OR EXISTS (SELECT 1 FROM soc_learning_pattern_approvals)
+        OR EXISTS (SELECT 1 FROM soc_learning_pattern_events)
+    ) THEN populated := populated || ' soc_learning_patterns(D)'; END IF;
+    IF to_regclass('soc_learning_decisions') IS NOT NULL AND (
+        EXISTS (SELECT 1 FROM soc_learning_decisions)
+        OR EXISTS (SELECT 1 FROM soc_learning_reviews)
+        OR EXISTS (SELECT 1 FROM soc_learning_reversals)
+    ) THEN populated := populated || ' soc_learning_decisions(E)'; END IF;
     IF EXISTS (SELECT 1 FROM soc_alert_group_members) THEN populated := populated || ' soc_alert_group_members'; END IF;
     IF EXISTS (SELECT 1 FROM soc_alert_groups) THEN populated := populated || ' soc_alert_groups'; END IF;
     IF EXISTS (SELECT 1 FROM soc_alert_fingerprints) THEN populated := populated || ' soc_alert_fingerprints'; END IF;
@@ -46,6 +60,16 @@ BEGIN
     END IF;
 END $$;
 
+-- Etapas E y D (si existen)
+DROP TABLE IF EXISTS soc_learning_reversals;
+DROP TABLE IF EXISTS soc_learning_reviews;
+DROP FUNCTION IF EXISTS soc_learning_reviews_guard();
+DROP TABLE IF EXISTS soc_learning_decisions;
+DROP TABLE IF EXISTS soc_learning_pattern_events;
+DROP TABLE IF EXISTS soc_learning_pattern_approvals;
+DROP FUNCTION IF EXISTS soc_learning_append_only();
+DROP TABLE IF EXISTS soc_learning_patterns;
+DROP FUNCTION IF EXISTS soc_learning_patterns_no_delete();
 -- Etapa C
 DROP TABLE soc_alert_group_members;
 DROP FUNCTION soc_alert_group_members_append_only();
@@ -70,7 +94,9 @@ DELETE FROM _prisma_migrations
  WHERE migration_name IN (
     '20261124120000_soc_learning_closure',
     '20261124130000_soc_learning_fingerprint',
-    '20261124140000_soc_learning_alert_groups'
+    '20261124140000_soc_learning_alert_groups',
+    '20261124150000_soc_learning_patterns',
+    '20261124160000_soc_learning_engine'
  );
 
 COMMIT;
