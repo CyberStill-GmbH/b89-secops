@@ -13,6 +13,8 @@
 #   commits    cada commit de BASE..HEAD compila y pasa sus pruebas por separado (`git rebase --exec`
 #              en un worktree temporal; no toca la rama).
 #   suites     suite unitaria 3 veces e integración 3 veces en este checkout.
+#   load       prueba de carga: ingesta con el motor apagado vs en sombra (cola + worker) a 10×.
+#              EXPECTED_PER_DAY (por defecto 2000) = volumen diario esperado de alertas.
 #
 # Deja un registro por paso en $OUT (por defecto ./verify-engine-out) para adjuntarlo a doc 22.
 # Sin secretos: la contraseña de la base desechable es fija y solo vale para el contenedor local.
@@ -20,7 +22,7 @@ set -euo pipefail
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$root"
-STEPS="${STEPS:-postgres commits suites}"
+STEPS="${STEPS:-postgres commits suites load}"
 BASE="${BASE:-ebb572b}"
 OUT="${OUT:-$root/verify-engine-out}"
 mkdir -p "$OUT"
@@ -37,7 +39,7 @@ log "Entorno: $(git rev-parse --short HEAD) · $(node --version) · pnpm $(pnpm 
 pnpm install --frozen-lockfile --ignore-scripts > "$OUT/install.log" 2>&1
 pnpm --filter @b89/database generate > "$OUT/generate.log" 2>&1
 
-if [ -z "${ADMIN_DATABASE_URL:-}" ] && [[ " $STEPS " == *" postgres "* || " $STEPS " == *" suites "* ]]; then
+if [ -z "${ADMIN_DATABASE_URL:-}" ] && [[ " $STEPS " == *" postgres "* || " $STEPS " == *" suites "* || " $STEPS " == *" load "* ]]; then
   log "PostgreSQL 18.6 desechable"
   container="b89-verify-pg-$$"
   docker run -d --rm --name "$container" -e POSTGRES_USER=b89 -e POSTGRES_PASSWORD=verify-only-not-a-secret \
@@ -79,6 +81,10 @@ for step in $STEPS; do
         DATABASE_URL="$ADMIN_DATABASE_URL" pnpm exec vitest run --config vitest.integration.config.ts 2>&1 \
           | tail -6 | tee -a "$OUT/suites.log"
       done
+      ;;
+    load)
+      log "4. Prueba de carga a 10× del volumen esperado"
+      DATABASE_URL="$ADMIN_DATABASE_URL" pnpm --filter @b89/soc exec tsx --conditions=development         scripts/learning-load-test.ts --expected-per-day "${EXPECTED_PER_DAY:-2000}" --factor 10 --minutes 5         2>&1 | tee "$OUT/load.md"
       ;;
     *) echo "Paso desconocido: $step" >&2; exit 2 ;;
   esac
