@@ -643,6 +643,38 @@
       ]
     },
     {
+      "endpoint": "/api/alerts/{id}/group",
+      "method": "GET",
+      "timeout": "{{ env "GATEWAY_ENDPOINT_TIMEOUT" }}",
+      "output_encoding": "no-op",
+      "input_headers": [
+        "Accept",
+        "Content-Type",
+        "Cookie",
+        "Origin",
+        "X-Correlation-Id",
+        "X-Csrf-Token"
+      ],
+      "input_query_strings": [],
+      "backend": [
+        {
+          "host": [
+            "{{ env "B89_API_UPSTREAM" }}"
+          ],
+          "url_pattern": "/api/alerts/{id}/group",
+          "encoding": "no-op",
+          "method": "GET",
+          "extra_config": {
+            "qos/circuit-breaker": {
+              "interval": 10,
+              "timeout": 5,
+              "max_errors": 3
+            }
+          }
+        }
+      ]
+    },
+    {
       "endpoint": "/api/alerts/{id}/commands",
       "method": "POST",
       "timeout": "{{ env "GATEWAY_ENDPOINT_TIMEOUT" }}",

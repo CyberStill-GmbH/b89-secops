@@ -230,6 +230,9 @@ beforeEach(() => {
   officeSequence += 1;
   officeIp = `10.20.${100 + Math.floor(officeSequence / 250)}.${(officeSequence % 250) + 1}`;
   memorySoc().alertRows.clear();
+  memorySoc().fingerprintRows.clear();
+  memorySoc().groupRows.clear();
+  memorySoc().groupMemberRows.clear();
   memorySoc().incidentRows.clear();
   memorySoc().outboxRows.clear();
   memorySoc().outboxState.clear();
@@ -572,6 +575,41 @@ describe('C-16/C-17 · recorrido operativo sobre HTTP', () => {
     expect(JSON.parse(ingested.body).outcome).toBe('promoted');
     expect(body.items).toHaveLength(1);
     expect(body.items[0]).toMatchObject({ priority: 'P1', status: 'new' });
+  });
+
+  it('aprendizaje SOC · etapa C: dos alertas con la misma huella comparten grupo', async () => {
+    await ingest('01890f47-7abc-7def-8abc-00000000a011');
+    await ingest('01890f47-7abc-7def-8abc-00000000a012');
+    const { cookie } = await signIn('analista@b89.example');
+    const get = async (url: string) =>
+      JSON.parse(
+        (
+          await server().inject({
+            method: 'GET',
+            url,
+            headers: { cookie },
+            remoteAddress: OFFICE_IP,
+          })
+        ).body,
+      );
+    const list = await get('/api/alerts');
+    expect(list.items).toHaveLength(2);
+    const [first, second] = list.items;
+    expect(first.group).toMatchObject({ alertCount: 2 });
+    expect(second.group?.id).toBe(first.group.id);
+    // Agrupar no cambia estado ni prioridad.
+    expect(first).toMatchObject({ status: 'new', priority: 'P1' });
+
+    const detail = await get(`/api/alerts/${first.id}`);
+    expect(detail.alert.group).toMatchObject({
+      id: first.group.id,
+      status: 'open',
+      alertCount: 2,
+      highestPriority: 'P1',
+    });
+    const group = await get(`/api/alerts/${first.id}/group`);
+    expect(group.group.id).toBe(first.group.id);
+    expect([...group.alertIds].sort()).toEqual([first.id, second.id].sort());
   });
 
   it('no promueve un evento por debajo del umbral', async () => {

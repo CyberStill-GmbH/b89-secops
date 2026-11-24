@@ -155,6 +155,15 @@
       "owner": "application-platform"
     },
     {
+      "path": "/api/alerts/{id}/group",
+      "method": "GET",
+      "upstream": "/api/alerts/{id}/group",
+      "query_parameters": [],
+      "auth": "api-session",
+      "encoding": "no-op",
+      "owner": "application-platform"
+    },
+    {
       "path": "/api/alerts/{id}/commands",
       "method": "POST",
       "upstream": "/api/alerts/{id}/commands",

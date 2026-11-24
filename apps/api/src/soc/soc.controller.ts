@@ -23,6 +23,7 @@ import {
   type AlertStatus,
   type Incident,
   type IncidentStatus,
+  type AlertGroup,
   type ClosureInput,
   type TriageVerdict,
 } from '@b89/soc';
@@ -35,6 +36,24 @@ import { SECOPS_RUNTIME } from './tokens.js';
 import type { SecOpsRuntime } from '../runtime/secops-runtime.js';
 import { SOC_KNOWLEDGE } from '../assistant/soc-knowledge.generated.js';
 import { explainAlertFromKnowledge } from './alert-explanation.js';
+
+/** Aprendizaje SOC · etapa C: resumen del grupo por huella. Agrupar no oculta ni cierra nada. */
+export function alertGroupView(group: AlertGroup) {
+  return {
+    id: group.id,
+    status: group.status,
+    level: group.level,
+    ruleKey: group.ruleKey,
+    alertCount: group.alertCount,
+    firstSeenAt: group.firstSeenAt.toISOString(),
+    lastSeenAt: group.lastSeenAt.toISOString(),
+    highestPriority: group.highestPriority,
+    primaryAlertId: group.primaryAlertId,
+  };
+}
+
+/** Máximo de alertas de un grupo que devuelve `GET /api/alerts/:id/group`. */
+const GROUP_MEMBERS_LIMIT = 100;
 
 export function alertView(alert: Alert, capabilities: ReadonlySet<string>) {
   return projectFields(
@@ -146,9 +165,21 @@ export class SocController {
       `alerts:status=${query.status ?? ''}:q=${search}:priority=${query.priority ?? ''}:entity=${entity ?? ''}`,
       correlationId,
     );
+    const groups =
+      (await this.runtime.soc.alertGroupsOf?.(
+        actor.tenantId,
+        page.items.map((alert) => alert.id),
+      )) ?? new Map<string, AlertGroup>();
     return {
       correlationId,
-      items: page.items.map((alert) => alertView(alert, actor.capabilities)),
+      items: page.items.map((alert) => {
+        const group = groups.get(alert.id);
+        return {
+          ...alertView(alert, actor.capabilities),
+          // Etapa C: la consola agrupa filas con el mismo `group.id`; P1/P2 nunca se colapsan.
+          group: group ? { id: group.id, alertCount: group.alertCount } : null,
+        };
+      }),
       nextCursor: page.nextCursor,
       totalCount: result.total,
     };
@@ -162,14 +193,32 @@ export class SocController {
       // Mismo error para inexistente y no autorizado: la API no enumera.
       throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
     }
+    const group = await this.runtime.soc.alertGroupOf?.(actor.tenantId, alert.id);
     return {
       correlationId,
       alert: {
         ...alertView(alert, actor.capabilities),
         // Solo en el detalle: por qué salta esta regla, cuándo es falso positivo y qué hacer.
         explanation: explainAlertFromKnowledge(alert, SOC_KNOWLEDGE),
+        group: group ? alertGroupView(group) : null,
       },
     };
+  }
+
+  /** Aprendizaje SOC · etapa C: grupo de la alerta y sus alertas (las más recientes primero). */
+  @Get('alerts/:id/group')
+  public async alertGroup(@Req() request: IncomingRequest, @Param('id') id: string) {
+    const { actor, correlationId } = await readingActor(this.runtime, request);
+    const alert = await this.runtime.soc.alertById(actor.tenantId, id);
+    if (!alert || !actor.capabilities.has('alerts.read')) {
+      throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
+    }
+    const group = await this.runtime.soc.alertGroupOf?.(actor.tenantId, alert.id);
+    if (!group) return { correlationId, group: null, alertIds: [] };
+    const alertIds =
+      (await this.runtime.soc.alertGroupMembers?.(actor.tenantId, group.id, GROUP_MEMBERS_LIMIT)) ??
+      [];
+    return { correlationId, group: alertGroupView(group), alertIds };
   }
 
   @Post('alerts/:id/commands')
