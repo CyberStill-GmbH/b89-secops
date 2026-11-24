@@ -3,6 +3,7 @@ import {
   loadApiConfig,
   loadDetectionContextConfig,
   loadSocClosurePolicy,
+  loadSocGrouping,
   loadDirectoryConfig,
   loadEntityRefKey,
   loadIngestionConfig,
@@ -289,6 +290,17 @@ async function durableStoresFor(
   };
 }
 
+/** Etapa C: sin `enabled` no se pasa política y la ingesta no agrupa. */
+function alertGroupingFrom(config: {
+  readonly enabled: boolean;
+  readonly windowMs: number;
+  readonly maxSpanMs: number;
+}) {
+  return config.enabled
+    ? { alertGrouping: { windowMs: config.windowMs, maxSpanMs: config.maxSpanMs } }
+    : {};
+}
+
 export async function buildApi(
   unresolvedEnvironment: EnvironmentInput,
   emit: ApiEvent,
@@ -527,6 +539,7 @@ export async function buildApi(
     profile: config.profile,
     detectionContext: detectionContextFrom(detection),
     closureReasonRequired: loadSocClosurePolicy(environment).reasonRequired,
+    ...alertGroupingFrom(loadSocGrouping(environment)),
     ...(entityRefSecret
       ? {
           entityRefs: entityRefFactory(entityRefSecret),

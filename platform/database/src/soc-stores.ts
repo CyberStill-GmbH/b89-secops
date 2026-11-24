@@ -374,6 +374,70 @@ export class PrismaAlertFingerprintStore {
   }
 }
 
+/* -------------------------------------------------- Grupos (aprendizaje SOC) */
+
+export interface AlertGroupRow {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly fingerprint: string;
+  readonly ruleKey: string | null;
+  readonly level: string;
+  readonly status: string;
+  readonly firstSeenAt: Date;
+  readonly lastSeenAt: Date;
+  readonly alertCount: number;
+  readonly primaryAlertId: string;
+  readonly highestPriority: string;
+  readonly revision: number;
+}
+
+export class PrismaAlertGroupStore {
+  public constructor(private readonly tx: Tx) {}
+
+  public async openByFingerprint(
+    tenantId: string,
+    fingerprint: string,
+  ): Promise<AlertGroupRow | undefined> {
+    const row = await this.tx.socAlertGroup.findFirst({
+      where: { tenantId, fingerprint, status: 'open' },
+    });
+    return row ?? undefined;
+  }
+
+  /** `false` si ya había un grupo abierto para la huella (índice único parcial). */
+  public async insertIfAbsent(group: AlertGroupRow): Promise<boolean> {
+    const created = await this.tx.socAlertGroup.createMany({
+      data: [{ ...group }],
+      skipDuplicates: true,
+    });
+    return created.count === 1;
+  }
+
+  public async update(group: AlertGroupRow, expectedRevision: number): Promise<boolean> {
+    const updated = await this.tx.socAlertGroup.updateMany({
+      where: { id: group.id, tenantId: group.tenantId, revision: expectedRevision },
+      data: {
+        status: group.status,
+        firstSeenAt: group.firstSeenAt,
+        lastSeenAt: group.lastSeenAt,
+        alertCount: group.alertCount,
+        highestPriority: group.highestPriority,
+        revision: group.revision,
+      },
+    });
+    return updated.count === 1;
+  }
+
+  public async addMember(member: {
+    readonly tenantId: string;
+    readonly groupId: string;
+    readonly alertId: string;
+    readonly joinedAt: Date;
+  }): Promise<void> {
+    await this.tx.socAlertGroupMember.createMany({ data: [{ ...member }], skipDuplicates: true });
+  }
+}
+
 /* --------------------------------------------------------------- Incidentes */
 
 export interface IncidentRow {
@@ -540,6 +604,7 @@ export interface SocStores {
   readonly alerts: PrismaAlertStore;
   readonly closures: PrismaAlertClosureStore;
   readonly fingerprints: PrismaAlertFingerprintStore;
+  readonly groups: PrismaAlertGroupStore;
   readonly incidents: PrismaIncidentStore;
   readonly tasks: PrismaIncidentTaskStore;
   readonly notes: PrismaIncidentNoteStore;
@@ -558,6 +623,7 @@ export class PrismaSocUnitOfWork {
         alerts: new PrismaAlertStore(tx),
         closures: new PrismaAlertClosureStore(tx),
         fingerprints: new PrismaAlertFingerprintStore(tx),
+        groups: new PrismaAlertGroupStore(tx),
         incidents: new PrismaIncidentStore(tx),
         tasks: new PrismaIncidentTaskStore(tx),
         notes: new PrismaIncidentNoteStore(tx),
@@ -637,6 +703,73 @@ export class PrismaSocQueries {
     if (!UUID_PATTERN.test(alertId)) return undefined;
     const row = await this.client.socAlert.findFirst({ where: { id: alertId, tenantId } });
     return row ? (row as unknown as AlertRow) : undefined;
+  }
+
+  public async alertGroupById(
+    tenantId: string,
+    groupId: string,
+  ): Promise<AlertGroupRow | undefined> {
+    if (!UUID_PATTERN.test(groupId)) return undefined;
+    const row = await this.client.socAlertGroup.findFirst({ where: { id: groupId, tenantId } });
+    return row ?? undefined;
+  }
+
+  public async alertGroupOf(tenantId: string, alertId: string): Promise<AlertGroupRow | undefined> {
+    if (!UUID_PATTERN.test(alertId)) return undefined;
+    const member = await this.client.socAlertGroupMember.findFirst({
+      where: { alertId, tenantId },
+      include: { group: true },
+    });
+    return member?.group ?? undefined;
+  }
+
+  /** Grupo de cada alerta, en una sola consulta; las ids inválidas se ignoran. */
+  public async alertGroupsOf(
+    tenantId: string,
+    alertIds: readonly string[],
+  ): Promise<ReadonlyMap<string, AlertGroupRow>> {
+    const ids = alertIds.filter((id) => UUID_PATTERN.test(id));
+    if (ids.length === 0) return new Map();
+    const members = await this.client.socAlertGroupMember.findMany({
+      where: { tenantId, alertId: { in: ids } },
+      include: { group: true },
+    });
+    return new Map(members.map((member) => [member.alertId, member.group]));
+  }
+
+  public async listAlertGroups(filter: {
+    readonly tenantId: string;
+    readonly status?: string;
+    readonly limit: number;
+  }): Promise<{ readonly items: readonly AlertGroupRow[]; readonly total: number }> {
+    const where = {
+      tenantId: filter.tenantId,
+      ...(filter.status ? { status: filter.status } : {}),
+    };
+    const [items, total] = await Promise.all([
+      this.client.socAlertGroup.findMany({
+        where,
+        orderBy: [{ lastSeenAt: 'desc' }, { id: 'asc' }],
+        take: Math.min(filter.limit, SOC_QUERY_LIMITS.maximumListRows),
+      }),
+      this.client.socAlertGroup.count({ where }),
+    ]);
+    return { items, total };
+  }
+
+  public async alertGroupMembers(
+    tenantId: string,
+    groupId: string,
+    limit: number,
+  ): Promise<readonly string[]> {
+    if (!UUID_PATTERN.test(groupId)) return [];
+    const rows = await this.client.socAlertGroupMember.findMany({
+      where: { tenantId, groupId },
+      orderBy: [{ joinedAt: 'desc' }, { alertId: 'desc' }],
+      take: Math.min(limit, SOC_QUERY_LIMITS.maximumListRows),
+      select: { alertId: true },
+    });
+    return rows.map((row) => row.alertId);
   }
 
   /**

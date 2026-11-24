@@ -374,6 +374,7 @@ model SocAlert {
   incident  SocIncident?       @relation(fields: [incidentId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "soc_alerts_incident_fkey")
   closures  SocAlertClosure[]
   fingerprint SocAlertFingerprint?
+  groupMember SocAlertGroupMember?
 
   @@index([tenantId, status, occurredAt], map: "soc_alerts_board_idx")
   @@index([tenantId, incidentId], map: "soc_alerts_incident_idx")
@@ -428,6 +429,42 @@ model SocAlertFingerprint {
   @@index([tenantId, fingerprint, computedAt], map: "soc_alert_fingerprints_lookup_idx")
   @@index([tenantId, ruleKey, level], map: "soc_alert_fingerprints_rule_idx")
   @@map("soc_alert_fingerprints")
+}
+
+// Aprendizaje SOC · etapa C — grupo de alertas con la misma huella dentro de una ventana. Como
+// máximo uno abierto por (tenant, huella): índice único parcial en SQL. `revision` sostiene CAS.
+model SocAlertGroup {
+  id              String   @id @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Text
+  fingerprint     String   @db.Text
+  ruleKey         String?  @map("rule_key") @db.Text
+  level           String   @db.Text
+  status          String   @db.Text
+  firstSeenAt     DateTime @map("first_seen_at") @db.Timestamptz(3)
+  lastSeenAt      DateTime @map("last_seen_at") @db.Timestamptz(3)
+  alertCount      Int      @map("alert_count")
+  primaryAlertId  String   @map("primary_alert_id") @db.Uuid
+  highestPriority String   @map("highest_priority") @db.Text
+  revision        Int
+
+  members SocAlertGroupMember[]
+
+  @@index([tenantId, status, lastSeenAt(sort: Desc)], map: "soc_alert_groups_board_idx")
+  @@map("soc_alert_groups")
+}
+
+// Pertenencia append-only: una alerta entra a un grupo una sola vez.
+model SocAlertGroupMember {
+  alertId  String   @id @map("alert_id") @db.Uuid
+  tenantId String   @map("tenant_id") @db.Text
+  groupId  String   @map("group_id") @db.Uuid
+  joinedAt DateTime @map("joined_at") @db.Timestamptz(3)
+
+  alert SocAlert      @relation(fields: [alertId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "soc_alert_group_members_alert_fkey")
+  group SocAlertGroup @relation(fields: [groupId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "soc_alert_group_members_group_fkey")
+
+  @@index([tenantId, groupId, joinedAt(sort: Desc)], map: "soc_alert_group_members_group_idx")
+  @@map("soc_alert_group_members")
 }
 
 // C-17/C-20 — outbox del SOC: cola durable con lease que el despacho reclama de forma

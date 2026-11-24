@@ -20,6 +20,7 @@ import type {
 } from '@b89/detection';
 
 import type { Alert, AlertStatus } from './alert.js';
+import type { AlertGroup, AlertGroupStatus } from './alert-group.js';
 import type { AlertClosureRecord, ClosureOrigin } from './closure.js';
 import type { Incident, IncidentStatus } from './incident.js';
 import type { IncidentNote, IncidentTask } from './incident-work.js';
@@ -54,6 +55,23 @@ export interface AlertFingerprintStore {
   insertIfAbsent(record: AlertFingerprintRecord): Promise<boolean>;
 }
 
+/**
+ * Aprendizaje SOC · etapa C — grupos por huella. Como máximo uno abierto por (tenant, huella):
+ * `insertIfAbsent` devuelve `false` si otro proceso lo abrió antes; `update` es compare-and-set.
+ * La pertenencia es append-only: una alerta entra a un grupo una sola vez.
+ */
+export interface AlertGroupStore {
+  openByFingerprint(tenantId: string, fingerprint: string): Promise<AlertGroup | undefined>;
+  insertIfAbsent(group: AlertGroup): Promise<boolean>;
+  update(group: AlertGroup, expectedRevision: number): Promise<boolean>;
+  addMember(member: {
+    readonly tenantId: string;
+    readonly groupId: string;
+    readonly alertId: string;
+    readonly joinedAt: Date;
+  }): Promise<void>;
+}
+
 export interface IncidentStore {
   byId(tenantId: string, incidentId: string): Promise<Incident | undefined>;
   insert(incident: Incident): Promise<void>;
@@ -83,6 +101,7 @@ export interface SocTransactionContext {
   readonly alerts: AlertStore;
   readonly closures: AlertClosureStore;
   readonly fingerprints: AlertFingerprintStore;
+  readonly groups: AlertGroupStore;
   readonly incidents: IncidentStore;
   readonly tasks: IncidentTaskStore;
   readonly notes: IncidentNoteStore;
@@ -157,8 +176,26 @@ export interface AlertStats {
   readonly incidentIds: readonly string[];
 }
 
+export interface AlertGroupQuery {
+  readonly tenantId: string;
+  readonly status?: AlertGroupStatus;
+  /** Máximo de grupos, por `lastSeenAt` descendente. */
+  readonly limit: number;
+}
+
 export interface SocReadModel {
   alertById(tenantId: string, alertId: string): Promise<Alert | undefined>;
+  /** Aprendizaje SOC · etapa C. Opcionales: un adapter sin grupos devuelve `undefined`/vacío. */
+  alertGroupById?(tenantId: string, groupId: string): Promise<AlertGroup | undefined>;
+  alertGroupOf?(tenantId: string, alertId: string): Promise<AlertGroup | undefined>;
+  /** Grupo de cada alerta (las que no tienen grupo no aparecen en el mapa). */
+  alertGroupsOf?(
+    tenantId: string,
+    alertIds: readonly string[],
+  ): Promise<ReadonlyMap<string, AlertGroup>>;
+  listAlertGroups?(query: AlertGroupQuery): Promise<QueryResult<AlertGroup>>;
+  /** IDs de las alertas del grupo, más recientes primero, como máximo `limit`. */
+  alertGroupMembers?(tenantId: string, groupId: string, limit: number): Promise<readonly string[]>;
   /**
    * Conteos exactos por veredicto y estado; opcional (los adapters que no lo implementan
    * obligan a quien llama a usar `listAlerts` y declarar el tope).

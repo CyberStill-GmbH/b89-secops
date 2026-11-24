@@ -25,3 +25,68 @@ export function parseSocClosurePolicy(
   if (raw === 'true') return { reasonRequired: true };
   throw configurationError('CONFIG_VALUE_INVALID', name, profile.name);
 }
+
+/**
+ * Aprendizaje SOC · etapa C — agrupación de alertas por huella (docs/soc-learning/01-diseno.md §2.3).
+ *
+ * - `B89_SOC_GROUPING_ENABLED` (por defecto `true`): agrupar no cambia estado ni prioridad de
+ *   ninguna alerta; solo las anota. Se puede apagar sin efectos sobre las alertas existentes.
+ * - `B89_SOC_GROUPING_WINDOW_HOURS` (1–168, por defecto 24) y
+ *   `B89_SOC_GROUPING_MAX_SPAN_DAYS` (1–30, por defecto 7, y nunca menor que la ventana).
+ */
+export interface SocGroupingConfig {
+  readonly enabled: boolean;
+  readonly windowMs: number;
+  readonly maxSpanMs: number;
+}
+
+const HOUR_MS = 60 * 60 * 1000;
+
+function boundedInteger(
+  environment: EnvironmentInput,
+  profile: ConfigurationProfile,
+  name: string,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+): number {
+  const raw = optionalString(environment, profile, name);
+  if (raw === undefined) return fallback;
+  const value = /^\d+$/u.test(raw) ? Number(raw) : Number.NaN;
+  if (!Number.isSafeInteger(value) || value < minimum || value > maximum) {
+    throw configurationError('CONFIG_VALUE_INVALID', name, profile.name);
+  }
+  return value;
+}
+
+export function parseSocGrouping(
+  environment: EnvironmentInput,
+  profile: ConfigurationProfile,
+): SocGroupingConfig {
+  const enabledName = 'B89_SOC_GROUPING_ENABLED';
+  const enabledRaw = optionalString(environment, profile, enabledName);
+  if (enabledRaw !== undefined && enabledRaw !== 'true' && enabledRaw !== 'false') {
+    throw configurationError('CONFIG_VALUE_INVALID', enabledName, profile.name);
+  }
+  const windowHours = boundedInteger(
+    environment,
+    profile,
+    'B89_SOC_GROUPING_WINDOW_HOURS',
+    24,
+    1,
+    168,
+  );
+  const spanDays = boundedInteger(environment, profile, 'B89_SOC_GROUPING_MAX_SPAN_DAYS', 7, 1, 30);
+  if (spanDays * 24 < windowHours) {
+    throw configurationError(
+      'CONFIG_VALUE_INVALID',
+      'B89_SOC_GROUPING_MAX_SPAN_DAYS',
+      profile.name,
+    );
+  }
+  return {
+    enabled: enabledRaw !== 'false',
+    windowMs: windowHours * HOUR_MS,
+    maxSpanMs: spanDays * 24 * HOUR_MS,
+  };
+}

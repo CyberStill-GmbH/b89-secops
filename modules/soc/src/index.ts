@@ -16,6 +16,18 @@ export {
   type TriageVerdict,
 } from './alert.js';
 export {
+  ALERT_GROUP_STATUSES,
+  ALERT_GROUPING_LIMITS,
+  assignToGroup,
+  DEFAULT_ALERT_GROUPING_POLICY,
+  validateGroupingPolicy,
+  type AlertGroup,
+  type AlertGroupingPolicy,
+  type AlertGroupStatus,
+  type GroupAssignment,
+  type GroupableAlert,
+} from './alert-group.js';
+export {
   CLOSURE_ERROR_CODES,
   CLOSURE_LIMITS,
   CLOSURE_ORIGINS,
@@ -149,6 +161,8 @@ export type {
   AlertClosureStore,
   AlertFingerprintRecord,
   AlertFingerprintStore,
+  AlertGroupQuery,
+  AlertGroupStore,
   AlertStore,
   ClaimedOutboxMessage,
   IncidentNoteStore,

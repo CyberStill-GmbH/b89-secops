@@ -27,6 +27,7 @@ import {
   PrismaSocQueries,
   PrismaSocUnitOfWork,
   PrismaStandaloneAuditStore,
+  type AlertGroupRow,
   type AlertRow,
   type CandidateRow,
   type DatabaseConnectionOptions,
@@ -48,6 +49,7 @@ import {
 } from '@b89/detection';
 
 import { ALERT_STATUSES, TRIAGE_VERDICTS, type Alert } from '../alert.js';
+import { ALERT_GROUP_STATUSES, type AlertGroup } from '../alert-group.js';
 import { CLOSURE_ORIGINS, CLOSURE_REASONS } from '../closure.js';
 import type {
   ClaimedWazuhPushHint,
@@ -76,6 +78,8 @@ import type {
   AlertStatsQuery,
   AlertClosureStore,
   AlertFingerprintStore,
+  AlertGroupQuery,
+  AlertGroupStore,
   AlertStore,
   ClaimedOutboxMessage,
   OutboxHealth,
@@ -160,6 +164,17 @@ function toAlert(row: AlertRow): Alert {
     ),
     closedBy: row.closedBy,
     closedAt: row.closedAt,
+  };
+}
+
+const FINGERPRINT_LEVELS = ['fine', 'coarse'] as const;
+
+function toAlertGroup(row: AlertGroupRow): AlertGroup {
+  return {
+    ...row,
+    level: oneOf(FINGERPRINT_LEVELS, row.level, 'soc_alert_groups', 'level'),
+    status: oneOf(ALERT_GROUP_STATUSES, row.status, 'soc_alert_groups', 'status'),
+    highestPriority: oneOf(PRIORITIES, row.highestPriority, 'soc_alert_groups', 'highest_priority'),
   };
 }
 
@@ -344,6 +359,15 @@ export class PostgresSocPersistence implements SocPersistence {
         insertIfAbsent: (record) =>
           stores.fingerprints.insertIfAbsent({ ...record, components: { ...record.components } }),
       };
+      const groups: AlertGroupStore = {
+        openByFingerprint: async (tenantId, fingerprint) => {
+          const row = await stores.groups.openByFingerprint(tenantId, fingerprint);
+          return row ? toAlertGroup(row) : undefined;
+        },
+        insertIfAbsent: (group) => stores.groups.insertIfAbsent(group),
+        update: (group, expectedRevision) => stores.groups.update(group, expectedRevision),
+        addMember: (member) => stores.groups.addMember(member),
+      };
       const incidents: IncidentStore = {
         byId: async (tenantId, incidentId) => {
           const row = await stores.incidents.byId(tenantId, incidentId);
@@ -386,6 +410,7 @@ export class PostgresSocPersistence implements SocPersistence {
         alerts,
         closures,
         fingerprints,
+        groups,
         incidents,
         tasks,
         notes,
@@ -418,6 +443,37 @@ export class PostgresSocPersistence implements SocPersistence {
       ...(query.entityRef ? { entityRef: query.entityRef } : {}),
     });
     return { items: result.rows.map(toAlert), total: result.total };
+  }
+
+  public async alertGroupById(tenantId: string, groupId: string): Promise<AlertGroup | undefined> {
+    const row = await this.queries.alertGroupById(tenantId, groupId);
+    return row ? toAlertGroup(row) : undefined;
+  }
+
+  public async alertGroupOf(tenantId: string, alertId: string): Promise<AlertGroup | undefined> {
+    const row = await this.queries.alertGroupOf(tenantId, alertId);
+    return row ? toAlertGroup(row) : undefined;
+  }
+
+  public async alertGroupsOf(
+    tenantId: string,
+    alertIds: readonly string[],
+  ): Promise<ReadonlyMap<string, AlertGroup>> {
+    const rows = await this.queries.alertGroupsOf(tenantId, alertIds);
+    return new Map([...rows].map(([alertId, row]) => [alertId, toAlertGroup(row)]));
+  }
+
+  public async listAlertGroups(query: AlertGroupQuery): Promise<QueryResult<AlertGroup>> {
+    const result = await this.queries.listAlertGroups(query);
+    return { items: result.items.map(toAlertGroup), total: result.total };
+  }
+
+  public alertGroupMembers(
+    tenantId: string,
+    groupId: string,
+    limit: number,
+  ): Promise<readonly string[]> {
+    return this.queries.alertGroupMembers(tenantId, groupId, limit);
   }
 
   public alertStats(query: AlertStatsQuery): Promise<AlertStats> {

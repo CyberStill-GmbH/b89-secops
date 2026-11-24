@@ -20,6 +20,7 @@ import type {
 } from '@b89/detection';
 
 import type { Alert } from './alert.js';
+import type { AlertGroup } from './alert-group.js';
 import type { AlertClosureRecord } from './closure.js';
 import type { Incident } from './incident.js';
 import type { IncidentNote, IncidentTask } from './incident-work.js';
@@ -33,6 +34,8 @@ import type {
   AlertClosureStore,
   AlertFingerprintRecord,
   AlertFingerprintStore,
+  AlertGroupQuery,
+  AlertGroupStore,
   AlertStore,
   ClaimedOutboxMessage,
   OutboxHealth,
@@ -50,11 +53,20 @@ interface Snapshot {
   readonly alerts: ReadonlyMap<string, Alert>;
   readonly closures: readonly AlertClosureRecord[];
   readonly fingerprints: ReadonlyMap<string, AlertFingerprintRecord>;
+  readonly groups: ReadonlyMap<string, AlertGroup>;
+  readonly groupMembers: ReadonlyMap<string, GroupMember>;
   readonly incidents: ReadonlyMap<string, Incident>;
   readonly tasks: ReadonlyMap<string, IncidentTask>;
   readonly notes: ReadonlyMap<string, IncidentNote>;
   readonly outbox: ReadonlyMap<string, OutboxMessageDraft>;
   readonly candidates: ReadonlyMap<string, DetectionCandidate>;
+}
+
+interface GroupMember {
+  readonly tenantId: string;
+  readonly groupId: string;
+  readonly alertId: string;
+  readonly joinedAt: Date;
 }
 
 interface OutboxQueueState {
@@ -80,6 +92,9 @@ export class InMemorySoc implements SocPersistence {
   public readonly closureRows: AlertClosureRecord[] = [];
   /** Huellas por `tenant|alerta` (aprendizaje SOC · etapa B). */
   public readonly fingerprintRows = new Map<string, AlertFingerprintRecord>();
+  /** Grupos por `tenant|grupo` y pertenencia por `tenant|alerta` (etapa C). */
+  public readonly groupRows = new Map<string, AlertGroup>();
+  public readonly groupMemberRows = new Map<string, GroupMember>();
   public readonly incidentRows = new Map<string, Incident>();
   public readonly taskRows = new Map<string, IncidentTask>();
   public readonly noteRows = new Map<string, IncidentNote>();
@@ -129,6 +144,43 @@ export class InMemorySoc implements SocPersistence {
       if (this.fingerprintRows.has(key)) return Promise.resolve(false);
       this.fingerprintRows.set(key, record);
       return Promise.resolve(true);
+    },
+  };
+
+  private readonly groups: AlertGroupStore = {
+    openByFingerprint: (tenantId, fingerprint) =>
+      Promise.resolve(
+        [...this.groupRows.values()].find(
+          (group) =>
+            group.tenantId === tenantId &&
+            group.fingerprint === fingerprint &&
+            group.status === 'open',
+        ),
+      ),
+    insertIfAbsent: (group) => {
+      const clash = [...this.groupRows.values()].some(
+        (row) =>
+          row.id === group.id ||
+          (group.status === 'open' &&
+            row.status === 'open' &&
+            row.tenantId === group.tenantId &&
+            row.fingerprint === group.fingerprint),
+      );
+      if (clash) return Promise.resolve(false);
+      this.groupRows.set(`${group.tenantId}|${group.id}`, group);
+      return Promise.resolve(true);
+    },
+    update: (group, expectedRevision) => {
+      const key = `${group.tenantId}|${group.id}`;
+      const current = this.groupRows.get(key);
+      if (!current || current.revision !== expectedRevision) return Promise.resolve(false);
+      this.groupRows.set(key, group);
+      return Promise.resolve(true);
+    },
+    addMember: (member) => {
+      const key = `${member.tenantId}|${member.alertId}`;
+      if (!this.groupMemberRows.has(key)) this.groupMemberRows.set(key, member);
+      return Promise.resolve();
     },
   };
 
@@ -204,6 +256,8 @@ export class InMemorySoc implements SocPersistence {
       alerts: new Map(this.alertRows),
       closures: [...this.closureRows],
       fingerprints: new Map(this.fingerprintRows),
+      groups: new Map(this.groupRows),
+      groupMembers: new Map(this.groupMemberRows),
       incidents: new Map(this.incidentRows),
       tasks: new Map(this.taskRows),
       notes: new Map(this.noteRows),
@@ -229,6 +283,8 @@ export class InMemorySoc implements SocPersistence {
     replace(this.alertRows, snapshot.alerts);
     this.closureRows.splice(0, this.closureRows.length, ...snapshot.closures);
     replace(this.fingerprintRows, snapshot.fingerprints);
+    replace(this.groupRows, snapshot.groups);
+    replace(this.groupMemberRows, snapshot.groupMembers);
     replace(this.incidentRows, snapshot.incidents);
     replace(this.taskRows, snapshot.tasks);
     replace(this.noteRows, snapshot.notes);
@@ -256,6 +312,7 @@ export class InMemorySoc implements SocPersistence {
         alerts: this.alerts,
         closures: this.closures,
         fingerprints: this.fingerprints,
+        groups: this.groups,
         incidents: this.incidents,
         tasks: this.tasks,
         notes: this.notes,
@@ -286,6 +343,59 @@ export class InMemorySoc implements SocPersistence {
 
   public alertById(tenantId: string, alertId: string): Promise<Alert | undefined> {
     return Promise.resolve(this.alertRows.get(`${tenantId}|${alertId}`));
+  }
+
+  public alertGroupById(tenantId: string, groupId: string): Promise<AlertGroup | undefined> {
+    return Promise.resolve(this.groupRows.get(`${tenantId}|${groupId}`));
+  }
+
+  public alertGroupOf(tenantId: string, alertId: string): Promise<AlertGroup | undefined> {
+    const member = this.groupMemberRows.get(`${tenantId}|${alertId}`);
+    return Promise.resolve(
+      member ? this.groupRows.get(`${tenantId}|${member.groupId}`) : undefined,
+    );
+  }
+
+  public alertGroupsOf(
+    tenantId: string,
+    alertIds: readonly string[],
+  ): Promise<ReadonlyMap<string, AlertGroup>> {
+    const result = new Map<string, AlertGroup>();
+    for (const alertId of alertIds) {
+      const member = this.groupMemberRows.get(`${tenantId}|${alertId}`);
+      const group = member ? this.groupRows.get(`${tenantId}|${member.groupId}`) : undefined;
+      if (group) result.set(alertId, group);
+    }
+    return Promise.resolve(result);
+  }
+
+  public listAlertGroups(query: AlertGroupQuery): Promise<QueryResult<AlertGroup>> {
+    const rows = [...this.groupRows.values()]
+      .filter(
+        (group) =>
+          group.tenantId === query.tenantId && (!query.status || group.status === query.status),
+      )
+      .sort(
+        (left, right) =>
+          right.lastSeenAt.getTime() - left.lastSeenAt.getTime() || (left.id < right.id ? -1 : 1),
+      );
+    return Promise.resolve({ items: rows.slice(0, query.limit), total: rows.length });
+  }
+
+  public alertGroupMembers(
+    tenantId: string,
+    groupId: string,
+    limit: number,
+  ): Promise<readonly string[]> {
+    const ids = [...this.groupMemberRows.values()]
+      .filter((member) => member.tenantId === tenantId && member.groupId === groupId)
+      .sort(
+        (left, right) =>
+          right.joinedAt.getTime() - left.joinedAt.getTime() ||
+          (left.alertId < right.alertId ? 1 : -1),
+      )
+      .map((member) => member.alertId);
+    return Promise.resolve(ids.slice(0, limit));
   }
 
   public alertByEventRecordId(tenantId: string, eventRecordId: string): Promise<Alert | undefined> {

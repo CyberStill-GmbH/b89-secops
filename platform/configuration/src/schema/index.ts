@@ -50,4 +50,9 @@ export {
   type DemoAdminLoginDeployment,
 } from './demo-admin-login.schema.js';
 export { parseAlertMailSender, parseTeamsWorkflowUrl } from './notifications.schema.js';
-export { parseSocClosurePolicy, type SocClosurePolicyConfig } from './soc-learning.schema.js';
+export {
+  parseSocClosurePolicy,
+  parseSocGrouping,
+  type SocClosurePolicyConfig,
+  type SocGroupingConfig,
+} from './soc-learning.schema.js';

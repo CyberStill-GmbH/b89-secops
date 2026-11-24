@@ -17,7 +17,9 @@ import { parseAccess, type AccessConfig } from './schema/access.schema.js';
 import { parseDetectionContext, type DetectionContextConfig } from './schema/detection.schema.js';
 import {
   parseSocClosurePolicy,
+  parseSocGrouping,
   type SocClosurePolicyConfig,
+  type SocGroupingConfig,
 } from './schema/soc-learning.schema.js';
 import { parseIngestionConfig, type IngestionConfig } from './schema/ingestion.schema.js';
 import { parseRoleGrants, type RoleGrantsConfig } from './schema/role-grants.schema.js';
@@ -181,6 +183,12 @@ export function loadDetectionContextConfig(environment: EnvironmentInput): Detec
 export function loadSocClosurePolicy(environment: EnvironmentInput): SocClosurePolicyConfig {
   const profile = profileFrom(environment);
   return deepFreeze(parseSocClosurePolicy(environment, profile));
+}
+
+/** Aprendizaje SOC · etapa C — agrupación de alertas por huella. */
+export function loadSocGrouping(environment: EnvironmentInput): SocGroupingConfig {
+  const profile = profileFrom(environment);
+  return deepFreeze(parseSocGrouping(environment, profile));
 }
 
 /** Sprint 5 · fase 0 — fuente de ingesta del SOC; `disabled` si el ambiente no la declara. */

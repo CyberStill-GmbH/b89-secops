@@ -579,6 +579,66 @@ describe.skipIf(!databaseUrl)('C-17 · persistencia SOC sobre PostgreSQL', () =>
     }
   });
 
+  it('aprendizaje SOC · ingestas concurrentes de la misma huella dejan un solo grupo abierto', async () => {
+    const fingerprint = {
+      fingerprint: `fp1_${'c'.repeat(64)}`,
+      level: 'fine' as const,
+      version: '1',
+      normalizerVersion: '1',
+      ruleKey: 'windows:101150',
+      components: {
+        ruleKey: 'windows:101150',
+        ruleName: 'regla',
+        user: 'usuario.sintetico@b89-lab.example',
+        host: '017',
+        srcIp: null,
+        processImage: 'x.exe',
+        parentImage: null,
+        commandLine: null,
+        sha256: null,
+        filePath: null,
+        destination: null,
+        destinationPort: null,
+      },
+    };
+    const deps = {
+      ...dependencies(persistence),
+      groupingPolicy: { windowMs: 24 * 60 * 60 * 1000, maxSpanMs: 7 * 24 * 60 * 60 * 1000 },
+    };
+    const targets = [43, 44, 45, 46].map((n) =>
+      candidate(n, { priority: 'P4', score: 35, fingerprint }),
+    );
+    const results = await Promise.all(targets.map((target) => ingestCandidate(deps, target)));
+    expect(results.every((result) => result.ok)).toBe(true);
+
+    const admin = new Client(database!.url);
+    await admin.connect();
+    try {
+      const open = await admin.query(
+        `SELECT id, alert_count FROM soc_alert_groups WHERE fingerprint = $1 AND status = 'open'`,
+        [fingerprint.fingerprint],
+      );
+      expect(open.rows).toHaveLength(1);
+      const members = await admin.query(
+        `SELECT alert_id FROM soc_alert_group_members WHERE group_id = $1`,
+        [open.rows[0].id],
+      );
+      // Una alerta que perdió la carrera queda sin grupo (visible), nunca se pierde ni duplica.
+      expect(members.rows.length).toBe(open.rows[0].alert_count);
+      expect(members.rows.length).toBeGreaterThanOrEqual(1);
+      for (const target of targets) {
+        expect(await persistence.alertById(TENANT, target.id)).toBeDefined();
+      }
+      const group = await persistence.alertGroupOf(TENANT, members.rows[0].alert_id);
+      expect(group).toMatchObject({ status: 'open', ruleKey: 'windows:101150' });
+      await expect(
+        admin.query(`DELETE FROM soc_alert_group_members WHERE group_id = $1`, [open.rows[0].id]),
+      ).rejects.toThrow(/append-only/u);
+    } finally {
+      await admin.end();
+    }
+  });
+
   it('aprendizaje SOC · la huella se guarda con la alerta, una vez y append-only', async () => {
     const fingerprint = {
       fingerprint: `fp1_${'b'.repeat(64)}`,

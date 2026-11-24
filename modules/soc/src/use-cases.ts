@@ -23,6 +23,7 @@ import {
   type AlertErrorCode,
   type TriageVerdict,
 } from './alert.js';
+import { assignToGroup, type AlertGroupingPolicy } from './alert-group.js';
 import { closureOriginFor } from './closure.js';
 import {
   applyIncidentCommand,
@@ -132,6 +133,69 @@ export interface SocDependencies {
    * motivo se acepta como heredado: es el comportamiento anterior.
    */
   readonly closurePolicy?: { readonly reasonRequired: boolean };
+  /**
+   * Aprendizaje SOC · etapa C. Sin política no se agrupa (comportamiento anterior). Agrupar no
+   * cambia estado ni prioridad de ninguna alerta.
+   */
+  readonly groupingPolicy?: AlertGroupingPolicy;
+}
+
+type GroupingOutcome =
+  | { readonly groupId: string; readonly kind: 'join' | 'open' }
+  | { readonly groupId: null; readonly kind: 'none' | 'conflict' };
+
+/**
+ * Suma la alerta recién creada a su grupo. Si otro proceso movió el grupo entre la lectura y la
+ * escritura, la alerta queda sin grupo en vez de fallar: una alerta sin grupo sigue visible, y
+ * perder la alerta por un contador sería peor.
+ */
+async function groupAlert(
+  context: SocTransactionContext,
+  dependencies: SocDependencies,
+  alert: Alert,
+  fingerprint: NonNullable<DetectionCandidate['fingerprint']>,
+  at: Date,
+): Promise<GroupingOutcome> {
+  const policy = dependencies.groupingPolicy;
+  if (!policy) return { groupId: null, kind: 'none' };
+  const open = await context.groups.openByFingerprint(alert.tenantId, fingerprint.fingerprint);
+  const assignment = assignToGroup(
+    {
+      id: alert.id,
+      tenantId: alert.tenantId,
+      priority: alert.priority,
+      occurredAt: alert.occurredAt,
+      fingerprint: fingerprint.fingerprint,
+      ruleKey: fingerprint.ruleKey,
+      level: fingerprint.level,
+    },
+    open,
+    policy,
+    dependencies.ids.next(),
+  );
+  if (assignment.kind === 'none') return { groupId: null, kind: 'none' };
+  if (assignment.kind === 'join') {
+    if (!(await context.groups.update(assignment.group, assignment.expectedRevision))) {
+      return { groupId: null, kind: 'conflict' };
+    }
+  } else {
+    if (
+      assignment.seal &&
+      !(await context.groups.update(assignment.seal.group, assignment.seal.expectedRevision))
+    ) {
+      return { groupId: null, kind: 'conflict' };
+    }
+    if (!(await context.groups.insertIfAbsent(assignment.group))) {
+      return { groupId: null, kind: 'conflict' };
+    }
+  }
+  await context.groups.addMember({
+    tenantId: alert.tenantId,
+    groupId: assignment.group.id,
+    alertId: alert.id,
+    joinedAt: at,
+  });
+  return { groupId: assignment.group.id, kind: assignment.kind };
 }
 
 /** Materializa un candidato de C-16 como alerta. Repetirlo no crea una segunda. */
@@ -171,7 +235,8 @@ export async function ingestCandidate(
         ? { ok: true as const, value: { alert: existing, created: false } }
         : failure('CONFLICT', 'ALERT_RACE', 'La alerta existía y dejó de estar disponible.');
     }
-    // Aprendizaje SOC · etapa B: la huella entra en la misma transacción que la alerta.
+    // Aprendizaje SOC · etapas B y C: huella y grupo entran en la misma transacción que la alerta.
+    let grouping: GroupingOutcome = { groupId: null, kind: 'none' };
     if (candidate.fingerprint) {
       await context.fingerprints.insertIfAbsent({
         ...candidate.fingerprint,
@@ -179,6 +244,7 @@ export async function ingestCandidate(
         tenantId: alert.tenantId,
         computedAt: at,
       });
+      grouping = await groupAlert(context, dependencies, alert, candidate.fingerprint, at);
     }
     await recordAudit(
       context.audit,
@@ -201,6 +267,9 @@ export async function ingestCandidate(
           score: alert.score,
           signal: alert.signal,
           relatedAlerts: alert.relatedAlertIds.length,
+          ...(grouping.kind === 'none'
+            ? {}
+            : { groupId: grouping.groupId, grouping: grouping.kind }),
         },
       }),
     );

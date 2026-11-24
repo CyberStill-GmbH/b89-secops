@@ -21,6 +21,7 @@ export {
   type NotificationPolicyEnvironment,
   loadVapidPrivateKey,
   loadSocClosurePolicy,
+  loadSocGrouping,
   loadSocPersistenceConfig,
   loadLocalWorkerConfig,
   loadRuntimeConfig,
@@ -79,6 +80,7 @@ export type {
   RoleGrantsConfig,
   KnownBenignRule,
   SocClosurePolicyConfig,
+  SocGroupingConfig,
 } from './schema/index.js';
 export { CONFIGURATION_PROFILES } from './profiles/index.js';
 export { redactSecrets } from './redaction/index.js';
