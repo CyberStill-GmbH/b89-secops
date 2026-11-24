@@ -210,7 +210,12 @@ export interface NotificationPolicyEnvironment {
   readonly timeZone?: string;
 }
 
-const NOTIFY_INTEGERS: readonly (readonly [keyof NotificationPolicyEnvironment, string, number, number])[] = [
+const NOTIFY_INTEGERS: readonly (readonly [
+  keyof NotificationPolicyEnvironment,
+  string,
+  number,
+  number,
+])[] = [
   ['quietP1Minutes', 'B89_NOTIFY_QUIET_P1_MINUTES', 1, 1_440],
   ['quietP2Minutes', 'B89_NOTIFY_QUIET_P2_MINUTES', 1, 1_440],
   ['staleMinutes', 'B89_NOTIFY_STALE_MINUTES', 5, 10_080],
@@ -218,7 +223,9 @@ const NOTIFY_INTEGERS: readonly (readonly [keyof NotificationPolicyEnvironment, 
   ['digestMinutes', 'B89_NOTIFY_DIGEST_MINUTES', 0, 10_080],
 ];
 
-export function loadNotificationPolicy(environment: EnvironmentInput): NotificationPolicyEnvironment {
+export function loadNotificationPolicy(
+  environment: EnvironmentInput,
+): NotificationPolicyEnvironment {
   const profile = profileFrom(environment);
   const result: Record<string, number | string> = {};
   for (const [field, name, minimum, maximum] of NOTIFY_INTEGERS) {
@@ -238,7 +245,8 @@ export function loadNotificationPolicy(environment: EnvironmentInput): Notificat
     } catch {
       valid = false;
     }
-    if (!valid) throw configurationError('CONFIG_VALUE_INVALID', 'B89_NOTIFY_TIME_ZONE', profile.name);
+    if (!valid)
+      throw configurationError('CONFIG_VALUE_INVALID', 'B89_NOTIFY_TIME_ZONE', profile.name);
     result['timeZone'] = timeZone;
   }
   return deepFreeze(result) as NotificationPolicyEnvironment;

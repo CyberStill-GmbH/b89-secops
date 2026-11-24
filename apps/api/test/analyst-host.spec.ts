@@ -25,7 +25,11 @@ import {
 } from '@b89/soar';
 import { createAlert, InMemorySoc, requestAlertReview, type Alert } from '@b89/soc';
 
-import { RuntimeSocActions, ANALYST_SERVICE_ACTOR_ID, analystServiceActor } from '../src/assistant/analyst-actions.js';
+import {
+  RuntimeSocActions,
+  ANALYST_SERVICE_ACTOR_ID,
+  analystServiceActor,
+} from '../src/assistant/analyst-actions.js';
 import { BUILT_IN_ANALYST_RATE_CARD, type AnalystConfig } from '../src/assistant/analyst-config.js';
 import { EVIDENCE_LIMITS, RuntimeEvidenceReader } from '../src/assistant/analyst-evidence.js';
 import {
@@ -103,7 +107,13 @@ async function harness(
   const store = new InMemoryInvestigationStore();
   const settings = new InMemoryAnalystSettingsStore();
   if (settingsPatch) {
-    await settings.put(T, { ...DEFAULT_ANALYST_SETTINGS, enabled: true, ...settingsPatch }, 0, 'admin', NOW);
+    await settings.put(
+      T,
+      { ...DEFAULT_ANALYST_SETTINGS, enabled: true, ...settingsPatch },
+      0,
+      'admin',
+      NOW,
+    );
   }
   const digests: unknown[] = [];
   const host = new AnalystHost({
@@ -143,15 +153,15 @@ beforeEach(() => {
 describe('lector de evidencia', () => {
   it('recupera los miembros explícitos más allá de los antiguos topes de lectura', async () => {
     const related = Array.from({ length: 24 }, () => putAlert({ priority: 'P3' }));
-    const parent = putAlert({ priority: 'P2', relatedAlertIds: related.map(a => a.id) });
+    const parent = putAlert({ priority: 'P2', relatedAlertIds: related.map((a) => a.id) });
     const assigned = [parent, ...Array.from({ length: 51 }, () => putAlert({ priority: 'P2' }))];
     const reader = new RuntimeEvidenceReader({ tenantId: T, soc, now: () => new Date() });
     const bundle = await reader.collect(
-      { tenantId: T, alertIds: assigned.map(a => a.id) } as unknown as InvestigationJob,
+      { tenantId: T, alertIds: assigned.map((a) => a.id) } as unknown as InvestigationJob,
       new AbortController().signal,
     );
-    expect(bundle.alerts.map(a => a.id)).toEqual(assigned.map(a => a.id));
-    expect(bundle.relatedAlerts.map(a => a.id)).toEqual(related.map(a => a.id));
+    expect(bundle.alerts.map((a) => a.id)).toEqual(assigned.map((a) => a.id));
+    expect(bundle.relatedAlerts.map((a) => a.id)).toEqual(related.map((a) => a.id));
   });
   it('lee solo el tenant del runtime y no publica claves de entidad', async () => {
     const own = putAlert({ priority: 'P3', relatedAlertIds: [] });
@@ -167,7 +177,10 @@ describe('lector de evidencia', () => {
     expect(JSON.stringify(bundle)).not.toContain('jperez@b89.example');
     expect(bundle.alerts[0]!.entityRefs).toEqual([ENTITY]);
     await expect(
-      reader.collect({ tenantId: 't2', alertIds: [foreign.id] } as unknown as InvestigationJob, new AbortController().signal),
+      reader.collect(
+        { tenantId: 't2', alertIds: [foreign.id] } as unknown as InvestigationJob,
+        new AbortController().signal,
+      ),
     ).rejects.toThrow('EVIDENCE_TENANT_MISMATCH');
   });
 
@@ -262,7 +275,11 @@ describe('acciones del analista sobre el SOC', () => {
 
   it('autónomo NO cierra un P3 con un verdadero positivo previo ni sin historial suficiente', async () => {
     benignHistory(5);
-    putAlert({ status: 'closed', verdict: 'true_positive', createdAt: new Date(NOW.getTime() - 3_600_000) });
+    putAlert({
+      status: 'closed',
+      verdict: 'true_positive',
+      createdAt: new Date(NOW.getTime() - 3_600_000),
+    });
     const alert = putAlert({ priority: 'P4' });
     const thin = putAlert({ priority: 'P4', ruleId: 'other-rule' });
     const { host } = await harness({
@@ -280,13 +297,25 @@ describe('acciones del analista sobre el SOC', () => {
   it('el puerto se niega a cerrar P1/P2, alertas de una persona o vinculadas, y escalar es idempotente', async () => {
     const actions = new RuntimeSocActions({ tenantId: T, soc: deps, read: soc });
     const job = (alert: Alert) =>
-      ({ id: randomUUID(), tenantId: T, subject: { kind: 'alert', id: alert.id }, alertIds: [alert.id], policyVersion: 'p' }) as unknown as InvestigationJob;
+      ({
+        id: randomUUID(),
+        tenantId: T,
+        subject: { kind: 'alert', id: alert.id },
+        alertIds: [alert.id],
+        policyVersion: 'p',
+      }) as unknown as InvestigationJob;
     const p2 = putAlert({ priority: 'P2' });
-    await expect(actions.closeBenign(job(p2), 'nota suficiente')).rejects.toThrow('PRIORITY_NOT_ALLOWED');
+    await expect(actions.closeBenign(job(p2), 'nota suficiente')).rejects.toThrow(
+      'PRIORITY_NOT_ALLOWED',
+    );
     const owned = putAlert({ priority: 'P4', status: 'acknowledged', assigneeId: 'persona-1' });
-    await expect(actions.closeBenign(job(owned), 'nota suficiente')).rejects.toThrow('ALREADY_HANDLED');
+    await expect(actions.closeBenign(job(owned), 'nota suficiente')).rejects.toThrow(
+      'ALREADY_HANDLED',
+    );
     const linked = putAlert({ priority: 'P4', incidentId: randomUUID() });
-    await expect(actions.closeBenign(job(linked), 'nota suficiente')).rejects.toThrow('ALERT_LINKED');
+    await expect(actions.closeBenign(job(linked), 'nota suficiente')).rejects.toThrow(
+      'ALERT_LINKED',
+    );
     const target = putAlert({ priority: 'P1' });
     const result = { verdict: 'likely_true_positive', confidence: 'high', verified: true } as never;
     const first = await actions.escalate(job(target), result);
@@ -295,7 +324,10 @@ describe('acciones del analista sobre el SOC', () => {
     expect(again.incidentId).toBe(first.incidentId);
     expect(soc.incidentRows.size).toBe(1);
     // El informe se adjunta como nota del incidente existente.
-    const attached = await actions.attachReport(job(target), { filename: 'x.md', markdown: '# Informe' });
+    const attached = await actions.attachReport(job(target), {
+      filename: 'x.md',
+      markdown: '# Informe',
+    });
     expect(attached.reportId).toBeDefined();
     expect([...soc.noteRows.values()][0]?.authorId).toBe(ANALYST_SERVICE_ACTOR_ID);
   });
@@ -361,7 +393,10 @@ describe('pedidos de revisión: outbox y resumen agrupado', () => {
     const suppressed = await attempts.listUndigested(T, 50);
     expect(suppressed).toHaveLength(3);
     expect(new Set(suppressed.map((item) => item.groupKey))).toEqual(
-      new Set(['ai-review:rule:rule-100|entity:ent_abcdef123456', 'ai-review:rule:otra|entity:ent_abcdef123456']),
+      new Set([
+        'ai-review:rule:rule-100|entity:ent_abcdef123456',
+        'ai-review:rule:otra|entity:ent_abcdef123456',
+      ]),
     );
     clock = new Date(clock.getTime() + 20 * 60_000);
     const digest = await runSuppressedDigest({
@@ -400,7 +435,9 @@ describe('pedidos de revisión: outbox y resumen agrupado', () => {
       reason: 'REVIEW_ESCALATION_RECOMMENDED',
     });
     expect(again.ok && again.value.enqueued).toBe(false);
-    expect([...soc.outboxRows.values()].filter((m) => m.messageType === 'soc.alert.review_requested')).toHaveLength(1);
+    expect(
+      [...soc.outboxRows.values()].filter((m) => m.messageType === 'soc.alert.review_requested'),
+    ).toHaveLength(1);
   });
 });
 
@@ -411,7 +448,9 @@ describe('host: encolado, barrido, resumen y apagado', () => {
     await settle();
     expect((await off.store.list(T)).items).toHaveLength(0);
 
-    const on = await harness({ scope: { ...DEFAULT_ANALYST_SETTINGS.scope, priorities: ['P1', 'P2'] } });
+    const on = await harness({
+      scope: { ...DEFAULT_ANALYST_SETTINGS.scope, priorities: ['P1', 'P2'] },
+    });
     on.host.alertCreated(putAlert({ priority: 'P1' }));
     on.host.alertCreated(putAlert({ priority: 'P4' }));
     await settle();
@@ -457,21 +496,36 @@ describe('host: encolado, barrido, resumen y apagado', () => {
 
   it('encola un expediente del candidato Go en vez de uno por miembro del atraso', async () => {
     const members = [putAlert({ priority: 'P2' }), putAlert({ priority: 'P3' })];
-    const parent = putAlert({ priority: 'P2', ruleId: 'b89-correlator:mail-burst', relatedAlertIds: members.map((a) => a.id) });
+    const parent = putAlert({
+      priority: 'P2',
+      ruleId: 'b89-correlator:mail-burst',
+      relatedAlertIds: members.map((a) => a.id),
+    });
     const { host, store } = await harness({});
     expect(await host.sweepBacklog()).toBe(1);
     expect(await host.sweepBacklog()).toBe(0);
     const jobs = (await store.list(T)).items;
     expect(jobs.map((job) => job.subject.id)).toEqual([parent.id]);
-    const evidence = await new RuntimeEvidenceReader({ tenantId: T, soc, now: () => NOW }).collect(jobs[0]!, new AbortController().signal);
-    expect(evidence.relatedAlerts.map((alert) => alert.id).sort()).toEqual(members.map((alert) => alert.id).sort());
-    expect(members.every((member) => soc.alertRows.get(`${T}|${member.id}`)?.status === 'new')).toBe(true);
+    const evidence = await new RuntimeEvidenceReader({ tenantId: T, soc, now: () => NOW }).collect(
+      jobs[0]!,
+      new AbortController().signal,
+    );
+    expect(evidence.relatedAlerts.map((alert) => alert.id).sort()).toEqual(
+      members.map((alert) => alert.id).sort(),
+    );
+    expect(
+      members.every((member) => soc.alertRows.get(`${T}|${member.id}`)?.status === 'new'),
+    ).toBe(true);
   });
 
   it('no oculta P1 ni miembros mas graves que el candidato Go', async () => {
     const critical = putAlert({ priority: 'P1' });
     const high = putAlert({ priority: 'P2' });
-    putAlert({ priority: 'P3', ruleId: 'b89-correlator:mail-burst', relatedAlertIds: [critical.id, high.id] });
+    putAlert({
+      priority: 'P3',
+      ruleId: 'b89-correlator:mail-burst',
+      relatedAlertIds: [critical.id, high.id],
+    });
     const { host } = await harness({});
     expect(await host.sweepBacklog()).toBe(3);
   });
@@ -486,7 +540,9 @@ describe('host: encolado, barrido, resumen y apagado', () => {
   it('un grupo fuera del alcance configurado no impide investigar al miembro', async () => {
     const member = putAlert({ priority: 'P3' });
     putAlert({ priority: 'P2', ruleId: 'b89-correlator:mail-burst', relatedAlertIds: [member.id] });
-    const { host, store } = await harness({ scope: { ...DEFAULT_ANALYST_SETTINGS.scope, priorities: ['P3'] } });
+    const { host, store } = await harness({
+      scope: { ...DEFAULT_ANALYST_SETTINGS.scope, priorities: ['P3'] },
+    });
     expect(await host.sweepBacklog()).toBe(1);
     expect((await store.list(T)).items[0]?.subject.id).toBe(member.id);
   });
@@ -504,7 +560,11 @@ describe('host: encolado, barrido, resumen y apagado', () => {
   it('no agrupa cuando el lector no puede incluir todos los miembros', async () => {
     const count = EVIDENCE_LIMITS.maxRelatedAlerts + 1;
     const members = Array.from({ length: count }, () => putAlert({ priority: 'P3' }));
-    putAlert({ priority: 'P2', ruleId: 'b89-correlator:mail-burst', relatedAlertIds: members.map((a) => a.id) });
+    putAlert({
+      priority: 'P2',
+      ruleId: 'b89-correlator:mail-burst',
+      relatedAlertIds: members.map((a) => a.id),
+    });
     const { host, store } = await harness({});
     // El barrido encola por lotes: se repite hasta cubrir a todos los miembros.
     for (let i = 0; i < Math.ceil((count + 1) / ANALYST_HOST_DEFAULTS.sweepBatch) + 2; i += 1) {
@@ -705,7 +765,10 @@ describe('evidencia ampliada (mismo alcance que Bunny, sin modelo)', () => {
       } as unknown as InvestigationJob,
       { verdict: 'likely_true_positive', confidence: 'high', verified: true } as never,
     );
-    const alert = putAlert({ priority: 'P2', title: 'B89 Office 365: inicio de sesión sospechoso' });
+    const alert = putAlert({
+      priority: 'P2',
+      title: 'B89 Office 365: inicio de sesión sospechoso',
+    });
     const requests: unknown[] = [];
     const event = (id: string, principal: string) => ({
       event: {
@@ -745,7 +808,13 @@ describe('evidencia ampliada (mismo alcance que Bunny, sin modelo)', () => {
           ? {
               status: 200,
               body: {
-                entity: { score: 77, peak: 90, observations: 5, tactics: ['initial-access'], sources: ['m365'] },
+                entity: {
+                  score: 77,
+                  peak: 90,
+                  observations: 5,
+                  tactics: ['initial-access'],
+                  sources: ['m365'],
+                },
               },
             }
           : { status: 503, body: null },
@@ -764,7 +833,9 @@ describe('evidencia ampliada (mismo alcance que Bunny, sin modelo)', () => {
       },
       notifications: {
         listByTenant: async () =>
-          [{ status: 'sent', channel: 'teams', updatedAt: NOW, context: { alertId: alert.id } }] as never,
+          [
+            { status: 'sent', channel: 'teams', updatedAt: NOW, context: { alertId: alert.id } },
+          ] as never,
       },
       now: () => new Date(),
     });
@@ -802,12 +873,22 @@ describe('evidencia ampliada (mismo alcance que Bunny, sin modelo)', () => {
     expect(text).not.toContain('jperez@b89.example');
     expect(text).not.toContain('CRUDO');
 
-    const bare = await new RuntimeEvidenceReader({ tenantId: T, soc, now: () => new Date() }).collect(
+    const bare = await new RuntimeEvidenceReader({
+      tenantId: T,
+      soc,
+      now: () => new Date(),
+    }).collect(
       { tenantId: T, alertIds: [alert.id] } as unknown as InvestigationJob,
       new AbortController().signal,
     );
     const bareGaps = bare.completeness.gaps.join(' | ');
-    for (const named of ['Lector de eventos', 'Correlador', 'avisos', 'Auditoría', 'Conocimiento SOC']) {
+    for (const named of [
+      'Lector de eventos',
+      'Correlador',
+      'avisos',
+      'Auditoría',
+      'Conocimiento SOC',
+    ]) {
       expect(bareGaps).toContain(named);
     }
   });
@@ -816,7 +897,12 @@ describe('evidencia ampliada (mismo alcance que Bunny, sin modelo)', () => {
 describe('estado del host y panel de actividad', () => {
   it('estado en memoria: apagado, sin iniciar, activo, pasadas, fallo superado y detenido', async () => {
     const off = await harness({}, { config: { enabled: false } });
-    expect(off.host.status()).toMatchObject({ enabled: false, running: false, inFlight: 0, lastTickAt: null });
+    expect(off.host.status()).toMatchObject({
+      enabled: false,
+      running: false,
+      inFlight: 0,
+      lastTickAt: null,
+    });
     off.host.start();
     expect(off.host.status().running).toBe(false);
 
@@ -858,7 +944,10 @@ describe('estado del host y panel de actividad', () => {
     putAlert({ priority: 'P2' });
     putAlert({ priority: 'P4', status: 'closed' });
     await host.enqueueAlert(covered, { source: 'new_alert' });
-    expect(await host.backlog()).toEqual({ openAlertsWithoutCaseFile: 1, openIncidentsWithoutCaseFile: 0 });
+    expect(await host.backlog()).toEqual({
+      openAlertsWithoutCaseFile: 1,
+      openIncidentsWithoutCaseFile: 0,
+    });
 
     // Lectura incompleta (más filas que las devueltas) y sin lector de incidentes ⇒ sin dato.
     const partial = new AnalystHost({
@@ -873,6 +962,9 @@ describe('estado del host y panel de actividad', () => {
       clock: () => new Date(),
       consoleBaseUrl: 'https://soc.example',
     });
-    expect(await partial.backlog()).toEqual({ openAlertsWithoutCaseFile: null, openIncidentsWithoutCaseFile: null });
+    expect(await partial.backlog()).toEqual({
+      openAlertsWithoutCaseFile: null,
+      openIncidentsWithoutCaseFile: null,
+    });
   });
 });

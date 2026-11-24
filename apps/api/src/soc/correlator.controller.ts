@@ -336,7 +336,8 @@ export class CorrelatorController {
           code: 'CORRELATED_ENTITY',
           delta: 0,
           // Stable ID used by the Go archive (risk.candidateID).
-          detail: 'Expediente del correlador: rc_' +
+          detail:
+            'Expediente del correlador: rc_' +
             createHash('sha256').update(body['idempotencyKey']).digest('hex').slice(0, 24),
         },
         ...explanation,

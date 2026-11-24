@@ -96,7 +96,7 @@ import {
   recordSourceHealth,
   sourceHealthMonitor,
 } from './runtime/source-health.js';
- import { SourceSignalsService } from './runtime/source-signals.js';
+import { SourceSignalsService } from './runtime/source-signals.js';
 
 /** Límite de cierre de C-02: 5 segundos, incluidos el despacho en curso y los pools. */
 export const API_SHUTDOWN_TIMEOUT_MS = 5_000;
@@ -179,7 +179,13 @@ async function durableStoresFor(
   const [
     { PostgresSocPersistence, PostgresWazuhPushInboxStore },
     { PostgresNotificationAttemptStore, PostgresPushSubscriptionStore },
-    { PostgresSessionStore, PostgresDirectoryStore, PostgresRoleAdministration, PrismaDlpPolicyStore, PrismaAllowlistStore },
+    {
+      PostgresSessionStore,
+      PostgresDirectoryStore,
+      PostgresRoleAdministration,
+      PrismaDlpPolicyStore,
+      PrismaAllowlistStore,
+    },
   ] = await Promise.all([
     import('@b89/soc/postgres'),
     import('@b89/soar/postgres'),
@@ -530,7 +536,8 @@ export async function buildApi(
       : {}),
     ...(durable?.wazuhPushInbox ? { wazuhPushInbox: durable.wazuhPushInbox } : {}),
     ...(durable ? { dlpPolicyStore: durable.dlpPolicy, allowlistStore: durable.allowlist } : {}),
-    ...(environment['B89_ALLOWLIST_FEED_TOKEN'] && environment['B89_ALLOWLIST_FEED_TOKEN'].length >= 32
+    ...(environment['B89_ALLOWLIST_FEED_TOKEN'] &&
+    environment['B89_ALLOWLIST_FEED_TOKEN'].length >= 32
       ? { allowlistFeedToken: environment['B89_ALLOWLIST_FEED_TOKEN'] }
       : {}),
     ...(onDispatchError ? { onDispatchError } : {}),
@@ -685,15 +692,20 @@ export async function buildApi(
           sourceId: ingestionConfig.sourceId,
           now: () => runtime.now(),
           promote: (event) => runtime.promoteEvent(event),
-          onError: onIngestionError ?? ((error) => {
-            const code = (error as { code?: unknown } | undefined)?.code;
-            console.error(JSON.stringify({
-              event: 'b89_opensearch_anomaly_ingestion_error',
-              code: typeof code === 'string' && /^ANOMALY_[A-Z0-9_]+$/u.test(code)
-                ? code
-                : 'ANOMALY_INGESTION_FAILED',
-            }));
-          }),
+          onError:
+            onIngestionError ??
+            ((error) => {
+              const code = (error as { code?: unknown } | undefined)?.code;
+              console.error(
+                JSON.stringify({
+                  event: 'b89_opensearch_anomaly_ingestion_error',
+                  code:
+                    typeof code === 'string' && /^ANOMALY_[A-Z0-9_]+$/u.test(code)
+                      ? code
+                      : 'ANOMALY_INGESTION_FAILED',
+                }),
+              );
+            }),
         })
       : undefined;
   const channelInitialization = await channels.initialize({ audit: runtime.audit });

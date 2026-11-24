@@ -22,7 +22,9 @@ const search = opt('search', '');
 const apply = args.includes('--apply');
 const limit = Number(opt('limit', '100000'));
 if (!rule || !reason || reason.length < 10) {
-  console.error('uso: --rule <id> --reason "<motivo de al menos 10 caracteres>" [--search texto] [--apply] [--limit n]');
+  console.error(
+    'uso: --rule <id> --reason "<motivo de al menos 10 caracteres>" [--search texto] [--apply] [--limit n]',
+  );
   process.exit(2);
 }
 
@@ -39,9 +41,22 @@ const actor = {
 };
 const correlationId = `close-fp-${rule}-${stamp}`;
 
-const { items, total } = await runtime.soc.listAlerts({ tenantId, status: 'open', ...(search ? { search } : {}) });
+const { items, total } = await runtime.soc.listAlerts({
+  tenantId,
+  status: 'open',
+  ...(search ? { search } : {}),
+});
 const targets = items.filter((alert) => alert.ruleId === rule).slice(0, limit);
-console.log(JSON.stringify({ event: 'close-fp.plan', rule, open: total, matching: targets.length, apply, correlationId }));
+console.log(
+  JSON.stringify({
+    event: 'close-fp.plan',
+    rule,
+    open: total,
+    matching: targets.length,
+    apply,
+    correlationId,
+  }),
+);
 
 let closed = 0;
 const failures = {};
@@ -62,7 +77,8 @@ for (const original of targets) {
     if (alert.status === 'new' || alert.assigneeId !== actor.subjectId) {
       await run({ name: 'assign', assigneeId: actor.subjectId });
     }
-    if (alert.status === 'acknowledged') await run({ name: 'triage', verdict: 'false_positive', note: reason });
+    if (alert.status === 'acknowledged')
+      await run({ name: 'triage', verdict: 'false_positive', note: reason });
     await run({ name: 'close', note: reason });
     closed += 1;
   } catch (error) {
