@@ -634,3 +634,33 @@ cliente **sin IPs** = sin alerta.
   cambios, conflicto/sesión reciente/validación.
 - Validación: plugin 621/622 (falla previa), typecheck OK, suite raíz 1540/1542 (`provider-coupling`
   previa), API 6/6 nuevas, pytest colector 80/82 (2 de aprovisionamiento Logpush fallan igual en `main`).
+
+### Claude · 2026-11-24 · Aprendizaje SOC · etapa A: cierre estructurado de alertas (contrato para la consola)
+
+Lo pidió el dueño (diseño aprobado en `docs/soc-learning/01-diseno.md`). Local, sin commit al escribir.
+Backend de Claude; **la consola es de Codex** y no se tocó.
+
+- **Contrato nuevo** `POST /api/alerts/:id/commands` con `name: 'close'` acepta `closure`:
+  `{ reason, justification: { evidenceType, statement (20–2000), legitimacyField?, legitimacyValue? },
+  evidenceRefs: [{ kind, ref }] (1–10) }`. Catálogos en `modules/soc/src/closure.ts`:
+  motivos `FP_ACTIVIDAD_LEGITIMA_CONOCIDA | FP_REGLA_MAL_AFINADA | FP_DATOS_ERRONEOS |
+  TP_BENIGNO_PRUEBA_O_PENTEST | TP_RIESGO_ACEPTADO | DUPLICADA | TP_REAL`, con veredicto compatible
+  (`CLOSURE_REASON_VERDICTS`); `evidenceType` y `kind` cerrados. Sin triaje solo se cierra `DUPLICADA`.
+  Errores: `VALIDATION_FAILED` con `fields: ['closure', <CLOSURE_REASON_REQUIRED | CLOSURE_INVALID |
+  CLOSURE_VERDICT_MISMATCH | CLOSURE_REQUIRES_TRIAGE>]`.
+- **Lectura:** `alert` agrega `closureReason`, `closureOrigin` (`human | ai_analyst | bulk_script |
+  learning_engine | service_other | legacy_unknown`, lo fija el backend por el actor), `closedBy`, `closedAt`.
+- **Bandera** `B89_SOC_CLOSURE_REASON_REQUIRED` (por defecto `false`: el cierre sin `closure` sigue
+  funcionando y queda sin motivo). Se pasa a `true` cuando la consola envíe `closure`.
+- **Persistencia:** migración `20261124120000_soc_learning_closure` (columnas nulas en `soc_alerts` y
+  `soc_alert_closures` append-only con triggers). Script de etiquetado retroactivo
+  `scripts/soc-learning/backfill-closure-origin.sql` (simulación por defecto).
+- **Cambio de comportamiento:** el historial de FP del Analista IA (`alertStats`) y el feedback del
+  correlador cuentan **solo cierres humanos**. Hasta correr el etiquetado retroactivo, el historial previo
+  cuenta 0 y el Analista IA no propone `KNOWN_BENIGN_PATTERN` (falla cerrado).
+- Validación: suite raíz 1567/1569 (`provider-coupling` previa), typecheck OK en soc/database/configuration/api,
+  Go `feedback` y `engine` OK salvo 6 tests con `fsync` de directorio que fallan en Windows. **Migración,
+  script SQL e integración Postgres no corridos** (sin Docker en esta máquina).
+- **Pedido a Codex:** en «Cerrar» de `alerts_view.tsx`/`alert_actions.ts`, selector de motivo según el
+  veredicto, justificación, dato de legitimidad y evidencia (ticket/URL/alerta), y mostrar
+  `closureReason`/`closureOrigin` en el detalle. Revisión del contrato antes de activar la bandera.
