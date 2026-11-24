@@ -467,6 +467,78 @@ model SocAlertGroupMember {
   @@map("soc_alert_group_members")
 }
 
+// Aprendizaje SOC · etapa D — patrones de falso positivo. Un patrón aprobado solo se activa si
+// las compuertas de preparación no bloquean (fail-closed); vence siempre; no se borra.
+model SocLearningPattern {
+  id                String    @id @db.Uuid
+  tenantId          String    @map("tenant_id") @db.Text
+  ruleKey           String    @map("rule_key") @db.Text
+  fingerprint       String    @db.Text
+  normalizerVersion String    @map("normalizer_version") @db.Text
+  level             String    @db.Text
+  maxAction         String    @map("max_action") @db.Text
+  closureReason     String    @map("closure_reason") @db.Text
+  status            String    @db.Text
+  proposedBy        String    @map("proposed_by") @db.Text
+  ownerId           String?   @map("owner_id") @db.Text
+  originAlertIds    String[]  @map("origin_alert_ids") @db.Text
+  originClosers     String[]  @map("origin_closers") @db.Text
+  confirmations     Int
+  distinctAlerts    Int       @map("distinct_alerts")
+  distinctDays      Int       @map("distinct_days")
+  distinctAnalysts  Int       @map("distinct_analysts")
+  truePositiveSeen  Int       @map("true_positive_seen")
+  priorityCeiling   String    @map("priority_ceiling") @db.Text
+  readinessBlockers String[]  @map("readiness_blockers") @db.Text
+  createdAt         DateTime  @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime  @map("updated_at") @db.Timestamptz(3)
+  activatedAt       DateTime? @map("activated_at") @db.Timestamptz(3)
+  expiresAt         DateTime? @map("expires_at") @db.Timestamptz(3)
+  renewalCount      Int       @map("renewal_count")
+  revision          Int
+
+  approvals SocLearningPatternApproval[]
+  events    SocLearningPatternEvent[]
+
+  @@index([tenantId, status, updatedAt(sort: Desc)], map: "soc_learning_patterns_board_idx")
+  @@map("soc_learning_patterns")
+}
+
+// Firmas append-only (triggers en SQL).
+model SocLearningPatternApproval {
+  id              String   @id @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Text
+  patternId       String   @map("pattern_id") @db.Uuid
+  patternRevision Int      @map("pattern_revision")
+  stage           String   @db.Text
+  approverId      String   @map("approver_id") @db.Text
+  decision        String   @db.Text
+  comment         String   @db.Text
+  at              DateTime @db.Timestamptz(3)
+
+  pattern SocLearningPattern @relation(fields: [patternId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "soc_learning_pattern_approvals_pattern_fkey")
+
+  @@index([tenantId, patternId, at], map: "soc_learning_pattern_approvals_pattern_idx")
+  @@map("soc_learning_pattern_approvals")
+}
+
+// Transiciones de estado append-only (triggers en SQL).
+model SocLearningPatternEvent {
+  id         String   @id @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Text
+  patternId  String   @map("pattern_id") @db.Uuid
+  fromStatus String?  @map("from_status") @db.Text
+  toStatus   String   @map("to_status") @db.Text
+  reason     String   @db.Text
+  actorId    String   @map("actor_id") @db.Text
+  at         DateTime @db.Timestamptz(3)
+
+  pattern SocLearningPattern @relation(fields: [patternId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "soc_learning_pattern_events_pattern_fkey")
+
+  @@index([tenantId, patternId, at], map: "soc_learning_pattern_events_pattern_idx")
+  @@map("soc_learning_pattern_events")
+}
+
 // C-17/C-20 — outbox del SOC: cola durable con lease que el despacho reclama de forma
 // atómica. Separado del outbox de admisión de C-04, que tiene FK a manifiestos de ingesta.
 model SocOutboxMessage {
@@ -882,6 +954,7 @@ model AssistantConversation {
 // aislados por (tenant, dueno). Borrado real: el runtime recibe DELETE solo sobre esta tabla y
 // `assistant_conversations` (`post-migrate.sql`).
 model AssistantArtifact {
+  reportId       String?  @map("report_id") @db.Uuid
   id             String   @id @db.Uuid
   tenantId       String   @map("tenant_id") @db.Text
   ownerId        String   @map("owner_id") @db.Text

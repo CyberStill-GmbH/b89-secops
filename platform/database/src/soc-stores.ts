@@ -448,6 +448,166 @@ export class PrismaAlertGroupStore {
   }
 }
 
+/* ------------------------------------------- Patrones de FP (aprendizaje SOC · D) */
+
+export interface LearningPatternRow {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly ruleKey: string;
+  readonly fingerprint: string;
+  readonly normalizerVersion: string;
+  readonly level: string;
+  readonly maxAction: string;
+  readonly closureReason: string;
+  readonly status: string;
+  readonly proposedBy: string;
+  readonly ownerId: string | null;
+  readonly originAlertIds: readonly string[];
+  readonly originClosers: readonly string[];
+  readonly confirmations: number;
+  readonly distinctAlerts: number;
+  readonly distinctDays: number;
+  readonly distinctAnalysts: number;
+  readonly truePositiveSeen: number;
+  readonly priorityCeiling: string;
+  readonly readinessBlockers: readonly string[];
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+  readonly activatedAt: Date | null;
+  readonly expiresAt: Date | null;
+  readonly renewalCount: number;
+  readonly revision: number;
+}
+
+export interface PatternApprovalRow {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly patternId: string;
+  readonly patternRevision: number;
+  readonly stage: string;
+  readonly approverId: string;
+  readonly decision: string;
+  readonly comment: string;
+  readonly at: Date;
+}
+
+export interface PatternEventRow {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly patternId: string;
+  readonly fromStatus: string | null;
+  readonly toStatus: string;
+  readonly reason: string;
+  readonly actorId: string;
+  readonly at: Date;
+}
+
+/** Estados abiertos: espejo del índice único parcial `soc_learning_patterns_open_fingerprint_key`. */
+const OPEN_PATTERN_STATUSES = [
+  'candidate',
+  'pending_second_approval',
+  'approved',
+  'active',
+  'paused',
+];
+
+function patternData(row: LearningPatternRow) {
+  return {
+    ...row,
+    originAlertIds: [...row.originAlertIds],
+    originClosers: [...row.originClosers],
+    readinessBlockers: [...row.readinessBlockers],
+  };
+}
+
+export class PrismaLearningPatternStore {
+  public constructor(private readonly tx: Tx) {}
+
+  public async byId(tenantId: string, patternId: string): Promise<LearningPatternRow | undefined> {
+    if (!UUID_PATTERN.test(patternId)) return undefined;
+    const row = await this.tx.socLearningPattern.findFirst({ where: { id: patternId, tenantId } });
+    return row ?? undefined;
+  }
+
+  /** Lee el patrón abierto de la huella bloqueando su fila hasta el fin de la transacción. */
+  public async openByFingerprint(
+    tenantId: string,
+    fingerprint: string,
+  ): Promise<LearningPatternRow | undefined> {
+    const rows = await this.tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM soc_learning_patterns
+       WHERE tenant_id = ${tenantId} AND fingerprint = ${fingerprint}
+         AND status IN ('candidate', 'pending_second_approval', 'approved', 'active', 'paused')
+       FOR UPDATE`;
+    const id = rows[0]?.id;
+    if (!id) return undefined;
+    const row = await this.tx.socLearningPattern.findFirst({ where: { id, tenantId } });
+    return row ?? undefined;
+  }
+
+  public listOpen(tenantId: string): Promise<readonly LearningPatternRow[]> {
+    return this.tx.socLearningPattern.findMany({
+      where: { tenantId, status: { in: OPEN_PATTERN_STATUSES } },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      take: SOC_QUERY_LIMITS.maximumListRows,
+    });
+  }
+
+  /** `false` si ya había un patrón abierto para la huella (índice único parcial). */
+  public async insertIfAbsent(row: LearningPatternRow): Promise<boolean> {
+    const created = await this.tx.socLearningPattern.createMany({
+      data: [patternData(row)],
+      skipDuplicates: true,
+    });
+    return created.count === 1;
+  }
+
+  public async update(row: LearningPatternRow, expectedRevision: number): Promise<boolean> {
+    const { id, tenantId, createdAt: _createdAt, ...data } = patternData(row);
+    const updated = await this.tx.socLearningPattern.updateMany({
+      where: { id, tenantId, revision: expectedRevision },
+      data,
+    });
+    return updated.count === 1;
+  }
+
+  public approvals(tenantId: string, patternId: string): Promise<readonly PatternApprovalRow[]> {
+    return this.tx.socLearningPatternApproval.findMany({
+      where: { tenantId, patternId },
+      orderBy: [{ at: 'asc' }, { id: 'asc' }],
+    });
+  }
+
+  public async appendApproval(row: PatternApprovalRow): Promise<void> {
+    await this.tx.socLearningPatternApproval.create({ data: { ...row } });
+  }
+
+  public async appendEvent(row: PatternEventRow): Promise<void> {
+    await this.tx.socLearningPatternEvent.create({ data: { ...row } });
+  }
+}
+
+/** Último cierre vigente de una alerta con su huella (evidencia de la etapa D). */
+export interface LearningClosureRow {
+  readonly alertId: string;
+  readonly actorId: string;
+  readonly at: Date;
+  readonly closureReason: string | null;
+  readonly origin: string;
+  readonly decisionGroupId: string | null;
+  readonly priority: string;
+  readonly ruleKey: string | null;
+  readonly fingerprint: string;
+  readonly level: string;
+  readonly normalizerVersion: string;
+}
+
+export interface SourceCoverageRow {
+  readonly source: string;
+  readonly fine: number;
+  readonly total: number;
+}
+
 /* --------------------------------------------------------------- Incidentes */
 
 export interface IncidentRow {
@@ -615,6 +775,7 @@ export interface SocStores {
   readonly closures: PrismaAlertClosureStore;
   readonly fingerprints: PrismaAlertFingerprintStore;
   readonly groups: PrismaAlertGroupStore;
+  readonly patterns: PrismaLearningPatternStore;
   readonly incidents: PrismaIncidentStore;
   readonly tasks: PrismaIncidentTaskStore;
   readonly notes: PrismaIncidentNoteStore;
@@ -634,6 +795,7 @@ export class PrismaSocUnitOfWork {
         closures: new PrismaAlertClosureStore(tx),
         fingerprints: new PrismaAlertFingerprintStore(tx),
         groups: new PrismaAlertGroupStore(tx),
+        patterns: new PrismaLearningPatternStore(tx),
         incidents: new PrismaIncidentStore(tx),
         tasks: new PrismaIncidentTaskStore(tx),
         notes: new PrismaIncidentNoteStore(tx),
@@ -658,6 +820,8 @@ export const SOC_QUERY_LIMITS = Object.freeze({
   maximumListRows: 2_000,
   maximumCorrelationRows: 500,
   maximumOutboxBatch: 200,
+  /** Cierres leídos por refresco de patrones (etapa D): los más recientes. */
+  maximumLearningRows: 20_000,
 });
 
 export interface AlertListFilter {
@@ -713,6 +877,56 @@ export class PrismaSocQueries {
     if (!UUID_PATTERN.test(alertId)) return undefined;
     const row = await this.client.socAlert.findFirst({ where: { id: alertId, tenantId } });
     return row ? (row as unknown as AlertRow) : undefined;
+  }
+
+  /**
+   * Etapa D. Último registro de cierre por alerta (una reapertura posterior lo anula) cerrado
+   * desde `since`, con su huella y prioridad. Acotado a `maximumLearningRows`.
+   */
+  public learningClosures(tenantId: string, since: Date): Promise<readonly LearningClosureRow[]> {
+    return this.client.$queryRaw<LearningClosureRow[]>`
+      SELECT c.alert_id AS "alertId", c.actor_id AS "actorId", c.at,
+             c.closure_reason AS "closureReason", c.origin, c.decision_group_id AS "decisionGroupId",
+             a.priority, f.rule_key AS "ruleKey", f.fingerprint, f.level,
+             f.normalizer_version AS "normalizerVersion"
+        FROM (
+          SELECT DISTINCT ON (alert_id)
+                 alert_id, kind, actor_id, at, closure_reason, origin, decision_group_id
+            FROM soc_alert_closures
+           WHERE tenant_id = ${tenantId}
+           ORDER BY alert_id, at DESC, id DESC
+        ) c
+        JOIN soc_alert_fingerprints f ON f.alert_id = c.alert_id AND f.tenant_id = ${tenantId}
+        JOIN soc_alerts a ON a.id = c.alert_id AND a.tenant_id = ${tenantId}
+       WHERE c.kind = 'close' AND c.at >= ${since}
+       ORDER BY c.at DESC
+       LIMIT ${SOC_QUERY_LIMITS.maximumLearningRows}`;
+  }
+
+  /** Etapa D. Alertas cerradas sin `closure_origin` (etiquetado retroactivo pendiente). */
+  public closedAlertsWithoutOrigin(tenantId: string): Promise<number> {
+    return this.client.socAlert.count({
+      where: { tenantId, status: 'closed', closureOrigin: null },
+    });
+  }
+
+  /** Etapa D. Huellas finas / totales por fuente (prefijo de `rule_key`) desde `since`. */
+  public async sourceCoverage(
+    tenantId: string,
+    since: Date,
+  ): Promise<readonly SourceCoverageRow[]> {
+    const rows = await this.client.$queryRaw<{ source: string; fine: bigint; total: bigint }[]>`
+      SELECT split_part(rule_key, ':', 1) AS source,
+             count(*) FILTER (WHERE level = 'fine') AS fine,
+             count(*) AS total
+        FROM soc_alert_fingerprints
+       WHERE tenant_id = ${tenantId} AND computed_at >= ${since} AND rule_key IS NOT NULL
+       GROUP BY 1`;
+    return rows.map((row) => ({
+      source: row.source,
+      fine: Number(row.fine),
+      total: Number(row.total),
+    }));
   }
 
   public async alertGroupById(
