@@ -5,11 +5,12 @@ import { describe, expect, it } from 'vitest';
 import {
   buildObservables,
   OBSERVABLES_EXTENSION_NAMESPACE,
+  OBSERVABLES_NORMALIZER_VERSION,
   type ObservablesInput,
   type SecurityEvent,
 } from '@b89/contracts';
 
-import { computeFingerprint, differingComponents } from '../src/fingerprint.js';
+import { canonicalJson, computeFingerprint, differingComponents } from '../src/fingerprint.js';
 import { RULE_SOURCE_RANGES, ruleKeyOf } from '../src/rule-key.js';
 import { securityEvent } from './support/events.js';
 
@@ -202,5 +203,98 @@ describe('Aprendizaje SOC · etapa B · clave de regla', () => {
   it('la tabla de rangos viene del catálogo (generada y comprobada en tests/architecture/rule-ids.spec.ts)', () => {
     expect(RULE_SOURCE_RANGES.length).toBeGreaterThan(0);
     expect(RULE_SOURCE_RANGES.find((range) => range.from === 101500)?.source).toBe('cloudflare');
+  });
+});
+
+describe('Normalizador v2 · temporales: determinismo, versión y adversario', () => {
+  /** Generador con semilla (mulberry32): reproducible. */
+  function generator(seed: number) {
+    let state = seed >>> 0;
+    const next = () => {
+      state = (state + 0x6d2b79f5) >>> 0;
+      let t = state;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const choose = (alphabet: string, length: number) =>
+      Array.from({ length }, () => alphabet[Math.floor(next() * alphabet.length)]).join('');
+    return { next, choose };
+  }
+
+  /** Nombres de temporales como los de GetTempFileName (hex, cualquier caso) y mktemp. */
+  function tempName(g: ReturnType<typeof generator>, style: number): string {
+    if (style === 0) return `C:\\Windows\\Temp\\tmp${g.choose('0123456789abcdefABCDEF', 4)}.ps1`;
+    if (style === 1) {
+      return `C:\\Users\\u${g.choose('abc123', 3)}\\AppData\\Local\\Temp\\${g.choose('abcdef0123456789', 6)}${g.choose('0123456789', 2)}.ps1`;
+    }
+    return `/tmp/tmp.${g.choose('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789', 10)}`;
+  }
+
+  function withTemp(script: string, overrides: Partial<ObservablesInput> = {}) {
+    return withObservables({
+      ...BASE_OBSERVED,
+      commandLine: `powershell.exe -File ${script} -Job nightly`,
+      ...overrides,
+    });
+  }
+
+  it('regresión: 1000 pares del mismo comportamiento con temporales aleatorios dan la misma huella', () => {
+    const g = generator(20261124);
+    const mismatches: string[] = [];
+    for (let i = 0; i < 1000; i += 1) {
+      const style = i % 3;
+      const left = computeFingerprint(withTemp(tempName(g, style)));
+      const right = computeFingerprint(withTemp(tempName(g, style)));
+      if (left.fingerprint !== right.fingerprint) {
+        mismatches.push(`${left.components.commandLine} ≠ ${right.components.commandLine}`);
+      }
+    }
+    // v1 fallaba aquí (letras hex sin dígito, mktemp): ver docs/soc-learning/15-normalizador-v2.md.
+    expect(mismatches.slice(0, 3), `${mismatches.length} de 1000 pares difieren`).toEqual([]);
+  });
+
+  it('la versión del normalizador entra en la huella: misma entrada con v1 daría otro hash', () => {
+    const fingerprint = computeFingerprint(withObservables());
+    expect(fingerprint.normalizerVersion).toBe(OBSERVABLES_NORMALIZER_VERSION);
+    expect(OBSERVABLES_NORMALIZER_VERSION).toBe('2');
+    const digest = (normalizer: string) =>
+      createHash('sha256')
+        .update(
+          canonicalJson({
+            v: fingerprint.version,
+            normalizer,
+            tenant: 'tenant-1',
+            level: fingerprint.level,
+            components: fingerprint.components,
+          }),
+          'utf8',
+        )
+        .digest('hex');
+    expect(fingerprint.fingerprint).toBe(`fp1_${digest('2')}`);
+    expect(digest('1')).not.toBe(digest('2'));
+  });
+
+  it('adversario: copia la línea de un temporal legítimo (misma tras normalizar) pero no hereda la huella', () => {
+    const legit = computeFingerprint(withTemp('C:\\Windows\\Temp\\tmpcbbf.ps1'));
+    const attacks = {
+      'otro hash': { processSha256: 'e'.repeat(64) },
+      'otro destino': { destinationDomain: 'exfil.attacker.example' },
+      'otro proceso padre': { parentImage: 'C:\\Windows\\System32\\cmd.exe' },
+    } satisfies Record<string, Partial<ObservablesInput>>;
+    for (const [label, overrides] of Object.entries(attacks)) {
+      // El atacante elige su propio nombre temporal: normaliza igual que el legítimo…
+      const attack = computeFingerprint(withTemp('C:\\Windows\\Temp\\tmp9e1d.ps1', overrides));
+      expect(attack.components.commandLine, label).toBe(legit.components.commandLine);
+      // …pero hash, destino y padre siguen en la huella: no colisiona.
+      expect(attack.fingerprint, label).not.toBe(legit.fingerprint);
+      expect(differingComponents(legit.components, attack.components).length, label).toBe(1);
+    }
+  });
+
+  it('un script con nombre con significado distinto en el temporal no se fusiona', () => {
+    const backup = computeFingerprint(withTemp('C:\\Windows\\Temp\\tmpbackup.ps1'));
+    const cache = computeFingerprint(withTemp('C:\\Windows\\Temp\\tmpcache.ps1'));
+    expect(backup.fingerprint).not.toBe(cache.fingerprint);
   });
 });

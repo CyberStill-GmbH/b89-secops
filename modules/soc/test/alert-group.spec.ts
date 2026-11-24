@@ -230,6 +230,35 @@ describe('Aprendizaje SOC · etapa C · agrupación al ingerir', () => {
     expect(groups.map((group) => group.status).sort()).toEqual(['closed', 'open']);
   });
 
+  it('despliegue del normalizador v2: el mismo comportamiento abre un grupo nuevo; el v1 queda intacto', async () => {
+    // Antes del despliegue: grupo abierto con huella v1. Después: el mismo comportamiento produce
+    // otra huella (la versión del normalizador entra en el hash) y por tanto otro grupo. Reparto
+    // aceptado y explícito: no se migra ni se reescribe nada v1 (las huellas son inmutables).
+    const soc = new InMemorySoc();
+    const deps = dependencies(soc);
+    const v1 = { ...FINGERPRINT, fingerprint: `fp1_${'1'.repeat(64)}`, normalizerVersion: '1' };
+    const v2 = { ...FINGERPRINT, fingerprint: `fp1_${'2'.repeat(64)}`, normalizerVersion: '2' };
+    await ingestCandidate(deps, candidate(1, 0, { fingerprint: v1 }));
+    await ingestCandidate(deps, candidate(2, 1, { fingerprint: v1 }));
+    const before = [...soc.groupRows.values()];
+    expect(before).toHaveLength(1);
+
+    await ingestCandidate(deps, candidate(3, 2, { fingerprint: v2 }));
+    const groups = [...soc.groupRows.values()];
+    const old = groups.find((group) => group.fingerprint === v1.fingerprint)!;
+    const fresh = groups.find((group) => group.fingerprint === v2.fingerprint)!;
+    expect(groups).toHaveLength(2);
+    // El grupo v1 no se toca: mismo contador, misma revisión, sigue abierto hasta que una alerta
+    // v1 llegue fuera de ventana (no llegará) — ver docs/soc-learning/15-normalizador-v2.md.
+    expect(old).toEqual(before[0]);
+    expect(fresh).toMatchObject({ status: 'open', alertCount: 1 });
+    expect([...soc.fingerprintRows.values()].map((row) => row.normalizerVersion).sort()).toEqual([
+      '1',
+      '1',
+      '2',
+    ]);
+  });
+
   it('sin política o sin huella no se agrupa', async () => {
     const off = new InMemorySoc();
     await ingestCandidate(dependencies(off, false), candidate(1, 0));

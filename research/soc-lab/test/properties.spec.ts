@@ -110,8 +110,8 @@ describe('Huella real del repo (solo lectura)', () => {
         );
       }
     }
-    // Invariante verdadero. FALLA hoy por un defecto de normalización (archivos temporales con
-    // nombre solo de letras hex, p. ej. `tmpcbbf.ps1`, no se normalizan). Ver RESULTS.md.
+    // Regresión: fallaba 45/1000 con el normalizador v1 (temporales con nombre solo de letras hex,
+    // p. ej. `tmpcbbf.ps1`). Verde desde el normalizador v2 (docs/soc-learning/15-normalizador-v2.md).
     expect(mismatches.slice(0, 3), `${mismatches.length} de 1000 pares difieren`).toEqual([]);
   });
 
