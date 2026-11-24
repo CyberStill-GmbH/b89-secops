@@ -61,6 +61,7 @@ BEGIN
 END $$;
 
 -- Etapas E y D (si existen)
+ALTER TABLE soc_alerts DROP CONSTRAINT IF EXISTS soc_alerts_learning_engine_p4;
 DROP TABLE IF EXISTS soc_learning_reversals;
 DROP TABLE IF EXISTS soc_learning_reviews;
 DROP FUNCTION IF EXISTS soc_learning_reviews_guard();
@@ -96,7 +97,8 @@ DELETE FROM _prisma_migrations
     '20261124130000_soc_learning_fingerprint',
     '20261124140000_soc_learning_alert_groups',
     '20261124150000_soc_learning_patterns',
-    '20261124160000_soc_learning_engine'
+    '20261124160000_soc_learning_engine',
+    '20261124161000_soc_learning_engine_guards'
  );
 
 COMMIT;
