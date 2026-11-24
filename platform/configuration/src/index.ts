@@ -23,6 +23,7 @@ export {
   loadSocClosurePolicy,
   loadSocGrouping,
   loadSocLearningApprovers,
+  loadLearningEngine,
   loadSocPersistenceConfig,
   loadLocalWorkerConfig,
   loadRuntimeConfig,
@@ -83,6 +84,8 @@ export type {
   SocClosurePolicyConfig,
   SocGroupingConfig,
   SocLearningApproversConfig,
+  LearningEngineConfig,
+  LearningEngineMode,
 } from './schema/index.js';
 export { CONFIGURATION_PROFILES } from './profiles/index.js';
 export { redactSecrets } from './redaction/index.js';

@@ -19,6 +19,8 @@ import {
   parseSocClosurePolicy,
   parseSocGrouping,
   parseSocLearningApprovers,
+  parseLearningEngine,
+  type LearningEngineConfig,
   type SocClosurePolicyConfig,
   type SocGroupingConfig,
   type SocLearningApproversConfig,
@@ -199,6 +201,12 @@ export function loadSocLearningApprovers(
 ): SocLearningApproversConfig {
   const profile = profileFrom(environment);
   return deepFreeze(parseSocLearningApprovers(environment, profile));
+}
+
+/** Aprendizaje SOC · etapa E — motor de decisión (apagado por defecto). */
+export function loadLearningEngine(environment: EnvironmentInput): LearningEngineConfig {
+  const profile = profileFrom(environment);
+  return deepFreeze(parseLearningEngine(environment, profile));
 }
 
 /** Sprint 5 · fase 0 — fuente de ingesta del SOC; `disabled` si el ambiente no la declara. */
