@@ -707,6 +707,397 @@
       ]
     },
     {
+      "endpoint": "/api/learning/readiness",
+      "method": "GET",
+      "timeout": "{{ env "GATEWAY_ENDPOINT_TIMEOUT" }}",
+      "output_encoding": "no-op",
+      "input_headers": [
+        "Accept",
+        "Content-Type",
+        "Cookie",
+        "Origin",
+        "X-Correlation-Id",
+        "X-Csrf-Token"
+      ],
+      "input_query_strings": [],
+      "backend": [
+        {
+          "host": [
+            "{{ env "B89_API_UPSTREAM" }}"
+          ],
+          "url_pattern": "/api/learning/readiness",
+          "encoding": "no-op",
+          "method": "GET",
+          "extra_config": {
+            "qos/circuit-breaker": {
+              "interval": 10,
+              "timeout": 5,
+              "max_errors": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "endpoint": "/api/learning/patterns",
+      "method": "GET",
+      "timeout": "{{ env "GATEWAY_ENDPOINT_TIMEOUT" }}",
+      "output_encoding": "no-op",
+      "input_headers": [
+        "Accept",
+        "Content-Type",
+        "Cookie",
+        "Origin",
+        "X-Correlation-Id",
+        "X-Csrf-Token"
+      ],
+      "input_query_strings": [
+        "status"
+      ],
+      "backend": [
+        {
+          "host": [
+            "{{ env "B89_API_UPSTREAM" }}"
+          ],
+          "url_pattern": "/api/learning/patterns",
+          "encoding": "no-op",
+          "method": "GET",
+          "extra_config": {
+            "qos/circuit-breaker": {
+              "interval": 10,
+              "timeout": 5,
+              "max_errors": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "endpoint": "/api/learning/patterns/{id}",
+      "method": "GET",
+      "timeout": "{{ env "GATEWAY_ENDPOINT_TIMEOUT" }}",
+      "output_encoding": "no-op",
+      "input_headers": [
+        "Accept",
+        "Content-Type",
+        "Cookie",
+        "Origin",
+        "X-Correlation-Id",
+        "X-Csrf-Token"
+      ],
+      "input_query_strings": [],
+      "backend": [
+        {
+          "host": [
+            "{{ env "B89_API_UPSTREAM" }}"
+          ],
+          "url_pattern": "/api/learning/patterns/{id}",
+          "encoding": "no-op",
+          "method": "GET",
+          "extra_config": {
+            "qos/circuit-breaker": {
+              "interval": 10,
+              "timeout": 5,
+              "max_errors": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "endpoint": "/api/learning/patterns/{id}/approve",
+      "method": "POST",
+      "timeout": "{{ env "GATEWAY_ENDPOINT_TIMEOUT" }}",
+      "output_encoding": "no-op",
+      "input_headers": [
+        "Accept",
+        "Content-Type",
+        "Cookie",
+        "Origin",
+        "X-Correlation-Id",
+        "X-Csrf-Token"
+      ],
+      "input_query_strings": [],
+      "backend": [
+        {
+          "host": [
+            "{{ env "B89_API_UPSTREAM" }}"
+          ],
+          "url_pattern": "/api/learning/patterns/{id}/approve",
+          "encoding": "no-op",
+          "method": "POST",
+          "extra_config": {
+            "qos/circuit-breaker": {
+              "interval": 10,
+              "timeout": 5,
+              "max_errors": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "endpoint": "/api/learning/patterns/{id}/reject",
+      "method": "POST",
+      "timeout": "{{ env "GATEWAY_ENDPOINT_TIMEOUT" }}",
+      "output_encoding": "no-op",
+      "input_headers": [
+        "Accept",
+        "Content-Type",
+        "Cookie",
+        "Origin",
+        "X-Correlation-Id",
+        "X-Csrf-Token"
+      ],
+      "input_query_strings": [],
+      "backend": [
+        {
+          "host": [
+            "{{ env "B89_API_UPSTREAM" }}"
+          ],
+          "url_pattern": "/api/learning/patterns/{id}/reject",
+          "encoding": "no-op",
+          "method": "POST",
+          "extra_config": {
+            "qos/circuit-breaker": {
+              "interval": 10,
+              "timeout": 5,
+              "max_errors": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "endpoint": "/api/learning/patterns/{id}/revoke",
+      "method": "POST",
+      "timeout": "{{ env "GATEWAY_ENDPOINT_TIMEOUT" }}",
+      "output_encoding": "no-op",
+      "input_headers": [
+        "Accept",
+        "Content-Type",
+        "Cookie",
+        "Origin",
+        "X-Correlation-Id",
+        "X-Csrf-Token"
+      ],
+      "input_query_strings": [],
+      "backend": [
+        {
+          "host": [
+            "{{ env "B89_API_UPSTREAM" }}"
+          ],
+          "url_pattern": "/api/learning/patterns/{id}/revoke",
+          "encoding": "no-op",
+          "method": "POST",
+          "extra_config": {
+            "qos/circuit-breaker": {
+              "interval": 10,
+              "timeout": 5,
+              "max_errors": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "endpoint": "/api/learning/patterns/{id}/resume",
+      "method": "POST",
+      "timeout": "{{ env "GATEWAY_ENDPOINT_TIMEOUT" }}",
+      "output_encoding": "no-op",
+      "input_headers": [
+        "Accept",
+        "Content-Type",
+        "Cookie",
+        "Origin",
+        "X-Correlation-Id",
+        "X-Csrf-Token"
+      ],
+      "input_query_strings": [],
+      "backend": [
+        {
+          "host": [
+            "{{ env "B89_API_UPSTREAM" }}"
+          ],
+          "url_pattern": "/api/learning/patterns/{id}/resume",
+          "encoding": "no-op",
+          "method": "POST",
+          "extra_config": {
+            "qos/circuit-breaker": {
+              "interval": 10,
+              "timeout": 5,
+              "max_errors": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "endpoint": "/api/learning/patterns/{id}/renew",
+      "method": "POST",
+      "timeout": "{{ env "GATEWAY_ENDPOINT_TIMEOUT" }}",
+      "output_encoding": "no-op",
+      "input_headers": [
+        "Accept",
+        "Content-Type",
+        "Cookie",
+        "Origin",
+        "X-Correlation-Id",
+        "X-Csrf-Token"
+      ],
+      "input_query_strings": [],
+      "backend": [
+        {
+          "host": [
+            "{{ env "B89_API_UPSTREAM" }}"
+          ],
+          "url_pattern": "/api/learning/patterns/{id}/renew",
+          "encoding": "no-op",
+          "method": "POST",
+          "extra_config": {
+            "qos/circuit-breaker": {
+              "interval": 10,
+              "timeout": 5,
+              "max_errors": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "endpoint": "/api/learning/decisions",
+      "method": "GET",
+      "timeout": "{{ env "GATEWAY_ENDPOINT_TIMEOUT" }}",
+      "output_encoding": "no-op",
+      "input_headers": [
+        "Accept",
+        "Content-Type",
+        "Cookie",
+        "Origin",
+        "X-Correlation-Id",
+        "X-Csrf-Token"
+      ],
+      "input_query_strings": [
+        "alertId",
+        "patternId"
+      ],
+      "backend": [
+        {
+          "host": [
+            "{{ env "B89_API_UPSTREAM" }}"
+          ],
+          "url_pattern": "/api/learning/decisions",
+          "encoding": "no-op",
+          "method": "GET",
+          "extra_config": {
+            "qos/circuit-breaker": {
+              "interval": 10,
+              "timeout": 5,
+              "max_errors": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "endpoint": "/api/learning/decisions/{id}/revert",
+      "method": "POST",
+      "timeout": "{{ env "GATEWAY_ENDPOINT_TIMEOUT" }}",
+      "output_encoding": "no-op",
+      "input_headers": [
+        "Accept",
+        "Content-Type",
+        "Cookie",
+        "Origin",
+        "X-Correlation-Id",
+        "X-Csrf-Token"
+      ],
+      "input_query_strings": [],
+      "backend": [
+        {
+          "host": [
+            "{{ env "B89_API_UPSTREAM" }}"
+          ],
+          "url_pattern": "/api/learning/decisions/{id}/revert",
+          "encoding": "no-op",
+          "method": "POST",
+          "extra_config": {
+            "qos/circuit-breaker": {
+              "interval": 10,
+              "timeout": 5,
+              "max_errors": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "endpoint": "/api/learning/reviews",
+      "method": "GET",
+      "timeout": "{{ env "GATEWAY_ENDPOINT_TIMEOUT" }}",
+      "output_encoding": "no-op",
+      "input_headers": [
+        "Accept",
+        "Content-Type",
+        "Cookie",
+        "Origin",
+        "X-Correlation-Id",
+        "X-Csrf-Token"
+      ],
+      "input_query_strings": [
+        "status"
+      ],
+      "backend": [
+        {
+          "host": [
+            "{{ env "B89_API_UPSTREAM" }}"
+          ],
+          "url_pattern": "/api/learning/reviews",
+          "encoding": "no-op",
+          "method": "GET",
+          "extra_config": {
+            "qos/circuit-breaker": {
+              "interval": 10,
+              "timeout": 5,
+              "max_errors": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "endpoint": "/api/learning/reviews/{id}/resolve",
+      "method": "POST",
+      "timeout": "{{ env "GATEWAY_ENDPOINT_TIMEOUT" }}",
+      "output_encoding": "no-op",
+      "input_headers": [
+        "Accept",
+        "Content-Type",
+        "Cookie",
+        "Origin",
+        "X-Correlation-Id",
+        "X-Csrf-Token"
+      ],
+      "input_query_strings": [],
+      "backend": [
+        {
+          "host": [
+            "{{ env "B89_API_UPSTREAM" }}"
+          ],
+          "url_pattern": "/api/learning/reviews/{id}/resolve",
+          "encoding": "no-op",
+          "method": "POST",
+          "extra_config": {
+            "qos/circuit-breaker": {
+              "interval": 10,
+              "timeout": 5,
+              "max_errors": 3
+            }
+          }
+        }
+      ]
+    },
+    {
       "endpoint": "/api/incidents",
       "method": "GET",
       "timeout": "{{ env "GATEWAY_ENDPOINT_TIMEOUT" }}",

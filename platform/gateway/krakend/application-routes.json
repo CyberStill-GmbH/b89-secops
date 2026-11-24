@@ -173,6 +173,114 @@
       "owner": "application-platform"
     },
     {
+      "path": "/api/learning/readiness",
+      "method": "GET",
+      "upstream": "/api/learning/readiness",
+      "query_parameters": [],
+      "auth": "api-session",
+      "encoding": "no-op",
+      "owner": "application-platform"
+    },
+    {
+      "path": "/api/learning/patterns",
+      "method": "GET",
+      "upstream": "/api/learning/patterns",
+      "query_parameters": ["status"],
+      "auth": "api-session",
+      "encoding": "no-op",
+      "owner": "application-platform"
+    },
+    {
+      "path": "/api/learning/patterns/{id}",
+      "method": "GET",
+      "upstream": "/api/learning/patterns/{id}",
+      "query_parameters": [],
+      "auth": "api-session",
+      "encoding": "no-op",
+      "owner": "application-platform"
+    },
+    {
+      "path": "/api/learning/patterns/{id}/approve",
+      "method": "POST",
+      "upstream": "/api/learning/patterns/{id}/approve",
+      "query_parameters": [],
+      "auth": "api-session",
+      "encoding": "no-op",
+      "owner": "application-platform"
+    },
+    {
+      "path": "/api/learning/patterns/{id}/reject",
+      "method": "POST",
+      "upstream": "/api/learning/patterns/{id}/reject",
+      "query_parameters": [],
+      "auth": "api-session",
+      "encoding": "no-op",
+      "owner": "application-platform"
+    },
+    {
+      "path": "/api/learning/patterns/{id}/revoke",
+      "method": "POST",
+      "upstream": "/api/learning/patterns/{id}/revoke",
+      "query_parameters": [],
+      "auth": "api-session",
+      "encoding": "no-op",
+      "owner": "application-platform"
+    },
+    {
+      "path": "/api/learning/patterns/{id}/resume",
+      "method": "POST",
+      "upstream": "/api/learning/patterns/{id}/resume",
+      "query_parameters": [],
+      "auth": "api-session",
+      "encoding": "no-op",
+      "owner": "application-platform"
+    },
+    {
+      "path": "/api/learning/patterns/{id}/renew",
+      "method": "POST",
+      "upstream": "/api/learning/patterns/{id}/renew",
+      "query_parameters": [],
+      "auth": "api-session",
+      "encoding": "no-op",
+      "owner": "application-platform"
+    },
+    {
+      "path": "/api/learning/decisions",
+      "method": "GET",
+      "upstream": "/api/learning/decisions",
+      "query_parameters": ["alertId", "patternId"],
+      "auth": "api-session",
+      "encoding": "no-op",
+      "owner": "application-platform"
+    },
+    {
+      "path": "/api/learning/decisions/{id}/revert",
+      "method": "POST",
+      "upstream": "/api/learning/decisions/{id}/revert",
+      "query_parameters": [],
+      "auth": "api-session",
+      "encoding": "no-op",
+      "owner": "application-platform"
+    },
+    {
+      "path": "/api/learning/reviews",
+      "method": "GET",
+      "upstream": "/api/learning/reviews",
+      "query_parameters": ["status"],
+      "auth": "api-session",
+      "encoding": "no-op",
+      "owner": "application-platform"
+    },
+    {
+      "path": "/api/learning/reviews/{id}/resolve",
+      "method": "POST",
+      "upstream": "/api/learning/reviews/{id}/resolve",
+      "query_parameters": [],
+      "auth": "api-session",
+      "encoding": "no-op",
+      "owner": "application-platform"
+    },
+    {
       "path": "/api/incidents",
       "method": "GET",
       "upstream": "/api/incidents",
