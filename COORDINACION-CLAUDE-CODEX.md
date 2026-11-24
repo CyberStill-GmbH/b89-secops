@@ -761,3 +761,24 @@ cuando Codex confirme el diseño de pantalla (son `/api/alerts/...` para no toca
 **Verificación:** ver la tabla final del reporte al dueño. Lo de PostgreSQL real (migraciones, concurrencia de
 50 ingestas, rollback) queda **NO VERIFICADO** hasta que corra el job `soc-learning-postgres` en CI; en local
 se verificó parcialmente con PGlite (PG 17 WASM): 38 migraciones, 12/12 comprobaciones.
+
+## Etapa D — patrones de FP (Claude, 2026-11-24)
+
+Commits `fb759e0` `2d5ef89` `c45d44d` `7352cdc`. Regla de aprobación: **A / A+B del diseño original**
+(elegida por el dueño; contradice el «dos aprobadores siempre» del 01-diseno editado por otra sesión).
+
+- **La etapa D no activa patrones por sí misma.** Un patrón `approved` pasa a `active` solo si las
+  compuertas de preparación no bloquean; un `active` se pausa si alguna retrocede (fail-closed).
+  Compuertas = precondiciones comprobables en ejecución: `CLOSURE_REASON_NOT_REQUIRED` (3),
+  `APPROVERS_NOT_CONFIGURED` (7, <2 personas en `B89_SOC_LEARNING_APPROVERS`), `BACKFILL_PENDING` (2),
+  `SOURCE_COVERAGE_UNMEASURED/BELOW_THRESHOLD` (4, <100 huellas o <50 % finas por fuente),
+  `RULE_ID_COLLISION` (8, lista única `COLLIDING_RULE_IDS` en `@b89/detection`), `NORMALIZER_OUTDATED`.
+- **Fuera de las compuertas (checklist de despliegue, no de código):** 1 CI verde (rama sin push),
+  5 mejoras del extractor, 6 diseño commiteado.
+- Un patrón `active` **no tiene efecto** hasta el motor (etapa E). Aún no hay endpoints ni tarea que
+  llame a `refreshLearningPatterns`: pendiente de diseño de pantalla (Codex) y de decidir el disparador.
+- Sin reanudación automática: un patrón `paused` solo sale por revocación (y luego vuelve a proponerse).
+  Renovación (90 días) definida en el dominio, sin flujo todavía.
+- **Verificación:** unitarias en memoria (`modules/soc/test/learning-patterns.spec.ts`); migración y
+  consulta de evidencia con PGlite (PG 17 WASM): 39 migraciones, 11/11. Las rutas Prisma del store
+  (`createMany` con arreglos, CAS con `updateMany`) y la concurrencia: **NO VERIFICADO** sin PostgreSQL real.
