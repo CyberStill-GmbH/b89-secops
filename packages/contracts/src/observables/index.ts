@@ -17,7 +17,16 @@
 
 export const OBSERVABLES_EXTENSION_NAMESPACE = 'b89.observables' as const;
 export const OBSERVABLES_SCHEMA_VERSION = 1 as const;
-export const OBSERVABLES_NORMALIZER_VERSION = '1' as const;
+/**
+ * Historial:
+ * - `1`: primera versión.
+ * - `2`: temporales normalizados por UBICACIÓN y por segmento (carpetas y archivo bajo el
+ *   directorio temporal), conservando extensión y clase de prefijo. v1 solo reemplazaba tramos hex
+ *   con algún dígito: `tmpcbbf`, `GetRandomFileName` y `mktemp` producían huellas distintas para
+ *   el mismo comportamiento, y `.ps1` se convertía en `.ps{N}`.
+ * La versión entra en la huella: una huella v1 y una v2 del mismo evento nunca son iguales.
+ */
+export const OBSERVABLES_NORMALIZER_VERSION = '2' as const;
 
 export const OBSERVABLES_LIMITS = Object.freeze({
   pathMaximum: 512,
@@ -156,25 +165,137 @@ function replaceVariables(value: string): string {
 }
 
 const WINDOWS_HOME = /\b[a-z]:\\users\\[^\\\s"']+\\/giu;
+/**
+ * Directorios temporales (la ubicación decide, no la forma del nombre). Capturan TODOS los
+ * segmentos que cuelgan del directorio, no solo el primero (v1 solo normalizaba el primero).
+ */
 const WINDOWS_TEMP =
-  /(?:\{HOME\}\\appdata\\local\\temp|%temp%|%tmp%|\b[a-z]:\\windows\\temp)(\\[^\\\s"']*)?/giu;
+  /(?:\{HOME\}\\appdata\\local\\temp|%temp%|%tmp%|\b[a-z]:\\windows\\temp)((?:\\[^\\\s"']+)*)/giu;
 const UNIX_HOME = /(^|[\s"'=])\/home\/[^/\s"']+\//gu;
-const UNIX_TEMP = /(^|[\s"'=])\/(?:tmp|var\/tmp|dev\/shm)(\/[^/\s"']*)?/gu;
+const UNIX_TEMP = /(^|[\s"'=])\/(?:tmp|var\/tmp|dev\/shm)((?:\/[^/\s"']+)*)/gu;
 
-/** Dígitos del nombre de un archivo temporal: `tmp8F3A1.tmp` y `tmp9B2C7.tmp` son el mismo. */
-function tempLeaf(leaf: string | undefined, separator: string): string {
-  if (!leaf || leaf.length <= 1) return '';
-  return `${separator}${leaf.slice(1).replace(/[0-9a-f]*\d[0-9a-f]*/giu, '{N}')}`;
+/**
+ * Prefijos de generadores conocidos de temporales (se comparan sin mayúsculas). Se conserva la
+ * «clase de prefijo» (`tmp`, `~df`, `_mei`…) y se reemplaza solo la parte aleatoria que sigue.
+ */
+const TEMP_PREFIXES = [
+  'jar_cache',
+  'scoped_dir',
+  'tmp.',
+  'temp',
+  'pyi-',
+  '_mei',
+  '~wrs',
+  '~wrd',
+  '~df',
+  'is-',
+  'msi',
+  'nsu',
+  'nsx',
+  'wct',
+  'tmp',
+] as const;
+
+/**
+ * Prefijos cuya plantilla SIEMPRE va seguida de caracteres aleatorios (`mktemp` → `tmp.XXXXXXXXXX`,
+ * PyInstaller `_MEIxxxxx`, Inno Setup `is-XXXXX`, Chrome `scoped_dir…`). Tras ellos, cualquier
+ * resto alfanumérico de ≥ 4 caracteres es aleatorio, aunque solo tenga letras.
+ */
+const RANDOM_SUFFIX_PREFIXES = new Set(['tmp.', '_mei', 'pyi-', 'is-', 'scoped_dir', 'jar_cache']);
+
+/** Extensiones con dígitos que tienen significado y se conservan tal cual. */
+const DIGIT_EXTENSIONS = new Set([
+  'ps1',
+  'psm1',
+  'psd1',
+  'mp3',
+  'mp4',
+  'm4a',
+  '7z',
+  'bz2',
+  'p7b',
+  'p12',
+]);
+
+const ANY_PLACEHOLDER = /^\{[A-Za-z0-9:]+\}$/u;
+
+/**
+ * ¿Parece la parte aleatoria de un generador? Reglas, en orden:
+ * - hex puro de ≥ 3 (`cbbf`, `4F2A`): `GetTempFileName` usa 4 hex;
+ * - palabra + número corto (`backup2`, `cache10`): NO, es un nombre con significado;
+ * - letras y dígitos mezclados (`xkq3z1ab`): `GetRandomFileName`, `mktemp`;
+ * - mayúsculas y minúsculas alternadas con alguna minúscula aislada (`aBcDeF`): `mktemp`. Un
+ *   nombre CamelCase (`BackupLog`) tiene tramos en minúscula de ≥ 2 y se conserva.
+ * Límite conocido: un nombre aleatorio solo de letras minúsculas no hex (p. ej. `xkqzabcd`,
+ * ~19 % de los de `GetRandomFileName`) no se distingue de una palabra y se conserva.
+ */
+export function isRandomTempToken(token: string): boolean {
+  const value = token.replace(/^[._-]+|[._-]+$/gu, '');
+  if (value.length < 3 || ANY_PLACEHOLDER.test(value)) return false;
+  if (/^[0-9a-f]+$/iu.test(value)) return true;
+  if (/^[a-z]{3,}\d{1,2}$/iu.test(value)) return false;
+  if (/\d/u.test(value) && /[a-z]/iu.test(value) && /^[a-z0-9._-]+$/iu.test(value)) return true;
+  return (
+    value.length >= 5 &&
+    /[a-z]/u.test(value) &&
+    /[A-Z]/u.test(value) &&
+    /^[a-z]+$/iu.test(value) &&
+    /(?:^|[A-Z])[a-z](?=[A-Z]|$)/u.test(value)
+  );
+}
+
+/** Nombre sin extensión: conserva la clase de prefijo y reemplaza la parte aleatoria por `{N}`. */
+function normalizeTempStem(stem: string): string {
+  const lower = stem.toLowerCase();
+  for (const prefix of TEMP_PREFIXES) {
+    if (lower.startsWith(prefix) && stem.length > prefix.length) {
+      const rest = stem.slice(prefix.length);
+      const guaranteed = RANDOM_SUFFIX_PREFIXES.has(prefix) && /^[a-z0-9_-]{4,}$/iu.test(rest);
+      // `tmpbackup` y `tmpcache` tienen significado: no se fusionan.
+      return guaranteed || isRandomTempToken(rest) ? `${prefix}{N}` : stem;
+    }
+  }
+  if (isRandomTempToken(stem)) return '{N}';
+  // Prefijo propio + parte aleatoria (`setup3f9a2` → `setup{N}`).
+  const split = /^([a-z]{3,})(.+)$/iu.exec(stem);
+  if (split && isRandomTempToken(split[2]!)) return `${split[1]!.toLowerCase()}{N}`;
+  return stem;
+}
+
+/** Último segmento (archivo): la extensión se conserva (`.ps1` ≠ `.exe`) salvo si es aleatoria. */
+function normalizeTempFile(name: string): string {
+  const dot = name.lastIndexOf('.');
+  const extension = dot > 0 ? name.slice(dot + 1) : '';
+  if (!/^[a-z0-9]{1,8}$/iu.test(extension)) return normalizeTempStem(name);
+  const stem = name.slice(0, dot);
+  const keep = /^[a-z]+$/iu.test(extension) || DIGIT_EXTENSIONS.has(extension.toLowerCase());
+  return `${normalizeTempStem(stem)}.${keep ? extension : '{N}'}`;
+}
+
+/** Segmentos bajo un directorio temporal: carpetas aleatorias → `{N}`; el archivo, por partes. */
+function normalizeTempTail(tail: string | undefined, separator: string): string {
+  if (!tail) return '';
+  const segments = tail.split(separator).filter((segment) => segment.length > 0);
+  return segments
+    .map((segment, index) =>
+      index === segments.length - 1 ? normalizeTempFile(segment) : normalizeTempStem(segment),
+    )
+    .map((segment) => `${separator}${segment}`)
+    .join('');
 }
 
 function replacePaths(value: string): string {
   return value
     .replace(WINDOWS_HOME, '{HOME}\\')
-    .replace(WINDOWS_TEMP, (_match, leaf: string | undefined) => `{TMP}${tempLeaf(leaf, '\\')}`)
+    .replace(
+      WINDOWS_TEMP,
+      (_match, tail: string | undefined) => `{TMP}${normalizeTempTail(tail, '\\')}`,
+    )
     .replace(UNIX_HOME, '$1{HOME}/')
     .replace(
       UNIX_TEMP,
-      (_match, lead: string, leaf: string | undefined) => `${lead}{TMP}${tempLeaf(leaf, '/')}`,
+      (_match, lead: string, tail: string | undefined) =>
+        `${lead}{TMP}${normalizeTempTail(tail, '/')}`,
     );
 }
 

@@ -137,7 +137,7 @@ describe('mapping 1.4.0 · extensión b89.observables', () => {
     // Queda solo MITRE de la regla.
     expect(observables).toEqual({
       v: 1,
-      normalizer: '1',
+      normalizer: '2',
       agentId: '017',
       mitre: { techniques: ['T1059.001'], tactics: ['execution'] },
     });

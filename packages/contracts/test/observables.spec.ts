@@ -4,11 +4,13 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildObservables,
+  isRandomTempToken,
   normalizeCommandLine,
   normalizeDomain,
   normalizePath,
   normalizePort,
   OBSERVABLES_EXTENSION_NAMESPACE,
+  OBSERVABLES_NORMALIZER_VERSION,
   readObservables,
   redactSecrets,
   sha256FromHashes,
@@ -130,5 +132,102 @@ describe('b89.observables · extensión', () => {
     expect(read).toEqual(built);
     expect(readObservables({ [OBSERVABLES_EXTENSION_NAMESPACE]: { v: 2 } }, sha)).toBeUndefined();
     expect(readObservables(undefined, sha)).toBeUndefined();
+  });
+});
+
+describe('b89.observables · normalizador v2 de temporales (por ubicación)', () => {
+  it('la versión del normalizador es 2', () => {
+    expect(OBSERVABLES_NORMALIZER_VERSION).toBe('2');
+  });
+
+  describe('(a) mismo comportamiento, nombres aleatorios distintos ⇒ mismo valor', () => {
+    it.each([
+      [
+        'GetTempFileName: hex sin dígitos, con dígitos y en mayúsculas',
+        [
+          'C:\\Users\\ana\\AppData\\Local\\Temp\\tmpcbbf.ps1',
+          'C:\\Users\\luis\\AppData\\Local\\Temp\\tmp4F2A.ps1',
+          'c:\\users\\ana\\appdata\\local\\temp\\TMPCBBF.PS1',
+        ],
+      ],
+      [
+        'GetRandomFileName alfanumérico',
+        [
+          'C:\\Windows\\Temp\\xkq3z1ab.ps1',
+          'C:\\Windows\\Temp\\0a5bc2de.ps1',
+          'C:\\Windows\\Temp\\ab0cd1ef.ps1',
+        ],
+      ],
+      [
+        'mktemp con letras, dígitos y mayúsculas (incluso solo letras)',
+        ['/tmp/tmp.aBcD3fGh9K', '/tmp/tmp.ZZtopABCDE', '/tmp/tmp.q1w2e3r4t5'],
+      ],
+      [
+        'carpetas aleatorias anidadas bajo el temporal',
+        ['C:\\Windows\\Temp\\7zS3A1B\\setup.exe', 'C:\\Windows\\Temp\\7zS9F0C\\setup.exe'],
+      ],
+      ['/var/tmp y /dev/shm', ['/var/tmp/x9f3k2/run.sh', '/var/tmp/b8c2d0/run.sh']],
+    ])('%s', (_label, paths) => {
+      const normalized = paths.map((value) => path(value));
+      expect(new Set(normalized).size, normalized.join(' | ')).toBe(1);
+      expect(normalized[0]).toContain('{TMP}');
+    });
+
+    it('dentro de una línea de comando también', () => {
+      expect(cmd('powershell.exe -File C:\\Windows\\Temp\\tmpcbbf.ps1 -Job 7')).toBe(
+        cmd('POWERSHELL.EXE -File C:\\Windows\\Temp\\tmp4f2a.ps1 -Job 7'),
+      );
+    });
+  });
+
+  describe('(b) nombres con significado o fuera del temporal ⇒ NO se fusionan', () => {
+    it.each([
+      [
+        'palabras tras el prefijo',
+        'C:\\Windows\\Temp\\tmpbackup.ps1',
+        'C:\\Windows\\Temp\\tmpcache.ps1',
+      ],
+      ['palabra + número corto', '/tmp/backup2.sh', '/tmp/cache3.sh'],
+      ['CamelCase con significado', '/tmp/BackupLog.txt', '/tmp/RestoreLog.txt'],
+      [
+        'misma parte aleatoria, extensión distinta',
+        'C:\\Windows\\Temp\\tmpcbbf.ps1',
+        'C:\\Windows\\Temp\\tmpcbbf.exe',
+      ],
+      [
+        'fuera de un directorio temporal (Windows)',
+        'C:\\Scripts\\job4f2a.ps1',
+        'C:\\Scripts\\jobcbbf.ps1',
+      ],
+      ['fuera de un directorio temporal (Linux)', '/opt/app/run1x9.sh', '/opt/app/run2k8.sh'],
+      [
+        'prefijo de generador distinto',
+        'C:\\Windows\\Temp\\~DF3A1B.tmp',
+        'C:\\Windows\\Temp\\tmp3A1B.tmp',
+      ],
+    ])('%s', (_label, left, right) => {
+      expect(path(left)).not.toBe(path(right));
+    });
+
+    it('conserva la extensión y la clase de prefijo (v1 convertía .ps1 en .ps{N})', () => {
+      expect(path('C:\\Windows\\Temp\\tmpcbbf.ps1')).toBe('{TMP}\\tmp{N}.ps1');
+      expect(path('C:\\Windows\\Temp\\~DF3A1B.tmp')).toBe('{TMP}\\~df{N}.tmp');
+      expect(path('/tmp/_MEI12345/python3.dll')).toBe('{TMP}/_mei{N}/python3.dll');
+      expect(path('C:\\Scripts\\job4f2a.ps1')).toBe('c:\\scripts\\job4f2a.ps1');
+    });
+  });
+
+  it.each([
+    ['cbbf', true],
+    ['4F2A', true],
+    ['xkq3z1ab', true],
+    ['aBcDeF', true],
+    ['backup', false],
+    ['backup2', false],
+    ['BackupLog', false],
+    ['ab', false],
+    ['{GUID}', false],
+  ])('isRandomTempToken(%s) = %s', (token, expected) => {
+    expect(isRandomTempToken(token)).toBe(expected);
   });
 });
