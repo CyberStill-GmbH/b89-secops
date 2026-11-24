@@ -30,6 +30,34 @@ import {
 export const PROMOTION_OUTCOMES = ['promoted', 'duplicate', 'not_promoted'] as const;
 export type PromotionOutcomeCode = (typeof PROMOTION_OUTCOMES)[number];
 
+/**
+ * Aprendizaje SOC · etapa E — señales del evento que la alerta no conserva y que el motor necesita
+ * para sus guardas. No se persisten con el candidato: el motor corre justo después de la ingesta.
+ */
+export interface GuardSignals {
+  /** Severidad normalizada del evento. */
+  readonly severity: string;
+  /** Grupos de la regla normalizados (`lateral_movement` → `lateral-movement`): tácticas MITRE. */
+  readonly mitreTactics: readonly string[];
+  /** La regla pertenece a un grupo de inteligencia de amenazas (`b89-ti-*`). */
+  readonly threatIntelHit: boolean;
+}
+
+/** Señales de guarda de un evento (función pura). */
+export function guardSignalsOf(event: SecurityEvent): GuardSignals {
+  const groups = (event.detection?.rule.groups ?? []).map((group) =>
+    group
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_]+/gu, '-'),
+  );
+  return {
+    severity: event.severity.normalized,
+    mitreTactics: groups,
+    threatIntelHit: groups.some((group) => group.startsWith('b89-ti')),
+  };
+}
+
 export interface DetectionCandidate {
   readonly id: string;
   readonly tenantId: string;
@@ -60,6 +88,8 @@ export interface DetectionCandidate {
    * nacen de un SecurityEvent (p. ej. el correlador) o anteriores a la etapa B.
    */
   readonly fingerprint?: AlertFingerprint;
+  /** Aprendizaje SOC · etapa E: señales para las guardas del motor. */
+  readonly guardSignals?: GuardSignals;
 }
 
 export type PromotionDecision =
@@ -167,6 +197,7 @@ export function decidePromotion(
       ruleId: event.detection?.rule.id ?? null,
       relatedAlertIds: context.correlation?.relatedAlertIds ?? [],
       fingerprint: computeFingerprint(event),
+      guardSignals: guardSignalsOf(event),
     },
   };
 }

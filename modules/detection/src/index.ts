@@ -16,9 +16,11 @@ export {
 export {
   candidateId,
   decidePromotion,
+  guardSignalsOf,
   PROMOTION_OUTCOMES,
   promotionKey,
   type DetectionCandidate,
+  type GuardSignals,
   type PromotionDecision,
   type PromotionOptions,
   type PromotionOutcomeCode,
