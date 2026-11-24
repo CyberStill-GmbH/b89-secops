@@ -730,6 +730,29 @@ export class InMemorySoc implements SocPersistence {
     return Promise.resolve({ items: items.slice(0, query.limit), total: items.length });
   }
 
+  public learningShadowRows(tenantId: string, from: Date, to: Date) {
+    return Promise.resolve(
+      [...this.decisionRows.values()]
+        .filter((row) => row.tenantId === tenantId && row.at >= from && row.at < to)
+        .map((row) => {
+          const alert = this.alertRows.get(`${tenantId}|${row.alertId}`);
+          return {
+            ruleKey: row.ruleKey,
+            patternId: row.patternId,
+            mode: row.mode,
+            proposedAction: row.proposedAction,
+            appliedAction: row.appliedAction,
+            escalateReason: row.escalateReason,
+            alertStatus: alert?.status ?? 'unknown',
+            closureOrigin: alert?.closureOrigin ?? null,
+            closureReason: alert?.closureReason ?? null,
+            verdict: alert?.verdict ?? null,
+            incidentLinked: (alert?.incidentId ?? null) !== null,
+          };
+        }),
+    );
+  }
+
   /** Mismo cálculo que `PrismaSocQueries.learningHealthCounts`. */
   public learningHealthCounts(tenantId: string, now: Date): Promise<LearningHealthCounts> {
     const hourAgo = now.getTime() - 60 * 60 * 1000;

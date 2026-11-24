@@ -11,6 +11,7 @@ import { Body, Controller, Get, Inject, Param, Post, Query, Req } from '@nestjs/
 
 import {
   approveLearningPattern,
+  buildShadowReport,
   LEARNING_REVIEW_STATUSES,
   PATTERN_STATUSES,
   rejectLearningPattern,
@@ -175,6 +176,19 @@ export class LearningController {
         },
       },
     };
+  }
+
+  /** Informe de sombra por regla y patrón (`period=daily|weekly`). Sin PII. */
+  @Get('learning/shadow-report')
+  public async shadowReport(@Req() request: IncomingRequest, @Query('period') period?: string) {
+    const { actor, correlationId } = await this.reader(request);
+    if (period !== undefined && period !== 'daily' && period !== 'weekly') {
+      throw new ApiError('VALIDATION_FAILED', correlationId, ['period']);
+    }
+    const to = this.runtime.now();
+    const from = new Date(to.getTime() - (period === 'weekly' ? 7 : 1) * 24 * 60 * 60 * 1000);
+    const rows = (await this.runtime.soc.learningShadowRows?.(actor.tenantId, from, to)) ?? [];
+    return { correlationId, report: buildShadowReport(rows, { from, to }) };
   }
 
   @Get('learning/patterns')

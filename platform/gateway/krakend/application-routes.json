@@ -182,6 +182,15 @@
       "owner": "application-platform"
     },
     {
+      "path": "/api/learning/shadow-report",
+      "method": "GET",
+      "upstream": "/api/learning/shadow-report",
+      "query_parameters": ["period"],
+      "auth": "api-session",
+      "encoding": "no-op",
+      "owner": "application-platform"
+    },
+    {
       "path": "/api/learning/readiness",
       "method": "GET",
       "upstream": "/api/learning/readiness",

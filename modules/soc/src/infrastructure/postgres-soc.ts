@@ -76,6 +76,7 @@ import {
   limaDayStart,
   type EngineCheck,
 } from '../learning-engine.js';
+import type { ShadowRow } from '../learning-shadow-report.js';
 import type {
   ClaimedWazuhPushHint,
   WazuhPushHint,
@@ -826,6 +827,14 @@ export class PostgresSocPersistence implements SocPersistence {
       if (row.origin === 'human') closures.push(toClosureEvidence(row));
     }
     return { closures, truePositivesByFingerprint };
+  }
+
+  public async learningShadowRows(
+    tenantId: string,
+    from: Date,
+    to: Date,
+  ): Promise<readonly ShadowRow[]> {
+    return this.queries.learningShadowRows(tenantId, from, to);
   }
 
   public async learningHealthCounts(tenantId: string, now: Date): Promise<LearningHealthCounts> {

@@ -1322,6 +1322,35 @@ export class PrismaSocQueries {
     return { items, total };
   }
 
+  /** Fase 2 · informe de sombra: decisiones del período con el estado actual de su alerta. */
+  public learningShadowRows(tenantId: string, from: Date, to: Date) {
+    return this.client.$queryRaw<
+      {
+        ruleKey: string | null;
+        patternId: string | null;
+        mode: string;
+        proposedAction: string;
+        appliedAction: string;
+        escalateReason: string | null;
+        alertStatus: string;
+        closureOrigin: string | null;
+        closureReason: string | null;
+        verdict: string | null;
+        incidentLinked: boolean;
+      }[]
+    >`
+      SELECT d.rule_key AS "ruleKey", d.pattern_id AS "patternId", d.mode,
+             d.proposed_action AS "proposedAction", d.applied_action AS "appliedAction",
+             d.escalate_reason AS "escalateReason", a.status AS "alertStatus",
+             a.closure_origin AS "closureOrigin", a.closure_reason AS "closureReason", a.verdict,
+             a.incident_id IS NOT NULL AS "incidentLinked"
+        FROM soc_learning_decisions d
+        JOIN soc_alerts a ON a.id = d.alert_id AND a.tenant_id = d.tenant_id
+       WHERE d.tenant_id = ${tenantId} AND d.at >= ${from} AND d.at < ${to}
+       ORDER BY d.at
+       LIMIT 50000`;
+  }
+
   /** Fase 2 · agregados de salud del motor. Sin PII: solo conteos, fechas y códigos. */
   public async learningHealthCounts(tenantId: string, now: Date) {
     const hourAgo = new Date(now.getTime() - 60 * 60 * 1000);

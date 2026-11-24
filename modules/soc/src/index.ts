@@ -200,6 +200,13 @@ export {
   type RevertRequest,
 } from './learning-engine-use-cases.js';
 export {
+  buildShadowReport,
+  clopperPearsonLower,
+  type ShadowReport,
+  type ShadowRow,
+  type ShadowStats,
+} from './learning-shadow-report.js';
+export {
   DEFAULT_LEARNING_HEALTH_POLICY,
   evaluateLearningHealth,
   LEARNING_SLOS,

@@ -30,6 +30,7 @@ import type {
   PatternStatus,
 } from './learning-pattern.js';
 import type { LearningHealthMetrics } from './learning-health.js';
+import type { ShadowRow } from './learning-shadow-report.js';
 import type {
   Confidence,
   EngineAction,
@@ -417,6 +418,8 @@ export interface SocReadModel {
   readinessMetrics?(tenantId: string, since: Date): Promise<ReadinessMetrics>;
   /** Fase 2 · agregados de salud del motor (sin PII). */
   learningHealthCounts?(tenantId: string, now: Date): Promise<LearningHealthCounts>;
+  /** Fase 2 · decisiones del período con el estado actual de su alerta (informe de sombra). */
+  learningShadowRows?(tenantId: string, from: Date, to: Date): Promise<readonly ShadowRow[]>;
   /** Etapa D/E · lecturas de la consola. */
   listLearningPatterns?(query: {
     readonly tenantId: string;
