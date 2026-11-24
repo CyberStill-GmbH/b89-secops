@@ -810,3 +810,26 @@ Commits `8321dcd` `4a07555` `dd3b574` `f1070e7` `5eb844c` `112d6f8`.
 - **Verificación:** 38 casos del contrato (doc 16) contra el motor en memoria; PGlite (PG 17) 40
   migraciones, 17/17 comprobaciones D+E; contrato del gateway 14/14. **NO VERIFICADO** en PostgreSQL
   real (stores Prisma, concurrencia) ni en sombra.
+
+## Verificación del motor (fase 1) — contrato de archivos compartidos (Claude, 2026-11-24)
+
+Rama `feat/soc-learning-verify` (worktree `C:\projects\b89-wt-verify`). Detalle: `docs/soc-learning/22-verificacion-motor.md`.
+
+**Archivos que tocamos las dos sesiones.** Mis líneas están commiteadas; las de la otra sesión no:
+`apps/api/src/bootstrap.ts`, `apps/api/src/runtime/secops-runtime.ts`, `apps/api/src/soc/soc.module.ts`,
+`platform/database/bootstrap/post-migrate.sql`. Simulado con `git merge-file`: combinan sin conflictos.
+
+**Orden de merge propuesto (sin pérdidas):**
+
+1. La otra sesión commitea su trabajo en su rama (incluidos esos cuatro archivos).
+2. Se integra `feat/soc-learning-verify` encima (`git merge --no-ff`); si un `post-migrate.sql` o un
+   `roles.sql` choca, se conservan **ambos** bloques de REVOKE.
+3. Se corre `bash scripts/soc-learning/verify-engine.sh` sobre el resultado (suites ×3 «integradas»).
+
+**Pedidos a la otra sesión:**
+
+- `listClosureMemory` (memoria de cierres del Analista IA) debe contar solo `closure_origin = 'human'`,
+  igual que `DEFAULT_FALSE_POSITIVE_ORIGINS`: un cierre del motor nunca es evidencia.
+- Cualquier tabla nueva append-only debe revocar UPDATE/DELETE/TRUNCATE al runtime en `post-migrate.sql`
+  **y** en `roles.sql`.
+- `attention-ranking.ts` es suyo: la fase 3 (`AttentionPort`) necesita un contrato antes de tocarlo.
