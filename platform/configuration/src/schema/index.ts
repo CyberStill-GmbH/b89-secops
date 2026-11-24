@@ -53,6 +53,8 @@ export { parseAlertMailSender, parseTeamsWorkflowUrl } from './notifications.sch
 export {
   parseSocClosurePolicy,
   parseSocGrouping,
+  parseSocLearningApprovers,
   type SocClosurePolicyConfig,
   type SocGroupingConfig,
+  type SocLearningApproversConfig,
 } from './soc-learning.schema.js';

@@ -18,8 +18,10 @@ import { parseDetectionContext, type DetectionContextConfig } from './schema/det
 import {
   parseSocClosurePolicy,
   parseSocGrouping,
+  parseSocLearningApprovers,
   type SocClosurePolicyConfig,
   type SocGroupingConfig,
+  type SocLearningApproversConfig,
 } from './schema/soc-learning.schema.js';
 import { parseIngestionConfig, type IngestionConfig } from './schema/ingestion.schema.js';
 import { parseRoleGrants, type RoleGrantsConfig } from './schema/role-grants.schema.js';
@@ -189,6 +191,14 @@ export function loadSocClosurePolicy(environment: EnvironmentInput): SocClosureP
 export function loadSocGrouping(environment: EnvironmentInput): SocGroupingConfig {
   const profile = profileFrom(environment);
   return deepFreeze(parseSocGrouping(environment, profile));
+}
+
+/** Aprendizaje SOC · etapa D — aprobadores designados de patrones (vacío: activación bloqueada). */
+export function loadSocLearningApprovers(
+  environment: EnvironmentInput,
+): SocLearningApproversConfig {
+  const profile = profileFrom(environment);
+  return deepFreeze(parseSocLearningApprovers(environment, profile));
 }
 
 /** Sprint 5 · fase 0 — fuente de ingesta del SOC; `disabled` si el ambiente no la declara. */

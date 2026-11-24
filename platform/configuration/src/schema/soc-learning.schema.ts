@@ -102,3 +102,41 @@ export function parseSocGrouping(
     maxAlerts,
   };
 }
+
+/**
+ * Aprendizaje SOC · etapa D — aprobadores designados de patrones de FP (diseño §5.3, regla A / A+B).
+ *
+ * `B89_SOC_LEARNING_APPROVERS`: `subjectId` de personas separados por coma. Vacío o ausente es el
+ * valor por defecto y deja la activación bloqueada (`APPROVERS_NOT_CONFIGURED`, fail-closed): con
+ * menos de dos personas no hay A+B posible. Una identidad de servicio (`svc:`) no puede firmar.
+ */
+export interface SocLearningApproversConfig {
+  readonly approvers: readonly string[];
+}
+
+const MAXIMUM_APPROVERS = 50;
+
+export function parseSocLearningApprovers(
+  environment: EnvironmentInput,
+  profile: ConfigurationProfile,
+): SocLearningApproversConfig {
+  const name = 'B89_SOC_LEARNING_APPROVERS';
+  const raw = optionalString(environment, profile, name);
+  if (raw === undefined || raw.trim() === '') return { approvers: [] };
+  const approvers = raw.split(',').map((entry) => entry.trim());
+  const valid = approvers.every(
+    (entry) =>
+      entry.length >= 1 &&
+      entry.length <= 128 &&
+      !entry.startsWith('svc:') &&
+      /^[\p{L}\p{N}._@:|-]+$/u.test(entry),
+  );
+  if (
+    !valid ||
+    approvers.length > MAXIMUM_APPROVERS ||
+    new Set(approvers).size !== approvers.length
+  ) {
+    throw configurationError('CONFIG_VALUE_INVALID', name, profile.name);
+  }
+  return { approvers };
+}

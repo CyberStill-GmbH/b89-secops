@@ -22,6 +22,7 @@ export {
   loadVapidPrivateKey,
   loadSocClosurePolicy,
   loadSocGrouping,
+  loadSocLearningApprovers,
   loadSocPersistenceConfig,
   loadLocalWorkerConfig,
   loadRuntimeConfig,
@@ -81,6 +82,7 @@ export type {
   KnownBenignRule,
   SocClosurePolicyConfig,
   SocGroupingConfig,
+  SocLearningApproversConfig,
 } from './schema/index.js';
 export { CONFIGURATION_PROFILES } from './profiles/index.js';
 export { redactSecrets } from './redaction/index.js';
