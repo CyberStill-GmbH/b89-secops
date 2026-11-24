@@ -1,5 +1,5 @@
 # B89 Respond SSO: puente sesión B89 → sesión Shuffle. Sin dependencias (solo Node).
-FROM node:24.11.1-alpine3.22
+FROM node:26.3.0-alpine3.22
 WORKDIR /app
 COPY lib.mjs shuffle-client.mjs server.mjs bootstrap.mjs ./
 USER node
