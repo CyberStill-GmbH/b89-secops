@@ -210,3 +210,17 @@ describe('fase 2 · salud del motor', () => {
     });
   });
 });
+
+describe('fase 3 · rotación de la clave de muestreo', () => {
+  it('avisa a los 90 días, crítico a los 120; sin fecha de emisión fuera de sombra, aviso', () => {
+    expect(ids(healthy({ samplingKeyAgeDays: 30 }))).toEqual([]);
+    expect(ids(healthy({ samplingKeyAgeDays: 91 }))).toEqual(['SAMPLING_KEY_ROTATION_DUE:warning']);
+    expect(ids(healthy({ samplingKeyAgeDays: 121 }))).toEqual([
+      'SAMPLING_KEY_ROTATION_DUE:critical',
+    ]);
+    expect(ids(healthy({ maxMode: 'active', samplingKeyAgeDays: null }))).toEqual([
+      'SAMPLING_KEY_UNDATED:warning',
+    ]);
+    expect(ids(healthy({ samplingKeyAgeDays: null }))).toEqual([]);
+  });
+});

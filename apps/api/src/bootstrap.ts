@@ -310,9 +310,11 @@ function learningFrom(environment: Readonly<Record<string, string | undefined>>)
     );
   }
   // Identificador de la clave de muestreo (nunca la clave): permite ver rotaciones en la bitácora.
-  const samplingKeyVersion = engine.samplingKey
-    ? `kid-${createHash('sha256').update(engine.samplingKey.reveal(), 'utf8').digest('hex').slice(0, 12)}`
-    : null;
+  const samplingKeyVersion =
+    engine.samplingKeyId ??
+    (engine.samplingKey
+      ? `kid-${createHash('sha256').update(engine.samplingKey.reveal(), 'utf8').digest('hex').slice(0, 12)}`
+      : null);
   const effectiveMode = engine.enabled ? engine.maxMode : 'off';
   // Huella de lo que decide el comportamiento (sin secretos): un cambio genera una alerta de salud.
   const hash = createHash('sha256')
@@ -357,6 +359,8 @@ function learningFrom(environment: Readonly<Record<string, string | undefined>>)
         forcedReviewAfter: engine.forcedReviewAfter,
       },
       samplingKey: engine.samplingKey ? Buffer.from(engine.samplingKey.reveal(), 'utf8') : null,
+      samplingKeyVersion,
+      samplingKeyIssuedAt: engine.samplingKeyIssuedAt,
       changeCalendarAckUntil: engine.changeCalendarAckUntil,
       refreshMs: engine.refreshMinutes * 60_000,
       approvers: loadSocLearningApprovers(environment).approvers,

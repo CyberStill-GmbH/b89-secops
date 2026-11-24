@@ -43,6 +43,8 @@ export interface LearningHealthMetrics {
   readonly enginePaused?: boolean;
   /** Fase 3: se pidió dry_run/activo sin canal de notificación: quedó en sombra. */
   readonly channelMissing?: boolean;
+  /** Fase 3: días desde la emisión de la clave de muestreo; `null` = fecha desconocida. */
+  readonly samplingKeyAgeDays?: number | null;
 }
 
 export type HealthSeverity = 'critical' | 'warning' | 'info';
@@ -128,6 +130,26 @@ export function evaluateLearningHealth(
       'critical',
       'Se pidió dry_run/activo sin canal de notificación: el motor quedó en sombra.',
       'escalacion-sin-entrega',
+    );
+  }
+  if (
+    metrics.samplingKeyAgeDays === null &&
+    metrics.maxMode !== 'shadow' &&
+    metrics.maxMode !== 'off'
+  ) {
+    add(
+      'SAMPLING_KEY_UNDATED',
+      'warning',
+      'Clave de muestreo sin fecha de emisión: no se puede vigilar su rotación.',
+      'clave-comprometida',
+    );
+  }
+  if (typeof metrics.samplingKeyAgeDays === 'number' && metrics.samplingKeyAgeDays > 90) {
+    add(
+      'SAMPLING_KEY_ROTATION_DUE',
+      metrics.samplingKeyAgeDays > 120 ? 'critical' : 'warning',
+      `Clave de muestreo emitida hace ${metrics.samplingKeyAgeDays} días: rotar (≤ 90).`,
+      'clave-comprometida',
     );
   }
   if (metrics.enginePaused) {

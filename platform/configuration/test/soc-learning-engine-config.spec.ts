@@ -103,3 +103,22 @@ describe('Aprendizaje SOC · etapa E · motor', () => {
     );
   });
 });
+
+describe('fase 3 · identificador y emisión de la clave', () => {
+  it('lee el identificador y la fecha; rechaza formatos inválidos', () => {
+    const config = loadLearningEngine({
+      ...BASE,
+      B89_LEARNING_SAMPLING_KEY: KEY,
+      B89_LEARNING_SAMPLING_KEY_ID: 'kid-2026-11',
+      B89_LEARNING_SAMPLING_KEY_ISSUED_AT: '2026-11-01',
+    });
+    expect(config.samplingKeyId).toBe('kid-2026-11');
+    expect(config.samplingKeyIssuedAt?.toISOString()).toBe('2026-11-01T00:00:00.000Z');
+    expect(() =>
+      loadLearningEngine({ ...BASE, B89_LEARNING_SAMPLING_KEY_ID: 'con espacio' }),
+    ).toThrow(ConfigurationError);
+    expect(() =>
+      loadLearningEngine({ ...BASE, B89_LEARNING_SAMPLING_KEY_ISSUED_AT: 'ayer' }),
+    ).toThrow(ConfigurationError);
+  });
+});

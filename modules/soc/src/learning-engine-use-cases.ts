@@ -422,6 +422,7 @@ export async function evaluateAlertWithLearning(
         checks,
         drift: decided.drift,
         sampled: decided.sampled,
+        samplingKeyVersion: engineContext.samplingKeyVersion ?? null,
         at: now,
       };
       if (!(await context.learning.appendDecision(record))) {

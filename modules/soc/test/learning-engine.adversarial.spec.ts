@@ -458,3 +458,25 @@ describe('fase 3 · piso de impacto inconfigurable', () => {
     expect(statusOf(alert)).toBe('new');
   });
 });
+
+describe('fase 3 · clave de muestreo versionada', () => {
+  it('cada decisión registra la versión de la clave, nunca la clave', async () => {
+    const alert = newAlert();
+    const result = await evaluateAlertWithLearning(
+      deps,
+      { settings: SETTINGS, context: () => ({ ...CONTEXT, samplingKeyVersion: 'kid-2026-11' }) },
+      {
+        tenantId: TENANT,
+        alertId: alert.id,
+        fingerprint: FINGERPRINT,
+        signals: { severity: 'low', mitreTactics: [], threatIntelHit: false },
+        correlationId: 'corr',
+      },
+    );
+    expect(result).toMatchObject({
+      ok: true,
+      value: { decision: { samplingKeyVersion: 'kid-2026-11' } },
+    });
+    expect(JSON.stringify([...soc.decisionRows.values()])).not.toContain('k'.repeat(48));
+  });
+});

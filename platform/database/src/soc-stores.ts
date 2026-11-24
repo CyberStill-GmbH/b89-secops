@@ -622,6 +622,7 @@ export interface LearningDecisionRow {
   readonly checks: unknown;
   readonly drift: unknown;
   readonly sampled: boolean;
+  readonly samplingKeyVersion?: string | null;
   readonly at: Date;
 }
 
@@ -671,6 +672,7 @@ export class PrismaLearningRecordStore {
           ...row,
           checks: row.checks as Prisma.InputJsonValue,
           drift: row.drift === null ? Prisma.DbNull : (row.drift as Prisma.InputJsonValue),
+          samplingKeyVersion: row.samplingKeyVersion ?? null,
         },
       ],
       skipDuplicates: true,

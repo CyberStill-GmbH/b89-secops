@@ -560,6 +560,7 @@ model SocLearningDecision {
   checks         Json     @db.JsonB
   drift          Json?    @db.JsonB
   sampled        Boolean
+  samplingKeyVersion String? @map("sampling_key_version") @db.Text
   at             DateTime @db.Timestamptz(3)
 
   @@index([tenantId, patternId, at(sort: Desc)], map: "soc_learning_decisions_pattern_idx")

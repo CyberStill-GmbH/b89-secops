@@ -146,6 +146,8 @@ export interface EngineContext {
   readonly sourceState: string | null;
   /** Clave de muestreo; sin ella no se autocierra en `dry_run`/`active`. */
   readonly samplingKey: Buffer | null;
+  /** Identificador de la clave (nunca la clave): queda en cada decisión. */
+  readonly samplingKeyVersion?: string | null;
 }
 
 export interface PatternCounters {

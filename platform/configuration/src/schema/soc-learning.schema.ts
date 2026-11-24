@@ -161,6 +161,10 @@ export interface LearningEngineConfig {
   readonly killedRules: readonly string[];
   readonly neverSuppressRules: readonly string[];
   readonly samplingKey: SecretValue | undefined;
+  /** Identificador de la clave (rotación); si falta, se deriva de su huella. */
+  readonly samplingKeyId: string | undefined;
+  /** Emisión de la clave: la salud avisa a los 90 días (rotación periódica). */
+  readonly samplingKeyIssuedAt: Date | null;
   readonly samplingPercent: number;
   readonly hourlyCap: number;
   readonly dailyCap: number;
@@ -234,6 +238,22 @@ export function parseLearningEngine(
     }
     changeCalendarAckUntil = parsed;
   }
+  const kidName = 'B89_LEARNING_SAMPLING_KEY_ID';
+  const kid = optionalString(environment, profile, kidName)?.trim() || undefined;
+  if (kid !== undefined && !/^[A-Za-z0-9._-]{1,64}$/u.test(kid)) {
+    throw configurationError('CONFIG_VALUE_INVALID', kidName, profile.name);
+  }
+  const issuedName = 'B89_LEARNING_SAMPLING_KEY_ISSUED_AT';
+  const issuedRaw = optionalString(environment, profile, issuedName)?.trim();
+  let samplingKeyIssuedAt: Date | null = null;
+  if (issuedRaw) {
+    samplingKeyIssuedAt = /^\d{4}-\d{2}-\d{2}$/u.test(issuedRaw)
+      ? new Date(`${issuedRaw}T00:00:00.000Z`)
+      : new Date(Number.NaN);
+    if (Number.isNaN(samplingKeyIssuedAt.getTime())) {
+      throw configurationError('CONFIG_VALUE_INVALID', issuedName, profile.name);
+    }
+  }
   return {
     enabled: flag(environment, profile, 'B89_LEARNING_ENABLED'),
     maxMode,
@@ -242,6 +262,8 @@ export function parseLearningEngine(
     killedRules: ruleKeys(environment, profile, 'B89_LEARNING_KILLED_RULES'),
     neverSuppressRules: ruleKeys(environment, profile, 'B89_LEARNING_NEVER_SUPPRESS_RULES'),
     samplingKey: keyRaw === undefined ? undefined : new SecretValue(keyRaw),
+    samplingKeyId: kid,
+    samplingKeyIssuedAt,
     samplingPercent: boundedInteger(
       environment,
       profile,

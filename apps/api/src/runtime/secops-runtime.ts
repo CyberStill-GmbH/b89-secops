@@ -266,6 +266,8 @@ function decisionDiagnostic(
 export interface LearningRuntimeOptions {
   readonly settings: EngineSettings;
   readonly samplingKey: Buffer | null;
+  readonly samplingKeyVersion?: string | null;
+  readonly samplingKeyIssuedAt?: Date | null;
   readonly changeCalendarAckUntil: Date | null;
   readonly refreshMs: number;
   /** Aprobadores designados (`B89_SOC_LEARNING_APPROVERS`). */
@@ -1065,6 +1067,7 @@ export class SecOpsRuntime {
       ),
       sourceState: fresh ? measured.state : null,
       samplingKey: learning?.samplingKey ?? null,
+      samplingKeyVersion: learning?.samplingKeyVersion ?? null,
     };
   }
 
@@ -1212,6 +1215,13 @@ export class SecOpsRuntime {
       enabled: learning !== undefined,
       enginePaused: (await this.soc.learningEngineState?.(this.tenantId))?.paused === true,
       channelMissing: learning?.channelMissing === true,
+      ...(learning?.samplingKey
+        ? {
+            samplingKeyAgeDays: learning.samplingKeyIssuedAt
+              ? Math.floor((now.getTime() - learning.samplingKeyIssuedAt.getTime()) / 86_400_000)
+              : null,
+          }
+        : {}),
       maxMode: learning?.settings.maxMode ?? 'off',
       killSwitch: learning?.settings.killSwitch ?? false,
       sourceState: this.learningEngineContext().sourceState,

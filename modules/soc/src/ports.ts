@@ -127,6 +127,8 @@ export interface LearningDecisionRecord {
     Record<string, { readonly from: string | null; readonly to: string | null }>
   > | null;
   readonly sampled: boolean;
+  /** Fase 3: versión de la clave de muestreo usada (identificador, nunca la clave). */
+  readonly samplingKeyVersion?: string | null;
   readonly at: Date;
 }
 
