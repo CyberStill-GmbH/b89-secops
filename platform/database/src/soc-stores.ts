@@ -681,6 +681,15 @@ export class PrismaLearningRecordStore {
     return row ?? undefined;
   }
 
+  public async decisionByAlert(
+    tenantId: string,
+    alertId: string,
+  ): Promise<LearningDecisionRow | undefined> {
+    if (!UUID_PATTERN.test(alertId)) return undefined;
+    const row = await this.tx.socLearningDecision.findFirst({ where: { alertId, tenantId } });
+    return row ?? undefined;
+  }
+
   /**
    * Cierres propuestos fuera de sombra desde `since` (activación del patrón): última hora, día de
    * Lima en curso y desde la última revisión resuelta; y muestras acordadas en 30 días.

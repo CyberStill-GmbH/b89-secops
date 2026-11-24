@@ -31,6 +31,7 @@ import {
   type EngineSettings,
 } from './learning-engine.js';
 import type { LearningPattern } from './learning-pattern.js';
+import { pauseLearningPattern } from './learning-reversal.js';
 import { LEARNING_SERVICE_ACTOR } from './learning-use-cases.js';
 import type {
   LearningDecisionRecord,
@@ -83,37 +84,15 @@ async function pausePattern(
   correlationId: string,
   at: Date,
 ): Promise<void> {
-  if (pattern.status !== 'active' && pattern.status !== 'approved') return;
-  const next: LearningPattern = {
-    ...pattern,
-    status: 'paused',
-    updatedAt: at,
-    revision: pattern.revision + 1,
-  };
-  if (!(await context.patterns.update(next, pattern.revision))) return;
-  await context.patterns.appendEvent({
-    id: dependencies.ids.next(),
-    tenantId: pattern.tenantId,
-    patternId: pattern.id,
-    from: pattern.status,
-    to: 'paused',
+  await pauseLearningPattern(
+    context,
+    dependencies.ids,
+    socAuditDraft,
+    pattern,
     reason,
-    actorId: actor.subjectId,
+    actor,
+    correlationId,
     at,
-  });
-  await recordAudit(
-    context.audit,
-    socAuditDraft({
-      id: dependencies.ids.next(),
-      actor,
-      action: 'learning.pattern.paused',
-      resource: { type: 'learning_pattern', id: pattern.id },
-      outcome: 'succeeded',
-      correlationId,
-      at,
-      reason,
-      metadata: { from: pattern.status, to: 'paused', ruleKey: pattern.ruleKey },
-    }),
   );
 }
 
@@ -260,7 +239,6 @@ export async function evaluateAlertWithLearning(
   engine: LearningEngineDependencies,
   request: EvaluateRequest,
 ): Promise<SocResult<EvaluationOutcome>> {
-  const now = dependencies.clock.now();
   const engineContext = engine.context();
   return dependencies.unitOfWork
     .run(async (context) => {
@@ -274,6 +252,9 @@ export async function evaluateAlertWithLearning(
       const fp = request.fingerprint;
       // El patrón exacto se lee bloqueando su fila: la decisión y el efecto ven el mismo estado.
       const exact = await context.patterns.openByFingerprint(request.tenantId, fp.fingerprint);
+      // El reloj se lee DESPUÉS del bloqueo: una espera larga no puede dejar pasar un patrón que
+      // venció mientras tanto, y los topes se cuentan sobre el estado ya serializado.
+      const now = dependencies.clock.now();
       const sameRule = fp.ruleKey
         ? await context.patterns.activeByRule(request.tenantId, fp.ruleKey)
         : [];

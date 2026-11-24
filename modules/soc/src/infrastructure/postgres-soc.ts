@@ -584,6 +584,10 @@ export class PostgresSocPersistence implements SocPersistence {
           const row = await stores.learning.decisionById(tenantId, decisionId);
           return row ? toDecision(row) : undefined;
         },
+        decisionByAlert: async (tenantId, alertId) => {
+          const row = await stores.learning.decisionByAlert(tenantId, alertId);
+          return row ? toDecision(row) : undefined;
+        },
         counters: (tenantId, patternId, now, since) =>
           stores.learning.counters(tenantId, patternId, now, since, limaDayStart(now)),
         insertReview: (record) => stores.learning.insertReview(record),

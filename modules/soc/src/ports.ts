@@ -164,6 +164,7 @@ export interface LearningReversalRecord {
 export interface LearningRecordStore {
   appendDecision(record: LearningDecisionRecord): Promise<boolean>;
   decisionById(tenantId: string, decisionId: string): Promise<LearningDecisionRecord | undefined>;
+  decisionByAlert(tenantId: string, alertId: string): Promise<LearningDecisionRecord | undefined>;
   /** Contadores del patrón: cierres (propuestos en dry-run/activo) desde `since` y muestras. */
   counters(tenantId: string, patternId: string, now: Date, since: Date): Promise<PatternCounters>;
   insertReview(record: LearningReviewRecord): Promise<void>;

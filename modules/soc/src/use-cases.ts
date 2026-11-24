@@ -25,6 +25,7 @@ import {
 } from './alert.js';
 import { assignToGroup, type AlertGroupingPolicy } from './alert-group.js';
 import { closureOriginFor } from './closure.js';
+import { recordManualReopen } from './learning-reversal.js';
 import {
   applyIncidentCommand,
   openIncident,
@@ -407,6 +408,18 @@ export async function executeAlertCommand(
         },
       }),
     );
+    // Aprendizaje SOC · etapa E: reabrir un cierre del motor es un desacuerdo con él (reversión y
+    // pausa del patrón), por cualquier vía que se reabra.
+    if (request.command.name === 'reopen' && alert.closureOrigin === 'learning_engine') {
+      await recordManualReopen(context, dependencies.ids, auditDraft, {
+        tenantId: alert.tenantId,
+        alertId: alert.id,
+        actor: request.actor,
+        note: request.command.note,
+        correlationId: request.correlationId,
+        at,
+      });
+    }
     if (request.command.name === 'close' || request.command.name === 'reopen') {
       const closed = request.command.name === 'close';
       await context.closures.append({

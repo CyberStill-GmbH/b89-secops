@@ -190,6 +190,8 @@ export class InMemorySoc implements SocPersistence {
           (row) => row.tenantId === tenantId && row.id === decisionId,
         ),
       ),
+    decisionByAlert: (tenantId, alertId) =>
+      Promise.resolve(this.decisionRows.get(`${tenantId}|${alertId}`)),
     counters: (tenantId, patternId, now, since) =>
       Promise.resolve(this.patternCounters(tenantId, patternId, now, since)),
     insertReview: (record) => {
