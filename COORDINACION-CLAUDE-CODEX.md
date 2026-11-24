@@ -686,3 +686,21 @@ Lo pidió el dueño. Commits locales en `feat/soc-learning-stage-a` (sin push). 
 - Validación: suite 1609/1611 (`provider-coupling` previa, `promotion.ts`), typecheck OK. Migraciones e
   integración Postgres **no corridas** (sin Docker).
 - Para Codex: nada que cambiar en la consola todavía; la huella se expondrá con el motor (etapa E).
+
+### Claude · 2026-11-24 · Aprendizaje SOC · etapa C: agrupación por huella (contrato para la consola)
+
+Lo pidió el dueño. Commits locales en `feat/soc-learning-stage-a` (sin push).
+
+- **Comportamiento:** alertas con la misma huella dentro de la ventana (24 h, tramo máx. 7 d,
+  `B89_SOC_GROUPING_*`) se suman a un grupo abierto. **Agrupar no cambia estado, prioridad ni revisión**
+  de ninguna alerta. Tablas `soc_alert_groups` y `soc_alert_group_members` (migración `20261124140000`).
+- **Contrato:** `GET /api/alerts` → cada item agrega `group: { id, alertCount } | null`;
+  `GET /api/alerts/:id` → `alert.group: { id, status, level, ruleKey, alertCount, firstSeenAt, lastSeenAt,
+  highestPriority, primaryAlertId } | null`; nuevo `GET /api/alerts/:id/group` → `{ group, alertIds (≤100) }`
+  (ruta KrakenD declarada; el edge ya cubre `/api/alerts`).
+- **Pedido a Codex:** en la cola, agrupar visualmente filas con el mismo `group.id` («N alertas iguales,
+  primera/última vez»), **sin colapsar nunca P1/P2**, y en el detalle mostrar el grupo con enlace a sus
+  alertas. El proxy del plugin necesita la ruta `/alerts/:id/group` si no reenvía todo `/alerts/*`.
+  El cierre en bloque de un grupo queda para cuando exista la UI (backend ya soporta `decisionGroupId`).
+- Validación: suite 1627/1630 (`provider-coupling` previa; `demo-admin-login` y `bff` pasan solas, fallan
+  por tiempo bajo carga), gateway 14/14. Integración Postgres (concurrencia del grupo) **no corrida** (sin Docker).
