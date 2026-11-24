@@ -579,6 +579,65 @@ describe.skipIf(!databaseUrl)('C-17 · persistencia SOC sobre PostgreSQL', () =>
     }
   });
 
+  it('aprendizaje SOC · la huella se guarda con la alerta, una vez y append-only', async () => {
+    const fingerprint = {
+      fingerprint: `fp1_${'b'.repeat(64)}`,
+      level: 'fine' as const,
+      version: '1',
+      normalizerVersion: '1',
+      ruleKey: 'windows:101150',
+      components: {
+        ruleKey: 'windows:101150',
+        ruleName: 'b89 windows: powershell',
+        user: 'usuario.sintetico@b89-lab.example',
+        host: '017',
+        srcIp: null,
+        processImage: 'c:\windows\system32\windowspowershell\v1.0\powershell.exe',
+        parentImage: null,
+        commandLine: 'powershell.exe -file {TMP}\tmp{N}.ps{N}',
+        sha256: null,
+        filePath: null,
+        destination: null,
+        destinationPort: null,
+      },
+    };
+    const target = candidate(42, { priority: 'P4', score: 35, fingerprint });
+    const deps = dependencies(persistence);
+    await ingestCandidate(deps, target);
+    await ingestCandidate(deps, target);
+
+    const admin = new Client(database!.url);
+    await admin.connect();
+    try {
+      const rows = await admin.query(
+        `SELECT rule_key, fingerprint, level, components FROM soc_alert_fingerprints WHERE alert_id = $1`,
+        [target.id],
+      );
+      expect(rows.rows).toEqual([
+        {
+          rule_key: 'windows:101150',
+          fingerprint: fingerprint.fingerprint,
+          level: 'fine',
+          components: fingerprint.components,
+        },
+      ]);
+      await expect(
+        admin.query(`UPDATE soc_alert_fingerprints SET level = 'coarse' WHERE alert_id = $1`, [
+          target.id,
+        ]),
+      ).rejects.toThrow(/append-only/u);
+      await expect(
+        admin.query(
+          `INSERT INTO soc_alert_fingerprints (alert_id, tenant_id, fingerprint, level, version, normalizer_version, components, computed_at)
+           VALUES ($1, $2, 'fp1_x', 'fine', '1', '1', '{}', now())`,
+          [randomUUID(), TENANT],
+        ),
+      ).rejects.toThrow();
+    } finally {
+      await admin.end();
+    }
+  });
+
   it('aprendizaje SOC · el cierre estructurado persiste, su bitácora es append-only y solo cuenta lo humano', async () => {
     const target = candidate(41, { priority: 'P4', score: 30 });
     const deps = dependencies(persistence);

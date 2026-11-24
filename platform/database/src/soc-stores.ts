@@ -335,6 +335,45 @@ export class PrismaAlertClosureStore {
   }
 }
 
+/* ------------------------------------------------- Huellas (aprendizaje SOC) */
+
+export interface AlertFingerprintRow {
+  readonly alertId: string;
+  readonly tenantId: string;
+  readonly ruleKey: string | null;
+  readonly fingerprint: string;
+  readonly level: string;
+  readonly version: string;
+  readonly normalizerVersion: string;
+  readonly components: Readonly<Record<string, string | null>>;
+  readonly computedAt: Date;
+}
+
+/** Una huella por alerta: `false` si ya existía (la ingesta se repite sin reescribir). */
+export class PrismaAlertFingerprintStore {
+  public constructor(private readonly tx: Tx) {}
+
+  public async insertIfAbsent(row: AlertFingerprintRow): Promise<boolean> {
+    const created = await this.tx.socAlertFingerprint.createMany({
+      data: [
+        {
+          alertId: row.alertId,
+          tenantId: row.tenantId,
+          ruleKey: row.ruleKey,
+          fingerprint: row.fingerprint,
+          level: row.level,
+          version: row.version,
+          normalizerVersion: row.normalizerVersion,
+          components: row.components as Prisma.InputJsonValue,
+          computedAt: row.computedAt,
+        },
+      ],
+      skipDuplicates: true,
+    });
+    return created.count === 1;
+  }
+}
+
 /* --------------------------------------------------------------- Incidentes */
 
 export interface IncidentRow {
@@ -500,6 +539,7 @@ export class PrismaSocOutboxStore {
 export interface SocStores {
   readonly alerts: PrismaAlertStore;
   readonly closures: PrismaAlertClosureStore;
+  readonly fingerprints: PrismaAlertFingerprintStore;
   readonly incidents: PrismaIncidentStore;
   readonly tasks: PrismaIncidentTaskStore;
   readonly notes: PrismaIncidentNoteStore;
@@ -517,6 +557,7 @@ export class PrismaSocUnitOfWork {
       work({
         alerts: new PrismaAlertStore(tx),
         closures: new PrismaAlertClosureStore(tx),
+        fingerprints: new PrismaAlertFingerprintStore(tx),
         incidents: new PrismaIncidentStore(tx),
         tasks: new PrismaIncidentTaskStore(tx),
         notes: new PrismaIncidentNoteStore(tx),

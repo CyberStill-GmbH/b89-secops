@@ -373,6 +373,7 @@ model SocAlert {
   candidate DetectionCandidate @relation(fields: [candidateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "soc_alerts_candidate_fkey")
   incident  SocIncident?       @relation(fields: [incidentId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "soc_alerts_incident_fkey")
   closures  SocAlertClosure[]
+  fingerprint SocAlertFingerprint?
 
   @@index([tenantId, status, occurredAt], map: "soc_alerts_board_idx")
   @@index([tenantId, incidentId], map: "soc_alerts_incident_idx")
@@ -407,6 +408,26 @@ model SocAlertClosure {
   @@index([tenantId, alertId, at], map: "soc_alert_closures_alert_idx")
   @@index([tenantId, origin, closureReason, at], map: "soc_alert_closures_learning_idx")
   @@map("soc_alert_closures")
+}
+
+// Aprendizaje SOC · etapa B — huella de la alerta al promoverla (una por alerta). Los
+// componentes van normalizados y redactados; la línea de comando original nunca se guarda.
+model SocAlertFingerprint {
+  alertId           String   @id @map("alert_id") @db.Uuid
+  tenantId          String   @map("tenant_id") @db.Text
+  ruleKey           String?  @map("rule_key") @db.Text
+  fingerprint       String   @db.Text
+  level             String   @db.Text
+  version           String   @db.Text
+  normalizerVersion String   @map("normalizer_version") @db.Text
+  components        Json     @db.JsonB
+  computedAt        DateTime @map("computed_at") @db.Timestamptz(3)
+
+  alert SocAlert @relation(fields: [alertId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "soc_alert_fingerprints_alert_fkey")
+
+  @@index([tenantId, fingerprint, computedAt], map: "soc_alert_fingerprints_lookup_idx")
+  @@index([tenantId, ruleKey, level], map: "soc_alert_fingerprints_rule_idx")
+  @@map("soc_alert_fingerprints")
 }
 
 // C-17/C-20 — outbox del SOC: cola durable con lease que el despacho reclama de forma

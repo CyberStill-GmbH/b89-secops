@@ -75,6 +75,7 @@ import type {
   AlertStats,
   AlertStatsQuery,
   AlertClosureStore,
+  AlertFingerprintStore,
   AlertStore,
   ClaimedOutboxMessage,
   OutboxHealth,
@@ -339,6 +340,10 @@ export class PostgresSocPersistence implements SocPersistence {
             evidenceRefs: [...record.evidenceRefs],
           }),
       };
+      const fingerprints: AlertFingerprintStore = {
+        insertIfAbsent: (record) =>
+          stores.fingerprints.insertIfAbsent({ ...record, components: { ...record.components } }),
+      };
       const incidents: IncidentStore = {
         byId: async (tenantId, incidentId) => {
           const row = await stores.incidents.byId(tenantId, incidentId);
@@ -380,6 +385,7 @@ export class PostgresSocPersistence implements SocPersistence {
       return work({
         alerts,
         closures,
+        fingerprints,
         incidents,
         tasks,
         notes,

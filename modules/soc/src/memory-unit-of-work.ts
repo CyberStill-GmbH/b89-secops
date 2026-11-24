@@ -31,6 +31,8 @@ import type {
   AlertStats,
   AlertStatsQuery,
   AlertClosureStore,
+  AlertFingerprintRecord,
+  AlertFingerprintStore,
   AlertStore,
   ClaimedOutboxMessage,
   OutboxHealth,
@@ -47,6 +49,7 @@ import type {
 interface Snapshot {
   readonly alerts: ReadonlyMap<string, Alert>;
   readonly closures: readonly AlertClosureRecord[];
+  readonly fingerprints: ReadonlyMap<string, AlertFingerprintRecord>;
   readonly incidents: ReadonlyMap<string, Incident>;
   readonly tasks: ReadonlyMap<string, IncidentTask>;
   readonly notes: ReadonlyMap<string, IncidentNote>;
@@ -75,6 +78,8 @@ export class InMemorySoc implements SocPersistence {
   public readonly alertRows = new Map<string, Alert>();
   /** Bitácora append-only de cierres (aprendizaje SOC · etapa A). */
   public readonly closureRows: AlertClosureRecord[] = [];
+  /** Huellas por `tenant|alerta` (aprendizaje SOC · etapa B). */
+  public readonly fingerprintRows = new Map<string, AlertFingerprintRecord>();
   public readonly incidentRows = new Map<string, Incident>();
   public readonly taskRows = new Map<string, IncidentTask>();
   public readonly noteRows = new Map<string, IncidentNote>();
@@ -115,6 +120,15 @@ export class InMemorySoc implements SocPersistence {
     append: (record) => {
       this.closureRows.push(record);
       return Promise.resolve();
+    },
+  };
+
+  private readonly fingerprints: AlertFingerprintStore = {
+    insertIfAbsent: (record) => {
+      const key = `${record.tenantId}|${record.alertId}`;
+      if (this.fingerprintRows.has(key)) return Promise.resolve(false);
+      this.fingerprintRows.set(key, record);
+      return Promise.resolve(true);
     },
   };
 
@@ -189,6 +203,7 @@ export class InMemorySoc implements SocPersistence {
     return {
       alerts: new Map(this.alertRows),
       closures: [...this.closureRows],
+      fingerprints: new Map(this.fingerprintRows),
       incidents: new Map(this.incidentRows),
       tasks: new Map(this.taskRows),
       notes: new Map(this.noteRows),
@@ -213,6 +228,7 @@ export class InMemorySoc implements SocPersistence {
     };
     replace(this.alertRows, snapshot.alerts);
     this.closureRows.splice(0, this.closureRows.length, ...snapshot.closures);
+    replace(this.fingerprintRows, snapshot.fingerprints);
     replace(this.incidentRows, snapshot.incidents);
     replace(this.taskRows, snapshot.tasks);
     replace(this.noteRows, snapshot.notes);
@@ -239,6 +255,7 @@ export class InMemorySoc implements SocPersistence {
       const result = await work({
         alerts: this.alerts,
         closures: this.closures,
+        fingerprints: this.fingerprints,
         incidents: this.incidents,
         tasks: this.tasks,
         notes: this.notes,

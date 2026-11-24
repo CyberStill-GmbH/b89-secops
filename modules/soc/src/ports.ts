@@ -13,7 +13,11 @@
  */
 
 import type { AuditStore } from '@b89/audit';
-import type { CorrelationWindowQuery, DetectionCandidateStore } from '@b89/detection';
+import type {
+  AlertFingerprint,
+  CorrelationWindowQuery,
+  DetectionCandidateStore,
+} from '@b89/detection';
 
 import type { Alert, AlertStatus } from './alert.js';
 import type { AlertClosureRecord, ClosureOrigin } from './closure.js';
@@ -36,6 +40,18 @@ export interface AlertStore {
  */
 export interface AlertClosureStore {
   append(record: AlertClosureRecord): Promise<void>;
+}
+
+/** Aprendizaje SOC · etapa B — huella de la alerta tal como se calculó al promoverla. */
+export interface AlertFingerprintRecord extends AlertFingerprint {
+  readonly alertId: string;
+  readonly tenantId: string;
+  readonly computedAt: Date;
+}
+
+/** Una huella por alerta; repetir la ingesta no la reescribe. */
+export interface AlertFingerprintStore {
+  insertIfAbsent(record: AlertFingerprintRecord): Promise<boolean>;
 }
 
 export interface IncidentStore {
@@ -66,6 +82,7 @@ export interface OutboxStore {
 export interface SocTransactionContext {
   readonly alerts: AlertStore;
   readonly closures: AlertClosureStore;
+  readonly fingerprints: AlertFingerprintStore;
   readonly incidents: IncidentStore;
   readonly tasks: IncidentTaskStore;
   readonly notes: IncidentNoteStore;

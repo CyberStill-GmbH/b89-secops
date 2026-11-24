@@ -171,6 +171,15 @@ export async function ingestCandidate(
         ? { ok: true as const, value: { alert: existing, created: false } }
         : failure('CONFLICT', 'ALERT_RACE', 'La alerta existía y dejó de estar disponible.');
     }
+    // Aprendizaje SOC · etapa B: la huella entra en la misma transacción que la alerta.
+    if (candidate.fingerprint) {
+      await context.fingerprints.insertIfAbsent({
+        ...candidate.fingerprint,
+        alertId: alert.id,
+        tenantId: alert.tenantId,
+        computedAt: at,
+      });
+    }
     await recordAudit(
       context.audit,
       auditDraft({

@@ -147,6 +147,8 @@ export type {
   AlertStats,
   AlertStatsQuery,
   AlertClosureStore,
+  AlertFingerprintRecord,
+  AlertFingerprintStore,
   AlertStore,
   ClaimedOutboxMessage,
   IncidentNoteStore,
