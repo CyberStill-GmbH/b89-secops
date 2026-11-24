@@ -1322,6 +1322,102 @@ export class PrismaSocQueries {
     return { items, total };
   }
 
+  /** Fase 2 · agregados de salud del motor. Sin PII: solo conteos, fechas y códigos. */
+  public async learningHealthCounts(tenantId: string, now: Date) {
+    const hourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const [jobs] = await this.client.$queryRaw<
+      {
+        pending: bigint;
+        expired: bigint;
+        oldest: Date | null;
+        dead: bigint;
+        finished: bigint;
+        retried: bigint;
+        p95: number | null;
+      }[]
+    >`
+      SELECT count(*) FILTER (WHERE status = 'pending') AS pending,
+             count(*) FILTER (WHERE status = 'leased' AND lease_until < ${now}) AS expired,
+             min(enqueued_at) FILTER (WHERE status = 'pending') AS oldest,
+             count(*) FILTER (WHERE status = 'dead' AND finished_at > ${dayAgo}) AS dead,
+             count(*) FILTER (WHERE status = 'done' AND finished_at > ${hourAgo}) AS finished,
+             count(*) FILTER (WHERE (status = 'pending' AND last_error IS NOT NULL)
+                                 OR (status = 'done' AND finished_at > ${hourAgo} AND attempts > 1)) AS retried,
+             percentile_disc(0.95) WITHIN GROUP (ORDER BY extract(epoch FROM finished_at - enqueued_at) * 1000)
+               FILTER (WHERE status = 'done' AND finished_at > ${hourAgo}) AS p95
+        FROM soc_learning_jobs
+       WHERE tenant_id = ${tenantId}`;
+    const decisions = await this.client.$queryRaw<
+      { applied: string; reason: string | null; proposed: string; n: bigint }[]
+    >`
+      SELECT applied_action AS applied, escalate_reason AS reason, proposed_action AS proposed, count(*) AS n
+        FROM soc_learning_decisions
+       WHERE tenant_id = ${tenantId} AND at > ${hourAgo}
+       GROUP BY 1, 2, 3`;
+    const [beat] = await this.client.$queryRaw<{ at: Date | null }[]>`
+      SELECT max(beat_at) AS at FROM soc_learning_worker_heartbeats WHERE tenant_id = ${tenantId}`;
+    const [day] = await this.client.$queryRaw<
+      { pauses: bigint; reversals: bigint; disagreements: bigint }[]
+    >`
+      SELECT (SELECT count(*) FROM soc_learning_pattern_events
+               WHERE tenant_id = ${tenantId} AND to_status = 'paused' AND at > ${dayAgo}) AS pauses,
+             (SELECT count(*) FROM soc_learning_reversals
+               WHERE tenant_id = ${tenantId} AND at > ${dayAgo}) AS reversals,
+             (SELECT count(*) FROM soc_learning_reviews
+               WHERE tenant_id = ${tenantId} AND status = 'disagreed' AND resolved_at > ${dayAgo}) AS disagreements`;
+    const [config] = await this.client.$queryRaw<{ changes: bigint; raised: boolean | null }[]>`
+      WITH ordered AS (
+        SELECT at, config_hash, max_mode,
+               lag(config_hash) OVER (ORDER BY at) AS previous_hash,
+               lag(max_mode) OVER (ORDER BY at) AS previous_mode
+          FROM soc_learning_config_events WHERE tenant_id = ${tenantId}
+      ), ranked AS (
+        SELECT *, array_position(ARRAY['off','shadow','dry_run','active'], max_mode) AS rank_now,
+                  array_position(ARRAY['off','shadow','dry_run','active'], previous_mode) AS rank_before
+          FROM ordered WHERE previous_hash IS NOT NULL AND at > ${dayAgo}
+      )
+      SELECT count(*) FILTER (WHERE config_hash <> previous_hash) AS changes,
+             bool_or(rank_now > rank_before) AS raised
+        FROM ranked`;
+    const byApplied: Record<string, number> = {};
+    const byEscalateReason: Record<string, number> = {};
+    let total = 0;
+    let hypothetical = 0;
+    for (const row of decisions) {
+      const n = Number(row.n);
+      total += n;
+      byApplied[row.applied] = (byApplied[row.applied] ?? 0) + n;
+      if (row.reason) byEscalateReason[row.reason] = (byEscalateReason[row.reason] ?? 0) + n;
+      if (row.proposed === 'AUTO_CLOSE' && row.applied !== 'AUTO_CLOSE') hypothetical += n;
+    }
+    return {
+      heartbeatAt: beat?.at ?? null,
+      backlog: {
+        pending: Number(jobs?.pending ?? 0),
+        expiredLeases: Number(jobs?.expired ?? 0),
+        oldestPendingAt: jobs?.oldest ?? null,
+      },
+      deadLast24h: Number(jobs?.dead ?? 0),
+      lastHour: {
+        jobsFinished: Number(jobs?.finished ?? 0),
+        jobsRetried: Number(jobs?.retried ?? 0),
+        latencyP95Ms: jobs?.p95 === null || jobs?.p95 === undefined ? null : Number(jobs.p95),
+        decisions: total,
+        byApplied,
+        byEscalateReason,
+        hypotheticalCloses: hypothetical,
+      },
+      last24h: {
+        pauses: Number(day?.pauses ?? 0),
+        reversals: Number(day?.reversals ?? 0),
+        disagreements: Number(day?.disagreements ?? 0),
+        configChanges: Number(config?.changes ?? 0),
+        modeRaised: config?.raised === true,
+      },
+    };
+  }
+
   /** Etapa D. Alertas cerradas sin `closure_origin` (etiquetado retroactivo pendiente). */
   public closedAlertsWithoutOrigin(tenantId: string): Promise<number> {
     return this.client.socAlert.count({

@@ -45,6 +45,7 @@ import type {
   AlertGroupStore,
   AlertStore,
   LearningConfigEvent,
+  LearningHealthCounts,
   LearningDecisionRecord,
   LearningEvidence,
   LearningJob,
@@ -727,6 +728,100 @@ export class InMemorySoc implements SocPersistence {
       )
       .sort((left, right) => right.at.getTime() - left.at.getTime());
     return Promise.resolve({ items: items.slice(0, query.limit), total: items.length });
+  }
+
+  /** Mismo cálculo que `PrismaSocQueries.learningHealthCounts`. */
+  public learningHealthCounts(tenantId: string, now: Date): Promise<LearningHealthCounts> {
+    const hourAgo = now.getTime() - 60 * 60 * 1000;
+    const dayAgo = now.getTime() - 24 * 60 * 60 * 1000;
+    const jobs = [...this.jobRows.values()].filter((job) => job.tenantId === tenantId);
+    const pending = jobs.filter((job) => job.status === 'pending');
+    const finishedHour = jobs.filter(
+      (job) =>
+        job.status === 'done' && job.finishedAt !== null && job.finishedAt.getTime() > hourAgo,
+    );
+    const latencies = finishedHour
+      .map((job) => job.finishedAt!.getTime() - job.enqueuedAt.getTime())
+      .sort((left, right) => left - right);
+    const decisions = [...this.decisionRows.values()].filter(
+      (row) => row.tenantId === tenantId && row.at.getTime() > hourAgo,
+    );
+    const byApplied: Partial<Record<LearningDecisionRecord['appliedAction'], number>> = {};
+    const byEscalateReason: Record<string, number> = {};
+    for (const row of decisions) {
+      byApplied[row.appliedAction] = (byApplied[row.appliedAction] ?? 0) + 1;
+      if (row.escalateReason)
+        byEscalateReason[row.escalateReason] = (byEscalateReason[row.escalateReason] ?? 0) + 1;
+    }
+    const heartbeats = [...this.heartbeatRows.values()].filter(
+      (beat) => beat.tenantId === tenantId,
+    );
+    const configs = this.configEventRows
+      .filter((event) => event.tenantId === tenantId)
+      .sort((left, right) => left.at.getTime() - right.at.getTime());
+    const rank = { off: 0, shadow: 1, dry_run: 2, active: 3 } as const;
+    let configChanges = 0;
+    let modeRaised = false;
+    configs.forEach((event, index) => {
+      const previous = configs[index - 1];
+      if (!previous || event.at.getTime() <= dayAgo) return;
+      if (event.configHash !== previous.configHash) configChanges += 1;
+      if (rank[event.maxMode] > rank[previous.maxMode]) modeRaised = true;
+    });
+    return Promise.resolve({
+      heartbeatAt: heartbeats.reduce<Date | null>(
+        (latest, beat) => (latest === null || beat.at > latest ? beat.at : latest),
+        null,
+      ),
+      backlog: {
+        pending: pending.length,
+        expiredLeases: jobs.filter(
+          (job) =>
+            job.status === 'leased' &&
+            job.leaseUntil !== null &&
+            job.leaseUntil.getTime() < now.getTime(),
+        ).length,
+        oldestPendingAt: pending.reduce<Date | null>(
+          (oldest, job) => (oldest === null || job.enqueuedAt < oldest ? job.enqueuedAt : oldest),
+          null,
+        ),
+      },
+      deadLast24h: jobs.filter(
+        (job) =>
+          job.status === 'dead' && job.finishedAt !== null && job.finishedAt.getTime() > dayAgo,
+      ).length,
+      lastHour: {
+        jobsFinished: finishedHour.length,
+        jobsRetried:
+          jobs.filter((job) => job.lastError !== null && job.status === 'pending').length +
+          finishedHour.filter((job) => job.attempts > 1).length,
+        latencyP95Ms:
+          latencies.length === 0 ? null : latencies[Math.ceil(latencies.length * 0.95) - 1]!,
+        decisions: decisions.length,
+        byApplied,
+        byEscalateReason,
+        hypotheticalCloses: decisions.filter(
+          (row) => row.proposedAction === 'AUTO_CLOSE' && row.appliedAction !== 'AUTO_CLOSE',
+        ).length,
+      },
+      last24h: {
+        pauses: this.patternEventRows.filter(
+          (row) => row.tenantId === tenantId && row.to === 'paused' && row.at.getTime() > dayAgo,
+        ).length,
+        reversals: this.reversalRows.filter(
+          (row) => row.tenantId === tenantId && row.at.getTime() > dayAgo,
+        ).length,
+        disagreements: [...this.reviewRows.values()].filter(
+          (row) =>
+            row.tenantId === tenantId &&
+            row.status === 'disagreed' &&
+            row.resolvedAt !== null &&
+            row.resolvedAt.getTime() > dayAgo,
+        ).length,
+        configChanges,
+        modeRaised,
+      },
+    });
   }
 
   public readinessMetrics(tenantId: string, since: Date): Promise<ReadinessMetrics> {

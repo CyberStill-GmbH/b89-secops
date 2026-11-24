@@ -200,6 +200,16 @@ export {
   type RevertRequest,
 } from './learning-engine-use-cases.js';
 export {
+  DEFAULT_LEARNING_HEALTH_POLICY,
+  evaluateLearningHealth,
+  LEARNING_SLOS,
+  type HealthSeverity,
+  type LearningHealthAlert,
+  type LearningHealthMetrics,
+  type LearningHealthPolicy,
+  type LearningHealthReport,
+} from './learning-health.js';
+export {
   DEFAULT_LEARNING_WORKER_POLICY,
   drainLearningQueue,
   errorCode as learningErrorCode,
@@ -256,6 +266,7 @@ export type {
   IncidentTaskStore,
   LearningConfigEvent,
   LearningDecisionRecord,
+  LearningHealthCounts,
   LearningEvidence,
   LearningJob,
   LearningJobQueue,

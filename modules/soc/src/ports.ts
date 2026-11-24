@@ -29,6 +29,7 @@ import type {
   LearningPattern,
   PatternStatus,
 } from './learning-pattern.js';
+import type { LearningHealthMetrics } from './learning-health.js';
 import type {
   Confidence,
   EngineAction,
@@ -243,6 +244,12 @@ export interface LearningConfigEvent {
   readonly at: Date;
 }
 
+/** Agregados de la base para la salud del motor (el runtime añade modo, kill switch y fuente). */
+export type LearningHealthCounts = Omit<
+  LearningHealthMetrics,
+  'enabled' | 'maxMode' | 'killSwitch' | 'sourceState'
+>;
+
 /** Evidencia para refrescar patrones: último cierre humano vigente por alerta, con su huella. */
 export interface LearningEvidence {
   readonly closures: readonly ClosureEvidence[];
@@ -408,6 +415,8 @@ export interface SocReadModel {
   learningEvidence?(tenantId: string, since: Date): Promise<LearningEvidence>;
   /** Etapa D. Alertas cerradas sin origen y cobertura de huella fina por fuente desde `since`. */
   readinessMetrics?(tenantId: string, since: Date): Promise<ReadinessMetrics>;
+  /** Fase 2 · agregados de salud del motor (sin PII). */
+  learningHealthCounts?(tenantId: string, now: Date): Promise<LearningHealthCounts>;
   /** Etapa D/E · lecturas de la consola. */
   listLearningPatterns?(query: {
     readonly tenantId: string;

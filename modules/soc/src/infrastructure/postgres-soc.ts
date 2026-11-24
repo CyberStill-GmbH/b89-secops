@@ -114,6 +114,7 @@ import type {
   IncidentTaskStore,
   LearningDecisionRecord,
   LearningEvidence,
+  LearningHealthCounts,
   LearningJob,
   LearningJobQueue,
   LearningPatternStore,
@@ -825,6 +826,17 @@ export class PostgresSocPersistence implements SocPersistence {
       if (row.origin === 'human') closures.push(toClosureEvidence(row));
     }
     return { closures, truePositivesByFingerprint };
+  }
+
+  public async learningHealthCounts(tenantId: string, now: Date): Promise<LearningHealthCounts> {
+    const counts = await this.queries.learningHealthCounts(tenantId, now);
+    const byApplied: LearningHealthCounts['lastHour']['byApplied'] = Object.fromEntries(
+      Object.entries(counts.lastHour.byApplied).map(([action, n]) => [
+        oneOf(ENGINE_ACTIONS, action, 'soc_learning_decisions', 'applied_action'),
+        n,
+      ]),
+    );
+    return { ...counts, lastHour: { ...counts.lastHour, byApplied } };
   }
 
   public async readinessMetrics(tenantId: string, since: Date): Promise<ReadinessMetrics> {
