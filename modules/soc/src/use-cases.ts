@@ -1144,3 +1144,6 @@ export async function addIncidentNote(
     return { ok: true as const, value: created.value };
   });
 }
+
+/** Uso interno del módulo (casos de uso de aprendizaje); no se reexporta en `index.ts`. */
+export { auditDraft as socAuditDraft, failure as socFailure };

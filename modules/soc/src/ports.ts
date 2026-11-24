@@ -22,6 +22,12 @@ import type {
 import type { Alert, AlertStatus } from './alert.js';
 import type { AlertGroup, AlertGroupStatus } from './alert-group.js';
 import type { AlertClosureRecord, ClosureOrigin } from './closure.js';
+import type {
+  ApprovalRecord,
+  ClosureEvidence,
+  LearningPattern,
+  PatternStatus,
+} from './learning-pattern.js';
 import type { Incident, IncidentStatus } from './incident.js';
 import type { IncidentNote, IncidentTask } from './incident-work.js';
 import type { OutboxMessageDraft } from './events.js';
@@ -53,6 +59,46 @@ export interface AlertFingerprintRecord extends AlertFingerprint {
 /** Una huella por alerta; repetir la ingesta no la reescribe. */
 export interface AlertFingerprintStore {
   insertIfAbsent(record: AlertFingerprintRecord): Promise<boolean>;
+}
+
+/** Etapa D · transición de estado de un patrón (bitácora append-only). */
+export interface PatternEventRecord {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly patternId: string;
+  readonly from: PatternStatus | null;
+  readonly to: PatternStatus;
+  readonly reason: string;
+  readonly actorId: string;
+  readonly at: Date;
+}
+
+/**
+ * Etapa D · patrones. Como máximo un patrón abierto por (tenant, huella); `update` es CAS.
+ * Firmas y eventos son append-only.
+ */
+export interface LearningPatternStore {
+  byId(tenantId: string, patternId: string): Promise<LearningPattern | undefined>;
+  openByFingerprint(tenantId: string, fingerprint: string): Promise<LearningPattern | undefined>;
+  listOpen(tenantId: string): Promise<readonly LearningPattern[]>;
+  insertIfAbsent(pattern: LearningPattern): Promise<boolean>;
+  update(pattern: LearningPattern, expectedRevision: number): Promise<boolean>;
+  approvals(tenantId: string, patternId: string): Promise<readonly ApprovalRecord[]>;
+  appendApproval(record: ApprovalRecord): Promise<void>;
+  appendEvent(record: PatternEventRecord): Promise<void>;
+}
+
+/** Evidencia para refrescar patrones: último cierre humano vigente por alerta, con su huella. */
+export interface LearningEvidence {
+  readonly closures: readonly ClosureEvidence[];
+  /** Cierres TP_REAL vigentes por huella (cualquier origen: un TP siempre cuenta en contra). */
+  readonly truePositivesByFingerprint: ReadonlyMap<string, number>;
+}
+
+/** Métricas para las compuertas de preparación. */
+export interface ReadinessMetrics {
+  readonly closedAlertsWithoutOrigin: number;
+  readonly sourceCoverage: ReadonlyMap<string, { readonly fine: number; readonly total: number }>;
 }
 
 /**
@@ -106,6 +152,7 @@ export interface SocTransactionContext {
   readonly closures: AlertClosureStore;
   readonly fingerprints: AlertFingerprintStore;
   readonly groups: AlertGroupStore;
+  readonly patterns: LearningPatternStore;
   readonly incidents: IncidentStore;
   readonly tasks: IncidentTaskStore;
   readonly notes: IncidentNoteStore;
@@ -200,6 +247,10 @@ export interface SocReadModel {
   listAlertGroups?(query: AlertGroupQuery): Promise<QueryResult<AlertGroup>>;
   /** IDs de las alertas del grupo, más recientes primero, como máximo `limit`. */
   alertGroupMembers?(tenantId: string, groupId: string, limit: number): Promise<readonly string[]>;
+  /** Etapa D. Cierres desde `since` (último vigente por alerta) y TP por huella. */
+  learningEvidence?(tenantId: string, since: Date): Promise<LearningEvidence>;
+  /** Etapa D. Alertas cerradas sin origen y cobertura de huella fina por fuente desde `since`. */
+  readinessMetrics?(tenantId: string, since: Date): Promise<ReadinessMetrics>;
   /**
    * Conteos exactos por veredicto y estado; opcional (los adapters que no lo implementan
    * obligan a quien llama a usar `listAlerts` y declarar el tope).

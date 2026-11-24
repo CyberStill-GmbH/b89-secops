@@ -35,6 +35,9 @@ import {
   type IncidentRow,
   type IncidentTaskRow,
   type IncidentWithAlertsRow,
+  type LearningClosureRow,
+  type LearningPatternRow,
+  type PatternApprovalRow,
   type SealedAuditRow,
 } from '@b89/database';
 import {
@@ -50,7 +53,14 @@ import {
 
 import { ALERT_STATUSES, TRIAGE_VERDICTS, type Alert } from '../alert.js';
 import { ALERT_GROUP_STATUSES, type AlertGroup } from '../alert-group.js';
-import { CLOSURE_ORIGINS, CLOSURE_REASONS } from '../closure.js';
+import { CLOSURE_ORIGINS, CLOSURE_REASONS, LEARNABLE_CLOSURE_REASONS } from '../closure.js';
+import {
+  PATTERN_STATUSES,
+  READINESS_BLOCKERS,
+  type ApprovalRecord,
+  type ClosureEvidence,
+  type LearningPattern,
+} from '../learning-pattern.js';
 import type {
   ClaimedWazuhPushHint,
   WazuhPushHint,
@@ -87,9 +97,12 @@ import type {
   IncidentQuery,
   IncidentStore,
   IncidentTaskStore,
+  LearningEvidence,
+  LearningPatternStore,
   OutboxLane,
   OutboxStore,
   QueryResult,
+  ReadinessMetrics,
   SocPersistence,
   SocTransactionContext,
 } from '../ports.js';
@@ -175,6 +188,56 @@ function toAlertGroup(row: AlertGroupRow): AlertGroup {
     level: oneOf(FINGERPRINT_LEVELS, row.level, 'soc_alert_groups', 'level'),
     status: oneOf(ALERT_GROUP_STATUSES, row.status, 'soc_alert_groups', 'status'),
     highestPriority: oneOf(PRIORITIES, row.highestPriority, 'soc_alert_groups', 'highest_priority'),
+  };
+}
+
+const PATTERN_ACTIONS = ['auto_close', 'demote'] as const;
+const APPROVAL_STAGES = ['first', 'second'] as const;
+const APPROVAL_DECISIONS = ['approve', 'reject'] as const;
+
+function toPattern(row: LearningPatternRow): LearningPattern {
+  const table = 'soc_learning_patterns';
+  return {
+    ...row,
+    level: oneOf(FINGERPRINT_LEVELS, row.level, table, 'level'),
+    maxAction: oneOf(PATTERN_ACTIONS, row.maxAction, table, 'max_action'),
+    closureReason: oneOf(LEARNABLE_CLOSURE_REASONS, row.closureReason, table, 'closure_reason'),
+    status: oneOf(PATTERN_STATUSES, row.status, table, 'status'),
+    priorityCeiling: oneOf(PRIORITIES, row.priorityCeiling, table, 'priority_ceiling'),
+    originAlertIds: [...row.originAlertIds],
+    originClosers: [...row.originClosers],
+    readinessBlockers: row.readinessBlockers.map((blocker) =>
+      oneOf(READINESS_BLOCKERS, blocker, table, 'readiness_blockers'),
+    ),
+  };
+}
+
+function toApproval(row: PatternApprovalRow): ApprovalRecord {
+  const table = 'soc_learning_pattern_approvals';
+  return {
+    ...row,
+    stage: oneOf(APPROVAL_STAGES, row.stage, table, 'stage'),
+    decision: oneOf(APPROVAL_DECISIONS, row.decision, table, 'decision'),
+  };
+}
+
+function toClosureEvidence(row: LearningClosureRow): ClosureEvidence {
+  return {
+    alertId: row.alertId,
+    actorId: row.actorId,
+    at: row.at,
+    closureReason: optionalOneOf(
+      CLOSURE_REASONS,
+      row.closureReason,
+      'soc_alert_closures',
+      'closure_reason',
+    ),
+    decisionGroupId: row.decisionGroupId,
+    priority: oneOf(PRIORITIES, row.priority, 'soc_alerts', 'priority'),
+    ruleKey: row.ruleKey,
+    fingerprint: row.fingerprint,
+    level: oneOf(FINGERPRINT_LEVELS, row.level, 'soc_alert_fingerprints', 'level'),
+    normalizerVersion: row.normalizerVersion,
   };
 }
 
@@ -368,6 +431,33 @@ export class PostgresSocPersistence implements SocPersistence {
         update: (group, expectedRevision) => stores.groups.update(group, expectedRevision),
         addMember: (member) => stores.groups.addMember(member),
       };
+      const patterns: LearningPatternStore = {
+        byId: async (tenantId, patternId) => {
+          const row = await stores.patterns.byId(tenantId, patternId);
+          return row ? toPattern(row) : undefined;
+        },
+        openByFingerprint: async (tenantId, fingerprint) => {
+          const row = await stores.patterns.openByFingerprint(tenantId, fingerprint);
+          return row ? toPattern(row) : undefined;
+        },
+        listOpen: async (tenantId) => (await stores.patterns.listOpen(tenantId)).map(toPattern),
+        insertIfAbsent: (pattern) => stores.patterns.insertIfAbsent(pattern),
+        update: (pattern, expectedRevision) => stores.patterns.update(pattern, expectedRevision),
+        approvals: async (tenantId, patternId) =>
+          (await stores.patterns.approvals(tenantId, patternId)).map(toApproval),
+        appendApproval: (record) => stores.patterns.appendApproval(record),
+        appendEvent: (record) =>
+          stores.patterns.appendEvent({
+            id: record.id,
+            tenantId: record.tenantId,
+            patternId: record.patternId,
+            fromStatus: record.from,
+            toStatus: record.to,
+            reason: record.reason,
+            actorId: record.actorId,
+            at: record.at,
+          }),
+      };
       const incidents: IncidentStore = {
         byId: async (tenantId, incidentId) => {
           const row = await stores.incidents.byId(tenantId, incidentId);
@@ -411,6 +501,7 @@ export class PostgresSocPersistence implements SocPersistence {
         closures,
         fingerprints,
         groups,
+        patterns,
         incidents,
         tasks,
         notes,
@@ -466,6 +557,36 @@ export class PostgresSocPersistence implements SocPersistence {
   public async listAlertGroups(query: AlertGroupQuery): Promise<QueryResult<AlertGroup>> {
     const result = await this.queries.listAlertGroups(query);
     return { items: result.items.map(toAlertGroup), total: result.total };
+  }
+
+  /** Etapa D. Último cierre vigente por alerta; TP_REAL de cualquier origen, el resto solo humano. */
+  public async learningEvidence(tenantId: string, since: Date): Promise<LearningEvidence> {
+    const rows = await this.queries.learningClosures(tenantId, since);
+    const closures: ClosureEvidence[] = [];
+    const truePositivesByFingerprint = new Map<string, number>();
+    for (const row of rows) {
+      if (row.closureReason === 'TP_REAL') {
+        truePositivesByFingerprint.set(
+          row.fingerprint,
+          (truePositivesByFingerprint.get(row.fingerprint) ?? 0) + 1,
+        );
+      }
+      if (row.origin === 'human') closures.push(toClosureEvidence(row));
+    }
+    return { closures, truePositivesByFingerprint };
+  }
+
+  public async readinessMetrics(tenantId: string, since: Date): Promise<ReadinessMetrics> {
+    const [closedAlertsWithoutOrigin, coverage] = await Promise.all([
+      this.queries.closedAlertsWithoutOrigin(tenantId),
+      this.queries.sourceCoverage(tenantId, since),
+    ]);
+    return {
+      closedAlertsWithoutOrigin,
+      sourceCoverage: new Map(
+        coverage.map((row) => [row.source, { fine: row.fine, total: row.total }]),
+      ),
+    };
   }
 
   public alertGroupMembers(

@@ -75,6 +75,13 @@ export const CAPABILITIES = [
   'allowlist.read',
   /** Agregar o cambiar clientes e IPs de la lista blanca; solo administración de plataforma. */
   'allowlist.manage',
+  /** Aprendizaje SOC · etapa D: ver patrones de FP, su evidencia y sus bloqueos de preparación. */
+  'learning.read',
+  /**
+   * Firmar, rechazar o revocar patrones de FP. Además de la capability, la persona debe estar en
+   * la lista de aprobadores designados (`B89_SOC_LEARNING_APPROVERS`): se otorga por persona.
+   */
+  'learning.patterns.approve',
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
@@ -112,6 +119,7 @@ export const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> 
     'investigations.run',
     'dlp.read',
     'allowlist.read',
+    'learning.read',
   ],
   'b89.soc.lead': [
     'events.read',
@@ -132,6 +140,8 @@ export const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> 
     'investigations.read',
     'investigations.run',
     'allowlist.read',
+    'learning.read',
+    'learning.patterns.approve',
   ],
   'b89.auditor': [
     'audit.read',
@@ -139,6 +149,7 @@ export const ROLE_CAPABILITIES: Readonly<Record<string, readonly Capability[]>> 
     'audit.verify',
     'incidents.read',
     'sources.health.read',
+    'learning.read',
   ],
   // La solicitud del producto define al administrador de plataforma como el rol
   // operativo con acceso a todos los módulos actuales. El enforcement sigue siendo
@@ -205,6 +216,7 @@ const SCOPE_CAPABILITIES: Readonly<Record<Scope, readonly Capability[]>> = Objec
     'investigations.read',
     'dlp.read',
     'allowlist.read',
+    'learning.read',
   ],
   'soc.write': [
     'alerts.triage',
@@ -223,6 +235,7 @@ const SCOPE_CAPABILITIES: Readonly<Record<Scope, readonly Capability[]>> = Objec
     'investigations.configure',
     'dlp.configure',
     'allowlist.manage',
+    'learning.patterns.approve',
   ],
   'audit.read': ['audit.read', 'audit.read_sensitive', 'audit.verify'],
 });

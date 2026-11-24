@@ -21,6 +21,12 @@ import type {
 
 import type { Alert } from './alert.js';
 import type { AlertGroup } from './alert-group.js';
+import {
+  OPEN_PATTERN_STATUSES,
+  type ApprovalRecord,
+  type ClosureEvidence,
+  type LearningPattern,
+} from './learning-pattern.js';
 import type { AlertClosureRecord } from './closure.js';
 import type { Incident } from './incident.js';
 import type { IncidentNote, IncidentTask } from './incident-work.js';
@@ -37,6 +43,10 @@ import type {
   AlertGroupQuery,
   AlertGroupStore,
   AlertStore,
+  LearningEvidence,
+  LearningPatternStore,
+  PatternEventRecord,
+  ReadinessMetrics,
   ClaimedOutboxMessage,
   OutboxHealth,
   IncidentNoteStore,
@@ -54,6 +64,9 @@ interface Snapshot {
   readonly closures: readonly AlertClosureRecord[];
   readonly fingerprints: ReadonlyMap<string, AlertFingerprintRecord>;
   readonly groups: ReadonlyMap<string, AlertGroup>;
+  readonly patterns: ReadonlyMap<string, LearningPattern>;
+  readonly approvals: readonly ApprovalRecord[];
+  readonly patternEvents: readonly PatternEventRecord[];
   readonly groupMembers: ReadonlyMap<string, GroupMember>;
   readonly incidents: ReadonlyMap<string, Incident>;
   readonly tasks: ReadonlyMap<string, IncidentTask>;
@@ -95,6 +108,10 @@ export class InMemorySoc implements SocPersistence {
   /** Grupos por `tenant|grupo` y pertenencia por `tenant|alerta` (etapa C). */
   public readonly groupRows = new Map<string, AlertGroup>();
   public readonly groupMemberRows = new Map<string, GroupMember>();
+  /** Etapa D: patrones por `tenant|id`; firmas y eventos append-only. */
+  public readonly patternRows = new Map<string, LearningPattern>();
+  public readonly approvalRows: ApprovalRecord[] = [];
+  public readonly patternEventRows: PatternEventRecord[] = [];
   public readonly incidentRows = new Map<string, Incident>();
   public readonly taskRows = new Map<string, IncidentTask>();
   public readonly noteRows = new Map<string, IncidentNote>();
@@ -144,6 +161,58 @@ export class InMemorySoc implements SocPersistence {
       if (this.fingerprintRows.has(key)) return Promise.resolve(false);
       this.fingerprintRows.set(key, record);
       return Promise.resolve(true);
+    },
+  };
+
+  private readonly patterns: LearningPatternStore = {
+    byId: (tenantId, patternId) =>
+      Promise.resolve(this.patternRows.get(`${tenantId}|${patternId}`)),
+    openByFingerprint: (tenantId, fingerprint) =>
+      Promise.resolve(
+        [...this.patternRows.values()].find(
+          (pattern) =>
+            pattern.tenantId === tenantId &&
+            pattern.fingerprint === fingerprint &&
+            OPEN_PATTERN_STATUSES.includes(pattern.status),
+        ),
+      ),
+    listOpen: (tenantId) =>
+      Promise.resolve(
+        [...this.patternRows.values()].filter(
+          (pattern) =>
+            pattern.tenantId === tenantId && OPEN_PATTERN_STATUSES.includes(pattern.status),
+        ),
+      ),
+    insertIfAbsent: (pattern) => {
+      const clash = [...this.patternRows.values()].some(
+        (row) =>
+          row.id === pattern.id ||
+          (row.tenantId === pattern.tenantId &&
+            row.fingerprint === pattern.fingerprint &&
+            OPEN_PATTERN_STATUSES.includes(row.status)),
+      );
+      if (clash) return Promise.resolve(false);
+      this.patternRows.set(`${pattern.tenantId}|${pattern.id}`, pattern);
+      return Promise.resolve(true);
+    },
+    update: (pattern, expectedRevision) => {
+      const key = `${pattern.tenantId}|${pattern.id}`;
+      const current = this.patternRows.get(key);
+      if (!current || current.revision !== expectedRevision) return Promise.resolve(false);
+      this.patternRows.set(key, pattern);
+      return Promise.resolve(true);
+    },
+    approvals: (tenantId, patternId) =>
+      Promise.resolve(
+        this.approvalRows.filter((row) => row.tenantId === tenantId && row.patternId === patternId),
+      ),
+    appendApproval: (record) => {
+      this.approvalRows.push(record);
+      return Promise.resolve();
+    },
+    appendEvent: (record) => {
+      this.patternEventRows.push(record);
+      return Promise.resolve();
     },
   };
 
@@ -257,6 +326,9 @@ export class InMemorySoc implements SocPersistence {
       closures: [...this.closureRows],
       fingerprints: new Map(this.fingerprintRows),
       groups: new Map(this.groupRows),
+      patterns: new Map(this.patternRows),
+      approvals: [...this.approvalRows],
+      patternEvents: [...this.patternEventRows],
       groupMembers: new Map(this.groupMemberRows),
       incidents: new Map(this.incidentRows),
       tasks: new Map(this.taskRows),
@@ -284,6 +356,9 @@ export class InMemorySoc implements SocPersistence {
     this.closureRows.splice(0, this.closureRows.length, ...snapshot.closures);
     replace(this.fingerprintRows, snapshot.fingerprints);
     replace(this.groupRows, snapshot.groups);
+    replace(this.patternRows, snapshot.patterns);
+    this.approvalRows.splice(0, this.approvalRows.length, ...snapshot.approvals);
+    this.patternEventRows.splice(0, this.patternEventRows.length, ...snapshot.patternEvents);
     replace(this.groupMemberRows, snapshot.groupMembers);
     replace(this.incidentRows, snapshot.incidents);
     replace(this.taskRows, snapshot.tasks);
@@ -313,6 +388,7 @@ export class InMemorySoc implements SocPersistence {
         closures: this.closures,
         fingerprints: this.fingerprints,
         groups: this.groups,
+        patterns: this.patterns,
         incidents: this.incidents,
         tasks: this.tasks,
         notes: this.notes,
@@ -354,6 +430,64 @@ export class InMemorySoc implements SocPersistence {
     return Promise.resolve(
       member ? this.groupRows.get(`${tenantId}|${member.groupId}`) : undefined,
     );
+  }
+
+  /** Último registro de cierre vigente por alerta (una reapertura posterior lo anula). */
+  private latestClosures(tenantId: string, since: Date) {
+    const latest = new Map<string, AlertClosureRecord>();
+    for (const row of this.closureRows) {
+      if (row.tenantId !== tenantId) continue;
+      const current = latest.get(row.alertId);
+      if (!current || row.at.getTime() >= current.at.getTime()) latest.set(row.alertId, row);
+    }
+    return [...latest.values()].filter((row) => row.kind === 'close' && row.at >= since);
+  }
+
+  public learningEvidence(tenantId: string, since: Date): Promise<LearningEvidence> {
+    const closures: ClosureEvidence[] = [];
+    const truePositivesByFingerprint = new Map<string, number>();
+    for (const row of this.latestClosures(tenantId, since)) {
+      const fingerprint = this.fingerprintRows.get(`${tenantId}|${row.alertId}`);
+      const alert = this.alertRows.get(`${tenantId}|${row.alertId}`);
+      if (!fingerprint || !alert) continue;
+      if (row.closureReason === 'TP_REAL') {
+        truePositivesByFingerprint.set(
+          fingerprint.fingerprint,
+          (truePositivesByFingerprint.get(fingerprint.fingerprint) ?? 0) + 1,
+        );
+      }
+      if (row.origin !== 'human') continue;
+      closures.push({
+        alertId: row.alertId,
+        actorId: row.actorId,
+        at: row.at,
+        closureReason: row.closureReason,
+        decisionGroupId: row.decisionGroupId,
+        priority: alert.priority,
+        ruleKey: fingerprint.ruleKey,
+        fingerprint: fingerprint.fingerprint,
+        level: fingerprint.level,
+        normalizerVersion: fingerprint.normalizerVersion,
+      });
+    }
+    return Promise.resolve({ closures, truePositivesByFingerprint });
+  }
+
+  public readinessMetrics(tenantId: string, since: Date): Promise<ReadinessMetrics> {
+    const closedAlertsWithoutOrigin = [...this.alertRows.values()].filter(
+      (alert) =>
+        alert.tenantId === tenantId && alert.status === 'closed' && alert.closureOrigin === null,
+    ).length;
+    const sourceCoverage = new Map<string, { fine: number; total: number }>();
+    for (const row of this.fingerprintRows.values()) {
+      if (row.tenantId !== tenantId || row.computedAt < since || row.ruleKey === null) continue;
+      const source = row.ruleKey.slice(0, Math.max(0, row.ruleKey.indexOf(':'))) || row.ruleKey;
+      const entry = sourceCoverage.get(source) ?? { fine: 0, total: 0 };
+      entry.total += 1;
+      if (row.level === 'fine') entry.fine += 1;
+      sourceCoverage.set(source, entry);
+    }
+    return Promise.resolve({ closedAlertsWithoutOrigin, sourceCoverage });
   }
 
   public alertGroupsOf(
