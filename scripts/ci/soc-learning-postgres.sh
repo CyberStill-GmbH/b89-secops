@@ -105,6 +105,7 @@ test "$(psql "$db_url" -tAc "SELECT to_regclass('soc_alert_closures') IS NOT NUL
 step "5. Specs de integración SOC y base de datos"
 (cd "$root" && DATABASE_URL="$ADMIN_DATABASE_URL" pnpm exec vitest run --config vitest.integration.config.ts \
   modules/soc/test/postgres-soc.integration.spec.ts \
+  platform/database/test/postgres-learning-roles.integration.spec.ts \
   platform/database/test/postgres-c19.integration.spec.ts --reporter=verbose)
 
 step "Verificación de aprendizaje SOC completa"
