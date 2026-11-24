@@ -502,18 +502,22 @@ export function decideLearningAction(input: EngineInput): EngineDecision {
   // `ceiling` cambia dentro de `lower`: TypeScript no sigue esa asignación.
   const action = ceiling as 'AUTO_CLOSE' | 'DEMOTE' | 'NONE';
   if (action === 'DEMOTE') {
-    // P4 no tiene a dónde bajar; P3→P4 se registra (efecto pendiente de `effective_priority`).
+    // Solo P3 → P4 (piso; P1/P2 ya escalaron arriba). En sombra se registra sin efecto; en dry-run
+    // y activo se aplica (DEMOTE no oculta nada: la alerta sigue en la cola con su prioridad original).
+    const applies = mode !== 'shadow' && alert.priority === 'P3';
     checks.push({
       id: 'ACTION',
       ok: true,
-      detail: 'DEMOTE registrado, sin efecto en esta versión',
+      detail: applies
+        ? 'DEMOTE P3 → P4 (prioridad efectiva)'
+        : `DEMOTE sin efecto (${mode}, ${alert.priority})`,
     });
     return decision({
       mode,
       checks,
       ...base,
       proposedAction: 'DEMOTE',
-      appliedAction: 'NONE',
+      appliedAction: applies ? 'DEMOTE' : 'NONE',
       confidence: 'low',
     });
   }

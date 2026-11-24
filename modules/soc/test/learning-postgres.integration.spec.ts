@@ -626,6 +626,24 @@ describe.skipIf(!databaseUrl)('Aprendizaje SOC D/E · PostgreSQL real', () => {
     ).toBe(1);
   });
 
+  it('la base solo admite DEMOTE P3 → P4 con su decisión (nunca P1/P2 ni sin trazabilidad)', async () => {
+    const p2 = await ingest(fingerprintOf('k'), { priority: 'P2' });
+    await expect(
+      adminQuery(`UPDATE soc_alerts SET effective_priority = 'P4', demoted_by = $2 WHERE id = $1`, [
+        p2.id,
+        randomUUID(),
+      ]),
+    ).rejects.toThrow(/effective_priority_floor/u);
+    const p3 = await ingest(fingerprintOf('l'), { priority: 'P3' });
+    await expect(
+      adminQuery(`UPDATE soc_alerts SET effective_priority = 'P4' WHERE id = $1`, [p3.id]),
+    ).rejects.toThrow(/effective_priority_floor/u);
+    await adminQuery(
+      `UPDATE soc_alerts SET effective_priority = 'P4', demoted_by = $2 WHERE id = $1`,
+      [p3.id, randomUUID()],
+    );
+  });
+
   it('la base rechaza un cierre del motor fuera de P4 aunque el código lo intentara', async () => {
     const alert = await ingest(fingerprintOf('j'), { priority: 'P2' });
     await expect(

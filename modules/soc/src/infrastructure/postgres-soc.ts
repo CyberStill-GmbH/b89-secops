@@ -206,6 +206,13 @@ function toAlert(row: AlertRow): Alert {
     ),
     closedBy: row.closedBy,
     closedAt: row.closedAt,
+    effectivePriority: optionalOneOf(
+      PRIORITIES,
+      row.effectivePriority ?? null,
+      'soc_alerts',
+      'effective_priority',
+    ),
+    demotedBy: row.demotedBy ?? null,
   };
 }
 

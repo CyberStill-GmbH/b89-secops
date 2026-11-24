@@ -68,6 +68,9 @@ export function alertView(alert: Alert, capabilities: ReadonlySet<string>) {
       // El título ya no lleva «(wazuh N)»: la regla viaja aparte para la guía y el detalle técnico.
       ruleId: alert.ruleId,
       priority: alert.priority,
+      // Aprendizaje SOC · fase 3: la cola ordena por la efectiva y muestra la original.
+      effectivePriority: alert.effectivePriority ?? alert.priority,
+      demotedBy: alert.demotedBy ?? null,
       score: alert.score,
       status: alert.status,
       assigneeId: alert.assigneeId,

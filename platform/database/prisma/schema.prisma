@@ -369,6 +369,8 @@ model SocAlert {
   closureOrigin   String?   @map("closure_origin") @db.Text
   closedBy        String?   @map("closed_by") @db.Text
   closedAt        DateTime? @map("closed_at") @db.Timestamptz(3)
+  effectivePriority String? @map("effective_priority") @db.Text
+  demotedBy         String? @map("demoted_by") @db.Uuid
 
   candidate DetectionCandidate @relation(fields: [candidateId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "soc_alerts_candidate_fkey")
   incident  SocIncident?       @relation(fields: [incidentId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "soc_alerts_incident_fkey")

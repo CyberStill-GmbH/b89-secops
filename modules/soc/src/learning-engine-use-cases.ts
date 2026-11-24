@@ -216,6 +216,84 @@ async function closeAsEngine(
   return true;
 }
 
+/**
+ * DEMOTE: prioridad efectiva P3 → P4 en una escritura CAS. `priority` (la original) no cambia y la
+ * base rechaza cualquier otra combinación (CHECK `soc_alerts_effective_priority_floor`).
+ */
+async function demoteAsEngine(
+  context: SocTransactionContext,
+  dependencies: SocDependencies,
+  alert: Alert,
+  decisionId: string,
+  correlationId: string,
+  at: Date,
+): Promise<boolean> {
+  if (
+    alert.priority !== 'P3' ||
+    alert.status === 'closed' ||
+    (alert.effectivePriority ?? null) !== null
+  ) {
+    return false;
+  }
+  const next: Alert = {
+    ...alert,
+    effectivePriority: 'P4',
+    demotedBy: decisionId,
+    updatedAt: at,
+    revision: alert.revision + 1,
+  };
+  if (!(await context.alerts.update(next, alert.revision))) return false;
+  await recordAudit(
+    context.audit,
+    socAuditDraft({
+      id: dependencies.ids.next(),
+      actor: serviceActor(alert.tenantId),
+      action: 'soc.alert.demote',
+      resource: { type: 'alert', id: alert.id },
+      outcome: 'succeeded',
+      correlationId,
+      at,
+      metadata: { from: alert.priority, to: 'P4', decisionId },
+    }),
+  );
+  return true;
+}
+
+/** Revierte un DEMOTE: la prioridad efectiva vuelve a la original. */
+async function undemote(
+  context: SocTransactionContext,
+  dependencies: SocDependencies,
+  alertId: string,
+  actor: Actor,
+  correlationId: string,
+  at: Date,
+): Promise<boolean> {
+  const alert = await context.alerts.byId(actor.tenantId, alertId);
+  if (!alert || (alert.effectivePriority ?? null) === null) return false;
+  const next: Alert = {
+    ...alert,
+    effectivePriority: null,
+    demotedBy: null,
+    updatedAt: at,
+    revision: alert.revision + 1,
+  };
+  if (!(await context.alerts.update(next, alert.revision))) return false;
+  await recordAudit(
+    context.audit,
+    socAuditDraft({
+      id: dependencies.ids.next(),
+      actor,
+      action: 'soc.alert.undemote',
+      resource: { type: 'alert', id: alert.id },
+      outcome: 'succeeded',
+      correlationId,
+      at,
+      metadata: { priority: alert.priority },
+    }),
+  );
+  return true;
+}
+
 /* -------------------------------------------------------------- Evaluación */
 
 export interface EvaluateRequest {
@@ -285,6 +363,26 @@ export async function evaluateAlertWithLearning(
       let applied = decided.appliedAction;
       let closed = false;
       const checks = [...decided.checks];
+      if (applied === 'DEMOTE') {
+        const demoted = stillActive(exact, now)
+          ? await demoteAsEngine(
+              context,
+              dependencies,
+              alert,
+              decisionId,
+              request.correlationId,
+              now,
+            )
+          : false;
+        if (!demoted) {
+          applied = 'ESCALATE';
+          checks.push({
+            id: 'EFFECT',
+            ok: false,
+            detail: 'la alerta o el patrón cambiaron antes de bajar la prioridad',
+          });
+        }
+      }
       if (applied === 'AUTO_CLOSE') {
         closed = stillActive(exact, now)
           ? await closeAsEngine(
@@ -646,19 +744,30 @@ export async function revertLearningDecision(
       request.decisionId,
     );
     if (!decision) return socFailure('NOT_FOUND', 'DECISION_NOT_FOUND', 'La decisión no existe.');
-    const reopened = await reopenAsReviewer(
-      context,
-      dependencies,
-      decision.alertId,
-      request.actor,
-      request.correlationId,
-      now,
-    );
+    // Un autocierre se revierte reabriendo; un DEMOTE, devolviendo la prioridad original.
+    const reopened =
+      decision.appliedAction === 'DEMOTE'
+        ? await undemote(
+            context,
+            dependencies,
+            decision.alertId,
+            request.actor,
+            request.correlationId,
+            now,
+          )
+        : await reopenAsReviewer(
+            context,
+            dependencies,
+            decision.alertId,
+            request.actor,
+            request.correlationId,
+            now,
+          );
     if (!reopened) {
       return socFailure(
         'INVALID_COMMAND',
         'NOT_ENGINE_CLOSED',
-        'Solo se revierte una alerta que sigue cerrada por el motor.',
+        'Solo se revierte una alerta que sigue cerrada (o con prioridad bajada) por el motor.',
       );
     }
     await context.learning.appendReversal({

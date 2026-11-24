@@ -80,6 +80,13 @@ export interface Alert {
   readonly closureOrigin: ClosureOrigin | null;
   readonly closedBy: string | null;
   readonly closedAt: Date | null;
+  /**
+   * Aprendizaje SOC · fase 3: prioridad efectiva tras un DEMOTE del motor (solo P3 → P4). La
+   * cola ordena por ella y muestra `priority`, que nunca cambia. `demotedBy` es la decisión.
+   * Opcionales: ausentes equivalen a `null` (alertas anteriores a la fase 3).
+   */
+  readonly effectivePriority?: Priority | null;
+  readonly demotedBy?: string | null;
 }
 
 /**

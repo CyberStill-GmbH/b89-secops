@@ -218,6 +218,8 @@ export interface AlertRow {
   readonly closureOrigin: string | null;
   readonly closedBy: string | null;
   readonly closedAt: Date | null;
+  readonly effectivePriority?: string | null;
+  readonly demotedBy?: string | null;
 }
 
 export class PrismaAlertStore {
@@ -258,6 +260,8 @@ export class PrismaAlertStore {
           closureOrigin: alert.closureOrigin,
           closedBy: alert.closedBy,
           closedAt: alert.closedAt,
+          effectivePriority: alert.effectivePriority ?? null,
+          demotedBy: alert.demotedBy ?? null,
         },
       ],
       skipDuplicates: true,
@@ -280,6 +284,8 @@ export class PrismaAlertStore {
         closureOrigin: alert.closureOrigin,
         closedBy: alert.closedBy,
         closedAt: alert.closedAt,
+        effectivePriority: alert.effectivePriority ?? null,
+        demotedBy: alert.demotedBy ?? null,
       },
     });
     return updated.count === 1;

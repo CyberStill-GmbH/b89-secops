@@ -356,10 +356,42 @@ describe('contrato E · B. guardas sobre la misma huella', () => {
     );
   });
 
-  it('B2 · P3 → como máximo DEMOTE, nunca AUTO_CLOSE', async () => {
+  it('B2 · P3 → como máximo DEMOTE (prioridad efectiva P4, la original intacta), nunca AUTO_CLOSE', async () => {
     const result = await run({ alert: { priority: 'P3' } });
-    expect(result.decision).toMatchObject({ proposedAction: 'DEMOTE', appliedAction: 'NONE' });
+    expect(result.decision).toMatchObject({ proposedAction: 'DEMOTE', appliedAction: 'DEMOTE' });
+    expect(result.alert).toMatchObject({
+      priority: 'P3',
+      effectivePriority: 'P4',
+      demotedBy: result.decision?.id,
+    });
     expectOpen(result);
+  });
+
+  it('B2 · en sombra el DEMOTE se registra sin efecto', async () => {
+    const result = await run({ alert: { priority: 'P3' }, settings: { activeRules: new Set() } });
+    expect(result.decision).toMatchObject({
+      mode: 'shadow',
+      proposedAction: 'DEMOTE',
+      appliedAction: 'NONE',
+    });
+    expect(result.alert.effectivePriority ?? null).toBeNull();
+  });
+
+  it('B2 · revertir un DEMOTE devuelve la prioridad original y pausa el patrón', async () => {
+    const result = await run({ alert: { priority: 'P3' } });
+    const reverted = await revertLearningDecision(deps, {
+      actor: actor('beto', 'b89.soc.analyst'),
+      decisionId: result.decision!.id,
+      reason: 'La alerta no debía bajar de prioridad.',
+      correlationId: 'c',
+    });
+    expect(reverted.ok).toBe(true);
+    expect(soc.alertRows.get(`${TENANT}|${result.alert.id}`)).toMatchObject({
+      priority: 'P3',
+      effectivePriority: null,
+      demotedBy: null,
+    });
+    expect(soc.patternRows.get(`${TENANT}|${PATTERN_ID}`)?.status).toBe('paused');
   });
 });
 
