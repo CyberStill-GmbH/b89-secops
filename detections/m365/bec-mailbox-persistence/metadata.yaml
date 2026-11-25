@@ -24,6 +24,7 @@ rules:
   - 100512
   - 100513
   - 100514
+  - 100536
 mitre:
 - technique: T1564.008
   tactic: defense-evasion
@@ -32,13 +33,15 @@ mitre:
 - technique: T1098.002
   tactic: persistence
 severity:
-  levels: 8 regla desde cliente · 10 SendAs · 11 transporte · 12 reenvío/ocultación
+  levels: 7 regla que solo mueve a carpeta · 8 regla desde cliente · 10 SendAs · 11 transporte · 12 reenvío/ocultación
   priority_hint: P2 (P1 si correlaciona con un acceso anómalo)
   rationale: El reenvío externo es el mecanismo principal de fraude de pago en fintech; cada minuto filtra correo.
 false_positives:
 - Reglas legítimas de organización de correo (mover a carpeta) creadas desde Outlook (100511).
 - 'Reenvío aprobado a buzones compartidos internos: documentar excepción por destinatario.'
-tuning: []
+tuning:
+- '2026-11-25 (doc 07): regla de bandeja que SOLO mueve a carpeta (MoveToFolder sin reenvío, borrado ni
+  marcar como leído) baja de 12 a 7 (100536); tras compromiso 101702 la sigue elevando a 14.'
 tests:
   runner: logtest
   suite: office365

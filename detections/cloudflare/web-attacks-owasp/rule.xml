@@ -18,7 +18,7 @@
     10 la app respondió 500 ante una carga de ataque · fuerza bruta de login de una IP
     12 relleno de credenciales distribuido
   Los patrones (no la frase) están en metadata.yaml → owasp. Los `<` y `&` van como \x3c y \x26 (XML de Wazuh).
-  Rango B89: 102000–102029. Se instala como b89_soc_cloudflare_web_attacks_owasp.xml (después de b89_cloudflare_rules).
+  Rango B89: 102000–102019 (102020–102029 es de la lista blanca de la API de pagos). Se instala como b89_soc_cloudflare_web_attacks_owasp.xml (después de b89_cloudflare_rules).
 -->
 <group name="b89_provider,cloudflare,b89_http,">
 

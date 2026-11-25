@@ -39,7 +39,7 @@
 
   <!-- Reenvío u ocultación de correo tras el compromiso: patrón BEC. -->
   <rule id="101702" level="14" timeframe="86400">
-    <if_sid>100510, 100512</if_sid>
+    <if_sid>100510, 100512, 100536</if_sid>
     <if_matched_sid>100505</if_matched_sid>
     <same_field>office365.UserId</same_field>
     <description>B89 M365: $(office365.UserId) creó reenvío u ocultación de correo después de entrar tras fuerza bruta (patrón BEC).</description>

@@ -17,6 +17,11 @@
  *   (`CORRELATED_ENTITY`) y cadena de compromiso de cuenta (`ATTACK_CHAIN`); comparación de
  *   identidades y activos sin distinguir mayúsculas, porque los UPN de Entra no las
  *   distinguen y una diferencia de capitalización no puede apagar un ajuste.
+ * - 1.2.0 (2026-11-25, docs/detection-engineering/07): una alerta del proveedor de severidad
+ *   media o menor solo se promueve con contexto de negocio o de ataque
+ *   (`PROMOTION_CONTEXT_REASONS`). Antes, todo nivel Wazuh 4–7 (medium = 40 ≥ 35) abría una
+ *   alerta P3 por sí solo, y la repetición del mismo ruido sumaba puntos en vez de agrupar.
+ *   Los puntajes y prioridades no cambian; cambia qué se promueve (`isPromotable`).
  */
 
 import type { SecurityEvent } from '@b89/contracts';
@@ -24,7 +29,7 @@ import type { SecurityEvent } from '@b89/contracts';
 import type { CorrelationSignal } from './correlation.js';
 
 export const PRIORITIZATION_RULESET_ID = 'b89.detection.prioritization' as const;
-export const PRIORITIZATION_RULESET_VERSION = '1.1.0' as const;
+export const PRIORITIZATION_RULESET_VERSION = '1.2.0' as const;
 
 export const PRIORITIES = ['P1', 'P2', 'P3', 'P4'] as const;
 export type Priority = (typeof PRIORITIES)[number];
@@ -101,6 +106,39 @@ export const PRIORITY_THRESHOLDS = Object.freeze({ P1: 85, P2: 65, P3: 35 });
 
 /** Umbral de promoción a alerta SOC. Por debajo, el evento permanece consultable. */
 export const PROMOTION_THRESHOLD = PRIORITY_THRESHOLDS.P3;
+
+/** Severidades que se promueven por sí solas al superar el umbral (nivel Wazuh ≥ 8). */
+const SELF_PROMOTING_SEVERITIES: ReadonlySet<SecurityEvent['severity']['normalized']> = new Set([
+  'high',
+  'critical',
+]);
+
+/**
+ * Ajustes que cuentan como contexto para promover una alerta media o menor (1.2.0). No incluye
+ * `REPEATED_ACTIVITY` (repetir el mismo ruido no lo vuelve incidente) ni `EXTERNAL_EXPOSURE`
+ * (en las fuentes del borde todo activo está expuesto: no distingue nada).
+ */
+export const PROMOTION_CONTEXT_REASONS: ReadonlySet<ReasonCode> = new Set<ReasonCode>([
+  'BREAK_GLASS_IDENTITY',
+  'PRIVILEGED_IDENTITY',
+  'CRITICAL_ASSET',
+  'SUCCESSFUL_INTRUSION',
+  'CORRELATED_ENTITY',
+  'ATTACK_CHAIN',
+]);
+
+/**
+ * ¿Abre alerta? Supera el umbral, no está suprimida y, si su severidad es media o menor, trae
+ * al menos un ajuste de contexto. Lo que no se promueve sigue consultable como evento.
+ */
+export function isPromotable(
+  severity: SecurityEvent['severity']['normalized'],
+  outcome: PrioritizationOutcome,
+): boolean {
+  if (outcome.suppressed || outcome.score < PROMOTION_THRESHOLD) return false;
+  if (SELF_PROMOTING_SEVERITIES.has(severity)) return true;
+  return outcome.reasons.some((reason) => PROMOTION_CONTEXT_REASONS.has(reason.code));
+}
 
 const REPEAT_THRESHOLD = 5;
 /** Alertas distintas sobre la misma entidad que justifican subir la atención. */

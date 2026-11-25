@@ -126,6 +126,37 @@ class TrafficTests(unittest.TestCase):
         run({"skip_windows": [[iso(gap_from), iso(gap_to)]]}, state, client)
         self.assertFalse([q for q in client.queries if q[0] < gap_to and q[1] > gap_from])
 
+    def test_payments_allowlist_history_never_opens_alerts_and_live_dedups(self):
+        """Revisión 2 de la lista blanca: la recuperación histórica no abre alertas críticas."""
+        import json
+        import os
+        import tempfile
+
+        class Payments(FakeClient):
+            def graphql(self, query, variables):
+                data = super().graphql(query, variables)
+                for row in data["viewer"]["zones"][0].get("httpRequestsAdaptive", []):
+                    row.update({"clientRequestHTTPHost": "apipayments.b89.io", "clientRequestHTTPMethodName": "POST",
+                                "clientRequestPath": "/auth/login", "clientRequestQuery": ""})
+                return data
+
+        feed = {"revision": 1, "entries": [{"id": "x", "name": "X", "status": "with_ip", "ips": ["203.0.113.1"]}]}
+        with tempfile.TemporaryDirectory() as folder:
+            path = pathlib.Path(folder) / "allowlist.json"
+            path.write_text(json.dumps(feed), encoding="utf-8")
+            state = {"cursors": {"z1": {"http_requests": iso(NOW - timedelta(hours=4)),
+                                        "dns_logs": iso(NOW - timedelta(hours=4))}}}
+            with patch.dict(os.environ, {"B89_CF_ALLOWLIST_FILE": str(path)}):
+                events, next_state = run({"datasets": ["http_requests"]}, state, Payments())
+        flags = [(e["b89"]["source"], e["cloudflare"]["http"]["allowlist_first"]) for e in events]
+        history = [first for source, first in flags if source == "graphql-history"]
+        live = [first for source, first in flags if source == "graphql-live"]
+        self.assertTrue(history)
+        self.assertEqual(set(history), {"false"})
+        self.assertEqual(live[:1], ["true"])
+        self.assertEqual(set(live[1:]), {"false"} if live[1:] else set())
+        self.assertIn("allowlist_seen", next_state)
+
 
 if __name__ == "__main__":
     unittest.main()

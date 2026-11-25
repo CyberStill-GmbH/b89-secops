@@ -400,11 +400,18 @@
   </rule>
   <!-- Lista blanca de la API de pagos (doc detection-engineering/17). El colector agrega
        cloudflare.http.allowlist_verdict con la lista de la consola (Cloudflare → Lista blanca):
-       allowed | client_without_ip | outside | unknown. Sin archivo de lista no hay veredicto ni alerta.
-       Regla del dueño 2026-11-23: cliente con IPs desde otra IP = crítica; cliente sin IPs = sin alerta. -->
+       allowed | client_without_ip | outside | unknown | verified_bot. Sin archivo de lista no hay veredicto
+       ni alerta. Regla del dueño 2026-11-23: cliente con IPs desde otra IP = crítica; cliente sin IPs = sin
+       alerta.
+       Revisión 2 (2026-11-25, registro en detection-engineering/07): el colector agrega además
+       allowlist_effect (accepted | rejected | error | blocked | unknown) y allowlist_first (primera vez que se ve
+       la misma combinación veredicto/cliente/IP/tipo en la última hora; los registros históricos de
+       GraphQL nunca son «primera»). Solo la primera petición aceptada abre la alerta crítica; las
+       repeticiones y los sondeos rechazados quedan indexados (nivel 3) y la ráfaga de sondeos tiene su
+       propia regla (102025). Las condiciones de los hijos son excluyentes: no dependen del orden. -->
   <rule id="101546" level="0">
     <if_sid>101515</if_sid>
-    <field name="cloudflare.http.allowlist_verdict" type="pcre2">^(allowed|client_without_ip|outside|unknown)$</field>
+    <field name="cloudflare.http.allowlist_verdict" type="pcre2">^(allowed|client_without_ip|outside|unknown|verified_bot)$</field>
     <description>B89 Cloudflare: API de pagos, lista blanca: $(cloudflare.http.allowlist_verdict).</description>
     <options>no_full_log</options>
     <group>b89_http,b89_allowlist,</group>
@@ -413,27 +420,90 @@
   <rule id="101547" level="13">
     <if_sid>101546</if_sid>
     <field name="cloudflare.http.allowlist_verdict">^outside$</field>
-    <description>B89 Cloudflare: el cliente $(cloudflare.http.allowlist_client) llamó a la API de pagos desde una IP que no es suya ($(cloudflare.http.client_ip)): $(cloudflare.http.method) $(cloudflare.http.path).</description>
+    <field name="cloudflare.http.allowlist_first">^true$</field>
+    <field name="cloudflare.http.allowlist_effect" type="pcre2">^(accepted|error|unknown)$</field>
+    <description>B89 Cloudflare: el cliente $(cloudflare.http.allowlist_client) llamó a la API de pagos desde una IP que no es suya ($(cloudflare.http.client_ip)) y la API respondió $(cloudflare.http.status): $(cloudflare.http.method) $(cloudflare.http.path). Una alerta por cliente e IP por hora.</description>
     <options>no_full_log</options>
     <mitre><id>T1078</id></mitre>
     <group>b89_http,b89_allowlist,b89_attack,</group>
+  </rule>
+
+  <rule id="102020" level="8">
+    <if_sid>101546</if_sid>
+    <field name="cloudflare.http.allowlist_verdict">^outside$</field>
+    <field name="cloudflare.http.allowlist_first">^true$</field>
+    <field name="cloudflare.http.allowlist_effect" type="pcre2">^(rejected|blocked)$</field>
+    <description>B89 Cloudflare: intento con el identificador del cliente $(cloudflare.http.allowlist_client) desde una IP que no es suya ($(cloudflare.http.client_ip)); la API o Cloudflare lo rechazó ($(cloudflare.http.status)): $(cloudflare.http.method) $(cloudflare.http.path).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1078</id></mitre>
+    <group>b89_http,b89_allowlist,</group>
+  </rule>
+
+  <rule id="102021" level="3">
+    <if_sid>101546</if_sid>
+    <field name="cloudflare.http.allowlist_verdict">^outside$</field>
+    <field name="cloudflare.http.allowlist_first">^false$</field>
+    <description>B89 Cloudflare: repetición (ya alertada en la última hora) o registro histórico del cliente $(cloudflare.http.allowlist_client) desde la IP ajena $(cloudflare.http.client_ip): $(cloudflare.http.method) $(cloudflare.http.path) → $(cloudflare.http.status).</description>
+    <options>no_full_log</options>
+    <group>b89_http,b89_allowlist,</group>
   </rule>
 
   <rule id="101548" level="12">
     <if_sid>101546</if_sid>
     <field name="cloudflare.http.allowlist_verdict">^unknown$</field>
     <field name="cloudflare.http.allowlist_sensitive">^true$</field>
-    <description>B89 Cloudflare: login o pago en la API de pagos desde una IP fuera de la lista blanca ($(cloudflare.http.client_ip)): $(cloudflare.http.method) $(cloudflare.http.path).</description>
+    <field name="cloudflare.http.allowlist_first">^true$</field>
+    <field name="cloudflare.http.allowlist_effect" type="pcre2">^(accepted|error|unknown)$</field>
+    <description>B89 Cloudflare: login o pago aceptado ($(cloudflare.http.status)) en la API de pagos desde una IP fuera de la lista blanca ($(cloudflare.http.client_ip)): $(cloudflare.http.method) $(cloudflare.http.path). Una alerta por IP por hora.</description>
     <options>no_full_log</options>
     <mitre><id>T1078</id></mitre>
     <group>b89_http,b89_allowlist,b89_attack,</group>
   </rule>
 
-  <rule id="101549" level="5">
+  <rule id="102022" level="3">
     <if_sid>101546</if_sid>
     <field name="cloudflare.http.allowlist_verdict">^unknown$</field>
-    <description>B89 Cloudflare: petición a la API de pagos desde una IP fuera de la lista blanca ($(cloudflare.http.client_ip)): $(cloudflare.http.method) $(cloudflare.http.path).</description>
+    <field name="cloudflare.http.allowlist_sensitive">^true$</field>
+    <field name="cloudflare.http.allowlist_first">^false$</field>
+    <field name="cloudflare.http.allowlist_effect" type="pcre2">^(accepted|error|unknown)$</field>
+    <description>B89 Cloudflare: repetición (ya alertada en la última hora) o registro histórico de login o pago desde la IP fuera de lista $(cloudflare.http.client_ip): $(cloudflare.http.method) $(cloudflare.http.path) → $(cloudflare.http.status).</description>
     <options>no_full_log</options>
     <group>b89_http,b89_allowlist,</group>
+  </rule>
+
+  <rule id="102023" level="3">
+    <if_sid>101546</if_sid>
+    <field name="cloudflare.http.allowlist_verdict">^unknown$</field>
+    <field name="cloudflare.http.allowlist_sensitive">^true$</field>
+    <field name="cloudflare.http.allowlist_effect" type="pcre2">^(rejected|blocked)$</field>
+    <description>B89 Cloudflare: login o pago rechazado ($(cloudflare.http.status)) en la API de pagos para la IP fuera de lista $(cloudflare.http.client_ip): $(cloudflare.http.method) $(cloudflare.http.path).</description>
+    <options>no_full_log</options>
+    <group>b89_http,b89_allowlist,b89_allowlist_rejected,</group>
+  </rule>
+
+  <rule id="101549" level="3">
+    <if_sid>101546</if_sid>
+    <field name="cloudflare.http.allowlist_verdict">^unknown$</field>
+    <field name="cloudflare.http.allowlist_sensitive">^false$</field>
+    <description>B89 Cloudflare: petición a la API de pagos desde una IP fuera de la lista blanca ($(cloudflare.http.client_ip)): $(cloudflare.http.method) $(cloudflare.http.path) → $(cloudflare.http.status).</description>
+    <options>no_full_log</options>
+    <group>b89_http,b89_allowlist,</group>
+  </rule>
+
+  <rule id="102024" level="3">
+    <if_sid>101546</if_sid>
+    <field name="cloudflare.http.allowlist_verdict">^verified_bot$</field>
+    <description>B89 Cloudflare: bot verificado por Cloudflare ($(cloudflare.http.verified_bot_category)) en la API de pagos desde $(cloudflare.http.client_ip): $(cloudflare.http.method) $(cloudflare.http.path) → $(cloudflare.http.status).</description>
+    <options>no_full_log</options>
+    <group>b89_http,b89_allowlist,</group>
+  </rule>
+
+  <rule id="102025" level="10" frequency="10" timeframe="300" ignore="1800">
+    <if_matched_sid>102023</if_matched_sid>
+    <same_field>cloudflare.http.client_ip</same_field>
+    <description>B89 Cloudflare: 10+ logins o pagos rechazados en 5 min en la API de pagos desde la IP fuera de lista $(cloudflare.http.client_ip): fuerza bruta o sondeo dirigido.</description>
+    <options>no_full_log</options>
+    <mitre><id>T1110</id></mitre>
+    <group>b89_http,b89_allowlist,b89_attack,</group>
   </rule>
 </group>

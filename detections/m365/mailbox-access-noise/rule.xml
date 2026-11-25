@@ -1,0 +1,60 @@
+<!--
+  B89 SOC · reducción de falsos positivos · detections/m365/mailbox-access-noise (metadata.yaml, doc 07).
+  MailItemsAccessed (regla estándar 91578, nivel 5) es auditoría de lectura del buzón: la sincronización de
+  Outlook del propio dueño la genera sin parar (≈99 % del volumen). Con nivel 5 cada evento supera el umbral
+  de promoción B89 (medium = 40 ≥ 35) y abre una alerta P3.
+  Técnicas: degradación (nunca supresión: nivel 3 queda indexado y consultable), allowlist CDB versionada
+  de aplicaciones cliente (b89-m365-mail-apps) y de buzones compartidos (b89-m365-shared-mailboxes), y una
+  regla de volumen para el acceso masivo a buzones ajenos.
+  LogonType de Exchange: 0 = dueño, 1 = administrador, 2 = delegado.
+  Rango B89 M365 100500–100549 (100531–100535). Se instala como b89_soc_m365_mailbox_access_noise.xml,
+  después de las reglas estándar de Wazuh (0565-ms_office365_rules.xml).
+-->
+<group name="office365,b89_m365,b89_tuning,">
+  <!-- Dueño leyendo su propio buzón: auditoría, sin promoción. -->
+  <rule id="100531" level="3">
+    <if_sid>91578</if_sid>
+    <field name="office365.LogonType">^0$</field>
+    <description>B89 M365: $(office365.UserId) accedió a su propio buzón (MailItemsAccessed del dueño, auditoría).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1114.002</id></mitre>
+  </rule>
+
+  <!-- Dueño, pero con una aplicación que no está en la allowlist de clientes de correo: posible app OAuth
+       o token robado leyendo el correo. Sin ClientAppId (sincronización MAPI de Outlook) queda en 100531. -->
+  <rule id="100532" level="6">
+    <if_sid>100531</if_sid>
+    <list field="office365.ClientAppId" lookup="not_match_key">etc/lists/b89-m365-mail-apps</list>
+    <description>B89 M365: una aplicación no reconocida ($(office365.ClientAppId)) leyó el buzón de $(office365.UserId) con la sesión del dueño.</description>
+    <options>no_full_log</options>
+    <mitre><id>T1114.002</id></mitre>
+  </rule>
+
+  <!-- Administrador o delegado leyendo un buzón ajeno: se conserva el nivel estándar (5). -->
+  <rule id="100533" level="5">
+    <if_sid>91578</if_sid>
+    <field name="office365.LogonType" type="pcre2">^(1|2)$</field>
+    <description>B89 M365: $(office365.UserId) accedió al buzón de $(office365.MailboxOwnerUPN) como administrador o delegado (LogonType $(office365.LogonType)).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1114.002</id></mitre>
+  </rule>
+
+  <!-- Buzón compartido declarado (soporte, facturación…): el acceso de sus miembros es su uso normal. -->
+  <rule id="100534" level="3">
+    <if_sid>100533</if_sid>
+    <list field="office365.MailboxOwnerUPN" lookup="match_key">etc/lists/b89-m365-shared-mailboxes</list>
+    <description>B89 M365: $(office365.UserId) accedió al buzón compartido $(office365.MailboxOwnerUPN) (uso habitual).</description>
+    <options>no_full_log</options>
+  </rule>
+
+  <!-- Acceso masivo: la misma cuenta lee 10+ buzones ajenos distintos en 15 min (recolección de correo). -->
+  <rule id="100535" level="10" frequency="10" timeframe="900" ignore="1800">
+    <if_matched_sid>100533</if_matched_sid>
+    <same_field>office365.UserId</same_field>
+    <different_field>office365.MailboxOwnerUPN</different_field>
+    <description>B89 M365: $(office365.UserId) accedió a 10 o más buzones ajenos distintos en 15 minutos (posible recolección de correo).</description>
+    <options>no_full_log</options>
+    <mitre><id>T1114.002</id></mitre>
+    <group>b89_attack,</group>
+  </rule>
+</group>

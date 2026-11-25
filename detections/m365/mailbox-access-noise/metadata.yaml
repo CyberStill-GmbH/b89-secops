@@ -1,0 +1,69 @@
+# B89 SOC · metadatos de detección (estándar: docs/detection-engineering/01-ciclo-de-vida.md#metadatos)
+# Reglas nuevas del programa en rule.xml de esta carpeta (overlay de la regla estándar 91578).
+id: B89-DET-M365-006
+title: MailItemsAccessed · degradar la sincronización del dueño y elevar el acceso anómalo
+source: m365
+use_case: mailbox-access-noise
+status: testing
+version: 1.0.0
+owner: soc-detection-engineering
+reviewers:
+- b89.soc.lead
+created: '2026-11-25'
+updated: '2026-11-25'
+hypothesis: >-
+  La lectura del buzón por su dueño con un cliente de Microsoft es actividad normal; lo que indica robo de
+  correo es una aplicación desconocida con la sesión del dueño, un acceso ajeno fuera de los buzones
+  compartidos o una cuenta que recorre muchos buzones en minutos.
+data_sources:
+- 'Office 365 Management Activity API (módulo office365 de Wazuh): Audit.Exchange, operación MailItemsAccessed'
+rules:
+  file: detections/m365/mailbox-access-noise/rule.xml
+  ids:
+  - 100531
+  - 100532
+  - 100533
+  - 100534
+  - 100535
+  installed_as: etc/rules/b89_soc_m365_mailbox_access_noise.xml
+mitre:
+- technique: T1114.002
+  tactic: collection
+severity:
+  levels: 3 dueño con cliente reconocido o buzón compartido · 5 delegado o administrador · 6 app no reconocida
+    con la sesión del dueño · 10 acceso a 10+ buzones ajenos en 15 min
+  priority_hint: P4 la auditoría; P3 app desconocida o delegado; P2 acceso masivo
+  rationale: >-
+    Con nivel 5 cada MailItemsAccessed del dueño superaba el umbral de promoción B89 (medium = 40 ≥ 35):
+    una alerta P3 por sincronización. Se degrada lo normal a 3 (indexado, no promovido) y se eleva lo raro.
+false_positives:
+- 'Aplicación legítima no listada (cliente de correo de terceros, respaldo con delegación): agregar su
+  ClientAppId por PR a detections/lists/b89-m365-mail-apps tras revisarla.'
+- 'Buzón compartido no declarado: agregarlo a detections/lists/b89-m365-shared-mailboxes.'
+- 'Migraciones o eDiscovery que recorren muchos buzones: ventana de mantenimiento B89 o cuenta de servicio.'
+escalate_when:
+- 'La aplicación de 100532 no es conocida por TI o tiene consentimiento reciente (correlación con consentimiento OAuth).'
+- 'El acceso ajeno (100533) es de alguien sin delegación documentada o desde IP/país inusual.'
+- 'Cualquier 100535 (lectura de muchos buzones) fuera de una migración planificada.'
+tuning:
+- '2026-11-25 · 91578 del dueño (LogonType 0) baja de 5 a 3 (100531); sigue indexado y consultable.'
+- 'Dueño con ClientAppId fuera de b89-m365-mail-apps sube a 6 (100532): no se pierde el robo de token o app OAuth.'
+- 'Delegado/administrador conserva 5 (100533) salvo buzón compartido declarado (100534, nivel 3).'
+- 'Acceso masivo a buzones ajenos: 100535 (10) — detección nueva, antes inexistente.'
+measurement:
+  window: 'pendiente: 7 días antes del despliegue (detections/tools/measure-noise.sh)'
+  before: {}
+  expected_after:
+    note: '≈99 % de 91578 pasa a 100531 (nivel 3, sin promoción); medir el top de ClientAppId antes de desplegar.'
+lists:
+- detections/lists/b89-m365-mail-apps
+- detections/lists/b89-m365-shared-mailboxes
+tests:
+  runner: logtest
+  fixtures: detections/m365/mailbox-access-noise/fixtures.jsonl
+  expected: detections/m365/mailbox-access-noise/expected.txt
+runbook: docs/detection-engineering/runbooks/reglas-estandar-wazuh.md
+tuning_log: docs/detection-engineering/07-ajuste-falsos-positivos.md
+notes: >-
+  La allowlist de aplicaciones parte de los IDs de primera parte de Microsoft más comunes; antes de desplegar,
+  contrastar con el top de ClientAppId de 91578 en 7 días (measure-noise.sh) y completar por PR.

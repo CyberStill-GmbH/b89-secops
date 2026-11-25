@@ -42,6 +42,7 @@ use_cases:
     title: Acceso a buzones de Exchange Online (MailItemsAccessed, envíos y envío con otros permisos)
     use_case: m365-mailbox-access
     rule_ids: ['91578', '91707', '91708']
+    # 91578 tiene overlay B89 desde 2026-11-25: detections/m365/mailbox-access-noise (100531-100535).
     mitre: [T1114.002, T1114.003]
     priority_hint: P4
     data_sources: ['Office 365 Management Activity API: Audit.Exchange (MailItemsAccessed, Send, SendAs, SendOnBehalf)']
