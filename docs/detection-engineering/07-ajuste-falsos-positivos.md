@@ -62,6 +62,10 @@ De entorno (no van a git): `b89-break-glass`, `b89-internet-facing-projects` (ce
 | 2026-11-08 | 101513 → 101741/101742 | 11 en zona crítica, 7 en zona no crítica | Una IP ya bloqueada no es un incidente | caso 47 (b89.io → 101741) | caso 67 (example.test → 101742) |
 | 2026-11-08 | 101453/101455/101456 → 101732/101733/101734 | Baja sin exploit → 2; alta/crítica sin exposición ni exploit → 7/10 | 600 bajas, 224 altas (nivel 10 = correo) | `snyk/severity-calibration` casos 2, 4, 5, 7, 8 | casos 1, 3, 6 |
 | 2026-11-09 | 521 (328 alertas B89) | Cerradas como `false_positive` con auditoría (3 eventos por alerta, cadena hash) | Correlación `close-fp-521-*`, actor `svc:b89-detection-engineering` | — | 328/328 cerradas |
+| 2026-11-25 | 101547/101548/101549 → 102020–102025 | Lista blanca de la API de pagos, revisión 2: «sensible» solo por palabras de la ruta; identificador de cliente como palabra completa; efecto (aceptada/rechazada/bloqueada/5xx); una crítica por veredicto/cliente/IP/tipo y hora (deduplicación en el colector); la recuperación histórica de GraphQL nunca alerta; bots verificados aparte; 101549 de 5 a 3 | Pendiente de `measure-noise.sh` (P1 de Cloudflare entre las más ruidosas del backlog de +64 000 alertas) | `collectors` casos 88, 89, 93, 99–108 (102025); `test_cloudflare_allowlist.py` | casos 94–98; pruebas `NoiseReductionTests` |
+| 2026-11-25 | 91578 → 100531–100535 | MailItemsAccessed: dueño 5 → 3; dueño con app no reconocida → 6; delegado/admin 5; buzón compartido declarado → 3; acceso a 10+ buzones ajenos en 15 min → 10 (nueva) | Pendiente de `measure-noise.sh` (≈99 % del volumen es sincronización del dueño, según el caso de uso estándar) | `m365/mailbox-access-noise` casos 3, 4, 6–15 | casos 1, 2, 5 |
+| 2026-11-25 | 100510 → 100536 | Regla de bandeja que SOLO mueve a carpeta: 12 → 7; con reenvío, borrado o marcar como leído sigue en 12; 101702 la eleva tras compromiso | Volumen bajo; error de calibración | `office365` caso 50 (mover + marcar como leído → 100510) | caso 49 |
+| 2026-11-25 | 100528 | Ya no alerta al ACTIVAR la auditoría (`AuditEnabled=True`) | Error de lógica (la regex aceptaba False o True) | `office365` casos 4 y 52 | caso 51 (`!100528`) |
 
 Volúmenes antes/después: ver [§ Medición](#medición).
 
@@ -72,4 +76,60 @@ Evaluación reproducible del correlador en Docker, 2026-11-13:
 candidato: 83; ambas sin fallos con `-race`. Los controles sintéticos de ruido pasan en ambas.
 No se demostró reducción adicional de FP; falta corpus real adjudicado y predicciones comparables.
 
-Se completa después de cada despliegue con la consulta de volumen por regla (24 h comparables).
+Se completa después de cada despliegue con la consulta de volumen por regla (24 h comparables):
+`detections/tools/measure-noise.sh`.
+
+
+## Ruido de noviembre de 2026 (+64 000 alertas): diagnóstico y plan
+
+**Causa estructural (verificada en el código).** La severidad B89 sale del nivel Wazuh
+(`modules/telemetry/src/wazuh-normalization.ts`): 4–7 = `medium` (40 puntos) y el umbral de promoción es
+P3 = 35 (`modules/detection/src/prioritization.ts`). Por eso **toda** regla de nivel 4–7 abre una alerta B89,
+aunque su documentación diga «informativa» o «P4». Los ajustes de esta fecha bajan a 3 lo que es auditoría
+(3 = `low`, 20 puntos: indexado y consultable, sin promoción salvo contexto: identidad privilegiada o activo
+crítico +15, correlación con otras alertas +10).
+
+**Hecho en la rama `fix/detection-noise` (no desplegado):** filas del 2026-11-25 del registro.
+
+**Siguiente nivel (propuesto, requiere aprobación):**
+
+1. Promoción: exigir nivel ≥ 8, o nivel 4–7 con contexto (activo crítico, identidad privilegiada, cadena),
+   y que la repetición agrupe en la alerta abierta en vez de sumar puntos. Cambia el conjunto de reglas de
+   priorización (versión 1.2.0) y sus pruebas: no se toca sin aprobación.
+2. Colisión de IDs 101800–101835: `detections/linux/network-connections/rule.xml` (y el resto del programa
+   de red) y `wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml` usan los mismos IDs. Wazuh
+   conserva la primera definición; verificar en el manager con
+   `grep -E "7612|duplicat" /var/ossec/logs/ossec.log` y renumerar el monitor de plataforma.
+3. Otras reglas con riesgo de ruido según la revisión estática del 2026-11-25 (sin medir): WAF de Cloudflare
+   por evento (101539–101544), correlación cruzada con `b89-cf-waf-attackers` (101870–101873), borde de la
+   consola (101831–101837), FIM de persistencia (101756–101759), PIM en 100520/101704, instantánea diaria de
+   Bitdefender (101402–101405). Cada una se ajusta con su medición y fixtures, como las de arriba.
+
+**Antes de desplegar (máquina del dueño):**
+
+```bash
+bash detections/tools/measure-noise.sh 7 > measure-antes.jsonl     # evidencia "antes"; solo lectura
+bash detections/tools/test-in-container.sh                         # logtest de todas las suites en Docker
+python3 -m pytest wazuh/provider-ingestion/tests -q
+```
+
+Con el top de `ClientAppId` de `measure-antes.jsonl`, completar `detections/lists/b89-m365-mail-apps` (solo
+apps revisadas) y `b89-m365-shared-mailboxes` con los buzones compartidos reales.
+
+**Backlog existente (cierre auditado, lo ejecuta el dueño):** las reglas nuevas no cambian alertas ya
+abiertas. `close-false-positives.mjs` cierra con motivo `FP_REGLA_MAL_AFINADA`, actor de servicio y cadena
+hash; lista hasta 2000 alertas por corrida (tope del adaptador), así que se repite hasta que `matching`
+sea 0. Siempre primero sin `--apply` y con una muestra revisada por un analista:
+
+```bash
+# 1. Muestra: 30 alertas al azar de la regla, revisadas a mano (dueño, app, IP). Si alguna es real, NO cerrar en bloque.
+# 2. Plan (sin --apply) y luego cierre, regla por regla:
+docker run --rm --network b89_default --env-file <env de b89-api-1> \
+  -v "$PWD/detections/tools/close-false-positives.mjs:/app/dist/b89-close-fp.mjs:ro" \
+  b89/api:local dist/b89-close-fp.mjs --rule 91578 \
+  --reason "falso positivo: MailItemsAccessed del dueño (sincronización); regla ajustada 2026-11-25" \
+  --evidence "<PR del ajuste>" [--apply]
+```
+
+Para 101548/101549 se cierra igual, pero **101547 (cliente desde IP ajena) y 101548 de las últimas 24 h
+se revisan antes**: son los únicos con probabilidad real de ser verdaderos.
