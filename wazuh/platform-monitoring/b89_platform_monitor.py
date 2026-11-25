@@ -2,7 +2,7 @@
 """B89 platform health monitor: source silence, collectors, agents, containers, indexer, certs, host.
 
 Runs every 5 min (systemd timer ``b89-platform-monitor.timer``) and appends health events to the
-manager logs volume (``b89-collectors/platform-health.jsonl``). Rules 101800-101829
+manager logs volume (``b89-collectors/platform-health.jsonl``). Rules 102100-102129
 (``rules/b89_watch_platform_rules.xml``) turn them into B89 alerts. docs/20.
 
 Event contract (``b89.vendor = "b89-platform"``, ``b89.event_type = "health"``)::
