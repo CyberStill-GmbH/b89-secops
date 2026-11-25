@@ -190,6 +190,17 @@ lists:
     source: detections/lists/b89-m365-sharing-approved
     used_by: [101925, 101929]
     purpose: "Cuentas aprobadas para publicar con enlaces anónimos o compartir con socios (degradación, nunca supresión)"
+  # MailItemsAccessed (detections/m365/mailbox-access-noise, 2026-11-25).
+  - name: b89-m365-mail-apps
+    path: etc/lists/b89-m365-mail-apps
+    source: detections/lists/b89-m365-mail-apps
+    used_by: [100532]
+    purpose: "ClientAppId de clientes de correo reconocidos (Outlook, OWA, Teams…): la lectura del dueño con ellos queda en 3"
+  - name: b89-m365-shared-mailboxes
+    path: etc/lists/b89-m365-shared-mailboxes
+    source: detections/lists/b89-m365-shared-mailboxes
+    used_by: [100534]
+    purpose: "Buzones compartidos declarados (MailboxOwnerUPN exacto): el acceso de sus miembros baja a 3"
 
 # Refinamientos esperados: con las reglas del programa cargadas, estos casos de suites existentes bajan
 # a una regla hija más específica. Es comportamiento buscado (más contexto), no una regresión.

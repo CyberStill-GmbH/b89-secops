@@ -94,13 +94,28 @@
   <rule id="100510" level="12">
     <if_sid>91532</if_sid>
     <field name="office365.Operation" type="pcre2">^(New|Set)-InboxRule$</field>
-    <field name="office365.Parameters" type="pcre2">"Name":\s*"(ForwardTo|ForwardAsAttachmentTo|RedirectTo|DeleteMessage|SoftDeleteMessage|MoveToFolder|MarkAsRead)"</field>
+    <field name="office365.Parameters" type="pcre2">"Name":\s*"(ForwardTo|ForwardAsAttachmentTo|RedirectTo|DeleteMessage|SoftDeleteMessage|MarkAsRead)"</field>
     <description>B89 M365: $(office365.UserId) creó o modificó una regla de bandeja que reenvía u oculta correo.</description>
     <options>no_full_log</options>
     <group>exchange,b89_persistence,</group>
     <mitre>
       <id>T1564.008</id>
       <id>T1114.003</id>
+    </mitre>
+  </rule>
+  <!-- 2026-11-25 (doc 07): una regla que SOLO mueve a una carpeta es la organización habitual del buzón;
+       baja de 12 a 7 (cola, sin correo). Con reenvío, borrado o marcar como leído sigue en 100510 (12), y
+       tras un compromiso la cadena 101702 la eleva igual (if_sid 100536). -->
+  <rule id="100536" level="7">
+    <if_sid>91532</if_sid>
+    <field name="office365.Operation" type="pcre2">^(New|Set)-InboxRule$</field>
+    <field name="office365.Parameters" type="pcre2">"Name":\s*"MoveToFolder"</field>
+    <field name="office365.Parameters" type="pcre2" negate="yes">"Name":\s*"(ForwardTo|ForwardAsAttachmentTo|RedirectTo|DeleteMessage|SoftDeleteMessage|MarkAsRead)"</field>
+    <description>B89 M365: $(office365.UserId) creó o modificó una regla de bandeja que solo mueve correo a una carpeta.</description>
+    <options>no_full_log</options>
+    <group>exchange,</group>
+    <mitre>
+      <id>T1564.008</id>
     </mitre>
   </rule>
 
@@ -245,10 +260,11 @@
   </rule>
 
   <!-- Auditoría de buzón desactivada o eximida. -->
+  <!-- 2026-11-25 (doc 07): antes coincidía también con AuditEnabled=True (ACTIVAR la auditoría). -->
   <rule id="100528" level="12">
     <if_sid>91532</if_sid>
     <field name="office365.Operation" type="pcre2">^(Set-Mailbox|Set-MailboxAuditBypassAssociation)$</field>
-    <field name="office365.Parameters" type="pcre2">"Name":\s*"(AuditEnabled|AuditBypassEnabled)",\s*"Value":\s*"(False|True)"</field>
+    <field name="office365.Parameters" type="pcre2">"Name":\s*"(?:AuditEnabled",\s*"Value":\s*"False|AuditBypassEnabled",\s*"Value":\s*"True)"</field>
     <description>B89 M365: auditoría de buzón desactivada o eximida por $(office365.UserId).</description>
     <options>no_full_log</options>
     <group>exchange,b89_defense_evasion,</group>

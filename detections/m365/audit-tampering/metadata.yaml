@@ -29,7 +29,9 @@ severity:
   rationale: Deja ciego al SOC y rompe evidencia exigida por SBS 504-2021.
 false_positives:
 - Cuentas de servicio de backup con AuditBypass aprobado (registrar en docs/10).
-tuning: []
+tuning:
+- '2026-11-25 (doc 07): 100528 ya no alerta al ACTIVAR la auditoría (AuditEnabled=True); solo
+  AuditEnabled=False o AuditBypassEnabled=True. Fixture negativo en la suite office365.'
 tests:
   runner: logtest
   suite: office365
