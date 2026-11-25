@@ -61,8 +61,8 @@ precisión. El reloj útil empieza cuando, por regla:
 
 Entrega: el API (`/api/learning/health`, consola) y el **monitor de plataforma** leyendo la base
 (latido, cola, dead-letter, pausas, configuración), que avisa aunque el API esté caído, por la regla
-genérica 101829 (nivel 5). Reglas propias con más nivel necesitan IDs: los asigna el dueño del monitor
-(el rango 1018xx tiene deuda de colisiones).
+genérica 102129 (nivel 5). Reglas propias con más nivel necesitan IDs: los asigna el dueño del monitor
+dentro de su rango 102100–102149 (renumerado desde 1018xx el 2026-11-25).
 
 **SLOs propuestos (sombra):** p95 encolado → decisión ≤ 60 s (1 h); ≥ 99 % de trabajos decididos en
 ≤ 5 min (24 h); 0 dead-letter (24 h); latido ≤ 5 min el 99,9 % (30 d); la ingesta no se degrada.

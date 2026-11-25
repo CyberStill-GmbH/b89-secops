@@ -5,11 +5,11 @@
 (the file Wazuh's ``<localfile>`` already reads) or, for the agent pipeline, a journald line through
 ``logger``. ``verify`` (every 10 min, ``b89-canary-verify.timer``) checks each pending canary:
 
-1. **Wazuh**: the alert exists in ``wazuh-alerts-*`` (rules 101830-101836, level 3: never pages, never mails);
+1. **Wazuh**: the alert exists in ``wazuh-alerts-*`` (rules 102130-102135, level 3: never pages, never mails);
 2. **B89**: a successful B89 ingestion pass read past the alert timestamp (``source_poll_observations``).
 
 If a canary is not seen within ``deadline_minutes`` the verdict is ``missing`` with the failing stage;
-``b89_platform_monitor.py`` turns verdicts into ``canary_missing`` health alerts (rule 101822). The
+``b89_platform_monitor.py`` turns verdicts into ``canary_missing`` health alerts (rule 102122). The
 canary also watches the monitor: if the monitor has not run for ``monitor_stale_minutes`` it emits a
 ``monitor_error`` health event itself.
 

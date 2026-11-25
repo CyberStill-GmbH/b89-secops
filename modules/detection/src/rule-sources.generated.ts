@@ -25,5 +25,8 @@ export const RULE_SOURCE_RANGES: readonly RuleSourceRange[] = Object.freeze([
   { from: 101800, to: 101899, source: 'network' },
   { from: 101900, to: 101979, source: 'sharepoint' },
   { from: 101980, to: 101989, source: 'platform' },
-  { from: 102000, to: 102029, source: 'cloudflare' },
+  { from: 102000, to: 102019, source: 'cloudflare' },
+  { from: 102020, to: 102029, source: 'cloudflare' },
+  { from: 102100, to: 102149, source: 'platform' },
+  { from: 102150, to: 102179, source: 'vulnerability' },
 ]);

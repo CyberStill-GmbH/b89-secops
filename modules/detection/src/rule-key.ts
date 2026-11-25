@@ -77,13 +77,9 @@ export function ruleKeyOf(event: SecurityEvent): string | undefined {
  * IDs de regla B89 definidos en dos archivos de reglas a la vez (deuda conocida, ver
  * tests/architecture/rule-ids.spec.ts, que comprueba que esta lista es exacta). Su clave
  * `fuente:rule_id` es ambigua: la etapa D no activa patrones sobre ellas (precondición 8).
+ * Vacía desde 2026-11-25: el monitor de plataforma se renumeró a 102100-102179.
  */
-export const COLLIDING_RULE_IDS: readonly number[] = Object.freeze([
-  101800, 101801, 101802, 101804, 101805, 101806, 101807, 101808, 101809, 101810, 101811, 101812,
-  101814, 101815, 101816, 101817, 101818, 101820, 101821, 101830, 101831, 101832, 101833, 101834,
-  101835, 101850, 101851, 101852, 101860, 101861, 101862, 101863, 101864, 101865, 101866, 101867,
-  101870, 101871, 101872, 101873, 101874, 101875,
-]);
+export const COLLIDING_RULE_IDS: readonly number[] = Object.freeze([]);
 
 /** Claves `fuente:rule_id` de los IDs con colisión, según los rangos del catálogo. */
 export function collidingRuleKeys(): ReadonlySet<string> {

@@ -26,6 +26,7 @@ sources:
   sophos:      {name: "Sophos Central (normalizado)", prefix: "B89 Sophos:"}
   cato:        {name: "Cato Networks (normalizado)", prefix: "B89 Cato:"}
   platform:    {name: "Salud de integraciones B89", prefix: "B89 Integración:"}
+  vulnerability: {name: "Priorización de vulnerabilidades (KEV/EPSS y exposición)", prefix: "B89 Vulnerabilidad:"}
   launch:      {name: "Paquete de lanzamiento (proveedores normalizados)", prefix: "B89 <Fuente>:"}
   edge:        {name: "Edge nginx de la consola del SOC", prefix: "B89 Edge:"}
   network:     {name: "Red: reputación de IP y correlación entre fuentes", prefix: "B89 Red:"}
@@ -58,6 +59,10 @@ id_ranges:
   - {from: 101980, to: 101989, source: platform,   owner: soc-detection-engineering, note: "Latido de collectors (cobertura de fuentes para el correlador)"}
   - {from: 102000, to: 102019, source: cloudflare,  owner: soc-detection-engineering, note: "Programa: OWASP Top 10, escaneo y fuerza bruta sobre el log HTTP"}
   - {from: 102020, to: 102029, source: cloudflare,  owner: provider-ingestion,        note: "Lista blanca de la API de pagos, revisión 2: efecto, repetición y bots (b89_cloudflare_rules.xml)"}
+  # Monitor de plataforma (wazuh/platform-monitoring, docs/20). Hasta 2026-11-25 reutilizaba 101800-101875 del
+  # rango network (Wazuh se queda con la primera definición: las de b89_soc_*); se renumeró +300 con los mismos offsets.
+  - {from: 102100, to: 102149, source: platform,    owner: platform-monitoring,       note: "Salud de la plataforma (102100-102129) y canarios (102130-102149): b89_watch_platform_rules.xml"}
+  - {from: 102150, to: 102179, source: vulnerability, owner: platform-monitoring,     note: "Priorización KEV/EPSS: hijas Snyk, eventos b89-vulnprio y detector de Wazuh: b89_watch_vulnprio_rules.xml"}
 
 # Archivos de reglas B89 existentes (ruta canónica, no se mueven) y su suite de wazuh-logtest.
 rule_files:

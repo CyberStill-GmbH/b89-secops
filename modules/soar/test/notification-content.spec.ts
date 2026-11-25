@@ -71,7 +71,7 @@ describe('enmascarado y fuente', () => {
 
   it('reconoce el proveedor por el prefijo del título o la regla del correlador', () => {
     expect(sourceFromTitle('B89 M365: algo', '100510')?.vendor).toBe('Microsoft 365');
-    expect(sourceFromTitle('B89 Plataforma: disco', '101807')?.vendor).toBe('Plataforma B89 (monitor)');
+    expect(sourceFromTitle('B89 Plataforma: disco', '102107')?.vendor).toBe('Plataforma B89 (monitor)');
     expect(sourceFromTitle('Cadena', 'b89-correlator:bec-chain')?.vendor).toBe('Correlador B89');
   });
 

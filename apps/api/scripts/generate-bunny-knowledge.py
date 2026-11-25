@@ -48,8 +48,9 @@ RULE_FILES = sorted(
         "wazuh/provider-ingestion/rules/b89_snyk_rules.xml",
     }
 )
-RULE_ID = re.compile(r"\b(10[01]\d{3})\b")
-RANGE = re.compile(r"\b(10[01]\d{3})\s*[–-]\s*(10[01]\d{3})\b")
+# IDs B89 de 100000 a 102999 (incluye 1020xx Cloudflare OWASP y 1021xx monitor de plataforma).
+RULE_ID = re.compile(r"\b(10[0-2]\d{3})\b")
+RANGE = re.compile(r"\b(10[0-2]\d{3})\s*[–-]\s*(10[0-2]\d{3})\b")
 
 
 def parse_rules(path: Path) -> list[dict]:

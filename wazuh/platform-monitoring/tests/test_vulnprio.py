@@ -93,11 +93,11 @@ def test_exposure_sources(cache_dir):
 
 def test_level_mirror_matches_logtest_expectations():
     expected = (PM / "tests" / "logtest-expected.txt").read_text(encoding="utf-8").split()
-    assert "101850:14" in expected and vp.snyk_level_after("critical", False, "P1") == 14
-    assert "101852:13" in expected and vp.snyk_level_after("high", False, "P1") == 13
-    assert "101856:11" in expected and vp.snyk_level_after("high", False, "P2") == 11
-    assert "101858:6" in expected and vp.snyk_level_after("critical", False, "P4") == 6
-    assert "101867:12" in expected and vp.snyk_level_after("critical", False, "P2") == 12
+    assert "102150:14" in expected and vp.snyk_level_after("critical", False, "P1") == 14
+    assert "102152:13" in expected and vp.snyk_level_after("high", False, "P1") == 13
+    assert "102156:11" in expected and vp.snyk_level_after("high", False, "P2") == 11
+    assert "102158:6" in expected and vp.snyk_level_after("critical", False, "P4") == 6
+    assert "102167:12" in expected and vp.snyk_level_after("critical", False, "P2") == 12
     assert "101733:7" in expected and vp.snyk_level_before("high", False) == 7
     assert "101734:10" in expected and vp.snyk_level_before("critical", False) == 10
     assert "101732:2" in expected and vp.snyk_level_before("low", False) == 2
@@ -110,7 +110,7 @@ def test_level_mirror_matches_logtest_expectations():
 def test_rule_file_ids_are_in_reserved_range():
     for name in ("b89_watch_platform_rules.xml", "b89_watch_vulnprio_rules.xml"):
         ids = [int(i) for i in re.findall(r'rule id="(\d+)"', (PM / "rules" / name).read_text(encoding="utf-8"))]
-        assert ids and all(101800 <= i <= 101879 for i in ids)
+        assert ids and all(102100 <= i <= 102179 for i in ids)
         assert len(ids) == len(set(ids))
 
 

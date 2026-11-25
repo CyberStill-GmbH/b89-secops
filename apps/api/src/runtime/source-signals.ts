@@ -178,7 +178,7 @@ export const SOURCE_HEALTH_MODEL = Object.freeze({
       heartbeatIds: ['bitdefender'],
       scheduleMs: 10 * MIN,
       data: { kind: 'rule_group', value: 'bitdefender' },
-      canaryRuleIds: ['101830'],
+      canaryRuleIds: ['102130'],
       quietAfterMs: 26 * HOUR,
     },
     {
@@ -188,7 +188,7 @@ export const SOURCE_HEALTH_MODEL = Object.freeze({
       heartbeatIds: ['snyk'],
       scheduleMs: 15 * MIN,
       data: { kind: 'rule_group', value: 'snyk' },
-      canaryRuleIds: ['101831'],
+      canaryRuleIds: ['102131'],
       // Un evento por cambio de issue: días sin cambios son normales.
       quietAfterMs: 7 * DAY,
     },
@@ -199,7 +199,7 @@ export const SOURCE_HEALTH_MODEL = Object.freeze({
       heartbeatIds: ['cloudflare'],
       scheduleMs: 5 * MIN,
       data: { kind: 'rule_group', value: 'cloudflare' },
-      canaryRuleIds: ['101832'],
+      canaryRuleIds: ['102132'],
       quietAfterMs: 3 * DAY,
     },
     {
@@ -209,7 +209,7 @@ export const SOURCE_HEALTH_MODEL = Object.freeze({
       heartbeatIds: ['aws'],
       scheduleMs: 5 * MIN,
       data: { kind: 'rule_group', value: 'aws' },
-      canaryRuleIds: ['101833'],
+      canaryRuleIds: ['102133'],
       quietAfterMs: 3 * DAY,
     },
     {
@@ -219,7 +219,7 @@ export const SOURCE_HEALTH_MODEL = Object.freeze({
       heartbeatIds: [],
       scheduleMs: DAY,
       data: { kind: 'agents' },
-      canaryRuleIds: ['101835'],
+      canaryRuleIds: ['102135'],
       quietAfterMs: DAY,
     },
   ]),

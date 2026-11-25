@@ -76,12 +76,12 @@ def test_verify_ok_missing_and_pending(tmp_path):
         "bitdefender": {"id": "c-bd", "injected_at": iso(t0)},
         "agent": {"id": "c-ag", "injected_at": iso(t0), "inject_error": "logger failed"},
     })
-    found = {"c-snyk": {"timestamp": iso(t0 + timedelta(seconds=40)).replace("Z", "+0000"), "rule": {"id": "101831"}},
-             "c-bd": {"timestamp": iso(t0 + timedelta(seconds=20)), "rule": {"id": "101830"}}}
+    found = {"c-snyk": {"timestamp": iso(t0 + timedelta(seconds=40)).replace("Z", "+0000"), "rule": {"id": "102131"}},
+             "c-bd": {"timestamp": iso(t0 + timedelta(seconds=20)), "rule": {"id": "102130"}}}
     b89_newest = [[iso(t0 + timedelta(seconds=30))]]   # B89 read up to t0+30 s: snyk (t0+40 s) not yet
     result = canary.verify(config(tmp_path), NOW, indexer=Indexer(found), rows_reader=lambda *a: b89_newest)
     v = result["verdicts"]
-    assert v["bitdefender"]["result"] == "ok" and "101830" in v["bitdefender"]["detail"]
+    assert v["bitdefender"]["result"] == "ok" and "102130" in v["bitdefender"]["detail"]
     assert v["snyk"]["result"] == "missing" and v["snyk"]["stage"] == "b89"
     assert v["aws"]["result"] == "missing" and v["aws"]["stage"] == "wazuh"
     assert v["agent"]["stage"] == "inject"
@@ -91,7 +91,7 @@ def test_verify_ok_missing_and_pending(tmp_path):
 def test_verify_without_b89_stage(tmp_path):
     t0 = NOW - timedelta(minutes=2)
     seed(tmp_path, {"snyk": {"id": "c1", "injected_at": iso(t0)}})
-    found = {"c1": {"timestamp": iso(t0 + timedelta(seconds=10)), "rule": {"id": "101831"}}}
+    found = {"c1": {"timestamp": iso(t0 + timedelta(seconds=10)), "rule": {"id": "102131"}}}
     result = canary.verify(config(tmp_path, check_b89=False), NOW, indexer=Indexer(found), rows_reader=None)
     assert result["verdicts"]["snyk"]["result"] == "ok" and result["verdicts"]["snyk"]["stage"] == "wazuh"
 

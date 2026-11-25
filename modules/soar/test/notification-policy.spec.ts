@@ -106,7 +106,7 @@ describe('ráfaga tras una caída (incidente 2026-11-10)', () => {
   let now: Date;
   let sequence: number;
 
-  // 20 alertas de la misma regla del monitor (101810, b89-api-1 caído), ocurridas durante 8 h y
+  // 20 alertas de la misma regla del monitor (102110, b89-api-1 caído), ocurridas durante 8 h y
   // procesadas de golpe al volver la API, más una P2 fresca de otra regla.
   const occurredAt = (index: number) => new Date(NOW.getTime() - (8 * 60 - index * 20) * 60_000);
   const enricher: NotificationEnricher = {
@@ -188,7 +188,7 @@ describe('ráfaga tras una caída (incidente 2026-11-10)', () => {
   it('20 alertas atrasadas de la misma regla no abren 20 tarjetas: una sola sale como resumen', async () => {
     const codes = [];
     for (let index = 0; index < 20; index += 1) {
-      codes.push((await dispatchMessage(dependencies(), message(index, '101810', occurredAt(index)))).code);
+      codes.push((await dispatchMessage(dependencies(), message(index, '102110', occurredAt(index)))).code);
     }
     // La única fresca (ocurrida hace < 60 min) sale; el resto es atraso o queda agrupado con ella.
     expect(codes.filter((code) => code === 'delivered').length).toBeLessThanOrEqual(1);

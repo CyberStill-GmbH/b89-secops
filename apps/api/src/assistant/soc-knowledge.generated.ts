@@ -62,6 +62,7 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
     "100515",
     "100529",
     "100530",
+    "100536",
     "101304",
     "101305",
     "101306",
@@ -89,6 +90,7 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
    "title": "DLP de endpoints (Ferrispector)",
    "path": "docs/detection-engineering/runbooks/dlp-endpoint.md",
    "sections": [
+    "Instalar un equipo",
     "Triage de 10 minutos",
     "101110–101112 · Hallazgos",
     "101113–101116 · Salud del agente"
@@ -103,7 +105,7 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
     "101116"
    ],
    "useCases": [],
-   "markdown": "# Runbook · DLP de endpoints (Ferrispector)\n\nReglas 101110–101116 (`infra/wazuh/endpoint/rules/b89_endpoint_rules.xml`). Ferrispector detecta; no\nbloquea, no mueve y no borra archivos. Los eventos traen el equipo, la regla, la extensión, el tamaño y la\nhuella SHA-256 del archivo; nunca la ruta ni el contenido.\n\n## Triage de 10 minutos\n\n1. Abre la alerta y mira «Por qué saltó»: qué tipo de dato se encontró y en qué equipo.\n2. Abre **DLP de endpoints** y revisa si el equipo está «Protegido» y con la revisión vigente.\n3. Contacta a la persona que usa el equipo y pídele que ubique el archivo por su huella SHA-256 (la consola la muestra en el detalle técnico).\n4. Credencial real: rótala o revócala en el servicio de origen y revisa su uso reciente; luego borra el archivo.\n5. Dato personal o documento protegido: confirma si ese equipo y esa carpeta pueden guardarlo; si no, muévelo a la ubicación aprobada.\n6. Clasifica la alerta con la conclusión y una nota de lo que hiciste.\n\n## 101110–101112 · Hallazgos\n\n- 101110 (nivel 5): dato sensible de una regla avanzada (DNI, RUC, contraseñas en texto).\n- 101111 (nivel 8): credencial reconocible (clave privada, token de GitHub, Slack, Google, Azure, OpenAI, AWS, base de datos).\n- 101112 (nivel 10): copia exacta de un documento protegido por huella.\n\n## 101113–101116 · Salud del agente\n\n1. 101114 (sin política más de 5 minutos): revisa si el equipo fue revocado a propósito. Si no, comprueba la red del equipo y que la consola responda.\n2. 101116 (muchos archivos sin revisar): revisa permisos de las carpetas aprobadas y archivos bloqueados por otro programa."
+   "markdown": "# Runbook · DLP de endpoints (Ferrispector)\n\nReglas 101110–101116 (`infra/wazuh/endpoint/rules/b89_endpoint_rules.xml`). Ferrispector detecta; no\nbloquea, no mueve y no borra archivos. Los eventos traen el equipo, la regla, la extensión, el tamaño y la\nhuella SHA-256 del archivo; nunca la ruta ni el contenido.\n\n## Instalar un equipo\n\n1. En **DLP de endpoints**, abre una ficha de Windows, macOS o Linux y descarga la arquitectura del equipo.\n   Los paquetes contienen el motor YARA-X v1.24.0, las reglas iniciales y sus avisos de licencia; cada\n   archivo de origen se comprueba con SHA-256 durante la compilación. La descarga requiere `dlp.configure`\n   y queda auditada como `dlp.installer.requested`.\n2. Extrae el ZIP en el equipo y abre **Conectar un equipo** en la consola. Selecciona el sistema, indica la\n   carpeta aprobada y los datos del servidor que pida el asistente. En Windows, el SHA-256 del ZIP se\n   completa al descargarlo y el instalador lo compara antes de instalar.\n3. Crea una clave de un solo uso, vence en 30 minutos. Pégala cuando el instalador la solicite; no la pongas\n   en el comando ni en el historial de la terminal. En Windows ejecuta PowerShell como administrador; en\n   macOS o Linux usa `sudo`.\n4. Espera a que la consola muestre el equipo conectado. La primera conexión recibe la política activa en\n   menos de un minuto. Si no aparece, comprueba red, permisos de la carpeta y la URL de la consola.\n\nLa API entrega paquetes solo a quien tenga `dlp.configure`; la ruta de descarga responde sin caché. Si la\nclave no se puede guardar, la consola muestra la referencia para Plataforma. Si falla el registro de\nauditoría después de crearla, la API anula la clave para que no quede un secreto activo sin seguimiento.\n\n## Triage de 10 minutos\n\n1. Abre la alerta y mira «Por qué saltó»: qué tipo de dato se encontró y en qué equipo.\n2. Abre **DLP de endpoints** y revisa si el equipo está «Protegido» y con la revisión vigente.\n3. Contacta a la persona que usa el equipo y pídele que ubique el archivo por su huella SHA-256 (la consola la muestra en el detalle técnico).\n4. Credencial real: rótala o revócala en el servicio de origen y revisa su uso reciente; luego borra el archivo.\n5. Dato personal o documento protegido: confirma si ese equipo y esa carpeta pueden guardarlo; si no, muévelo a la ubicación aprobada.\n6. Clasifica la alerta con la conclusión y una nota de lo que hiciste.\n\n## 101110–101112 · Hallazgos\n\n- 101110 (nivel 5): dato sensible de una regla avanzada (DNI, RUC, contraseñas en texto).\n- 101111 (nivel 8): credencial reconocible (clave privada, token de GitHub, Slack, Google, Azure, OpenAI, AWS, base de datos).\n- 101112 (nivel 10): copia exacta de un documento protegido por huella.\n\n## 101113–101116 · Salud del agente\n\n1. 101114 (sin política más de 5 minutos): revisa si el equipo fue revocado a propósito. Si no, comprueba la red del equipo y que la consola responda.\n2. 101116 (muchos archivos sin revisar): revisa permisos de las carpetas aprobadas y archivos bloqueados por otro programa."
   },
   {
    "id": "escalada-de-privilegios",
@@ -866,6 +868,38 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
    ]
   },
   {
+   "id": "B89-DET-CF-004",
+   "title": "API de pagos · peticiones desde IPs fuera de la lista blanca de clientes y proveedores",
+   "source": "cloudflare",
+   "useCase": "payments-api-allowlist",
+   "status": "experimental",
+   "ruleIds": [
+    "101546",
+    "101547",
+    "101548",
+    "101549",
+    "102020",
+    "102021",
+    "102022",
+    "102023",
+    "102024",
+    "102025"
+   ],
+   "mitre": [
+    "T1078",
+    "T1110"
+   ],
+   "priorityHint": "P1",
+   "falsePositives": [
+    "Un cliente cambió de IP o agregó un servidor y no lo avisó (agrega la IP en Cloudflare → Lista blanca).",
+    "IPs de monitoreo o pruebas de B89 que no están cargadas como «Infraestructura B89».",
+    "Un cliente «No requiere» que sí llama a la API sin identificador configurado."
+   ],
+   "dataSources": [
+    "Cloudflare Logpush (http_requests) enriquecido por el colector con la lista blanca de la consola"
+   ]
+  },
+  {
    "id": "B89-DET-CF-002",
    "title": "Oleada distribuida contra un host del WAF",
    "source": "cloudflare",
@@ -1409,7 +1443,8 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
     "100511",
     "100512",
     "100513",
-    "100514"
+    "100514",
+    "100536"
    ],
    "mitre": [
     "T1564.008",
@@ -1506,6 +1541,32 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
    ],
    "dataSources": [
     "Office 365 Management Activity API (módulo office365 de Wazuh): Audit.AzureActiveDirectory, Audit.Exchange, Audit.SharePoint, Audit.General"
+   ]
+  },
+  {
+   "id": "B89-DET-M365-006",
+   "title": "MailItemsAccessed · degradar la sincronización del dueño y elevar el acceso anómalo",
+   "source": "m365",
+   "useCase": "mailbox-access-noise",
+   "status": "testing",
+   "ruleIds": [
+    "100531",
+    "100532",
+    "100533",
+    "100534",
+    "100535"
+   ],
+   "mitre": [
+    "T1114.002"
+   ],
+   "priorityHint": "P4 la auditoría; P3 app desconocida o delegado; P2 acceso masivo",
+   "falsePositives": [
+    "Aplicación legítima no listada (cliente de correo de terceros, respaldo con delegación): agregar su ClientAppId por PR a detections/lists/b89-m365-mail-apps tras revisarla.",
+    "Buzón compartido no declarado: agregarlo a detections/lists/b89-m365-shared-mailboxes.",
+    "Migraciones o eDiscovery que recorren muchos buzones: ventana de mantenimiento B89 o cuenta de servicio."
+   ],
+   "dataSources": [
+    "Office 365 Management Activity API (módulo office365 de Wazuh): Audit.Exchange, operación MailItemsAccessed"
    ]
   },
   {
@@ -2326,6 +2387,89 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
    "file": "wazuh/office365/rules/b89_office365_rules.xml",
    "useCases": [
     "B89-DET-M365-001"
+   ],
+   "runbooks": [
+    "credenciales"
+   ]
+  },
+  "100531": {
+   "id": "100531",
+   "level": 3,
+   "description": "B89 M365: $(office365.UserId) accedió a su propio buzón (MailItemsAccessed del dueño, auditoría).",
+   "mitre": [
+    "T1114.002"
+   ],
+   "groups": [],
+   "file": "detections/m365/mailbox-access-noise/rule.xml",
+   "useCases": [
+    "B89-DET-M365-006"
+   ]
+  },
+  "100532": {
+   "id": "100532",
+   "level": 6,
+   "description": "B89 M365: una aplicación no reconocida ($(office365.ClientAppId)) leyó el buzón de $(office365.UserId) con la sesión del dueño.",
+   "mitre": [
+    "T1114.002"
+   ],
+   "groups": [],
+   "file": "detections/m365/mailbox-access-noise/rule.xml",
+   "useCases": [
+    "B89-DET-M365-006"
+   ]
+  },
+  "100533": {
+   "id": "100533",
+   "level": 5,
+   "description": "B89 M365: $(office365.UserId) accedió al buzón de $(office365.MailboxOwnerUPN) como administrador o delegado (LogonType $(office365.LogonType)).",
+   "mitre": [
+    "T1114.002"
+   ],
+   "groups": [],
+   "file": "detections/m365/mailbox-access-noise/rule.xml",
+   "useCases": [
+    "B89-DET-M365-006"
+   ]
+  },
+  "100534": {
+   "id": "100534",
+   "level": 3,
+   "description": "B89 M365: $(office365.UserId) accedió al buzón compartido $(office365.MailboxOwnerUPN) (uso habitual).",
+   "mitre": [],
+   "groups": [],
+   "file": "detections/m365/mailbox-access-noise/rule.xml",
+   "useCases": [
+    "B89-DET-M365-006"
+   ]
+  },
+  "100535": {
+   "id": "100535",
+   "level": 10,
+   "description": "B89 M365: $(office365.UserId) accedió a 10 o más buzones ajenos distintos en 15 minutos (posible recolección de correo).",
+   "mitre": [
+    "T1114.002"
+   ],
+   "groups": [
+    "b89_attack"
+   ],
+   "file": "detections/m365/mailbox-access-noise/rule.xml",
+   "useCases": [
+    "B89-DET-M365-006"
+   ]
+  },
+  "100536": {
+   "id": "100536",
+   "level": 7,
+   "description": "B89 M365: $(office365.UserId) creó o modificó una regla de bandeja que solo mueve correo a una carpeta.",
+   "mitre": [
+    "T1564.008"
+   ],
+   "groups": [
+    "exchange"
+   ],
+   "file": "wazuh/office365/rules/b89_office365_rules.xml",
+   "useCases": [
+    "B89-DET-M365-002"
    ],
    "runbooks": [
     "credenciales"
@@ -3852,6 +3996,68 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
     "b89_credential_misuse"
    ],
    "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml"
+  },
+  "101546": {
+   "id": "101546",
+   "level": 0,
+   "description": "B89 Cloudflare: API de pagos, lista blanca: $(cloudflare.http.allowlist_verdict).",
+   "mitre": [],
+   "groups": [
+    "b89_http",
+    "b89_allowlist"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml",
+   "useCases": [
+    "B89-DET-CF-004"
+   ]
+  },
+  "101547": {
+   "id": "101547",
+   "level": 13,
+   "description": "B89 Cloudflare: el cliente $(cloudflare.http.allowlist_client) llamó a la API de pagos desde una IP que no es suya ($(cloudflare.http.client_ip)) y la API respondió $(cloudflare.http.status): $(cloudflare.http.method) $(cloudflare.http.path). Una alerta por cliente e IP por hora.",
+   "mitre": [
+    "T1078"
+   ],
+   "groups": [
+    "b89_http",
+    "b89_allowlist",
+    "b89_attack"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml",
+   "useCases": [
+    "B89-DET-CF-004"
+   ]
+  },
+  "101548": {
+   "id": "101548",
+   "level": 12,
+   "description": "B89 Cloudflare: login o pago aceptado ($(cloudflare.http.status)) en la API de pagos desde una IP fuera de la lista blanca ($(cloudflare.http.client_ip)): $(cloudflare.http.method) $(cloudflare.http.path). Una alerta por IP por hora.",
+   "mitre": [
+    "T1078"
+   ],
+   "groups": [
+    "b89_http",
+    "b89_allowlist",
+    "b89_attack"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml",
+   "useCases": [
+    "B89-DET-CF-004"
+   ]
+  },
+  "101549": {
+   "id": "101549",
+   "level": 3,
+   "description": "B89 Cloudflare: petición a la API de pagos desde una IP fuera de la lista blanca ($(cloudflare.http.client_ip)): $(cloudflare.http.method) $(cloudflare.http.path) → $(cloudflare.http.status).",
+   "mitre": [],
+   "groups": [
+    "b89_http",
+    "b89_allowlist"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml",
+   "useCases": [
+    "B89-DET-CF-004"
+   ]
   },
   "101600": {
    "id": "101600",
@@ -5461,16 +5667,6 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
     "B89-DET-NET-002"
    ]
   },
-  "101819": {
-   "id": "101819",
-   "level": 8,
-   "description": "B89 Plataforma: recursos del host. $(b89.health.summary)",
-   "mitre": [],
-   "groups": [
-    "b89_host"
-   ],
-   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
-  },
   "101820": {
    "id": "101820",
    "level": 10,
@@ -5502,54 +5698,6 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
    "useCases": [
     "B89-DET-NET-003"
    ]
-  },
-  "101822": {
-   "id": "101822",
-   "level": 10,
-   "description": "B89 Canario: el evento sintético de $(b89.health.source) no completó el recorrido. $(b89.health.summary)",
-   "mitre": [],
-   "groups": [
-    "b89_canary"
-   ],
-   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
-  },
-  "101823": {
-   "id": "101823",
-   "level": 7,
-   "description": "B89 Plataforma: suscripción SNS sin confirmar. $(b89.health.summary)",
-   "mitre": [],
-   "groups": [
-    "b89_aws"
-   ],
-   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
-  },
-  "101824": {
-   "id": "101824",
-   "level": 5,
-   "description": "B89 Plataforma: chequeo del monitor sin ejecutar. $(b89.health.summary)",
-   "mitre": [],
-   "groups": [
-    "b89_monitor"
-   ],
-   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
-  },
-  "101825": {
-   "id": "101825",
-   "level": 10,
-   "description": "B89 Plataforma: el monitor de salud no corre. $(b89.health.summary)",
-   "mitre": [],
-   "groups": [
-    "b89_monitor"
-   ],
-   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
-  },
-  "101829": {
-   "id": "101829",
-   "level": 5,
-   "description": "B89 Plataforma: problema de salud $(b89.health.check). $(b89.health.summary)",
-   "mitre": [],
-   "groups": [],
-   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
   },
   "101830": {
    "id": "101830",
@@ -5855,72 +6003,6 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
    "useCases": [
     "B89-DET-NET-004"
    ]
-  },
-  "101853": {
-   "id": "101853",
-   "level": 13,
-   "description": "B89 Snyk: vulnerabilidad ALTA con exploit maduro priorizada P1 ($(b89.vuln.reason)) $(b89.vuln.cve) en $(snyk.project.name).",
-   "mitre": [
-    "T1190"
-   ],
-   "groups": [],
-   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
-  },
-  "101854": {
-   "id": "101854",
-   "level": 12,
-   "description": "B89 Snyk: vulnerabilidad media elevada a P1 ($(b89.vuln.reason); KEV=$(b89.vuln.kev), EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).",
-   "mitre": [
-    "T1190"
-   ],
-   "groups": [],
-   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
-  },
-  "101855": {
-   "id": "101855",
-   "level": 12,
-   "description": "B89 Snyk: vulnerabilidad baja elevada a P1 ($(b89.vuln.reason); KEV=$(b89.vuln.kev), EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).",
-   "mitre": [
-    "T1190"
-   ],
-   "groups": [],
-   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
-  },
-  "101856": {
-   "id": "101856",
-   "level": 11,
-   "description": "B89 Snyk: vulnerabilidad ALTA priorizada P2 ($(b89.vuln.reason); EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).",
-   "mitre": [],
-   "groups": [],
-   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
-  },
-  "101857": {
-   "id": "101857",
-   "level": 10,
-   "description": "B89 Snyk: vulnerabilidad media elevada a P2 ($(b89.vuln.reason); EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).",
-   "mitre": [],
-   "groups": [],
-   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
-  },
-  "101858": {
-   "id": "101858",
-   "level": 6,
-   "description": "B89 Snyk: vulnerabilidad crítica de baja prioridad P4 ($(b89.vuln.reason); EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).",
-   "mitre": [],
-   "groups": [
-    "b89_deprioritized"
-   ],
-   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
-  },
-  "101859": {
-   "id": "101859",
-   "level": 6,
-   "description": "B89 Snyk: vulnerabilidad alta de baja prioridad P4 ($(b89.vuln.reason); EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).",
-   "mitre": [],
-   "groups": [
-    "b89_deprioritized"
-   ],
-   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
   },
   "101860": {
    "id": "101860",
@@ -7319,6 +7401,931 @@ export const SOC_KNOWLEDGE: SocKnowledge = {
    "useCases": [
     "B89-DET-PLAT-001"
    ]
+  },
+  "102000": {
+   "id": "102000",
+   "level": 0,
+   "description": "B89 Cloudflare: respuesta 4xx a $(cloudflare.http.client_ip) (datos muestreados).",
+   "mitre": [],
+   "groups": [],
+   "file": "detections/cloudflare/web-attacks-owasp/rule.xml",
+   "useCases": [
+    "B89-DET-CF-003"
+   ]
+  },
+  "102001": {
+   "id": "102001",
+   "level": 2,
+   "description": "B89 Cloudflare: intento de inyección SQL (OWASP A03) desde $(cloudflare.http.client_ip) en $(cloudflare.http.host)$(cloudflare.http.path) ($(cloudflare.http.status)).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [
+    "b89_cf_http_attack",
+    "owasp_a03_injection"
+   ],
+   "file": "detections/cloudflare/web-attacks-owasp/rule.xml",
+   "useCases": [
+    "B89-DET-CF-003"
+   ]
+  },
+  "102002": {
+   "id": "102002",
+   "level": 2,
+   "description": "B89 Cloudflare: intento de cross-site scripting (OWASP A03) desde $(cloudflare.http.client_ip) en $(cloudflare.http.host)$(cloudflare.http.path) ($(cloudflare.http.status)).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [
+    "b89_cf_http_attack",
+    "owasp_a03_injection"
+   ],
+   "file": "detections/cloudflare/web-attacks-owasp/rule.xml",
+   "useCases": [
+    "B89-DET-CF-003"
+   ]
+  },
+  "102003": {
+   "id": "102003",
+   "level": 2,
+   "description": "B89 Cloudflare: intento de recorrido de rutas o inclusión de archivos (OWASP A01) desde $(cloudflare.http.client_ip) en $(cloudflare.http.host)$(cloudflare.http.path) ($(cloudflare.http.status)).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [
+    "b89_cf_http_attack",
+    "owasp_a01_access_control"
+   ],
+   "file": "detections/cloudflare/web-attacks-owasp/rule.xml",
+   "useCases": [
+    "B89-DET-CF-003"
+   ]
+  },
+  "102004": {
+   "id": "102004",
+   "level": 2,
+   "description": "B89 Cloudflare: intento de inyección de comandos (OWASP A03) desde $(cloudflare.http.client_ip) en $(cloudflare.http.host)$(cloudflare.http.path) ($(cloudflare.http.status)).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [
+    "b89_cf_http_attack",
+    "owasp_a03_injection"
+   ],
+   "file": "detections/cloudflare/web-attacks-owasp/rule.xml",
+   "useCases": [
+    "B89-DET-CF-003"
+   ]
+  },
+  "102005": {
+   "id": "102005",
+   "level": 2,
+   "description": "B89 Cloudflare: intento de falsificación de peticiones del servidor, SSRF (OWASP A10) desde $(cloudflare.http.client_ip) en $(cloudflare.http.host)$(cloudflare.http.path) ($(cloudflare.http.status)).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [
+    "b89_cf_http_attack",
+    "owasp_a10_ssrf"
+   ],
+   "file": "detections/cloudflare/web-attacks-owasp/rule.xml",
+   "useCases": [
+    "B89-DET-CF-003"
+   ]
+  },
+  "102006": {
+   "id": "102006",
+   "level": 2,
+   "description": "B89 Cloudflare: intento de Log4Shell o inyección de plantillas (OWASP A03/A06) desde $(cloudflare.http.client_ip) en $(cloudflare.http.host)$(cloudflare.http.path) ($(cloudflare.http.status)).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [
+    "b89_cf_http_attack",
+    "owasp_a06_vulnerable_components"
+   ],
+   "file": "detections/cloudflare/web-attacks-owasp/rule.xml",
+   "useCases": [
+    "B89-DET-CF-003"
+   ]
+  },
+  "102007": {
+   "id": "102007",
+   "level": 2,
+   "description": "B89 Cloudflare: herramienta de ataque o escaneo ($(cloudflare.http.user_agent)) desde $(cloudflare.http.client_ip) en $(cloudflare.http.host)$(cloudflare.http.path).",
+   "mitre": [
+    "T1595.002"
+   ],
+   "groups": [
+    "b89_cf_http_attack",
+    "b89_web_probe",
+    "owasp_a05_misconfiguration"
+   ],
+   "file": "detections/cloudflare/web-attacks-owasp/rule.xml",
+   "useCases": [
+    "B89-DET-CF-003"
+   ]
+  },
+  "102008": {
+   "id": "102008",
+   "level": 2,
+   "description": "B89 Cloudflare: prueba de ataque web desde el escáner autorizado $(cloudflare.http.client_ip) en $(cloudflare.http.host)$(cloudflare.http.path).",
+   "mitre": [],
+   "groups": [
+    "b89_trusted_principal"
+   ],
+   "file": "detections/cloudflare/web-attacks-owasp/rule.xml",
+   "useCases": [
+    "B89-DET-CF-003"
+   ]
+  },
+  "102009": {
+   "id": "102009",
+   "level": 10,
+   "description": "B89 Cloudflare: la aplicación falló (error $(cloudflare.http.status)) ante un ataque web desde $(cloudflare.http.client_ip): $(cloudflare.http.method) $(cloudflare.http.host)$(cloudflare.http.path). Posible vulnerabilidad explotable; revisar el origen.",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [
+    "b89_cf_http_attack",
+    "b89_attack",
+    "b89_owasp_signal"
+   ],
+   "file": "detections/cloudflare/web-attacks-owasp/rule.xml",
+   "useCases": [
+    "B89-DET-CF-003"
+   ]
+  },
+  "102010": {
+   "id": "102010",
+   "level": 5,
+   "description": "B89 Cloudflare: un ataque web desde $(cloudflare.http.client_ip) llegó a la aplicación y recibió $(cloudflare.http.status): $(cloudflare.http.method) $(cloudflare.http.host)$(cloudflare.http.path). Cloudflare no lo bloqueó; confirmar si la respuesta expuso datos.",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [
+    "b89_cf_http_attack",
+    "b89_owasp_signal"
+   ],
+   "file": "detections/cloudflare/web-attacks-owasp/rule.xml",
+   "useCases": [
+    "B89-DET-CF-003"
+   ]
+  },
+  "102011": {
+   "id": "102011",
+   "level": 8,
+   "description": "B89 Cloudflare: campaña de ataques web (OWASP) desde $(cloudflare.http.client_ip) contra $(cloudflare.http.host): 5+ intentos en 10 min.",
+   "mitre": [
+    "T1190",
+    "T1595.002"
+   ],
+   "groups": [
+    "b89_attack",
+    "b89_owasp_signal"
+   ],
+   "file": "detections/cloudflare/web-attacks-owasp/rule.xml",
+   "useCases": [
+    "B89-DET-CF-003"
+   ]
+  },
+  "102012": {
+   "id": "102012",
+   "level": 8,
+   "description": "B89 Cloudflare: campaña de ataques web (OWASP) desde $(cloudflare.http.client_ip) contra $(cloudflare.http.host): 2+ intentos muestreados en 30 min (≈ 20+ reales).",
+   "mitre": [
+    "T1190",
+    "T1595.002"
+   ],
+   "groups": [
+    "b89_attack",
+    "b89_owasp_signal"
+   ],
+   "file": "detections/cloudflare/web-attacks-owasp/rule.xml",
+   "useCases": [
+    "B89-DET-CF-003"
+   ]
+  },
+  "102013": {
+   "id": "102013",
+   "level": 8,
+   "description": "B89 Cloudflare: escaneo de rutas sensibles (/.env, /.git, wp-login…) desde $(cloudflare.http.client_ip): 3+ sondeos muestreados en 15 min (≈ 30+ reales).",
+   "mitre": [
+    "T1595.003"
+   ],
+   "groups": [
+    "b89_web_probe",
+    "b89_attack"
+   ],
+   "file": "detections/cloudflare/web-attacks-owasp/rule.xml",
+   "useCases": [
+    "B89-DET-CF-003"
+   ]
+  },
+  "102014": {
+   "id": "102014",
+   "level": 7,
+   "description": "B89 Cloudflare: 6+ respuestas 4xx muestreadas para $(cloudflare.http.client_ip) en 5 min (≈ 60+ reales); enumeración de rutas o fuerza bruta.",
+   "mitre": [
+    "T1595.003"
+   ],
+   "groups": [
+    "b89_web_probe",
+    "b89_attack"
+   ],
+   "file": "detections/cloudflare/web-attacks-owasp/rule.xml",
+   "useCases": [
+    "B89-DET-CF-003"
+   ]
+  },
+  "102015": {
+   "id": "102015",
+   "level": 2,
+   "description": "B89 Cloudflare: login rechazado ($(cloudflare.http.status)) para $(cloudflare.http.client_ip) en $(cloudflare.http.host)$(cloudflare.http.path).",
+   "mitre": [],
+   "groups": [
+    "b89_cf_login_failed",
+    "owasp_a07_auth"
+   ],
+   "file": "detections/cloudflare/web-attacks-owasp/rule.xml",
+   "useCases": [
+    "B89-DET-CF-003"
+   ]
+  },
+  "102016": {
+   "id": "102016",
+   "level": 10,
+   "description": "B89 Cloudflare: fuerza bruta de login (OWASP A07) desde $(cloudflare.http.client_ip) contra $(cloudflare.http.host): 10+ logins rechazados en 5 min.",
+   "mitre": [
+    "T1110.001"
+   ],
+   "groups": [
+    "b89_attack",
+    "b89_credential_attack"
+   ],
+   "file": "detections/cloudflare/web-attacks-owasp/rule.xml",
+   "useCases": [
+    "B89-DET-CF-003"
+   ]
+  },
+  "102017": {
+   "id": "102017",
+   "level": 10,
+   "description": "B89 Cloudflare: fuerza bruta de login (OWASP A07) desde $(cloudflare.http.client_ip) contra $(cloudflare.http.host): 3+ rechazos muestreados en 15 min (≈ 30+ reales).",
+   "mitre": [
+    "T1110.001"
+   ],
+   "groups": [
+    "b89_attack",
+    "b89_credential_attack"
+   ],
+   "file": "detections/cloudflare/web-attacks-owasp/rule.xml",
+   "useCases": [
+    "B89-DET-CF-003"
+   ]
+  },
+  "102018": {
+   "id": "102018",
+   "level": 12,
+   "description": "B89 Cloudflare: relleno de credenciales distribuido (OWASP A07) contra $(cloudflare.http.host): 30+ logins rechazados desde IPs distintas en 10 min.",
+   "mitre": [
+    "T1110.004"
+   ],
+   "groups": [
+    "b89_attack",
+    "b89_credential_attack"
+   ],
+   "file": "detections/cloudflare/web-attacks-owasp/rule.xml",
+   "useCases": [
+    "B89-DET-CF-003"
+   ]
+  },
+  "102019": {
+   "id": "102019",
+   "level": 12,
+   "description": "B89 Cloudflare: relleno de credenciales distribuido (OWASP A07) contra $(cloudflare.http.host): 8+ rechazos muestreados desde IPs distintas en 15 min (≈ 90+ reales).",
+   "mitre": [
+    "T1110.004"
+   ],
+   "groups": [
+    "b89_attack",
+    "b89_credential_attack"
+   ],
+   "file": "detections/cloudflare/web-attacks-owasp/rule.xml",
+   "useCases": [
+    "B89-DET-CF-003"
+   ]
+  },
+  "102020": {
+   "id": "102020",
+   "level": 8,
+   "description": "B89 Cloudflare: intento con el identificador del cliente $(cloudflare.http.allowlist_client) desde una IP que no es suya ($(cloudflare.http.client_ip)); la API o Cloudflare lo rechazó ($(cloudflare.http.status)): $(cloudflare.http.method) $(cloudflare.http.path).",
+   "mitre": [
+    "T1078"
+   ],
+   "groups": [
+    "b89_http",
+    "b89_allowlist"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml",
+   "useCases": [
+    "B89-DET-CF-004"
+   ]
+  },
+  "102021": {
+   "id": "102021",
+   "level": 3,
+   "description": "B89 Cloudflare: repetición (ya alertada en la última hora) o registro histórico del cliente $(cloudflare.http.allowlist_client) desde la IP ajena $(cloudflare.http.client_ip): $(cloudflare.http.method) $(cloudflare.http.path) → $(cloudflare.http.status).",
+   "mitre": [],
+   "groups": [
+    "b89_http",
+    "b89_allowlist"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml",
+   "useCases": [
+    "B89-DET-CF-004"
+   ]
+  },
+  "102022": {
+   "id": "102022",
+   "level": 3,
+   "description": "B89 Cloudflare: repetición (ya alertada en la última hora) o registro histórico de login o pago desde la IP fuera de lista $(cloudflare.http.client_ip): $(cloudflare.http.method) $(cloudflare.http.path) → $(cloudflare.http.status).",
+   "mitre": [],
+   "groups": [
+    "b89_http",
+    "b89_allowlist"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml",
+   "useCases": [
+    "B89-DET-CF-004"
+   ]
+  },
+  "102023": {
+   "id": "102023",
+   "level": 3,
+   "description": "B89 Cloudflare: login o pago rechazado ($(cloudflare.http.status)) en la API de pagos para la IP fuera de lista $(cloudflare.http.client_ip): $(cloudflare.http.method) $(cloudflare.http.path).",
+   "mitre": [],
+   "groups": [
+    "b89_http",
+    "b89_allowlist",
+    "b89_allowlist_rejected"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml",
+   "useCases": [
+    "B89-DET-CF-004"
+   ]
+  },
+  "102024": {
+   "id": "102024",
+   "level": 3,
+   "description": "B89 Cloudflare: bot verificado por Cloudflare ($(cloudflare.http.verified_bot_category)) en la API de pagos desde $(cloudflare.http.client_ip): $(cloudflare.http.method) $(cloudflare.http.path) → $(cloudflare.http.status).",
+   "mitre": [],
+   "groups": [
+    "b89_http",
+    "b89_allowlist"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml",
+   "useCases": [
+    "B89-DET-CF-004"
+   ]
+  },
+  "102025": {
+   "id": "102025",
+   "level": 10,
+   "description": "B89 Cloudflare: 10+ logins o pagos rechazados en 5 min en la API de pagos desde la IP fuera de lista $(cloudflare.http.client_ip): fuerza bruta o sondeo dirigido.",
+   "mitre": [
+    "T1110"
+   ],
+   "groups": [
+    "b89_http",
+    "b89_allowlist",
+    "b89_attack"
+   ],
+   "file": "wazuh/provider-ingestion/rules/b89_cloudflare_rules.xml",
+   "useCases": [
+    "B89-DET-CF-004"
+   ]
+  },
+  "102100": {
+   "id": "102100",
+   "level": 0,
+   "description": "B89 Plataforma: evento del monitor de salud.",
+   "mitre": [],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "102101": {
+   "id": "102101",
+   "level": 3,
+   "description": "B89 Integración: estado de la fuente $(b89.health.source): $(b89.health.source_state).",
+   "mitre": [],
+   "groups": [
+    "b89_source_status"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "102102": {
+   "id": "102102",
+   "level": 3,
+   "description": "B89 Plataforma: $(b89.health.summary)",
+   "mitre": [],
+   "groups": [
+    "b89_health_recovered"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "102104": {
+   "id": "102104",
+   "level": 10,
+   "description": "B89 Integración: fuente silenciosa $(b89.health.source). $(b89.health.summary)",
+   "mitre": [],
+   "groups": [
+    "b89_source_silent"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "102105": {
+   "id": "102105",
+   "level": 8,
+   "description": "B89 Integración: colector fallando ($(b89.health.source)). $(b89.health.summary)",
+   "mitre": [],
+   "groups": [
+    "b89_collector_failing"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "102106": {
+   "id": "102106",
+   "level": 10,
+   "description": "B89 Plataforma: agente desconectado $(b89.health.agent_name). $(b89.health.summary)",
+   "mitre": [],
+   "groups": [
+    "b89_agent_disconnected"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "102107": {
+   "id": "102107",
+   "level": 12,
+   "description": "B89 Plataforma: disco por encima del umbral ($(b89.health.component)). $(b89.health.summary)",
+   "mitre": [],
+   "groups": [
+    "b89_disk"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "102108": {
+   "id": "102108",
+   "level": 13,
+   "description": "B89 Plataforma: disco CRÍTICO ($(b89.health.component)). $(b89.health.summary)",
+   "mitre": [],
+   "groups": [
+    "b89_disk"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "102109": {
+   "id": "102109",
+   "level": 10,
+   "description": "B89 Plataforma: contenedor con problemas $(b89.health.component). $(b89.health.summary)",
+   "mitre": [],
+   "groups": [
+    "b89_container"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "102110": {
+   "id": "102110",
+   "level": 12,
+   "description": "B89 Plataforma: servicio esencial caído $(b89.health.component). $(b89.health.summary)",
+   "mitre": [],
+   "groups": [
+    "b89_container"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "102111": {
+   "id": "102111",
+   "level": 8,
+   "description": "B89 Plataforma: indexer degradado. $(b89.health.summary)",
+   "mitre": [],
+   "groups": [
+    "b89_indexer"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "102112": {
+   "id": "102112",
+   "level": 12,
+   "description": "B89 Plataforma: indexer en ROJO. $(b89.health.summary)",
+   "mitre": [],
+   "groups": [
+    "b89_indexer"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "102114": {
+   "id": "102114",
+   "level": 7,
+   "description": "B89 Plataforma: errores de ISM (retención). $(b89.health.summary)",
+   "mitre": [],
+   "groups": [
+    "b89_indexer"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "102115": {
+   "id": "102115",
+   "level": 8,
+   "description": "B89 Plataforma: certificado por vencer $(b89.health.component). $(b89.health.summary)",
+   "mitre": [],
+   "groups": [
+    "b89_certificate"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "102116": {
+   "id": "102116",
+   "level": 12,
+   "description": "B89 Plataforma: certificado vence en menos de 7 días o vencido: $(b89.health.component). $(b89.health.summary)",
+   "mitre": [],
+   "groups": [
+    "b89_certificate"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "102117": {
+   "id": "102117",
+   "level": 9,
+   "description": "B89 Plataforma: ingesta B89 retrasada. $(b89.health.summary)",
+   "mitre": [],
+   "groups": [
+    "b89_ingestion"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "102118": {
+   "id": "102118",
+   "level": 11,
+   "description": "B89 Plataforma: ingesta B89 detenida. $(b89.health.summary)",
+   "mitre": [],
+   "groups": [
+    "b89_ingestion"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "102119": {
+   "id": "102119",
+   "level": 8,
+   "description": "B89 Plataforma: recursos del host. $(b89.health.summary)",
+   "mitre": [],
+   "groups": [
+    "b89_host"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "102120": {
+   "id": "102120",
+   "level": 12,
+   "description": "B89 Plataforma: portal del SOC inaccesible. $(b89.health.summary)",
+   "mitre": [],
+   "groups": [
+    "b89_edge"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "102121": {
+   "id": "102121",
+   "level": 5,
+   "description": "B89 Plataforma: feeds KEV/EPSS desactualizados. $(b89.health.summary)",
+   "mitre": [],
+   "groups": [
+    "b89_vulnprio"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "102122": {
+   "id": "102122",
+   "level": 10,
+   "description": "B89 Canario: el evento sintético de $(b89.health.source) no completó el recorrido. $(b89.health.summary)",
+   "mitre": [],
+   "groups": [
+    "b89_canary"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "102123": {
+   "id": "102123",
+   "level": 7,
+   "description": "B89 Plataforma: suscripción SNS sin confirmar. $(b89.health.summary)",
+   "mitre": [],
+   "groups": [
+    "b89_aws"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "102124": {
+   "id": "102124",
+   "level": 5,
+   "description": "B89 Plataforma: chequeo del monitor sin ejecutar. $(b89.health.summary)",
+   "mitre": [],
+   "groups": [
+    "b89_monitor"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "102125": {
+   "id": "102125",
+   "level": 10,
+   "description": "B89 Plataforma: el monitor de salud no corre. $(b89.health.summary)",
+   "mitre": [],
+   "groups": [
+    "b89_monitor"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "102129": {
+   "id": "102129",
+   "level": 5,
+   "description": "B89 Plataforma: problema de salud $(b89.health.check). $(b89.health.summary)",
+   "mitre": [],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "102130": {
+   "id": "102130",
+   "level": 3,
+   "description": "B89 Canario: evento sintético de Bitdefender (sintético/canary, no requiere acción).",
+   "mitre": [],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "102131": {
+   "id": "102131",
+   "level": 3,
+   "description": "B89 Canario: evento sintético de Snyk (sintético/canary, no requiere acción).",
+   "mitre": [],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "102132": {
+   "id": "102132",
+   "level": 3,
+   "description": "B89 Canario: evento sintético de Cloudflare (sintético/canary, no requiere acción).",
+   "mitre": [],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "102133": {
+   "id": "102133",
+   "level": 3,
+   "description": "B89 Canario: evento sintético de AWS (sintético/canary, no requiere acción).",
+   "mitre": [],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "102134": {
+   "id": "102134",
+   "level": 3,
+   "description": "B89 Canario: evento sintético del monitor de plataforma (sintético/canary, no requiere acción).",
+   "mitre": [],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "102135": {
+   "id": "102135",
+   "level": 3,
+   "description": "B89 Canario: evento sintético del agente Wazuh (journald) (sintético/canary, no requiere acción).",
+   "mitre": [],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml"
+  },
+  "102150": {
+   "id": "102150",
+   "level": 14,
+   "description": "B89 Snyk: vulnerabilidad CRÍTICA priorizada P1 ($(b89.vuln.reason); KEV=$(b89.vuln.kev), EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
+  },
+  "102151": {
+   "id": "102151",
+   "level": 14,
+   "description": "B89 Snyk: vulnerabilidad CRÍTICA con exploit maduro priorizada P1 ($(b89.vuln.reason)) $(b89.vuln.cve) en $(snyk.project.name).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
+  },
+  "102152": {
+   "id": "102152",
+   "level": 13,
+   "description": "B89 Snyk: vulnerabilidad ALTA priorizada P1 ($(b89.vuln.reason); KEV=$(b89.vuln.kev), EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
+  },
+  "102153": {
+   "id": "102153",
+   "level": 13,
+   "description": "B89 Snyk: vulnerabilidad ALTA con exploit maduro priorizada P1 ($(b89.vuln.reason)) $(b89.vuln.cve) en $(snyk.project.name).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
+  },
+  "102154": {
+   "id": "102154",
+   "level": 12,
+   "description": "B89 Snyk: vulnerabilidad media elevada a P1 ($(b89.vuln.reason); KEV=$(b89.vuln.kev), EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
+  },
+  "102155": {
+   "id": "102155",
+   "level": 12,
+   "description": "B89 Snyk: vulnerabilidad baja elevada a P1 ($(b89.vuln.reason); KEV=$(b89.vuln.kev), EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
+  },
+  "102156": {
+   "id": "102156",
+   "level": 11,
+   "description": "B89 Snyk: vulnerabilidad ALTA priorizada P2 ($(b89.vuln.reason); EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).",
+   "mitre": [],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
+  },
+  "102157": {
+   "id": "102157",
+   "level": 10,
+   "description": "B89 Snyk: vulnerabilidad media elevada a P2 ($(b89.vuln.reason); EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).",
+   "mitre": [],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
+  },
+  "102158": {
+   "id": "102158",
+   "level": 6,
+   "description": "B89 Snyk: vulnerabilidad crítica de baja prioridad P4 ($(b89.vuln.reason); EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).",
+   "mitre": [],
+   "groups": [
+    "b89_deprioritized"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
+  },
+  "102159": {
+   "id": "102159",
+   "level": 6,
+   "description": "B89 Snyk: vulnerabilidad alta de baja prioridad P4 ($(b89.vuln.reason); EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).",
+   "mitre": [],
+   "groups": [
+    "b89_deprioritized"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
+  },
+  "102160": {
+   "id": "102160",
+   "level": 0,
+   "description": "B89 Vulnerabilidad: evento del priorizador KEV/EPSS.",
+   "mitre": [],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
+  },
+  "102161": {
+   "id": "102161",
+   "level": 14,
+   "description": "B89 Vulnerabilidad: P1 en activo expuesto a Internet $(b89.vuln.asset): $(b89.vuln.cve) ($(b89.vuln.reason); KEV=$(b89.vuln.kev), EPSS=$(b89.vuln.epss)).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
+  },
+  "102162": {
+   "id": "102162",
+   "level": 13,
+   "description": "B89 Vulnerabilidad: P1 en $(b89.vuln.asset): $(b89.vuln.cve) ($(b89.vuln.reason); KEV=$(b89.vuln.kev), EPSS=$(b89.vuln.epss)).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
+  },
+  "102163": {
+   "id": "102163",
+   "level": 10,
+   "description": "B89 Vulnerabilidad: P2 en $(b89.vuln.asset): $(b89.vuln.cve) ($(b89.vuln.reason); EPSS=$(b89.vuln.epss)).",
+   "mitre": [],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
+  },
+  "102164": {
+   "id": "102164",
+   "level": 3,
+   "description": "B89 Vulnerabilidad: cambio de prioridad $(b89.vuln.previous_priority) a $(b89.vuln.priority) en $(b89.vuln.asset): $(b89.vuln.cve).",
+   "mitre": [],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
+  },
+  "102165": {
+   "id": "102165",
+   "level": 3,
+   "description": "B89 Vulnerabilidad: resumen diario de priorización: altas+críticas $(b89.vuln_summary.before_high_or_critical) antes, $(b89.vuln_summary.after_high_or_critical) después.",
+   "mitre": [],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
+  },
+  "102166": {
+   "id": "102166",
+   "level": 3,
+   "description": "B89 Canario: evento sintético del priorizador de vulnerabilidades (sintético/canary, no requiere acción).",
+   "mitre": [],
+   "groups": [
+    "b89_canary",
+    "b89_synthetic"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
+  },
+  "102167": {
+   "id": "102167",
+   "level": 12,
+   "description": "B89 Snyk: vulnerabilidad CRÍTICA priorizada P2 ($(b89.vuln.reason); EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).",
+   "mitre": [],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
+  },
+  "102170": {
+   "id": "102170",
+   "level": 14,
+   "description": "B89 Vulnerabilidad: $(vulnerability.cve) CRÍTICA en el catálogo CISA KEV afecta $(vulnerability.package.name).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
+  },
+  "102171": {
+   "id": "102171",
+   "level": 13,
+   "description": "B89 Vulnerabilidad: $(vulnerability.cve) ALTA en el catálogo CISA KEV afecta $(vulnerability.package.name).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
+  },
+  "102172": {
+   "id": "102172",
+   "level": 12,
+   "description": "B89 Vulnerabilidad: $(vulnerability.cve) media en el catálogo CISA KEV afecta $(vulnerability.package.name).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
+  },
+  "102173": {
+   "id": "102173",
+   "level": 12,
+   "description": "B89 Vulnerabilidad: $(vulnerability.cve) baja en el catálogo CISA KEV afecta $(vulnerability.package.name).",
+   "mitre": [
+    "T1190"
+   ],
+   "groups": [],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
+  },
+  "102174": {
+   "id": "102174",
+   "level": 6,
+   "description": "B89 Vulnerabilidad: $(vulnerability.cve) crítica de baja prioridad P4 (EPSS bajo, sin KEV, no expuesta) en $(vulnerability.package.name).",
+   "mitre": [],
+   "groups": [
+    "b89_deprioritized"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
+  },
+  "102175": {
+   "id": "102175",
+   "level": 5,
+   "description": "B89 Vulnerabilidad: $(vulnerability.cve) alta de baja prioridad P4 (EPSS bajo, sin KEV, no expuesta) en $(vulnerability.package.name).",
+   "mitre": [],
+   "groups": [
+    "b89_deprioritized"
+   ],
+   "file": "wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml"
   },
   "19003": {
    "id": "19003",
