@@ -31,7 +31,7 @@ describe('reglas estándar de Wazuh en el conocimiento SOC', () => {
   });
 
   it('cubre las reglas con más volumen en producción (estándar y de plataforma B89)', () => {
-    for (const id of ['91578', '91707', '521', '550', '2904', '5710', '220', '101822', '101859']) {
+    for (const id of ['91578', '91707', '521', '550', '2904', '5710', '220', '102122', '102159']) {
       expect(SOC_KNOWLEDGE.rules[id], id).toBeDefined();
     }
   });

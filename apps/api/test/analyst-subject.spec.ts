@@ -5,7 +5,7 @@ import { subjectFromRaw } from '../src/assistant/analyst-subject.js';
 describe('detalles del evento de la alerta (lista blanca por dominio)', () => {
   it('vulnerabilidad priorizada: toma data.b89.vuln y nada más', () => {
     const subject = subjectFromRaw({
-      rule: { level: 13, id: '101862' },
+      rule: { level: 13, id: '102162' },
       full_log: 'NO DEBE SALIR',
       data: { b89: { vuln: { cve: 'CVE-2026-125350', kev: 'true', epss: '', asset: 'repo:Dockerfile' } } },
     });

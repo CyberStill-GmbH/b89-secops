@@ -13,7 +13,7 @@
 #   2. Código en /opt/b89/platform-monitoring/bin, configs en etc/ (0600), estado en state/.
 #      Actualiza el collector Snyk (enriquecimiento KEV/EPSS en línea) sin reinstalar los collectors.
 #   3. Descarga KEV/EPSS y genera las listas CDB antes del reinicio (así cargan ya).
-#   4. Reglas 101800-101879, listas b89-vuln-kev / b89-vuln-noise en <ruleset> y <localfile> de
+#   4. Reglas 102100-102179, listas b89-vuln-kev / b89-vuln-noise en <ruleset> y <localfile> de
 #      platform-health.jsonl y vulnprio.jsonl entre marcadores B89:platform-monitoring. Respaldo,
 #      wazuh-analysisd -t (revierte si falla), persistencia en el ossec.conf montado y reinicio SOLO
 #      del manager (salvo --no-restart).
@@ -326,7 +326,7 @@ docker exec -u 0 "$M" bash -euo pipefail -c '
   fi
   rm -rf $S
 '
-log "reglas 101800-101879 instaladas; wazuh-analysisd -t OK (respaldo $BACKUP)"
+log "reglas 102100-102179 instaladas; wazuh-analysisd -t OK (respaldo $BACKUP)"
 HOSTCONF="$(docker inspect "$M" --format '{{range .Mounts}}{{if eq .Destination "/wazuh-config-mount/etc/ossec.conf"}}{{.Source}}{{end}}{{end}}')"
 if [[ -n $HOSTCONF && -f $HOSTCONF ]]; then
   cp -p "$HOSTCONF" "$BACKUP/wazuh_manager.conf.host"

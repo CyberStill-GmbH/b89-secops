@@ -222,16 +222,17 @@ describe('etapa D · compuertas de preparación (precondiciones en ejecución)',
     expect(evaluateReadiness(pattern(), readySnapshot(overrides))).toContain(blocker);
   });
 
-  it('la lista de colisiones de @b89/detection bloquea las reglas 1018xx', () => {
+  it('la lista de colisiones de @b89/detection está vacía y ya no bloquea las reglas 1018xx', () => {
+    // Hasta 2026-11-25 el monitor de plataforma reutilizaba 42 IDs 1018xx (renumerado a 1021xx).
+    // El bloqueo en sí lo cubre el caso RULE_ID_COLLISION de arriba.
     const keys = collidingRuleKeys();
-    expect(keys.size).toBe(42);
-    const colliding = [...keys][0]!;
+    expect([...keys]).toEqual([]);
     expect(
       evaluateReadiness(
-        pattern({ ruleKey: colliding }),
+        pattern({ ruleKey: 'network:101830' }),
         readySnapshot({ collidingRuleKeys: keys }),
       ),
-    ).toContain('RULE_ID_COLLISION');
+    ).not.toContain('RULE_ID_COLLISION');
   });
 
   it('solo cuentan aprobadores humanos distintos', () => {

@@ -848,7 +848,7 @@ Detalle y veredicto: `docs/soc-learning/24-despliegue-sombra.md`; runbooks: `25-
     byRule[], byPattern[], unsafePatterns[], goldSet: "NOT_AVAILABLE", threshold } }`. Panel de sombra.
 - **Monitor de plataforma (dueño del monitor):** nuevo chequeo `learning` (lee la base); al reinstalar,
   `b89_monitor` recibe SELECT en las tablas de aprendizaje si existen. Sin IDs de regla nuevos (usa la
-  genérica 101829); IDs propios con más nivel los asigna el dueño.
+  genérica 102129, antes 101829); IDs propios con más nivel los asigna el dueño.
 
 ## Fase 3 · bloqueantes de dry_run resueltos en código (Claude, 2026-11-24)
 

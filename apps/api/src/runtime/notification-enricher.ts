@@ -39,8 +39,12 @@ const REASON_LABELS: Readonly<Record<string, string>> = Object.freeze({
   INFORMATIONAL_ONLY: 'solo informativo',
 });
 
-/** Reglas del monitor de plataforma (101800–101849): no están en el catálogo de detecciones. */
-const PLATFORM_RULES = { from: 101_800, to: 101_849 } as const;
+/**
+ * Reglas del monitor de plataforma (salud y canarios, catalog.yaml#id_ranges `platform`
+ * 102100–102149, b89_watch_platform_rules.xml). No están en el catálogo de detecciones.
+ * 1018xx son detecciones de red (ataques reales): nunca se explican como salud de plataforma.
+ */
+const PLATFORM_RULES = { from: 102_100, to: 102_149 } as const;
 
 function platformExplanation(ruleId: string): { why: string; next: string } | undefined {
   const id = Number(ruleId);
@@ -148,7 +152,7 @@ export function notificationEnricher(input: {
         .filter((label): label is string => Boolean(label));
       const uniqueReasons = [...new Set(reasons)];
       const title = maskText(alert.title).slice(0, 300);
-      // «Qué pasó»: el título B89 sin el sufijo técnico «(wazuh 101807)».
+      // «Qué pasó»: el título B89 sin el sufijo técnico «(wazuh 102107)».
       const summary = title.replace(/\s*\(wazuh \d+\)\s*$/u, '').replace(/^B89 [^:]{2,40}:\s*/u, '');
       const context: NotificationContext = {
         ...base,

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Valida las reglas de wazuh/platform-monitoring (101800-101879) con wazuh-logtest.
+# Valida las reglas de wazuh/platform-monitoring (102100-102179) con wazuh-logtest.
 #   bash wazuh/platform-monitoring/tests/run-logtest.sh                # manager desechable 4.14.8
 #   bash wazuh/platform-monitoring/tests/run-logtest.sh <contenedor>   # manager existente (solo lectura de
 #                                                                      # reglas ya instaladas)

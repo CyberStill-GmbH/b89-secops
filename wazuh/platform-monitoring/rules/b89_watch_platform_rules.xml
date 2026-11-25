@@ -1,13 +1,13 @@
 <!--
   B89 · Salud de la plataforma y canarios (wazuh/platform-monitoring, docs/20).
-  IDs reservados: 101800-101849 (101800-101829 salud, 101830-101849 canarios).
+  IDs reservados: 102100-102149 (102100-102129 salud, 102130-102149 canarios).
   El nombre b89_watch_* hace que el archivo cargue después de todos los b89_* de los que cuelga
   (b89_bitdefender/snyk/cloudflare/aws), requisito de if_sid entre archivos.
   Los eventos de salud solo se emiten en transiciones (problema → recuperado), re-notificación cada
   6 h y una instantánea por fuente cada hora: el volumen es bajo por diseño.
 -->
 <group name="b89_platform,b89_platform_health,">
-  <rule id="101800" level="0">
+  <rule id="102100" level="0">
     <decoded_as>json</decoded_as>
     <field name="b89.vendor">^b89-platform$</field>
     <description>B89 Plataforma: evento del monitor de salud.</description>
@@ -15,8 +15,8 @@
   </rule>
 
   <!-- Orden importante: Wazuh toma el primer hijo que coincide. -->
-  <rule id="101801" level="3">
-    <if_sid>101800</if_sid>
+  <rule id="102101" level="3">
+    <if_sid>102100</if_sid>
     <field name="b89.event_type">^health$</field>
     <field name="b89.health.check">^source_status$</field>
     <description>B89 Integración: estado de la fuente $(b89.health.source): $(b89.health.source_state).</description>
@@ -24,8 +24,8 @@
     <group>b89_source_status,</group>
   </rule>
 
-  <rule id="101802" level="3">
-    <if_sid>101800</if_sid>
+  <rule id="102102" level="3">
+    <if_sid>102100</if_sid>
     <field name="b89.event_type">^health$</field>
     <field name="b89.health.status">^ok$</field>
     <description>B89 Plataforma: $(b89.health.summary)</description>
@@ -33,8 +33,8 @@
     <group>b89_health_recovered,</group>
   </rule>
 
-  <rule id="101804" level="10">
-    <if_sid>101800</if_sid>
+  <rule id="102104" level="10">
+    <if_sid>102100</if_sid>
     <field name="b89.event_type">^health$</field>
     <field name="b89.health.status">^problem$</field>
     <field name="b89.health.check">^source_silent$</field>
@@ -43,8 +43,8 @@
     <group>b89_source_silent,</group>
   </rule>
 
-  <rule id="101805" level="8">
-    <if_sid>101800</if_sid>
+  <rule id="102105" level="8">
+    <if_sid>102100</if_sid>
     <field name="b89.event_type">^health$</field>
     <field name="b89.health.status">^problem$</field>
     <field name="b89.health.check">^collector_failing$</field>
@@ -53,8 +53,8 @@
     <group>b89_collector_failing,</group>
   </rule>
 
-  <rule id="101806" level="10">
-    <if_sid>101800</if_sid>
+  <rule id="102106" level="10">
+    <if_sid>102100</if_sid>
     <field name="b89.event_type">^health$</field>
     <field name="b89.health.status">^problem$</field>
     <field name="b89.health.check">^agent_disconnected$</field>
@@ -63,8 +63,8 @@
     <group>b89_agent_disconnected,</group>
   </rule>
 
-  <rule id="101807" level="12">
-    <if_sid>101800</if_sid>
+  <rule id="102107" level="12">
+    <if_sid>102100</if_sid>
     <field name="b89.event_type">^health$</field>
     <field name="b89.health.status">^problem$</field>
     <field name="b89.health.check">^host_disk$|^indexer_disk$</field>
@@ -73,16 +73,16 @@
     <group>b89_disk,</group>
   </rule>
 
-  <rule id="101808" level="13">
-    <if_sid>101807</if_sid>
+  <rule id="102108" level="13">
+    <if_sid>102107</if_sid>
     <field name="b89.health.severity">^critical$</field>
     <description>B89 Plataforma: disco CRÍTICO ($(b89.health.component)). $(b89.health.summary)</description>
     <options>no_full_log</options>
     <group>b89_disk,</group>
   </rule>
 
-  <rule id="101809" level="10">
-    <if_sid>101800</if_sid>
+  <rule id="102109" level="10">
+    <if_sid>102100</if_sid>
     <field name="b89.event_type">^health$</field>
     <field name="b89.health.status">^problem$</field>
     <field name="b89.health.check">^container_unhealthy$</field>
@@ -91,16 +91,16 @@
     <group>b89_container,</group>
   </rule>
 
-  <rule id="101810" level="12">
-    <if_sid>101809</if_sid>
+  <rule id="102110" level="12">
+    <if_sid>102109</if_sid>
     <field name="b89.health.severity">^critical$</field>
     <description>B89 Plataforma: servicio esencial caído $(b89.health.component). $(b89.health.summary)</description>
     <options>no_full_log</options>
     <group>b89_container,</group>
   </rule>
 
-  <rule id="101811" level="8">
-    <if_sid>101800</if_sid>
+  <rule id="102111" level="8">
+    <if_sid>102100</if_sid>
     <field name="b89.event_type">^health$</field>
     <field name="b89.health.status">^problem$</field>
     <field name="b89.health.check">^indexer_cluster$</field>
@@ -109,16 +109,16 @@
     <group>b89_indexer,</group>
   </rule>
 
-  <rule id="101812" level="12">
-    <if_sid>101811</if_sid>
+  <rule id="102112" level="12">
+    <if_sid>102111</if_sid>
     <field name="b89.health.severity">^critical$</field>
     <description>B89 Plataforma: indexer en ROJO. $(b89.health.summary)</description>
     <options>no_full_log</options>
     <group>b89_indexer,</group>
   </rule>
 
-  <rule id="101814" level="7">
-    <if_sid>101800</if_sid>
+  <rule id="102114" level="7">
+    <if_sid>102100</if_sid>
     <field name="b89.event_type">^health$</field>
     <field name="b89.health.status">^problem$</field>
     <field name="b89.health.check">^ism_error$</field>
@@ -127,8 +127,8 @@
     <group>b89_indexer,</group>
   </rule>
 
-  <rule id="101815" level="8">
-    <if_sid>101800</if_sid>
+  <rule id="102115" level="8">
+    <if_sid>102100</if_sid>
     <field name="b89.event_type">^health$</field>
     <field name="b89.health.status">^problem$</field>
     <field name="b89.health.check">^cert_expiry$</field>
@@ -137,16 +137,16 @@
     <group>b89_certificate,</group>
   </rule>
 
-  <rule id="101816" level="12">
-    <if_sid>101815</if_sid>
+  <rule id="102116" level="12">
+    <if_sid>102115</if_sid>
     <field name="b89.health.severity">^critical$</field>
     <description>B89 Plataforma: certificado vence en menos de 7 días o vencido: $(b89.health.component). $(b89.health.summary)</description>
     <options>no_full_log</options>
     <group>b89_certificate,</group>
   </rule>
 
-  <rule id="101817" level="9">
-    <if_sid>101800</if_sid>
+  <rule id="102117" level="9">
+    <if_sid>102100</if_sid>
     <field name="b89.event_type">^health$</field>
     <field name="b89.health.status">^problem$</field>
     <field name="b89.health.check">^ingestion_lag$</field>
@@ -155,16 +155,16 @@
     <group>b89_ingestion,</group>
   </rule>
 
-  <rule id="101818" level="11">
-    <if_sid>101817</if_sid>
+  <rule id="102118" level="11">
+    <if_sid>102117</if_sid>
     <field name="b89.health.severity">^critical$</field>
     <description>B89 Plataforma: ingesta B89 detenida. $(b89.health.summary)</description>
     <options>no_full_log</options>
     <group>b89_ingestion,</group>
   </rule>
 
-  <rule id="101819" level="8">
-    <if_sid>101800</if_sid>
+  <rule id="102119" level="8">
+    <if_sid>102100</if_sid>
     <field name="b89.event_type">^health$</field>
     <field name="b89.health.status">^problem$</field>
     <field name="b89.health.check">^host_memory$|^host_load$</field>
@@ -173,8 +173,8 @@
     <group>b89_host,</group>
   </rule>
 
-  <rule id="101820" level="12">
-    <if_sid>101800</if_sid>
+  <rule id="102120" level="12">
+    <if_sid>102100</if_sid>
     <field name="b89.event_type">^health$</field>
     <field name="b89.health.status">^problem$</field>
     <field name="b89.health.check">^edge_unreachable$</field>
@@ -183,8 +183,8 @@
     <group>b89_edge,</group>
   </rule>
 
-  <rule id="101821" level="5">
-    <if_sid>101800</if_sid>
+  <rule id="102121" level="5">
+    <if_sid>102100</if_sid>
     <field name="b89.event_type">^health$</field>
     <field name="b89.health.status">^problem$</field>
     <field name="b89.health.check">^vuln_intel_stale$</field>
@@ -193,8 +193,8 @@
     <group>b89_vulnprio,</group>
   </rule>
 
-  <rule id="101822" level="10">
-    <if_sid>101800</if_sid>
+  <rule id="102122" level="10">
+    <if_sid>102100</if_sid>
     <field name="b89.event_type">^health$</field>
     <field name="b89.health.status">^problem$</field>
     <field name="b89.health.check">^canary_missing$</field>
@@ -203,8 +203,8 @@
     <group>b89_canary,</group>
   </rule>
 
-  <rule id="101823" level="7">
-    <if_sid>101800</if_sid>
+  <rule id="102123" level="7">
+    <if_sid>102100</if_sid>
     <field name="b89.event_type">^health$</field>
     <field name="b89.health.status">^problem$</field>
     <field name="b89.health.check">^sns_subscription$</field>
@@ -213,8 +213,8 @@
     <group>b89_aws,</group>
   </rule>
 
-  <rule id="101824" level="5">
-    <if_sid>101800</if_sid>
+  <rule id="102124" level="5">
+    <if_sid>102100</if_sid>
     <field name="b89.event_type">^health$</field>
     <field name="b89.health.status">^problem$</field>
     <field name="b89.health.check">^monitor_error$</field>
@@ -223,16 +223,16 @@
     <group>b89_monitor,</group>
   </rule>
 
-  <rule id="101825" level="10">
-    <if_sid>101824</if_sid>
+  <rule id="102125" level="10">
+    <if_sid>102124</if_sid>
     <field name="b89.health.severity">^critical$</field>
     <description>B89 Plataforma: el monitor de salud no corre. $(b89.health.summary)</description>
     <options>no_full_log</options>
     <group>b89_monitor,</group>
   </rule>
 
-  <rule id="101829" level="5">
-    <if_sid>101800</if_sid>
+  <rule id="102129" level="5">
+    <if_sid>102100</if_sid>
     <field name="b89.event_type">^health$</field>
     <field name="b89.health.status">^problem$</field>
     <description>B89 Plataforma: problema de salud $(b89.health.check). $(b89.health.summary)</description>
@@ -242,42 +242,42 @@
 
 <!-- Canarios: evento sintético por pipeline, nivel 3 (se indexa y llega a B89, no avisa ni envía correo). -->
 <group name="b89_platform,b89_canary,b89_synthetic,">
-  <rule id="101830" level="3">
+  <rule id="102130" level="3">
     <if_sid>101400</if_sid>
     <field name="b89.event_type">^canary$</field>
     <description>B89 Canario: evento sintético de Bitdefender (sintético/canary, no requiere acción).</description>
     <options>no_full_log</options>
   </rule>
 
-  <rule id="101831" level="3">
+  <rule id="102131" level="3">
     <if_sid>101450</if_sid>
     <field name="b89.event_type">^canary$</field>
     <description>B89 Canario: evento sintético de Snyk (sintético/canary, no requiere acción).</description>
     <options>no_full_log</options>
   </rule>
 
-  <rule id="101832" level="3">
+  <rule id="102132" level="3">
     <if_sid>101500</if_sid>
     <field name="b89.event_type">^canary$</field>
     <description>B89 Canario: evento sintético de Cloudflare (sintético/canary, no requiere acción).</description>
     <options>no_full_log</options>
   </rule>
 
-  <rule id="101833" level="3">
+  <rule id="102133" level="3">
     <if_sid>101600</if_sid>
     <field name="b89.event_type">^canary$</field>
     <description>B89 Canario: evento sintético de AWS (sintético/canary, no requiere acción).</description>
     <options>no_full_log</options>
   </rule>
 
-  <rule id="101834" level="3">
-    <if_sid>101800</if_sid>
+  <rule id="102134" level="3">
+    <if_sid>102100</if_sid>
     <field name="b89.event_type">^canary$</field>
     <description>B89 Canario: evento sintético del monitor de plataforma (sintético/canary, no requiere acción).</description>
     <options>no_full_log</options>
   </rule>
 
-  <rule id="101835" level="3">
+  <rule id="102135" level="3">
     <program_name>^b89-canary$</program_name>
     <match>B89 canary b89-canary-</match>
     <description>B89 Canario: evento sintético del agente Wazuh (journald) (sintético/canary, no requiere acción).</description>

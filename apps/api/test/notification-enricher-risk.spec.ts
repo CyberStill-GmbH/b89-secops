@@ -1,6 +1,9 @@
 /**
  * El aviso de Teams/correo incluye el contexto del correlador en «Por qué importa» cuando está
  * disponible y sale igual (sin ese contexto) cuando el correlador falla.
+ *
+ * La explicación «salud de la plataforma» (que sugiere cerrar como benigna) solo aplica al rango
+ * del monitor de plataforma 102100–102149; los IDs 1018xx son detecciones de red reales.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -85,5 +88,43 @@ describe('contexto del correlador en los avisos', () => {
       expect(context.whyItMatters ?? '').not.toContain('correlador');
       expect(context.title).toContain('inicio de sesión sospechoso');
     }
+  });
+});
+
+describe('explicación de salud de plataforma solo para el rango del monitor', () => {
+  const contextForRule = async (ruleId: string, title: string) => {
+    const enricher = notificationEnricher({
+      alertById: async () => ({ ...alert, ruleId, title }) as Alert,
+      knowledge,
+    });
+    return (await enricher.contextFor(message)).context;
+  };
+
+  it.each([
+    ['102100', 'B89 Plataforma: evento del monitor de salud.'],
+    ['102107', 'B89 Plataforma: disco por encima del umbral (/).'],
+    ['102122', 'B89 Canario: el evento sintético de snyk no completó el recorrido.'],
+    ['102149', 'B89 Canario: límite superior del rango.'],
+  ])('%s (monitor de plataforma) se explica como salud de la plataforma', async (ruleId, title) => {
+    const context = await contextForRule(ruleId, title);
+    expect(context.whyItMatters).toContain('Salud de la plataforma SOC');
+    expect(context.nextStep).toContain('Salud de fuentes');
+  });
+
+  it.each([
+    // Detecciones de red que antes caían en 101800–101849 y se mandaban a cerrar como benignas.
+    ['101845', 'B89 Edge: fuerza bruta contra el login del SOC.'],
+    ['101821', 'B89 Linux: sesión SSH desde origen nuevo.'],
+    ['101800', 'B89 Linux: puerto en escucha inesperado.'],
+    ['101830', 'B89 Edge: ataque HTTP.'],
+    ['101849', 'B89 Red: límite superior del rango antiguo.'],
+    // Bordes del nuevo rango y priorización de vulnerabilidades (no es salud de plataforma).
+    ['102099', 'B89 Red: fuera de rango.'],
+    ['102150', 'B89 Snyk: vulnerabilidad CRÍTICA priorizada P1.'],
+    ['102162', 'B89 Vulnerabilidad: P1 en activo.'],
+  ])('%s no se explica como salud de plataforma ni se sugiere cerrar como benigna', async (ruleId, title) => {
+    const context = await contextForRule(ruleId, title);
+    expect(context.whyItMatters ?? '').not.toContain('Salud de la plataforma');
+    expect(context.nextStep ?? '').not.toContain('benigna');
   });
 });

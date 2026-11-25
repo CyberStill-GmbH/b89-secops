@@ -5,9 +5,9 @@
  * 2. `modules/detection/src/rule-sources.generated.ts` está al día con el catálogo.
  * 3. Ningún ID de regla B89 (≥ 100000) se define en dos archivos de reglas distintos.
  *
- * El punto 3 tiene una deuda conocida y explícita: el monitor de plataforma reutiliza el rango
- * 1018xx de las detecciones de red (42 IDs). Se lista exacta: cualquier colisión NUEVA falla, y
- * cuando los dueños la corrijan esta spec también falla para que se retire la excepción.
+ * El punto 3 tuvo una deuda conocida: el monitor de plataforma reutilizaba el rango 1018xx de las
+ * detecciones de red (42 IDs). Se corrigió el 2026-11-25 renumerando el monitor a 102100-102179;
+ * KNOWN_COLLISIONS queda vacío y cualquier colisión nueva falla.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -21,27 +21,11 @@ import { COLLIDING_RULE_IDS, RULE_SOURCE_RANGES } from '../../modules/detection/
 const ROOT = resolve(import.meta.dirname, '../..');
 
 /**
- * Colisión conocida (2026-11-24): `wazuh/platform-monitoring` (owner: monitoreo de plataforma)
- * usa IDs del rango `network` (owner: network-visibility). Afecta a `notification-enricher`
- * (asume 101800–101849 = plataforma) y a la clave de regla, que los marca como `network:`.
- * Corregir renumerando en el dueño correspondiente; no se renumera desde aquí.
+ * Colisiones aceptadas: ninguna. Hasta 2026-11-25 `wazuh/platform-monitoring` usaba 42 IDs del
+ * rango `network` (101800–101875); se renumeró a 102100–102179 (catalog.yaml#id_ranges).
+ * Una colisión nueva se corrige renumerando en el dueño, no añadiéndola aquí.
  */
-const KNOWN_COLLISIONS: Readonly<Record<string, readonly number[]>> = Object.freeze({
-  'detections/linux/network-connections/rule.xml|wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml':
-    [101800, 101801, 101802, 101804, 101805, 101806, 101807, 101808, 101809],
-  'detections/linux/network-auditd/rule.xml|wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml':
-    [101810, 101811, 101812, 101814, 101815, 101816, 101817, 101818],
-  'detections/linux/ssh-session-tracking/rule.xml|wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml':
-    [101820, 101821],
-  'detections/edge/http-attacks/rule.xml|wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml':
-    [101830, 101831, 101832, 101833, 101834, 101835],
-  'detections/linux/docker-runtime/rule.xml|wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml':
-    [101850, 101851, 101852],
-  'detections/network/threat-intel/rule.xml|wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml':
-    [101860, 101861, 101862, 101863, 101864, 101865, 101866, 101867],
-  'detections/network/cross-source-correlation/rule.xml|wazuh/platform-monitoring/rules/b89_watch_vulnprio_rules.xml':
-    [101870, 101871, 101872, 101873, 101874, 101875],
-});
+const KNOWN_COLLISIONS: Readonly<Record<string, readonly number[]>> = Object.freeze({});
 
 function ruleFiles(): readonly string[] {
   return execFileSync('git', ['ls-files', '*.xml'], { cwd: ROOT, encoding: 'utf8' })

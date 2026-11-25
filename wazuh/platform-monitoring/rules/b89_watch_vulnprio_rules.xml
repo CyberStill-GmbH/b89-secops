@@ -1,11 +1,11 @@
 <!--
   B89 · Priorización de vulnerabilidades con CISA KEV + FIRST EPSS + exposición (docs/20).
-  IDs reservados: 101850-101879.
-  - 101850-101859: hijas de las reglas Snyk (b89_snyk_rules.xml). El collector Snyk agrega
+  IDs reservados: 102150-102179.
+  - 102150-102159: hijas de las reglas Snyk (b89_snyk_rules.xml). El collector Snyk agrega
     b89.vuln.priority (P1-P4) al ingerir; si falta la caché KEV/EPSS el campo no existe y el
     nivel original se mantiene (falla segura).
-  - 101860-101866: eventos b89-vulnprio (hallazgos P1/P2 que cambiaron, resumen diario, canario).
-  - 101870-101875: alertas nativas de detección de vulnerabilidades de Wazuh (0520, 23503-23506)
+  - 102160-102166: eventos b89-vulnprio (hallazgos P1/P2 que cambiaron, resumen diario, canario).
+  - 102170-102175: alertas nativas de detección de vulnerabilidades de Wazuh (0520, 23503-23506)
     re-niveladas con las listas CDB etc/lists/b89-vuln-kev y b89-vuln-noise (se cargan al iniciar
     analysisd; las regenera b89_vulnprio.py run).
   P4 = EPSS < 0.1, sin fix CONFIRMADO por la fuente, no expuesta, sin KEV ni exploit maduro: queda
@@ -15,7 +15,7 @@
   padres (if_sid múltiple) y la priorización KEV/EPSS se aplica en cualquiera de las dos ramas.
 -->
 <group name="b89_provider,snyk,b89_vulnerability,b89_vulnprio,">
-  <rule id="101850" level="14">
+  <rule id="102150" level="14">
     <if_sid>101456, 101734</if_sid>
     <field name="b89.vuln.priority">^P1$</field>
     <!-- Con exploit maduro sigue la cadena 101457/101458 (y 101730/101731 de exposición). -->
@@ -25,7 +25,7 @@
     <mitre><id>T1190</id></mitre>
   </rule>
 
-  <rule id="101851" level="14">
+  <rule id="102151" level="14">
     <if_sid>101457</if_sid>
     <field name="b89.vuln.priority">^P1$</field>
     <description>B89 Snyk: vulnerabilidad CRÍTICA con exploit maduro priorizada P1 ($(b89.vuln.reason)) $(b89.vuln.cve) en $(snyk.project.name).</description>
@@ -33,7 +33,7 @@
     <mitre><id>T1190</id></mitre>
   </rule>
 
-  <rule id="101852" level="13">
+  <rule id="102152" level="13">
     <if_sid>101455, 101733</if_sid>
     <field name="b89.vuln.priority">^P1$</field>
     <!-- Con exploit maduro sigue la cadena 101457/101458 (y 101730/101731 de exposición). -->
@@ -43,7 +43,7 @@
     <mitre><id>T1190</id></mitre>
   </rule>
 
-  <rule id="101853" level="13">
+  <rule id="102153" level="13">
     <if_sid>101458, 101731</if_sid>
     <field name="b89.vuln.priority">^P1$</field>
     <description>B89 Snyk: vulnerabilidad ALTA con exploit maduro priorizada P1 ($(b89.vuln.reason)) $(b89.vuln.cve) en $(snyk.project.name).</description>
@@ -51,7 +51,7 @@
     <mitre><id>T1190</id></mitre>
   </rule>
 
-  <rule id="101854" level="12">
+  <rule id="102154" level="12">
     <if_sid>101454</if_sid>
     <field name="b89.vuln.priority">^P1$</field>
     <description>B89 Snyk: vulnerabilidad media elevada a P1 ($(b89.vuln.reason); KEV=$(b89.vuln.kev), EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).</description>
@@ -59,7 +59,7 @@
     <mitre><id>T1190</id></mitre>
   </rule>
 
-  <rule id="101855" level="12">
+  <rule id="102155" level="12">
     <if_sid>101453, 101732</if_sid>
     <field name="b89.vuln.priority">^P1$</field>
     <description>B89 Snyk: vulnerabilidad baja elevada a P1 ($(b89.vuln.reason); KEV=$(b89.vuln.kev), EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).</description>
@@ -67,28 +67,28 @@
     <mitre><id>T1190</id></mitre>
   </rule>
 
-  <rule id="101856" level="11">
+  <rule id="102156" level="11">
     <if_sid>101455, 101733</if_sid>
     <field name="b89.vuln.priority">^P2$</field>
     <description>B89 Snyk: vulnerabilidad ALTA priorizada P2 ($(b89.vuln.reason); EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).</description>
     <options>no_full_log</options>
   </rule>
 
-  <rule id="101857" level="10">
+  <rule id="102157" level="10">
     <if_sid>101454</if_sid>
     <field name="b89.vuln.priority">^P2$</field>
     <description>B89 Snyk: vulnerabilidad media elevada a P2 ($(b89.vuln.reason); EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).</description>
     <options>no_full_log</options>
   </rule>
 
-  <rule id="101867" level="12">
+  <rule id="102167" level="12">
     <if_sid>101734</if_sid>
     <field name="b89.vuln.priority">^P2$</field>
     <description>B89 Snyk: vulnerabilidad CRÍTICA priorizada P2 ($(b89.vuln.reason); EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).</description>
     <options>no_full_log</options>
   </rule>
 
-  <rule id="101858" level="6">
+  <rule id="102158" level="6">
     <if_sid>101456, 101734</if_sid>
     <field name="b89.vuln.priority">^P4$</field>
     <description>B89 Snyk: vulnerabilidad crítica de baja prioridad P4 ($(b89.vuln.reason); EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).</description>
@@ -96,7 +96,7 @@
     <group>b89_deprioritized,</group>
   </rule>
 
-  <rule id="101859" level="6">
+  <rule id="102159" level="6">
     <if_sid>101455, 101733</if_sid>
     <field name="b89.vuln.priority">^P4$</field>
     <description>B89 Snyk: vulnerabilidad alta de baja prioridad P4 ($(b89.vuln.reason); EPSS=$(b89.vuln.epss)) $(b89.vuln.cve) en $(snyk.project.name).</description>
@@ -106,15 +106,15 @@
 </group>
 
 <group name="b89_vulnerability,b89_vulnprio,">
-  <rule id="101860" level="0">
+  <rule id="102160" level="0">
     <decoded_as>json</decoded_as>
     <field name="b89.vendor">^b89-vulnprio$</field>
     <description>B89 Vulnerabilidad: evento del priorizador KEV/EPSS.</description>
     <options>no_full_log</options>
   </rule>
 
-  <rule id="101861" level="14">
-    <if_sid>101860</if_sid>
+  <rule id="102161" level="14">
+    <if_sid>102160</if_sid>
     <field name="b89.event_type">^finding$</field>
     <field name="b89.vuln.priority">^P1$</field>
     <field name="b89.vuln.exposed">^true$</field>
@@ -123,8 +123,8 @@
     <mitre><id>T1190</id></mitre>
   </rule>
 
-  <rule id="101862" level="13">
-    <if_sid>101860</if_sid>
+  <rule id="102162" level="13">
+    <if_sid>102160</if_sid>
     <field name="b89.event_type">^finding$</field>
     <field name="b89.vuln.priority">^P1$</field>
     <description>B89 Vulnerabilidad: P1 en $(b89.vuln.asset): $(b89.vuln.cve) ($(b89.vuln.reason); KEV=$(b89.vuln.kev), EPSS=$(b89.vuln.epss)).</description>
@@ -132,30 +132,30 @@
     <mitre><id>T1190</id></mitre>
   </rule>
 
-  <rule id="101863" level="10">
-    <if_sid>101860</if_sid>
+  <rule id="102163" level="10">
+    <if_sid>102160</if_sid>
     <field name="b89.event_type">^finding$</field>
     <field name="b89.vuln.priority">^P2$</field>
     <description>B89 Vulnerabilidad: P2 en $(b89.vuln.asset): $(b89.vuln.cve) ($(b89.vuln.reason); EPSS=$(b89.vuln.epss)).</description>
     <options>no_full_log</options>
   </rule>
 
-  <rule id="101864" level="3">
-    <if_sid>101860</if_sid>
+  <rule id="102164" level="3">
+    <if_sid>102160</if_sid>
     <field name="b89.event_type">^finding$</field>
     <description>B89 Vulnerabilidad: cambio de prioridad $(b89.vuln.previous_priority) a $(b89.vuln.priority) en $(b89.vuln.asset): $(b89.vuln.cve).</description>
     <options>no_full_log</options>
   </rule>
 
-  <rule id="101865" level="3">
-    <if_sid>101860</if_sid>
+  <rule id="102165" level="3">
+    <if_sid>102160</if_sid>
     <field name="b89.event_type">^summary$</field>
     <description>B89 Vulnerabilidad: resumen diario de priorización: altas+críticas $(b89.vuln_summary.before_high_or_critical) antes, $(b89.vuln_summary.after_high_or_critical) después.</description>
     <options>no_full_log</options>
   </rule>
 
-  <rule id="101866" level="3">
-    <if_sid>101860</if_sid>
+  <rule id="102166" level="3">
+    <if_sid>102160</if_sid>
     <field name="b89.event_type">^canary$</field>
     <description>B89 Canario: evento sintético del priorizador de vulnerabilidades (sintético/canary, no requiere acción).</description>
     <options>no_full_log</options>
@@ -164,7 +164,7 @@
 </group>
 
 <group name="vulnerability-detector,b89_vulnerability,b89_vulnprio,">
-  <rule id="101870" level="14">
+  <rule id="102170" level="14">
     <if_sid>23506</if_sid>
     <list field="vulnerability.cve" lookup="match_key">etc/lists/b89-vuln-kev</list>
     <description>B89 Vulnerabilidad: $(vulnerability.cve) CRÍTICA en el catálogo CISA KEV afecta $(vulnerability.package.name).</description>
@@ -172,7 +172,7 @@
     <mitre><id>T1190</id></mitre>
   </rule>
 
-  <rule id="101871" level="13">
+  <rule id="102171" level="13">
     <if_sid>23505</if_sid>
     <list field="vulnerability.cve" lookup="match_key">etc/lists/b89-vuln-kev</list>
     <description>B89 Vulnerabilidad: $(vulnerability.cve) ALTA en el catálogo CISA KEV afecta $(vulnerability.package.name).</description>
@@ -180,7 +180,7 @@
     <mitre><id>T1190</id></mitre>
   </rule>
 
-  <rule id="101872" level="12">
+  <rule id="102172" level="12">
     <if_sid>23504</if_sid>
     <list field="vulnerability.cve" lookup="match_key">etc/lists/b89-vuln-kev</list>
     <description>B89 Vulnerabilidad: $(vulnerability.cve) media en el catálogo CISA KEV afecta $(vulnerability.package.name).</description>
@@ -188,7 +188,7 @@
     <mitre><id>T1190</id></mitre>
   </rule>
 
-  <rule id="101873" level="12">
+  <rule id="102173" level="12">
     <if_sid>23503</if_sid>
     <list field="vulnerability.cve" lookup="match_key">etc/lists/b89-vuln-kev</list>
     <description>B89 Vulnerabilidad: $(vulnerability.cve) baja en el catálogo CISA KEV afecta $(vulnerability.package.name).</description>
@@ -196,7 +196,7 @@
     <mitre><id>T1190</id></mitre>
   </rule>
 
-  <rule id="101874" level="6">
+  <rule id="102174" level="6">
     <if_sid>23506</if_sid>
     <list field="vulnerability.cve" lookup="match_key">etc/lists/b89-vuln-noise</list>
     <description>B89 Vulnerabilidad: $(vulnerability.cve) crítica de baja prioridad P4 (EPSS bajo, sin KEV, no expuesta) en $(vulnerability.package.name).</description>
@@ -204,7 +204,7 @@
     <group>b89_deprioritized,</group>
   </rule>
 
-  <rule id="101875" level="5">
+  <rule id="102175" level="5">
     <if_sid>23505</if_sid>
     <list field="vulnerability.cve" lookup="match_key">etc/lists/b89-vuln-noise</list>
     <description>B89 Vulnerabilidad: $(vulnerability.cve) alta de baja prioridad P4 (EPSS bajo, sin KEV, no expuesta) en $(vulnerability.package.name).</description>

@@ -7,7 +7,7 @@ Un SOC que no sabe cuándo está ciego genera una falsa sensación de seguridad.
 preguntas cada pocos minutos: **¿llegan los datos?** (fuentes, collectors, agentes, ingesta B89),
 **¿la plataforma está sana?** (contenedores, indexer, certificados, host) y **¿qué vulnerabilidades importan de
 verdad?** (CISA KEV + FIRST EPSS + exposición). Todo lo que detecta se convierte en una alerta Wazuh B89
-(reglas 101800–101879) que sigue el mismo camino que cualquier otra: indexer → B89 → Resumen/Integraciones.
+(reglas 102100–102179) que sigue el mismo camino que cualquier otra: indexer → B89 → Resumen/Integraciones.
 
 ## Piezas
 
@@ -50,23 +50,23 @@ ISM y el estado de vulnerabilidades. Pendiente para docs/16 §5: agregar `b89_pl
 
 | Chequeo (`b89.health.check`) | Qué mira | Umbral por defecto | Regla · nivel |
 | --- | --- | --- | --- |
-| `source_silent` | Último evento por fuente en `wazuh-alerts-*` (una agregación por fuente) y latido del pipeline | ver tabla de cadencias | 101804 · 10 |
-| `collector_failing` | `last_success` del estado del collector, `Result` de la unit y timer activo | 3 intervalos sin éxito | 101805 · 8 |
-| `agent_disconnected` | `lastKeepAlive` y estado de cada agente (API, `readonly`) | > 15 min no activo | 101806 · 10 |
-| `host_disk` / `indexer_disk` | Disco del host (`/`, `/var/lib/docker`), `_cat/allocation` y bloqueos `read_only_allow_delete` | > 85 % (crítico > 95 % host, ≥ 90 % indexer o bloqueo) | 101807 · 12 / 101808 · 13 |
-| `container_unhealthy` | `docker ps`: estado, healthcheck y reinicios de los contenedores `b89-*` | esenciales críticos | 101809 · 10 / 101810 · 12 |
-| `indexer_cluster` | `_cluster/health` | amarillo / rojo | 101811 · 8 / 101812 · 12 |
-| `ism_error` | `_plugins/_ism/explain/wazuh-*` | cualquier acción fallida | 101814 · 7 |
-| `cert_expiry` | Let's Encrypt del edge, certificados del indexer/dashboard/manager/admin, CA, gateway, Postgres y API | < 30 días (< 7 crítico) | 101815 · 8 / 101816 · 12 |
-| `ingestion_lag` | Última pasada correcta de la ingesta B89 y distancia entre el último evento de Wazuh y lo leído por B89 | > 15 min | 101817 · 9 / 101818 · 11 |
-| `host_memory` / `host_load` | `/proc/meminfo`, `loadavg` por vCPU | > 92 % / > 2,0 | 101819 · 8 |
-| `edge_unreachable` | `https://dev.security.b89.io/` vía ALB | distinto de 200/30x/401/403 | 101820 · 12 |
-| `vuln_intel_stale` | Edad de la caché KEV/EPSS | > 48 h | 101821 · 5 |
-| `canary_missing` | Veredicto de los canarios | falta o > 26 h sin veredicto | 101822 · 10 |
-| `sns_subscription` | Suscripciones SNS `PendingConfirmation` | opcional: requiere credenciales AWS en el host (apagado en modo PowerUser) | 101823 · 7 |
-| `monitor_error` | Un chequeo no pudo correr (credencial, API caída) o el monitor dejó de correr (lo vigila el canario) | — | 101824 · 5 / 101825 · 10 |
-| `source_status` | Instantánea por fuente, una por hora | — | 101801 · 3 |
-| Recuperación (`status=ok`) | Cierre de un problema abierto | — | 101802 · 3 |
+| `source_silent` | Último evento por fuente en `wazuh-alerts-*` (una agregación por fuente) y latido del pipeline | ver tabla de cadencias | 102104 · 10 |
+| `collector_failing` | `last_success` del estado del collector, `Result` de la unit y timer activo | 3 intervalos sin éxito | 102105 · 8 |
+| `agent_disconnected` | `lastKeepAlive` y estado de cada agente (API, `readonly`) | > 15 min no activo | 102106 · 10 |
+| `host_disk` / `indexer_disk` | Disco del host (`/`, `/var/lib/docker`), `_cat/allocation` y bloqueos `read_only_allow_delete` | > 85 % (crítico > 95 % host, ≥ 90 % indexer o bloqueo) | 102107 · 12 / 102108 · 13 |
+| `container_unhealthy` | `docker ps`: estado, healthcheck y reinicios de los contenedores `b89-*` | esenciales críticos | 102109 · 10 / 102110 · 12 |
+| `indexer_cluster` | `_cluster/health` | amarillo / rojo | 102111 · 8 / 102112 · 12 |
+| `ism_error` | `_plugins/_ism/explain/wazuh-*` | cualquier acción fallida | 102114 · 7 |
+| `cert_expiry` | Let's Encrypt del edge, certificados del indexer/dashboard/manager/admin, CA, gateway, Postgres y API | < 30 días (< 7 crítico) | 102115 · 8 / 102116 · 12 |
+| `ingestion_lag` | Última pasada correcta de la ingesta B89 y distancia entre el último evento de Wazuh y lo leído por B89 | > 15 min | 102117 · 9 / 102118 · 11 |
+| `host_memory` / `host_load` | `/proc/meminfo`, `loadavg` por vCPU | > 92 % / > 2,0 | 102119 · 8 |
+| `edge_unreachable` | `https://dev.security.b89.io/` vía ALB | distinto de 200/30x/401/403 | 102120 · 12 |
+| `vuln_intel_stale` | Edad de la caché KEV/EPSS | > 48 h | 102121 · 5 |
+| `canary_missing` | Veredicto de los canarios | falta o > 26 h sin veredicto | 102122 · 10 |
+| `sns_subscription` | Suscripciones SNS `PendingConfirmation` | opcional: requiere credenciales AWS en el host (apagado en modo PowerUser) | 102123 · 7 |
+| `monitor_error` | Un chequeo no pudo correr (credencial, API caída) o el monitor dejó de correr (lo vigila el canario) | — | 102124 · 5 / 102125 · 10 |
+| `source_status` | Instantánea por fuente, una por hora | — | 102101 · 3 |
+| Recuperación (`status=ok`) | Cierre de un problema abierto | — | 102102 · 3 |
 
 **Solo transiciones:** un problema se emite al abrirse, se re-notifica cada 6 h (o al empeorar de severidad) y
 se cierra con un evento de recuperación. Con todo sano el monitor escribe unas 10 líneas por hora (las
@@ -145,26 +145,26 @@ contenedor cuyo software no está en el inventario de paquetes del host.
 ### Por qué campos en línea + listas CDB (la vía nativa de Wazuh)
 
 - **Snyk → campos en el evento.** El collector agrega `b89.vuln.{priority,reason,cve,kev,epss,epss_percentile,epss_band,exposed,fix}`
-  al ingerir, y las reglas 101850–101859 (hijas de 101453–101458) ajustan el nivel. Es la forma nativa: la
+  al ingerir, y las reglas 102150–102159 (hijas de 101453–101458) ajustan el nivel. Es la forma nativa: la
   decisión está en el propio evento antes de que exista la alerta, sin reiniciar el manager y sin depender
   del orden de llegada. Una lista CDB no sirve aquí: `snyk.issue.problems` es un arreglo (Wazuh lo aplana a
   texto separado por comas) y `match_key` no busca dentro de él.
 - **Detección de vulnerabilidades de Wazuh → listas CDB.** Las alertas nativas (0520, 23503–23506) las
   genera el manager: no hay un collector donde enriquecerlas, pero su CVE es un campo único, así que una lista
   CDB por CVE es lo nativo. `b89_vulnprio.py run` regenera `etc/lists/b89-vuln-kev` (todo KEV) y
-  `b89-vuln-noise` (CVE que son P4 en **todos** los activos donde aparecen) y las reglas 101870–101875 las usan.
+  `b89-vuln-noise` (CVE que son P4 en **todos** los activos donde aparecen) y las reglas 102170–102175 las usan.
   Como Wazuh VD no informa fix, `b89-vuln-noise` queda con el centinela `.invalid` (vacía en la práctica) hasta que
   una fuente aporte ese dato; `b89-vuln-kev` sí rige. Límite: las listas CDB se cargan al arrancar analysisd, así que un cambio rige desde el siguiente reinicio
   del manager (el instalador reinicia una vez tras `analysisd -t`). Por eso los cambios a P1/P2 no esperan:
-  salen al momento como eventos `b89-vulnprio` (101861–101863).
+  salen al momento como eventos `b89-vulnprio` (102161–102163).
 - **Convivencia con la calibración de detección.** `detections/snyk/severity-calibration` (101732–101734) baja
   las altas/críticas no expuestas y sin exploit (7/10) y carga antes (`b89_soc_*`), así que gana el primer match
   bajo 101453/101455/101456. Las hijas KEV/EPSS declaran **ambos padres** (`<if_sid>101455, 101733</if_sid>`,
-  etc.; 101867 eleva la crítica P2 desde 101734): una CVE en KEV sube aunque la calibración la haya bajado. Si el
+  etc.; 102167 eleva la crítica P2 desde 101734): una CVE en KEV sube aunque la calibración la haya bajado. Si el
   archivo de calibración no está instalado, Wazuh ignora ese padre con un aviso y la regla sigue valiendo. Probado
   con las reglas de detección cargadas (62 casos de logtest).
 - **Re-priorización.** Si un CVE entra en KEV después de ingerido el issue, el job horario lo detecta y emite
-  un evento `b89-vulnprio` (solo P1/P2, solo cuando la prioridad cambia). Un resumen diario (101865) registra
+  un evento `b89-vulnprio` (solo P1/P2, solo cuando la prioridad cambia). Un resumen diario (102165) registra
   los conteos antes/después.
 
 ### Impacto en AWS
@@ -188,15 +188,15 @@ calibración la haya bajado) y la vista priorizada (`report.json`). La reducció
 buena parte la calibración de detección; P4 agrega la degradación de las críticas internas sin fix (10 → 6).
 
 **Falsos positivos de la primera instalación.** El nodo SOC se marcó por error como expuesto y se emitieron 105
-eventos `b89-vulnprio` P2 (regla 101863, nivel 10). Se cierran con el mismo mecanismo auditado que la regla 521
+eventos `b89-vulnprio` P2 (regla 102163, nivel 10). Se cierran con el mismo mecanismo auditado que la regla 521
 (`detections/tools/close-false-positives.mjs`: principal `svc:b89-detection-engineering`,
-assign → triage `false_positive` → close, auditoría con cadena hash). Hoy no puede haber otra 101863 legítima
+assign → triage `false_positive` → close, auditoría con cadena hash). Hoy no puede haber otra 102163 legítima
 (ningún hallazgo tiene EPSS ≥ 0,5 y no hay activos expuestos), pero la pasada en seco debe mostrar `matching: 105`
 antes de aplicar:
 
 ```bash
 cd /opt/b89/src
-docker run --rm --network b89_default --env-file /opt/b89/config/api.env --env-file /opt/b89/secrets/api.env   -v "$PWD/detections/tools/close-false-positives.mjs:/app/dist/b89-close-fp.mjs:ro"   b89/api:local dist/b89-close-fp.mjs --rule 101863   --reason "falso positivo: P2 por exposición mal declarada del nodo SOC en la primera instalación de b89-vulnprio (docs/20)"
+docker run --rm --network b89_default --env-file /opt/b89/config/api.env --env-file /opt/b89/secrets/api.env   -v "$PWD/detections/tools/close-false-positives.mjs:/app/dist/b89-close-fp.mjs:ro"   b89/api:local dist/b89-close-fp.mjs --rule 102163   --reason "falso positivo: P2 por exposición mal declarada del nodo SOC en la primera instalación de b89-vulnprio (docs/20)"
 # si matching = 105: repetir con --apply
 ```
 
@@ -213,19 +213,19 @@ canario son **nivel 3**: se indexan y llegan a B89, pero no paginan ni van al co
 
 | Pipeline | Entrada | Regla |
 | --- | --- | --- |
-| bitdefender / snyk / cloudflare | JSONL del collector | 101830 / 101831 / 101832 |
-| aws | JSONL del receptor SNS (`b89-collectors/aws/aws-events.jsonl`) | 101833 |
-| platform | `platform-health.jsonl` | 101834 |
-| vulnprio | `vulnprio.jsonl` | 101866 |
-| agent | `logger -t b89-canary` → journald → agente Wazuh 001 | 101835 |
+| bitdefender / snyk / cloudflare | JSONL del collector | 102130 / 102131 / 102132 |
+| aws | JSONL del receptor SNS (`b89-collectors/aws/aws-events.jsonl`) | 102133 |
+| platform | `platform-health.jsonl` | 102134 |
+| vulnprio | `vulnprio.jsonl` | 102166 |
+| agent | `logger -t b89-canary` → journald → agente Wazuh 001 | 102135 |
 
 La verificación busca el `id` del canario en `wazuh-alerts-*` y luego comprueba que una pasada correcta de la
 ingesta B89 haya leído más allá de esa marca de tiempo. Si en 30 min no se cumplen ambas, el veredicto es
-`missing` con la etapa que falló (`inject`, `wazuh` o `b89`) y el monitor abre `canary_missing` (101822, nivel
+`missing` con la etapa que falló (`inject`, `wazuh` o `b89`) y el monitor abre `canary_missing` (102122, nivel
 10). El canario prueba archivo → logcollector → analysisd → indexer → B89. No prueba la API del proveedor (eso
 lo cubre `collector_failing`) ni SNS → receptor, cuya firma no se puede falsificar (eso lo cubre el latido del
 contenedor). El verificador vigila además al monitor: si este deja de correr 30 min, emite él mismo
-`monitor_error` crítico (101825) y su recuperación.
+`monitor_error` crítico (102125) y su recuperación.
 
 ```bash
 sudo /usr/bin/python3 -I /opt/b89/platform-monitoring/bin/b89_canary.py inject --config /opt/b89/platform-monitoring/etc/canary.json
@@ -237,25 +237,32 @@ sudo /usr/bin/python3 -I /opt/b89/platform-monitoring/bin/b89_canary.py status -
 ```bash
 python -m pytest -q wazuh/platform-monitoring/tests        # 53 pruebas, sin red ni docker
 bash wazuh/platform-monitoring/tests/run-logtest.sh        # 62 casos wazuh-logtest en un manager 4.14.8 desechable (con la calibración Snyk de detections/)
-python wazuh/manager/policy/check_rule_ids.py <todas las reglas B89>   # 101800-101879 sin colisiones
+python wazuh/manager/policy/check_rule_ids.py <todas las reglas B89>   # 102100-102179 sin colisiones
 ```
 
 ## Rangos de IDs
 
 | Rango | Uso |
 | --- | --- |
-| 101800–101829 | Salud de plataforma (`b89_watch_platform_rules.xml`) |
-| 101830–101849 | Canarios |
-| 101850–101879 | Priorización de vulnerabilidades (`b89_watch_vulnprio_rules.xml`) |
+| 102100–102129 | Salud de plataforma (`b89_watch_platform_rules.xml`) |
+| 102130–102149 | Canarios |
+| 102150–102179 | Priorización de vulnerabilidades (`b89_watch_vulnprio_rules.xml`) |
 
 Los archivos se llaman `b89_watch_*` para cargar después de todos los `b89_*` y `b89_soc_*` de los que
-cuelgan (`if_sid` entre archivos exige ese orden). Falta registrar los rangos en `detections/catalog.yaml`
-(owner: provider-monitoring), que es del equipo de detección.
+cuelgan (`if_sid` entre archivos exige ese orden). Los rangos están registrados en
+`detections/catalog.yaml#id_ranges` (`platform` 102100–102149 y `vulnerability` 102150–102179, owner
+platform-monitoring).
+
+> **Renumeración 2026-11-25.** Hasta esa fecha el monitor usaba 101800–101879, que pertenece a las
+> detecciones de red (docs/18): 42 IDs colisionaban y Wazuh se quedaba con la primera definición cargada
+> (`b89_soc_*`), así que la salud, los canarios y la priorización KEV/EPSS no llegaban a dispararse con esos
+> IDs. Se renumeró +300 con los mismos offsets (101807 → 102107, 101866 → 102166…). Una alerta con ID
+> 1018xx se trata siempre como detección de red, nunca como salud de plataforma.
 
 ## Hallazgos del primer día
 
 - **Indexer en amarillo:** 6 réplicas sin asignar de `.opendistro-ism-managed-index-history-*` y
-  `.opendistro-job-scheduler-lock` en el nodo único (101811, nivel 8). docs/16 §4 pide dejar en 0 las réplicas del
+  `.opendistro-job-scheduler-lock` en el nodo único (102111, nivel 8). docs/16 §4 pide dejar en 0 las réplicas del
   índice interno de ISM. Hay que volver a aplicarlo y fijar
   `plugins.index_state_management.history.number_of_replicas: 0`.
 - Office 365 sigue sin eventos desde 2026-11-04 (permiso `ActivityFeed.Read`): queda como fuente deshabilitada
