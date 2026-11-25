@@ -5,12 +5,12 @@ title: API de pagos · peticiones desde IPs fuera de la lista blanca de clientes
 source: cloudflare
 use_case: payments-api-allowlist
 status: experimental
-version: 1.0.0
+version: 2.0.0
 owner: soc-detection-engineering
 reviewers:
 - b89.soc.lead
 created: '2026-11-23'
-updated: '2026-11-23'
+updated: '2026-11-25'
 hypothesis: >-
   Un cliente o proveedor con IPs registradas solo llama a apipayments.b89.io desde esas IPs; una
   llamada suya (o un login o pago) desde otra IP indica credenciales robadas o una integración no
@@ -24,24 +24,56 @@ rules:
   - 101547
   - 101548
   - 101549
+  - 102020
+  - 102021
+  - 102022
+  - 102023
+  - 102024
+  - 102025
 mitre:
 - technique: T1078
   tactic: initial-access
+- technique: T1110
+  tactic: credential-access
 severity:
-  levels: '0, 5, 12, 13'
+  levels: '0, 3, 8, 10, 12, 13'
   priority_hint: P1
   rationale: >-
-    Cliente con IP desde otra IP (13) y login o pago desde una IP desconocida (12) son críticas por
-    decisión del dueño (2026-11-23); el resto de la API desde IP desconocida es informativo (5).
+    Cliente con IP desde otra IP y aceptado (13) y login o pago aceptado desde una IP desconocida (12)
+    siguen críticas por decisión del dueño (2026-11-23), pero una sola vez por cliente/IP y hora. El mismo
+    intento rechazado por la API o Cloudflare baja a 8 (cliente) o 3 (IP desconocida); diez rechazos en
+    5 min desde la misma IP suben a 10 (102025). Repeticiones, registros históricos, bots verificados y el
+    resto de la API desde IP desconocida quedan indexados en 3 (bajo el umbral de promoción B89).
 false_positives:
 - Un cliente cambió de IP o agregó un servidor y no lo avisó (agrega la IP en Cloudflare → Lista blanca).
 - IPs de monitoreo o pruebas de B89 que no están cargadas como «Infraestructura B89».
 - Un cliente «No requiere» que sí llama a la API sin identificador configurado.
+false_positives_residual:
+- Un cliente legítimo sin IP ni identificador cargado sigue abriendo una alerta por IP y hora hasta que se
+  registre en Cloudflare → Lista blanca (es la acción correcta, no un ajuste de la regla).
 escalate_when:
 - La IP no pertenece a ningún proveedor de nube que el cliente use, o el login fue exitoso.
 - Hay pagos o retiros después de la llamada desde la IP desconocida.
 - El cliente confirma que no fue su sistema.
-tuning: []
+tuning:
+- '2026-11-25 · revisión 2 (registro en docs/detection-engineering/07): «sensible» solo por palabras completas
+  de la ruta, nunca por la cadena de consulta (?token=, /authors, /chargers ya no son login o pago).'
+- 'Identificadores de cliente como palabra completa: terrapay ya no coincide dentro de /terrapayments
+  (falsos «outside» de nivel 13).'
+- 'Efecto de la petición (allowlist_effect): un sondeo rechazado (4xx) o bloqueado por Cloudflare deja de
+  ser crítico; 5xx cuenta como aceptado (llegó al origen).'
+- 'Deduplicación en el colector (allowlist_first): una alerta crítica por veredicto/cliente/IP/tipo y hora
+  (B89_CF_ALLOWLIST_DEDUP_SECONDS); el resto queda en 3.'
+- 'Recuperación histórica de GraphQL (hasta 30 días) nunca abre alertas: era una fuente de P1 por tráfico
+  de días atrás.'
+- 'Bots verificados por Cloudflare (verified_bot) dejan de ser «unknown».'
+- 'Resto de la API desde IP desconocida (101549) baja de 5 a 3: con 5 cada petición superaba el umbral de
+  promoción B89 (medium = 40 ≥ 35) y abría una alerta P3.'
+measurement:
+  window: 'pendiente: 7 días antes del despliegue (detections/tools/measure-noise.sh)'
+  before: {}
+  expected_after:
+    note: 'Críticas como máximo una por cliente/IP y hora; 101549/102021-102024 en 3 sin promoción.'
 tests:
   runner: validator
   script: wazuh/provider-ingestion/tests/test_cloudflare_allowlist.py

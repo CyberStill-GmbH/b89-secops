@@ -147,6 +147,10 @@ def collect(config: dict, state: dict, client: Cloudflare | None = None) -> tupl
     truncated = int(state.get("truncated_windows", 0))
     denied_fields = {zone: set(names) for zone, names in (state.get("denied_fields") or {}).items()}
     events: list[dict] = []
+    # Lista blanca de la API de pagos: una alerta por clave y ventana (como Logpush). Los registros
+    # históricos (recuperación de hasta 30 días) quedan indexados con nivel bajo: nunca abren alertas.
+    deduper = logpush.payments_allowlist.Deduper(
+        state.get("allowlist_seen"), now.timestamp(), logpush.payments_allowlist.dedup_window())
     # Ronda por zona y dataset: cada uno avanza una ventana por vuelta hasta agotar el presupuesto.
     progressing = True
     while progressing and len(events) < budget:
@@ -173,9 +177,14 @@ def collect(config: dict, state: dict, client: Cloudflare | None = None) -> tupl
                 truncated += int(cut)
                 _, fields = DATASETS[dataset]
                 for row in rows:
-                    event = logpush.normalize(to_logpush(row, fields), dataset, zone["id"], "graphql", now_text)
                     happened = parse_iso(str(row.get("datetime"))) if row.get("datetime") else now
-                    event["b89"]["source"] = "graphql-history" if happened < history_cut else "graphql-live"
+                    history = happened < history_cut
+                    event = logpush.normalize(to_logpush(row, fields), dataset, zone["id"], "graphql", now_text,
+                                              None if history else deduper)
+                    event["b89"]["source"] = "graphql-history" if history else "graphql-live"
+                    http_section = event["cloudflare"].get("http") or {}
+                    if history and "allowlist_first" in http_section:
+                        http_section["allowlist_first"] = "false"
                     event["b89"]["sampled"] = True
                     event["cloudflare"]["zone_name"] = zone["name"][:255]
                     events.append(event)
@@ -190,6 +199,7 @@ def collect(config: dict, state: dict, client: Cloudflare | None = None) -> tupl
     return events, {
         "cursors": cursors,
         "truncated_windows": truncated,
+        "allowlist_seen": deduper.export(),
         "denied_fields": {zone: sorted(names) for zone, names in denied_fields.items() if names},
         "history_start": iso(start) if not state.get("history_start") else state["history_start"],
         "catching_up": oldest < until_edge - window,

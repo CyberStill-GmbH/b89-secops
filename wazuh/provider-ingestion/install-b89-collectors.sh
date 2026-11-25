@@ -333,10 +333,10 @@ if [[ $CF == true ]]; then
   systemctl enable --now b89-collector-cloudflare-logpush.timer >/dev/null
   if [[ -s $CS/allowlist-feed-token ]]; then
     systemctl enable --now b89-collector-cloudflare-allowlist.timer >/dev/null
-    log 'Cloudflare: lista blanca de la API de pagos sincronizada cada 2 min (alertas 101546-101549)'
+    log 'Cloudflare: lista blanca de la API de pagos sincronizada cada 2 min (alertas 101546-101549 y 102020-102025)'
   else
     systemctl disable --now b89-collector-cloudflare-allowlist.timer >/dev/null 2>&1 || true
-    log 'Cloudflare: falta allowlist-feed-token (deploy-host.sh lo genera); sin lista blanca no hay alertas 101546-101549'
+    log 'Cloudflare: falta allowlist-feed-token (deploy-host.sh lo genera); sin lista blanca no hay alertas 101546-101549 ni 102020-102025'
   fi
   systemctl enable --now b89-collector-cloudflare-traffic.timer >/dev/null
   if bash "${HERE}/cloudflare/setup-traffic-index.sh"; then

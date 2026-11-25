@@ -90,7 +90,8 @@ def read_batch(path: pathlib.Path) -> bytes:
     return raw
 
 
-def normalize(record: dict, dataset: str, scope: str, batch: str, now: str) -> dict:
+def normalize(record: dict, dataset: str, scope: str, batch: str, now: str,
+              deduper: "payments_allowlist.Deduper | None" = None) -> dict:
     event = {
         "b89": {"vendor": "cloudflare", "source": "logpush", "event_type": "logpush", "collected_at": now},
         "cloudflare": {"dataset": dataset, "scope_id": scope, "batch_sha256": batch, "raw": record},
@@ -106,9 +107,10 @@ def normalize(record: dict, dataset: str, scope: str, batch: str, now: str) -> d
             target = request_target(event["cloudflare"][section])
             if target:
                 event["cloudflare"][section]["request_target"] = target
-            # Lista blanca de la API de pagos (reglas 101546-101549): sin archivo, sin veredicto.
+            # Lista blanca de la API de pagos (reglas 101546-101549 y 102020-102024): sin archivo, sin
+            # veredicto. El deduplicador marca la primera aparición por ventana (allowlist_first).
             verdict = payments_allowlist.classify(
-                event["cloudflare"][section], payments_allowlist.load(), payments_allowlist.hosts())
+                event["cloudflare"][section], payments_allowlist.load(), payments_allowlist.hosts(), deduper)
             if verdict:
                 event["cloudflare"][section].update(verdict)
     return event
@@ -183,7 +185,10 @@ def _ingest(path: pathlib.Path, output: pathlib.Path, state_path: pathlib.Path, 
         raise ProviderError("Logpush batch ledger is invalid")
     if key in committed:
         return 0
-    now = iso(utc_now())
+    current = utc_now()
+    now = iso(current)
+    deduper = payments_allowlist.Deduper(
+        state.get("allowlist_seen"), current.timestamp(), payments_allowlist.dedup_window())
     events = []
     try:
         for line in raw.decode("utf-8").splitlines():
@@ -195,7 +200,7 @@ def _ingest(path: pathlib.Path, output: pathlib.Path, state_path: pathlib.Path, 
                 raise ValueError()
             if record == VALIDATION_RECORD:
                 continue
-            event = normalize(record, dataset, scope, digest, now)
+            event = normalize(record, dataset, scope, digest, now, deduper)
             if len(json.dumps(event, ensure_ascii=False).encode("utf-8")) > MAX_RECORD_BYTES:
                 raise ProviderError("Logpush record exceeds delivery limit; retained for remediation")
             events.append(event)
@@ -203,6 +208,7 @@ def _ingest(path: pathlib.Path, output: pathlib.Path, state_path: pathlib.Path, 
         raise ProviderError("Logpush batch contains an invalid JSON record; no records committed") from error
     return commit_batch(output, state_path, state, events, {
         "output": binding, "batches": (committed + [key])[-MAX_LEDGER:], "last_success": now,
+        "allowlist_seen": deduper.export(),
     })
 
 
