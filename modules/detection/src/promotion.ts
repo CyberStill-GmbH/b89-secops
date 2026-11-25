@@ -19,8 +19,8 @@ import type { SecurityEvent } from '@b89/contracts';
 import { entityKeysOf, signalOf, type SignalClass } from './correlation.js';
 import { computeFingerprint, type AlertFingerprint } from './fingerprint.js';
 import {
+  isPromotable,
   prioritize,
-  PROMOTION_THRESHOLD,
   type PrioritizationContext,
   type PrioritizationOutcome,
   type Priority,
@@ -171,7 +171,9 @@ export function decidePromotion(
   if (evaluation.suppressed) {
     return { outcome: 'not_promoted', reasonCode: 'SUPPRESSED', evaluation };
   }
-  if (evaluation.score < PROMOTION_THRESHOLD) {
+  // 1.2.0: media o menor sin contexto también queda por debajo del umbral de promoción
+  // (mismo código hacia la API: el evento sigue consultable, no hay alerta).
+  if (!isPromotable(event.severity.normalized, evaluation)) {
     return { outcome: 'not_promoted', reasonCode: 'BELOW_THRESHOLD', evaluation };
   }
   const occurredAt = new Date(event.occurredAt);

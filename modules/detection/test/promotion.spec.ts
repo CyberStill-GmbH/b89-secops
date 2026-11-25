@@ -7,8 +7,12 @@ import {
   type DetectionCandidate,
 } from '../src/promotion.js';
 import type { DetectionCandidateStore } from '../src/ports.js';
+import type { CorrelationSignal } from '../src/correlation.js';
 import {
+  isPromotable,
+  prioritize,
   PRIORITIZATION_RULESET_VERSION,
+  PROMOTION_CONTEXT_REASONS,
   type PrioritizationContext,
 } from '../src/prioritization.js';
 import { withSeverity } from './support/events.js';
@@ -175,5 +179,86 @@ describe('C-16 · promoción', () => {
     expect(codes).toEqual(
       expect.arrayContaining(['BASE_SEVERITY', 'PRIVILEGED_IDENTITY', 'CRITICAL_ASSET']),
     );
+  });
+});
+
+describe('C-16 · promoción 1.2.0: media o menor solo con contexto', () => {
+  const NO_CONTEXT: PrioritizationContext = {
+    privilegedIdentities: new Set(),
+    criticalAssets: new Set(),
+  };
+  const correlated = (relatedCount: number, recentSimilarCount: number): CorrelationSignal => ({
+    version: 'test',
+    entityKeys: ['user:jperez@b89.example'],
+    signal: 'other',
+    relatedAlertIds: Array.from({ length: relatedCount }, (_, i) => `alert-${i}`),
+    relatedCount,
+    recentSimilarCount,
+  });
+  const decide = (event: ReturnType<typeof withSeverity>, context: PrioritizationContext) =>
+    decidePromotion(event, context, undefined, NOW);
+
+  it('una alerta media sin contexto queda consultable pero no abre alerta', () => {
+    const decision = decide(withSeverity('medium'), NO_CONTEXT);
+
+    expect(decision).toMatchObject({ outcome: 'not_promoted', reasonCode: 'BELOW_THRESHOLD' });
+    expect(decision.evaluation.score).toBe(40);
+  });
+
+  it('repetir el mismo ruido medio no lo promueve', () => {
+    const decision = decide(withSeverity('medium'), {
+      ...NO_CONTEXT,
+      correlation: correlated(0, 50),
+    });
+
+    expect(decision.evaluation.reasons.map((r) => r.code)).toContain('REPEATED_ACTIVITY');
+    expect(decision.outcome).toBe('not_promoted');
+  });
+
+  it('un activo expuesto por sí solo no cuenta como contexto', () => {
+    const decision = decide(withSeverity('medium'), {
+      ...NO_CONTEXT,
+      internetFacingAssets: new Set(['host-1']),
+    });
+
+    expect(decision.evaluation.reasons.map((r) => r.code)).toContain('EXTERNAL_EXPOSURE');
+    expect(decision.outcome).toBe('not_promoted');
+  });
+
+  it.each([
+    ['activo crítico', { ...NO_CONTEXT, criticalAssets: new Set(['host-1']) }],
+    [
+      'identidad privilegiada',
+      { ...NO_CONTEXT, privilegedIdentities: new Set(['jperez@b89.example']) },
+    ],
+    ['correlación con otras alertas', { ...NO_CONTEXT, correlation: correlated(3, 0) }],
+  ])('una alerta media con %s sí se promueve', (_label, context) => {
+    const decision = decide(withSeverity('medium'), context);
+
+    expect(decision.outcome).toBe('promoted');
+    expect(decision.outcome === 'promoted' && decision.candidate.priority).toBe('P3');
+  });
+
+  it('una baja con identidad privilegiada alcanza el umbral y tiene contexto', () => {
+    const decision = decide(withSeverity('low'), {
+      ...NO_CONTEXT,
+      privilegedIdentities: new Set(['jperez@b89.example']),
+    });
+
+    expect(decision.outcome).toBe('promoted');
+  });
+
+  it('alta y crítica se promueven sin contexto, como antes', () => {
+    expect(decide(withSeverity('high'), NO_CONTEXT).outcome).toBe('promoted');
+    expect(decide(withSeverity('critical'), NO_CONTEXT).outcome).toBe('promoted');
+  });
+
+  it('isPromotable refleja la misma regla para quien solo tiene la evaluación', () => {
+    const event = withSeverity('medium');
+    const evaluation = prioritize(event, NO_CONTEXT);
+
+    expect(isPromotable('medium', evaluation)).toBe(false);
+    expect(isPromotable('high', prioritize(withSeverity('high'), NO_CONTEXT))).toBe(true);
+    expect(PROMOTION_CONTEXT_REASONS.has('REPEATED_ACTIVITY')).toBe(false);
   });
 });

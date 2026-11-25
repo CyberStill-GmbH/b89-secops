@@ -89,13 +89,23 @@ aunque su documentación diga «informativa» o «P4». Los ajustes de esta fech
 (3 = `low`, 20 puntos: indexado y consultable, sin promoción salvo contexto: identidad privilegiada o activo
 crítico +15, correlación con otras alertas +10).
 
-**Hecho en la rama `fix/detection-noise` (no desplegado):** filas del 2026-11-25 del registro.
+**Hecho en la rama `fix/detection-noise` (no desplegado):** filas del 2026-11-25 del registro y la
+priorización 1.2.0 (aprobada por el dueño el 2026-11-25):
 
-**Siguiente nivel (propuesto, requiere aprobación):**
+- Nivel Wazuh ≥ 8 (`high`/`critical`) se promueve como antes.
+- Nivel 1–7 (`low`/`medium`) solo se promueve si supera el umbral **y** trae contexto: cuenta break-glass,
+  identidad privilegiada, activo crítico, intrusión exitosa, correlación con 3+ alertas de la misma entidad
+  o cadena de compromiso (`PROMOTION_CONTEXT_REASONS` en `modules/detection/src/prioritization.ts`).
+- No cuentan como contexto la repetición (el mismo ruido repetido no es un incidente) ni la exposición a
+  Internet (en el borde todo está expuesto).
+- Puntajes y prioridades no cambian; lo no promovido sigue consultable como evento. Las alertas ya creadas
+  no se tocan (el runtime es idempotente por evento aunque cambie la versión).
+- Pruebas: `modules/detection/test/promotion.spec.ts` («promoción 1.2.0»).
 
-1. Promoción: exigir nivel ≥ 8, o nivel 4–7 con contexto (activo crítico, identidad privilegiada, cadena),
-   y que la repetición agrupe en la alerta abierta en vez de sumar puntos. Cambia el conjunto de reglas de
-   priorización (versión 1.2.0) y sus pruebas: no se toca sin aprobación.
+**Siguiente nivel (propuesto):**
+
+1. Agrupar la repetición del mismo `fuente:regla` + entidad en la alerta abierta (hoy suma puntos y, con
+   contexto, puede abrir varias alertas parecidas).
 2. Colisión de IDs 101800–101835: `detections/linux/network-connections/rule.xml` (y el resto del programa
    de red) y `wazuh/platform-monitoring/rules/b89_watch_platform_rules.xml` usan los mismos IDs. Wazuh
    conserva la primera definición; verificar en el manager con
