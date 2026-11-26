@@ -51,6 +51,7 @@ svg/b89-sources.svg	dashboard	src/core/server/core_app/assets/b89/b89-sources.sv
 svg/b89-session.svg	dashboard	src/core/server/core_app/assets/b89/b89-session.svg
 svg/b89-respond.svg	dashboard	src/core/server/core_app/assets/b89/b89-respond.svg
 images/b89-mark-gradient-256.png	dashboard	src/core/server/core_app/assets/b89/b89-mark-gradient.png
+images/rabbitdlp-mark.png	dashboard	src/core/server/core_app/assets/b89/rabbitdlp.png
 fonts/satoshi.css	dashboard	src/core/server/core_app/assets/b89/fonts/satoshi.css
 fonts/satoshi-medium.woff2	dashboard	src/core/server/core_app/assets/b89/fonts/satoshi-medium.woff2
 fonts/satoshi-bold.woff2	dashboard	src/core/server/core_app/assets/b89/fonts/satoshi-bold.woff2

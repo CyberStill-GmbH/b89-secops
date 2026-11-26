@@ -602,6 +602,7 @@ const FAVICON_PAIRS = [
   ['/ui/logos/wazuh_mark_on_light.svg', 'svg/b89_mark_on_light.svg'],
   ['/ui/b89/b89-bunny.webp', 'images/b89-bunny.webp'],
   ['/ui/b89/b89-mark-gradient.png', 'images/b89-mark-gradient-256.png'],
+  ['/ui/b89/rabbitdlp.png', 'images/rabbitdlp-mark.png'],
 ];
 
 async function assetChecks(target, call, rec, cookie) {

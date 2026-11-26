@@ -1329,6 +1329,39 @@ a.b89Kpi__chip {
   }
 }
 
+.b89Dlp__actionSetting {
+  margin-top: $ouiSize;
+  padding-top: $ouiSizeS;
+  border-top: 1px solid $ouiBorderColor;
+}
+
+.b89Dlp__usbGroups {
+  display: grid;
+  gap: $ouiSizeS;
+  margin-top: $ouiSize;
+}
+
+.b89Dlp__panelActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: $ouiSizeS;
+}
+
+.b89Dlp__usbGroup {
+  display: grid;
+  gap: $ouiSizeS;
+  padding: $ouiSize;
+  border-left: 3px solid $ouiColorPrimary;
+  background: $ouiColorLightestShade;
+
+  .b89Dlp__panelActions > .euiFieldText {
+    flex: 1 1 280px;
+    max-width: 100%;
+  }
+}
+
 .b89Dlp__error {
   margin: $ouiSizeS 0 0;
   color: $ouiColorDanger;

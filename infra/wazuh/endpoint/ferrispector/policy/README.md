@@ -31,7 +31,7 @@ Una severidad alta significa que se encontró un formato parecido a una credenci
 
 El administrador puede pegar o cargar el catálogo desde el panel de B89. Solo se aceptan valores hexadecimales de 64 caracteres, uno por línea; no nombres, rutas ni notas que puedan revelar datos personales. El catálogo aprobado se propaga a endpoints inscritos en hasta 30 segundos. Si no hay huellas del CISO, el catálogo permanece vacío y no hay coincidencias por fingerprint.
 
-El hash exacto detecta copias byte a byte. Cambios dentro del documento producen otro hash; para documentos modificados se necesitan clasificadores como EDM de Microsoft Purview, no una lista de SHA-256.
+El hash exacto detecta copias byte a byte. Cambios dentro del documento producen otro hash; para documentos modificados se necesitan clasificadores como EDM de Microsoft Purview, no una lista de SHA-256. La acción opcional de cuarentena solo se aplica a estos matches exactos. Cuando se activa, RabbitDLP copia el archivo al almacén local protegido, verifica el hash y elimina la copia observada; conserva localmente la ruta original y el ACL para permitir una restauración administrativa. La ruta y el contenido nunca se envían a B89 ni a Wazuh. Las reglas YARA de contenido solo alertan.
 
 ## Configuración del endpoint
 
@@ -50,13 +50,17 @@ Sin control plane, el instalador puede operar con el paquete local verificado po
 5. Se empaqueta una versión, se valida externamente el SHA-256 y se registra la decisión.
 6. Se confirma en Wazuh una alerta sintética de extremo a extremo con resultado redactado.
 
-El panel permite activar/desactivar reglas incluidas y actualizar fingerprints. Reglas YARA nuevas requieren compilar y distribuir una versión nueva del paquete. Los eventos incluyen la huella del contenido de política para identificar qué configuración se aplicó.
+El panel permite activar/desactivar reglas incluidas, actualizar fingerprints, decidir si las huellas exactas van a cuarentena y administrar grupos USB autorizados. Cada grupo de SOC contiene los SIDs de usuarios o grupos locales/Active Directory. El agente Windows genera la política de Device Control de Microsoft Defender con acceso para esas identidades y denegación del almacenamiento extraíble para las demás. No se deshabilitan las cuentas de Windows.
+
+USB está apagado por defecto. Para activarlo, el operador debe confirmar que los equipos usan Microsoft Defender for Endpoint Plan 1/2 o Defender for Business. El agente Windows también comprueba compatibilidad y conflictos con políticas de MDM/Intune/GPO antes de escribir los valores locales. Muestra `active` solo cuando `Get-MpComputerStatus` informa que Device Control está habilitado, con denegación predeterminada `Allow` acotada a `RemovableMediaDevices`; las reglas XML de RabbitDLP deniegan el acceso al almacenamiento extraíble fuera de los SIDs autorizados. Los equipos reportan `unsupported`, `conflict`, `pending` o `error` si no pueden confirmar la aplicación. Consulta [configuración oficial](https://learn.microsoft.com/en-us/defender-endpoint/device-control-configure), [condiciones por SID](https://learn.microsoft.com/en-us/defender-endpoint/device-control-policies) y [planes compatibles](https://learn.microsoft.com/en-us/defender-endpoint/device-control-faq).
+
+Las políticas de grupos no sincronizan membresías de usuarios desde AD ni Entra. El SOC debe proporcionar SIDs válidos de Windows y revisar que los equipos estén bajo administración y licenciamiento compatibles. Reglas YARA nuevas requieren compilar y distribuir una versión nueva del paquete. Los eventos incluyen la huella del contenido de política para identificar qué configuración se aplicó.
 
 ## Recepción de alertas
 
 El endpoint escribe JSONL en `C:\ProgramData\B89\Ferrispector\events.jsonl`. La configuración local del agente Wazuh lee esa ruta; el manager aplica la regla `101110` de `infra/wazuh/endpoint/rules/b89_endpoint_rules.xml` y genera prioridad alta. El instalador de endpoint no toca el Manager: su regla debe desplegarse con la política administrada del Manager.
 
-El evento incluye regla, hostname, hash SHA-256 del archivo, extensión, tamaño, hora y hash de política; no incluye ruta, contenido ni texto coincidente. Ferrispector no mueve ni borra archivos.
+El evento incluye regla, hostname, hash SHA-256 del archivo, extensión, tamaño, hora y hash de política; no incluye ruta, contenido ni texto coincidente. Un match exacto incluye el estado y el ID de cuarentena, nunca la ruta ni el contenido.
 
 ## DLP de Microsoft 365
 
@@ -64,4 +68,4 @@ El repositorio tiene reglas SharePoint/OneDrive `101949` (coincidencia DLP), `10
 
 ## Límites
 
-Ferrispector detecta contenido en disco; no inspecciona tráfico de red ni bloquea carga web, correo, impresión, portapapeles o copias. Es detección local con telemetría a Wazuh, no bloqueo preventivo. Un hallazgo requiere triage y no autoriza cuarentena, eliminación ni sanción. Para controles de bloqueo, se necesita el agente de prevención de Microsoft Purview u otra plataforma DLP administrada.
+Ferrispector detecta contenido en disco; no inspecciona tráfico de red ni bloquea carga web, correo, impresión o portapapeles. La cuarentena exacta es reversible y no aplica a coincidencias de contenido. El control de USB cubre almacenamiento extraíble con Microsoft Defender Device Control; no equivale a bloquear cualquier periférico USB.

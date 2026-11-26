@@ -37,6 +37,10 @@ const ENROLLMENT_TTL_MS = 30 * 60_000;
 export const DLP_ONLINE_WINDOW_MS = 2 * 60_000;
 const ENDPOINT_ID = /^[0-9a-f-]{36}$/iu;
 const MAX_FINGERPRINTS = 10_000;
+const MAX_USB_GROUPS = 100;
+const MAX_USB_IDENTITIES = 1_000;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const WINDOWS_SID = /^S-1-(?:\d+-){1,14}\d+$/iu;
 const MAX_HOSTNAME = /^[A-Za-z0-9_.-]{1,128}$/u;
 const AGENT_ID = /^[A-Za-z0-9_.-]{1,16}$/u;
 const POLICY_VERSION = /^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]{1,32})?$/u;
@@ -47,6 +51,16 @@ interface DlpPolicyDocument {
   readonly policyVersion: string;
   readonly enabledRuleIds: readonly string[];
   readonly fingerprintsSha256: readonly string[];
+  readonly quarantineExactFingerprints: boolean;
+  readonly usbControl: {
+    readonly enabled: boolean;
+    readonly supportedPlanConfirmed: boolean;
+    readonly allowedGroups: readonly {
+      readonly id: string;
+      readonly name: string;
+      readonly identities: readonly string[];
+    }[];
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -71,6 +85,10 @@ function documentOf(value: unknown, correlationId: string, updating = false): Dl
   const policyVersion = value['policyVersion'];
   const enabledRuleIds = value['enabledRuleIds'];
   const fingerprintsSha256 = value['fingerprintsSha256'];
+  const quarantineExactFingerprints = value['quarantineExactFingerprints'] ?? (updating ? undefined : false);
+  const usbControl = value['usbControl'] ?? (updating
+    ? undefined
+    : { enabled: false, supportedPlanConfirmed: false, allowedGroups: [] });
   if (typeof policyVersion !== 'string' || !POLICY_VERSION.test(policyVersion)) {
     return invalid('policyVersion');
   }
@@ -94,10 +112,54 @@ function documentOf(value: unknown, correlationId: string, updating = false): Dl
     }
     fingerprints.add(fingerprint);
   }
+  if (typeof quarantineExactFingerprints !== 'boolean') return invalid('quarantineExactFingerprints');
+  if (quarantineExactFingerprints && fingerprints.size === 0) return invalid('quarantineExactFingerprints');
+  if (!isRecord(usbControl) || typeof usbControl['enabled'] !== 'boolean' ||
+      typeof usbControl['supportedPlanConfirmed'] !== 'boolean' ||
+      !Array.isArray(usbControl['allowedGroups']) || usbControl['allowedGroups'].length > MAX_USB_GROUPS) {
+    return invalid('usbControl');
+  }
+  const groupIds = new Set<string>();
+  let identityCount = 0;
+  const allowedGroups: { id: string; name: string; identities: string[] }[] = [];
+  for (const candidate of usbControl['allowedGroups']) {
+    if (!isRecord(candidate) || typeof candidate['id'] !== 'string' || !UUID.test(candidate['id']) ||
+        groupIds.has(candidate['id'].toLowerCase()) || typeof candidate['name'] !== 'string' ||
+        candidate['name'].trim().length < 1 || candidate['name'].trim().length > 64 ||
+        !Array.isArray(candidate['identities']) || candidate['identities'].length > MAX_USB_IDENTITIES) {
+      return invalid('usbControl.allowedGroups');
+    }
+    const identities = new Set<string>();
+    for (const identity of candidate['identities']) {
+      if (typeof identity !== 'string' || identity.length > 184 ||
+          !WINDOWS_SID.test(identity) || identities.has(identity.toLowerCase())) {
+        return invalid('usbControl.allowedGroups.identities');
+      }
+      identities.add(identity);
+      identityCount += 1;
+      if (identityCount > MAX_USB_IDENTITIES) return invalid('usbControl.allowedGroups.identities');
+    }
+    groupIds.add(candidate['id'].toLowerCase());
+    allowedGroups.push({
+      id: candidate['id'].toLowerCase(),
+      name: candidate['name'].trim(),
+      identities: [...identities].sort((a, b) => a.localeCompare(b)),
+    });
+  }
+  if (usbControl['enabled'] && (!usbControl['supportedPlanConfirmed'] || allowedGroups.length === 0 ||
+      allowedGroups.some((group) => group.identities.length === 0))) {
+    return invalid('usbControl');
+  }
   return {
     policyVersion,
     enabledRuleIds: [...rules].sort(),
     fingerprintsSha256: [...fingerprints].sort(),
+    quarantineExactFingerprints,
+    usbControl: {
+      enabled: usbControl['enabled'],
+      supportedPlanConfirmed: usbControl['supportedPlanConfirmed'],
+      allowedGroups: allowedGroups.sort((a, b) => a.name.localeCompare(b.name)),
+    },
   };
 }
 
@@ -111,6 +173,8 @@ function parsePolicyUpdate(body: unknown, correlationId: string): {
     policyVersion: body['policyVersion'],
     enabledRuleIds: body['enabledRuleIds'],
     fingerprintsSha256: body['fingerprintsSha256'],
+    quarantineExactFingerprints: body['quarantineExactFingerprints'],
+    usbControl: body['usbControl'],
   }, correlationId, true);
   return { expectedRevision, document: parsed };
 }
@@ -120,6 +184,8 @@ function defaultPolicy(): DlpPolicyDocument {
     policyVersion: DEFAULT_POLICY_VERSION,
     enabledRuleIds: [...DEFAULT_ENABLED_RULE_IDS],
     fingerprintsSha256: [],
+    quarantineExactFingerprints: false,
+    usbControl: { enabled: false, supportedPlanConfirmed: false, allowedGroups: [] },
   };
 }
 
@@ -159,6 +225,9 @@ function endpointView(endpoint: DlpEndpointRecord, currentRevision: number, now:
     lastSeenAt: endpoint.lastSeenAt?.toISOString() ?? null,
     appliedRevision: endpoint.appliedRevision,
     policyVersion: endpoint.policyVersion,
+    usbControlStatus: endpoint.usbControlStatus ?? 'unknown',
+    usbControlCode: endpoint.usbControlCode,
+    usbControlCheckedAt: endpoint.usbControlCheckedAt?.toISOString() ?? null,
     status,
     revokedAt: endpoint.revokedAt?.toISOString() ?? null,
   };
@@ -274,6 +343,9 @@ export class DlpPolicyController {
       enabledRuleIds: policy.enabledRuleIds.join(',').slice(0, 1_000),
       enabledRuleCount: policy.enabledRuleIds.length,
       fingerprintCount: policy.fingerprintsSha256.length,
+      quarantineExactFingerprints: policy.quarantineExactFingerprints,
+      usbControlEnabled: policy.usbControl.enabled,
+      usbAllowedGroupCount: policy.usbControl.allowedGroups.length,
     });
     return { correlationId, ...policy, propagationIntervalSeconds: 30 };
   }
@@ -304,6 +376,9 @@ export class DlpPolicyController {
           currentRevision: view.appliedRevision,
           currentPolicyVersion: view.policyVersion,
           status: view.status,
+          usbControlStatus: view.usbControlStatus,
+          usbControlCode: view.usbControlCode,
+          usbControlCheckedAt: view.usbControlCheckedAt,
           revokedAt: view.revokedAt,
         };
       }),
@@ -354,7 +429,7 @@ export class DlpPolicyController {
   ) {
     const { actor, correlationId } = await this.authorized(request, 'dlp.configure');
     if (!INSTALLER_PLATFORMS.has(platform)) throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
-    const filename = `Ferrispector-${platform}.zip`;
+    const filename = `RabbitDLP-${platform}.zip`;
     let bytes: Buffer;
     try {
       bytes = await readFile(join(INSTALLER_DIR, filename));
@@ -483,9 +558,17 @@ export class DlpPolicyController {
   @Post('agent/ack')
   public async acknowledgePolicy(@Req() request: IncomingRequest, @Body() body: unknown) {
     const { correlationId, endpoint } = await this.agent(request);
+    const usb = isRecord(body) && isRecord(body['usbControl']) ? body['usbControl'] : undefined;
+    const allowedUsbStatuses = ['disabled', 'active', 'pending', 'unsupported', 'conflict', 'error', 'not-applicable'] as const;
+    const allowedUsbCodes = [
+      'POLICY_DISABLED', 'POLICY_ACTIVE', 'POLICY_PENDING', 'WINDOWS_UNSUPPORTED',
+      'DEFENDER_UNAVAILABLE', 'DEFENDER_POLICY_CONFLICT', 'DEFENDER_APPLY_FAILED', 'NOT_WINDOWS',
+    ] as const;
     if (!isRecord(body) || typeof body['revision'] !== 'number' || !Number.isInteger(body['revision']) ||
-        body['revision'] < 0 || typeof body['policyVersion'] !== 'string' || !POLICY_VERSION.test(body['policyVersion'])) {
-      throw new ApiError('VALIDATION_FAILED', correlationId, ['revision', 'policyVersion']);
+        body['revision'] < 0 || typeof body['policyVersion'] !== 'string' || !POLICY_VERSION.test(body['policyVersion']) ||
+        !usb || typeof usb['status'] !== 'string' || !(allowedUsbStatuses as readonly string[]).includes(usb['status']) ||
+        !(usb['code'] === null || (typeof usb['code'] === 'string' && (allowedUsbCodes as readonly string[]).includes(usb['code'])))) {
+      throw new ApiError('VALIDATION_FAILED', correlationId, ['revision', 'policyVersion', 'usbControl']);
     }
     const policy = currentPolicy(await this.store(correlationId).policy(this.runtime.tenantId), correlationId);
     if (body['revision'] !== policy.revision || body['policyVersion'] !== policy.policyVersion) {
@@ -496,9 +579,16 @@ export class DlpPolicyController {
       tenantId: this.runtime.tenantId,
       revision: policy.revision,
       policyVersion: policy.policyVersion,
+      usbControlStatus: usb['status'] as typeof allowedUsbStatuses[number],
+      usbControlCode: usb['code'] as string | null,
       at: this.runtime.now(),
     });
     if (!saved) throw new ApiError('RESOURCE_UNAVAILABLE', correlationId);
-    return { correlationId, appliedRevision: policy.revision, policyVersion: policy.policyVersion };
+    return {
+      correlationId,
+      appliedRevision: policy.revision,
+      policyVersion: policy.policyVersion,
+      usbControlStatus: usb['status'],
+    };
   }
 }

@@ -45,7 +45,7 @@ export function dlpOverviewModel(
 export function DlpOverviewLineView({ model, basePath }: { model: DlpOverviewModel; basePath: string }) {
   return (
     <section className="b89DlpLine" data-tone={model.tone} aria-labelledby="b89-dlp-line">
-      <FerrispectorMark size={24} />
+      <FerrispectorMark size={24} basePath={basePath} />
       <p>
         <strong id="b89-dlp-line">DLP de endpoints:</strong> <span>{model.text}</span>
       </p>

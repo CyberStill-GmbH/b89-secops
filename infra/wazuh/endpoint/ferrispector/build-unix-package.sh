@@ -53,12 +53,12 @@ python3 - "$STAGE/manifest.json" "$VERSION" "$OS" "$ARCH" "$URL" "$EXPECTED" "$E
 import json, sys
 path, version, target, arch, url, archive_sha, engine_sha, rules_sha = sys.argv[1:]
 with open(path, "w", encoding="utf-8") as stream:
-    json.dump({"product":"B89 Ferrispector", "engine":"YARA-X CLI", "engineVersion":version,
+    json.dump({"product":"RabbitDLP", "engine":"YARA-X CLI", "engineVersion":version,
                "platform":target, "architecture":arch, "policyName":"approved-dlp-rules",
                "policyVersion":"1.0.0", "rulesSha256":rules_sha, "sourceUrl":url,
                "sourceArchiveSha256":archive_sha, "engineBinarySha256":engine_sha,
                "licenseNotice":"THIRD-PARTY-NOTICES.txt",
-               "installMode":"detection-only; approved local roots only"}, stream, indent=2)
+               "installMode":"detection, exact-fingerprint quarantine and optional Defender device control; monitored roots are operator supplied"}, stream, indent=2)
     stream.write("\n")
 PY
 OUT="$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$OUT")"

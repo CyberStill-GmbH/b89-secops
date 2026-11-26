@@ -30,9 +30,18 @@ $Assets = @{
 
 $asset = $Assets[$Architecture]
 $releaseUrl = "https://github.com/VirusTotal/yara-x/releases/download/v$Version/$($asset.Name)"
+$nativeArchitecture = (Get-CimInstance -ClassName Win32_Processor | Select-Object -First 1 -ExpandProperty Architecture)
+$compilerArchitecture = switch ($nativeArchitecture) {
+  9 { 'x64' }
+  12 { 'arm64' }
+  default { throw "Unsupported Windows build-host architecture code '$nativeArchitecture'; a native x64 or ARM64 Windows host is required." }
+}
+$compilerAsset = $Assets[$compilerArchitecture]
 $temporaryRoot = Join-Path ([IO.Path]::GetTempPath()) ("b89-ferrispector-" + [guid]::NewGuid().ToString('N'))
 $archivePath = Join-Path $temporaryRoot $asset.Name
+$compilerArchivePath = Join-Path $temporaryRoot ('compiler-' + $compilerAsset.Name)
 $extractPath = Join-Path $temporaryRoot 'extract'
+$compilerExtractPath = Join-Path $temporaryRoot 'compiler-extract'
 $stagePath = Join-Path $temporaryRoot 'package'
 $outputFullPath = [IO.Path]::GetFullPath($OutputPath)
 
@@ -44,7 +53,7 @@ if ((Get-Item -LiteralPath $RulesPath).Length -eq 0) { throw 'RulesPath is empty
 if ([IO.Path]::GetExtension($outputFullPath) -ne '.zip') { throw 'OutputPath must end in .zip.' }
 
 try {
-  New-Item -ItemType Directory -Path $temporaryRoot, $extractPath, $stagePath -Force | Out-Null
+  New-Item -ItemType Directory -Path $temporaryRoot, $extractPath, $compilerExtractPath, $stagePath -Force | Out-Null
   Invoke-WebRequest -Uri $releaseUrl -OutFile $archivePath
   $actualHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
   if ($actualHash -ne $asset.Sha256) {
@@ -54,6 +63,20 @@ try {
   Expand-Archive -LiteralPath $archivePath -DestinationPath $extractPath -Force
   $yr = Get-ChildItem -LiteralPath $extractPath -Filter 'yr.exe' -File -Recurse | Select-Object -First 1
   if (-not $yr) { throw 'The verified YARA-X archive did not contain yr.exe.' }
+
+  $compilerYr = $yr.FullName
+  if ($compilerArchitecture -ne $Architecture) {
+    $compilerUrl = "https://github.com/VirusTotal/yara-x/releases/download/v$Version/$($compilerAsset.Name)"
+    Invoke-WebRequest -Uri $compilerUrl -OutFile $compilerArchivePath
+    $compilerArchiveHash = (Get-FileHash -LiteralPath $compilerArchivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($compilerArchiveHash -ne $compilerAsset.Sha256) {
+      throw "Native YARA-X compiler archive SHA-256 mismatch: expected $($compilerAsset.Sha256), got $compilerArchiveHash."
+    }
+    Expand-Archive -LiteralPath $compilerArchivePath -DestinationPath $compilerExtractPath -Force
+    $hostYr = Get-ChildItem -LiteralPath $compilerExtractPath -Filter 'yr.exe' -File -Recurse | Select-Object -First 1
+    if (-not $hostYr) { throw 'The verified native YARA-X compiler archive did not contain yr.exe.' }
+    $compilerYr = $hostYr.FullName
+  }
 
   $binPath = Join-Path $stagePath 'bin'
   $policyPath = Join-Path $stagePath 'policy'
@@ -78,9 +101,17 @@ try {
   $fingerprintCatalogSha256 = (Get-FileHash -LiteralPath $fingerprintSourcePath -Algorithm SHA256).Hash.ToLowerInvariant()
   $priorErrorPreference = $ErrorActionPreference
   $ErrorActionPreference = 'Continue'
+  $compilerOutputPath = Join-Path $temporaryRoot 'yara-x-compile.stdout.txt'
+  $compilerErrorPath = Join-Path $temporaryRoot 'yara-x-compile.stderr.txt'
   try {
-    $compileOutput = & $yr.FullName compile $sourcePolicyPath --output $compiledPolicyPath 2>&1
-    $compileExitCode = $LASTEXITCODE
+    $compileProcess = Start-Process -FilePath $compilerYr `
+      -ArgumentList @('compile', ('"' + $sourcePolicyPath + '"'), '--output', ('"' + $compiledPolicyPath + '"')) `
+      -WindowStyle Hidden -Wait -PassThru `
+      -RedirectStandardOutput $compilerOutputPath -RedirectStandardError $compilerErrorPath
+    $compileExitCode = $compileProcess.ExitCode
+    $compileOutput = @()
+    if (Test-Path -LiteralPath $compilerOutputPath) { $compileOutput += Get-Content -LiteralPath $compilerOutputPath }
+    if (Test-Path -LiteralPath $compilerErrorPath) { $compileOutput += Get-Content -LiteralPath $compilerErrorPath }
   }
   finally { $ErrorActionPreference = $priorErrorPreference }
   if ($compileExitCode -ne 0 -or -not (Test-Path -LiteralPath $compiledPolicyPath -PathType Leaf)) {
@@ -89,10 +120,14 @@ try {
   Remove-Item -LiteralPath $sourcePolicyPath -Force
   Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'ferrispector.ps1') -Destination $stagePath
   Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'install-windows-endpoint.ps1') -Destination $stagePath
+  Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'rabbitdlp-device-control.ps1') -Destination $stagePath
+  Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'rabbitdlp-quarantine.ps1') -Destination $stagePath
+  Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'restore-quarantined-file.ps1') -Destination $stagePath
   Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'THIRD-PARTY-NOTICES.txt') -Destination $stagePath
 
   $manifest = [ordered]@{
-    product = 'B89 Ferrispector'
+    product = 'RabbitDLP'
+    agent = 'Ferrispector'
     engine = 'YARA-X CLI'
     engineVersion = $Version
     architecture = $Architecture
@@ -105,7 +140,7 @@ try {
     engineBinarySha256 = (Get-FileHash -LiteralPath (Join-Path $binPath 'yr.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
     rulesSha256 = (Get-FileHash -LiteralPath $compiledPolicyPath -Algorithm SHA256).Hash.ToLowerInvariant()
     licenseNotice = 'THIRD-PARTY-NOTICES.txt'
-    installMode = 'detection-only; rule pack and monitored roots are operator supplied'
+    installMode = 'detection, exact-fingerprint quarantine and optional Defender device control; monitored roots are operator supplied'
   }
   $manifest | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $stagePath 'manifest.json') -Encoding utf8
 

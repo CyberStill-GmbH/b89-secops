@@ -52,8 +52,41 @@ if [ "$ACTION" = remove ]; then
   fi
   remove_localfile
   restart_wazuh
-  rm -rf -- "$DEST" "$DATA"
-  echo "Ferrispector local fue eliminado. Revoca su credencial en DLP de endpoints; Wazuh y las carpetas vigiladas permanecen."
+  quarantine_root="$DATA/quarantine"
+  has_quarantine=false
+  if [ -d "$quarantine_root" ] && [ -n "$(find "$quarantine_root" -type f -print -quit)" ]; then has_quarantine=true; fi
+  if [ "$has_quarantine" = true ]; then
+    restore_tool="$DATA/quarantine-restore.py"
+    restore_config="$DATA/quarantine-restore-config.json"
+    if [ ! -f "$restore_tool" ]; then
+      [ -f "$DEST/ferrispector.py" ] || { echo 'No se encontró la utilidad de RabbitDLP para preservar/restaurar la cuarentena.' >&2; exit 1; }
+      install -m 0700 "$DEST/ferrispector.py" "$restore_tool"
+    fi
+    "$PYTHON" - "$restore_config" "$quarantine_root" <<'PY'
+import json, os, pathlib, sys, tempfile
+path=pathlib.Path(sys.argv[1]); path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+fd, temporary=tempfile.mkstemp(prefix=".rabbitdlp-restore-", dir=str(path.parent))
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as stream:
+        json.dump({"quarantine_path": str(pathlib.Path(sys.argv[2]).resolve())}, stream)
+        stream.write("\n"); stream.flush(); os.fsync(stream.fileno())
+    os.replace(temporary, path); os.chmod(path, 0o600)
+finally:
+    try: os.unlink(temporary)
+    except FileNotFoundError: pass
+PY
+    find "$DATA" -mindepth 1 -maxdepth 1 ! -name 'quarantine' ! -name 'quarantine-restore.py' ! -name 'quarantine-restore-config.json' -exec rm -rf -- {} +
+    echo 'RabbitDLP local fue eliminado; la cuarentena quedó preservada.'
+    echo 'Lista elementos con permisos de administrador:'
+    echo "sudo $PYTHON '$restore_tool' list --config '$restore_config'"
+    echo 'Restaura un elemento con su ID:'
+    echo "sudo $PYTHON '$restore_tool' restore --config '$restore_config' --id <id-de-cuarentena>"
+  else
+    rm -rf -- "$DATA"
+    echo 'RabbitDLP local fue eliminado.'
+  fi
+  rm -rf -- "$DEST"
+  echo 'Revoca su credencial en DLP de endpoints; Wazuh y las carpetas vigiladas permanecen.'
   exit 0
 fi
 
@@ -135,7 +168,7 @@ PLIST
 else
   cat > /etc/systemd/system/b89-ferrispector.service <<UNIT
 [Unit]
-Description=B89 Ferrispector local DLP detector
+Description=B89 RabbitDLP local endpoint DLP
 After=network-online.target wazuh-agent.service
 Wants=network-online.target
 
@@ -160,4 +193,4 @@ UNIT
   systemctl enable --now b89-ferrispector.service
 fi
 restart_wazuh
-echo "Ferrispector está instalado y vigila únicamente las carpetas aprobadas. El servicio opera como administrador para poder leerlas."
+echo "RabbitDLP está instalado y vigila únicamente las carpetas aprobadas. El servicio opera como administrador para poder leerlas."

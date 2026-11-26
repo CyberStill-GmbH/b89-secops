@@ -20,6 +20,9 @@ export interface DlpEndpointRow {
   readonly appliedRevision: number;
   readonly credentialVersion: number;
   readonly policyVersion: string | null;
+  readonly usbControlStatus: string | null;
+  readonly usbControlCode: string | null;
+  readonly usbControlCheckedAt: Date | null;
   readonly enrollmentExpiresAt: Date;
 }
 
@@ -110,6 +113,8 @@ export class PrismaDlpPolicyStore {
                  "enrolled_at" AS "enrolledAt", "last_seen_at" AS "lastSeenAt",
                  "revoked_at" AS "revokedAt",
                  "applied_revision" AS "appliedRevision", "credential_version" AS "credentialVersion", "policy_version" AS "policyVersion",
+                 "usb_control_status" AS "usbControlStatus", "usb_control_code" AS "usbControlCode",
+                 "usb_control_checked_at" AS "usbControlCheckedAt",
                  "enrollment_expires_at" AS "enrollmentExpiresAt"`;
     return rows[0];
   }
@@ -123,6 +128,8 @@ export class PrismaDlpPolicyStore {
              "enrolled_at" AS "enrolledAt", "last_seen_at" AS "lastSeenAt",
              "revoked_at" AS "revokedAt",
              "applied_revision" AS "appliedRevision", "credential_version" AS "credentialVersion", "policy_version" AS "policyVersion",
+             "usb_control_status" AS "usbControlStatus", "usb_control_code" AS "usbControlCode",
+             "usb_control_checked_at" AS "usbControlCheckedAt",
              "enrollment_expires_at" AS "enrollmentExpiresAt"
         FROM "dlp_endpoints" WHERE "tenant_id" = ${input.tenantId} AND "id" = ${input.id}`;
     return rows[0];
@@ -152,6 +159,8 @@ export class PrismaDlpPolicyStore {
                  "enrolled_at" AS "enrolledAt", "last_seen_at" AS "lastSeenAt",
                  "revoked_at" AS "revokedAt",
                  "applied_revision" AS "appliedRevision", "credential_version" AS "credentialVersion", "policy_version" AS "policyVersion",
+                 "usb_control_status" AS "usbControlStatus", "usb_control_code" AS "usbControlCode",
+                 "usb_control_checked_at" AS "usbControlCheckedAt",
                  "enrollment_expires_at" AS "enrollmentExpiresAt"`;
     return rows[0];
   }
@@ -173,11 +182,15 @@ export class PrismaDlpPolicyStore {
     readonly tenantId: string;
     readonly revision: number;
     readonly policyVersion: string;
+    readonly usbControlStatus: string;
+    readonly usbControlCode: string | null;
     readonly at: Date;
   }): Promise<boolean> {
     const count = await this.client.$executeRaw`
       UPDATE "dlp_endpoints"
          SET "applied_revision" = ${input.revision}, "policy_version" = ${input.policyVersion},
+             "usb_control_status" = ${input.usbControlStatus}, "usb_control_code" = ${input.usbControlCode},
+             "usb_control_checked_at" = ${input.at},
              "last_seen_at" = ${input.at}
        WHERE "id" = ${input.endpointId} AND "tenant_id" = ${input.tenantId}
          AND "revoked_at" IS NULL`;
@@ -190,6 +203,8 @@ export class PrismaDlpPolicyStore {
              "enrolled_at" AS "enrolledAt", "last_seen_at" AS "lastSeenAt",
              "revoked_at" AS "revokedAt",
              "applied_revision" AS "appliedRevision", "credential_version" AS "credentialVersion", "policy_version" AS "policyVersion",
+             "usb_control_status" AS "usbControlStatus", "usb_control_code" AS "usbControlCode",
+             "usb_control_checked_at" AS "usbControlCheckedAt",
              "enrollment_expires_at" AS "enrollmentExpiresAt"
         FROM "dlp_endpoints" WHERE "tenant_id" = ${tenantId} AND "enrolled_at" IS NOT NULL
        ORDER BY "hostname" ASC LIMIT 5000`;

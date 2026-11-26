@@ -28,7 +28,7 @@ import {
 } from '@elastic/eui';
 import { LOGOUT_PATH } from '../../common';
 import { B89ApiError } from '../api/client';
-import type { DlpEndpoint, DlpEnrollmentToken, DlpPolicy } from '../api/dlp';
+import type { DlpEndpoint, DlpEnrollmentToken, DlpPolicy, DlpUsbControlGroup, DlpUsbControlPolicy } from '../api/dlp';
 import {
   cancelDlpEnrollmentToken,
   createDlpEnrollmentToken,
@@ -57,6 +57,7 @@ import {
   rolloutProgress,
   sortEndpoints,
   summarizeFleet,
+  normalizeUsbGroups,
   wizardReducer,
 } from './dlp_model';
 import { ErrorCallout, Mono, Timestamp } from './primitives';
@@ -154,7 +155,7 @@ function InstallerDownloads({ api, onPackageDownloaded }: {
     <section className="b89Panel b89Dlp__downloads" aria-labelledby="b89-dlp-downloads">
       <div className="b89Panel__header">
         <div>
-          <h2 id="b89-dlp-downloads">Instalar Ferrispector</h2>
+          <h2 id="b89-dlp-downloads">Instalar RabbitDLP</h2>
           <p>Descarga el paquete para el equipo que vas a proteger. La clave de conexión se crea aparte.</p>
         </div>
       </div>
@@ -247,15 +248,27 @@ export function FleetStatus({
   );
 }
 
-function EndpointRow({ endpoint, policyRevision, canConfigure, onRevoke }: {
+function EndpointRow({ endpoint, policyRevision, usbControlEnabled, canConfigure, onRevoke }: {
   endpoint: DlpEndpoint;
   policyRevision: number | null;
+  usbControlEnabled: boolean;
   canConfigure: boolean;
   onRevoke: (endpoint: DlpEndpoint) => void;
 }) {
   const health = endpointHealth(endpoint);
   const action = HEALTH_ACTION[health];
   const lagging = health === 'updating' && policyRevision !== null && endpoint.currentRevision !== null;
+  const usbStatus = endpoint.usbControlStatus ?? 'unknown';
+  const usbLabel: Record<string, string> = {
+    active: 'USB: Defender confirmó la política',
+    pending: 'USB: aplicando política',
+    unsupported: 'USB: Windows/Defender no compatible',
+    conflict: 'USB: conflicto con otra política',
+    error: 'USB: no se pudo aplicar',
+    disabled: 'USB: sin bloqueo',
+    'not-applicable': 'USB: no disponible en este sistema',
+    unknown: 'USB: estado sin confirmar',
+  };
   return (
     <tr data-health={health}>
       <th scope="row">
@@ -265,6 +278,7 @@ function EndpointRow({ endpoint, policyRevision, canConfigure, onRevoke }: {
         <EuiBadge color={HEALTH_TONE[health]}>{HEALTH_LABEL[health]}</EuiBadge>
         {lagging && <small>Tiene la revisión {endpoint.currentRevision}; la vigente es {policyRevision}.</small>}
         {action && <small>{action}</small>}
+        {usbControlEnabled && <small>{usbLabel[usbStatus] ?? usbLabel.unknown}</small>}
       </td>
       <td>{health === 'never' ? <span className="b89Muted">Nunca</span> : <Timestamp iso={endpoint.lastSeenAt} />}</td>
       <td className="b89Dlp__rowAction">
@@ -281,12 +295,14 @@ function EndpointRow({ endpoint, policyRevision, canConfigure, onRevoke }: {
 export function EndpointList({
   endpoints,
   policyRevision,
+  usbControlEnabled = false,
   canConfigure,
   onRevoke,
   onConnect,
 }: {
   endpoints: readonly DlpEndpoint[];
   policyRevision: number | null;
+  usbControlEnabled?: boolean;
   canConfigure: boolean;
   onRevoke: (endpoint: DlpEndpoint) => void;
   onConnect?: () => void;
@@ -307,7 +323,7 @@ export function EndpointList({
         </thead>
         <tbody>
           {rows.map((endpoint) => (
-            <EndpointRow key={endpoint.id} endpoint={endpoint} policyRevision={policyRevision} canConfigure={canConfigure} onRevoke={onRevoke} />
+            <EndpointRow key={endpoint.id} endpoint={endpoint} policyRevision={policyRevision} usbControlEnabled={usbControlEnabled} canConfigure={canConfigure} onRevoke={onRevoke} />
           ))}
         </tbody>
       </table>
@@ -549,17 +565,21 @@ export function RulesPanel({
   rules,
   fingerprintsText,
   fingerprintError,
+  quarantineExactFingerprints,
   canConfigure,
   onToggle,
   onFingerprintsChange,
+  onQuarantineChange,
   onImport,
 }: {
   rules: readonly string[];
   fingerprintsText: string;
   fingerprintError: string | null;
+  quarantineExactFingerprints: boolean;
   canConfigure: boolean;
   onToggle: (id: string, on: boolean) => void;
   onFingerprintsChange: (text: string) => void;
+  onQuarantineChange: (enabled: boolean) => void;
   onImport: (event: React.ChangeEvent<HTMLInputElement>) => void;
 }) {
   const basic = DLP_RULES.filter((rule) => !rule.advanced);
@@ -581,7 +601,7 @@ export function RulesPanel({
     <section className="b89Panel" aria-labelledby="b89-dlp-rules">
       <div className="b89Panel__header">
         <h2 id="b89-dlp-rules">Qué detecta</h2>
-        <span className="b89Panel__meta">{rules.length} de {DLP_RULES.length} reglas · solo alerta, no bloquea</span>
+        <span className="b89Panel__meta">{rules.length} de {DLP_RULES.length} reglas activas</span>
       </div>
       <ul className="b89Dlp__rules">{basic.map(renderRule)}</ul>
       <details className="b89Guide__details b89Dlp__more" open={advancedOn > 0 ? true : undefined}>
@@ -598,6 +618,18 @@ export function RulesPanel({
             <input type="file" accept=".txt,text/plain" onChange={onImport} />
           </label>
         )}
+        <div className="b89Dlp__actionSetting">
+          <EuiSwitch
+            compressed
+            label="Poner en cuarentena copias exactas detectadas"
+            checked={quarantineExactFingerprints}
+            disabled={!canConfigure || parsed.values.length === 0}
+            onChange={(event) => onQuarantineChange(event.target.checked)}
+          />
+          <p className="b89Dlp__hint">
+            Solo actúa sobre huellas SHA-256 de esta lista. El archivo se mueve a una carpeta local protegida y se puede restaurar con permisos de administrador. Las coincidencias de reglas de contenido siguen siendo alertas.
+          </p>
+        </div>
         <EuiTextArea
           aria-label="Huellas SHA-256, una por línea"
           value={fingerprintsText}
@@ -617,6 +649,89 @@ export function RulesPanel({
         )}
       </details>
       {fingerprintError && <p className="b89Dlp__error" role="alert">{fingerprintError}</p>}
+    </section>
+  );
+}
+
+export function UsbControlPanel({
+  policy,
+  canConfigure,
+  validationError,
+  onChange,
+}: {
+  policy: DlpUsbControlPolicy;
+  canConfigure: boolean;
+  validationError: string | null;
+  onChange: (policy: DlpUsbControlPolicy) => void;
+}) {
+  const updateGroup = (id: string, update: Partial<DlpUsbControlGroup>) => onChange({
+    ...policy,
+    allowedGroups: policy.allowedGroups.map((group) => group.id === id ? { ...group, ...update } : group),
+  });
+  return (
+    <section className="b89Panel" aria-labelledby="b89-dlp-usb">
+      <div className="b89Panel__header">
+        <h2 id="b89-dlp-usb">Control de USB</h2>
+        <span className="b89Panel__meta">Grupos administrados por B89 SOC</span>
+      </div>
+      <p>RabbitDLP aplicará Device Control de Microsoft Defender en Windows. Los SIDs permitidos podrán usar almacenamiento extraíble; los demás quedarán bloqueados. Las cuentas siguen activas: se restringe el USB, no el inicio de sesión.</p>
+      <p className="b89Dlp__hint">B89 recibe el estado de la política, no cada intento USB. Defender registra los bloqueos en su informe Device control; el SOC puede consultarlos en Microsoft Defender.</p>
+      {validationError && <EuiCallOut color="danger" size="s" title="Revisa los grupos USB"><p>{validationError}</p></EuiCallOut>}
+      <EuiSwitch
+        compressed
+        label="Activar bloqueo USB por identidad"
+        checked={policy.enabled}
+        disabled={!canConfigure}
+        onChange={(event) => onChange({ ...policy, enabled: event.target.checked })}
+      />
+      <EuiCallOut color="warning" size="s" title="Requisito de Windows">
+        <p>Se necesita Microsoft Defender for Endpoint Plan 1/2 o Defender for Business y una política local sin conflictos con Intune o GPO. La consola no puede validar licencias: compruébalas antes de habilitar. B89 reportará por equipo si el motor aceptó la política.</p>
+        <EuiSwitch
+          compressed
+          label="Confirmo que los equipos tienen Defender compatible y que B89 administrará su política USB local"
+          checked={policy.supportedPlanConfirmed}
+          disabled={!canConfigure || policy.enabled}
+          onChange={(event) => onChange({ ...policy, supportedPlanConfirmed: event.target.checked })}
+        />
+      </EuiCallOut>
+      <div className="b89Dlp__usbGroups">
+        <div className="b89Dlp__panelActions">
+          <strong>Identidades permitidas</strong>
+          {canConfigure && <EuiButtonEmpty size="s" iconType="plusInCircle" onClick={() => onChange({
+            ...policy,
+            allowedGroups: [...policy.allowedGroups, { id: crypto.randomUUID(), name: '', identities: [] }],
+          })}>Agregar grupo</EuiButtonEmpty>}
+        </div>
+        {policy.allowedGroups.length === 0 && <p className="b89Dlp__hint">Agrega al menos un grupo permitido antes de activar el bloqueo, para evitar bloquear el USB a todas las cuentas.</p>}
+        {policy.allowedGroups.map((group) => (
+          <div className="b89Dlp__usbGroup" key={group.id}>
+            <div className="b89Dlp__panelActions">
+              <EuiFieldText
+                aria-label="Nombre del grupo USB"
+                value={group.name}
+                readOnly={!canConfigure}
+                placeholder="Ej. Personal de soporte"
+                onChange={(event) => updateGroup(group.id, { name: event.target.value })}
+              />
+              {canConfigure && <EuiButtonEmpty size="s" color="danger" onClick={() => onChange({
+                ...policy,
+                allowedGroups: policy.allowedGroups.filter((candidate) => candidate.id !== group.id),
+              })}>Eliminar grupo</EuiButtonEmpty>}
+            </div>
+            <EuiTextArea
+              aria-label={`SIDs autorizados de ${group.name || 'grupo USB'}`}
+              value={group.identities.join('\n')}
+              readOnly={!canConfigure}
+              rows={3}
+              resize="vertical"
+              fullWidth
+              placeholder="Un SID de Windows por línea, ej. S-1-5-21-…"
+              onChange={(event) => updateGroup(group.id, { identities: event.target.value.split(/\r?\n/u).map((item) => item.trim()).filter(Boolean) })}
+            />
+          </div>
+        ))}
+      </div>
+      <p className="b89Dlp__hint">Usa el SID de un usuario o grupo local/Active Directory. En Windows puedes obtener el del usuario con <code>whoami /user</code>; el SID de un grupo se consulta en Active Directory. B89 no sincroniza membresías de usuarios.</p>
     </section>
   );
 }
@@ -890,6 +1005,9 @@ export function DlpView() {
 
   const [rules, setRules] = useState<string[]>([]);
   const [fingerprintsText, setFingerprintsText] = useState('');
+  const [quarantineExactFingerprints, setQuarantineExactFingerprints] = useState(false);
+  const [usbControl, setUsbControl] = useState<DlpUsbControlPolicy>({ enabled: false, supportedPlanConfirmed: false, allowedGroups: [] });
+  const [usbControlError, setUsbControlError] = useState<string | null>(null);
   const [fingerprintError, setFingerprintError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveStepUp, setSaveStepUp] = useState(false);
@@ -914,6 +1032,8 @@ export function DlpView() {
     setPolicy(data);
     setRules([...data.enabledRuleIds]);
     setFingerprintsText(data.fingerprintsSha256.join('\n'));
+    setQuarantineExactFingerprints(data.quarantineExactFingerprints);
+    setUsbControl(data.usbControl);
     setFingerprintError(null);
     setConflict(false);
   };
@@ -984,8 +1104,10 @@ export function DlpView() {
 
   const parsed = useMemo(() => parseFingerprints(fingerprintsText), [fingerprintsText]);
   const diff = useMemo(
-    () => (policy ? policyDiff(policy, rules, parsed.values) : { enabled: [], disabled: [], fingerprintsAdded: 0, fingerprintsRemoved: 0 }),
-    [policy, rules, parsed.values],
+    () => (policy ? policyDiff(policy, rules, parsed.values, quarantineExactFingerprints, usbControl) : {
+      enabled: [], disabled: [], fingerprintsAdded: 0, fingerprintsRemoved: 0, quarantineChanged: false, usbControlChanged: false,
+    }),
+    [policy, rules, parsed.values, quarantineExactFingerprints, usbControl],
   );
   const summary = endpoints ? summarizeFleet(endpoints) : null;
 
@@ -1024,10 +1146,32 @@ export function DlpView() {
       setFingerprintError('Corrige las huellas marcadas antes de guardar.');
       return;
     }
-    if (rules.length === 0 && parsed.values.length === 0) {
+    if (quarantineExactFingerprints && parsed.values.length === 0) {
+      setFingerprintError('Agrega al menos una huella exacta o desactiva la cuarentena.');
+      return;
+    }
+    if (rules.length === 0 && parsed.values.length === 0 && !usbControl.enabled) {
       setFingerprintError('Activa al menos una regla o agrega un documento.');
       return;
     }
+    const normalizedGroups = normalizeUsbGroups(usbControl.allowedGroups);
+    if (normalizedGroups.some((group) => !group.name || group.name.length > 64)) {
+      setUsbControlError('Cada grupo necesita un nombre de 1 a 64 caracteres.');
+      return;
+    }
+    if (normalizedGroups.some((group) => group.identities.some((sid) => !/^S-1-(?:\d+-){1,14}\d+$/iu.test(sid)))) {
+      setUsbControlError('Usa SIDs de Windows válidos en cada grupo. Puedes consultarlos en Windows con whoami /user o en las propiedades de Active Directory.');
+      return;
+    }
+    if (usbControl.enabled && !usbControl.supportedPlanConfirmed) {
+      setUsbControlError('Confirma que los equipos tienen Defender compatible antes de activar el bloqueo.');
+      return;
+    }
+    if (usbControl.enabled && (normalizedGroups.length === 0 || normalizedGroups.some((group) => group.identities.length === 0))) {
+      setUsbControlError('Agrega al menos un SID a cada grupo permitido antes de activar el bloqueo.');
+      return;
+    }
+    setUsbControlError(null);
     const changes = describeDiff(diff);
     setActionError(null);
     setSaving(true);
@@ -1039,6 +1183,8 @@ export function DlpView() {
         policyVersion: nextVersion(policy.policyVersion),
         enabledRuleIds: rules,
         fingerprintsSha256: parsed.values,
+        quarantineExactFingerprints,
+        usbControl: { ...usbControl, allowedGroups: normalizedGroups },
       });
       applyPolicy(updated);
       setRollout({ revision: updated.revision, changes, at: Date.now() });
@@ -1100,7 +1246,7 @@ export function DlpView() {
   return (
     <B89Page
       title="DLP de endpoints"
-      icon={<FerrispectorMark size={30} />}
+      icon={<FerrispectorMark size={30} basePath={basePath} />}
       actions={canConfigure
         ? wizard.step === 'closed' && <EuiButton fill iconType="plusInCircle" onClick={openWizard}>Conectar un equipo</EuiButton>
         : <EuiBadge color="hollow">Solo lectura</EuiBadge>}
@@ -1164,6 +1310,7 @@ export function DlpView() {
           <EndpointList
             endpoints={endpoints}
             policyRevision={policy?.revision ?? null}
+            usbControlEnabled={policy?.usbControl.enabled ?? false}
             canConfigure={canConfigure}
             onRevoke={(endpoint) => { setRevokeStepUp(false); setRevokeTarget(endpoint); }}
             onConnect={wizard.step === 'closed' ? openWizard : undefined}
@@ -1178,10 +1325,18 @@ export function DlpView() {
               rules={rules}
               fingerprintsText={fingerprintsText}
               fingerprintError={fingerprintError}
+              quarantineExactFingerprints={quarantineExactFingerprints}
               canConfigure={canConfigure}
               onToggle={(id, on) => setRules((current) => (on ? [...current.filter((rule) => rule !== id), id] : current.filter((rule) => rule !== id)))}
               onFingerprintsChange={(text) => { setFingerprintsText(text); setFingerprintError(null); }}
+              onQuarantineChange={setQuarantineExactFingerprints}
               onImport={importFile}
+            />
+            <UsbControlPanel
+              policy={usbControl}
+              canConfigure={canConfigure}
+              validationError={usbControlError}
+              onChange={(next) => { setUsbControl({ ...next, allowedGroups: [...next.allowedGroups] }); setUsbControlError(null); }}
             />
             {canConfigure && (
               <SaveBar
@@ -1212,7 +1367,7 @@ export function DlpView() {
           defaultFocusedButton="cancel"
         >
           <p lang="es-PE" translate="no">
-            El equipo dejará de recibir la política. Ferrispector sigue instalado: para quitarlo, desinstálalo en el equipo.
+            El equipo dejará de recibir la política. RabbitDLP seguirá instalado; para quitarlo, desinstálalo en el equipo.
           </p>
         </EuiConfirmModal>
       )}

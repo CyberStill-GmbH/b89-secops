@@ -9,7 +9,7 @@
  */
 
 import { B89ApiError } from '../api/client';
-import type { DlpEndpoint, DlpEnrollmentStatus, DlpEnrollmentToken, DlpPolicy } from '../api/dlp';
+import type { DlpEndpoint, DlpEnrollmentStatus, DlpEnrollmentToken, DlpPolicy, DlpUsbControlGroup, DlpUsbControlPolicy } from '../api/dlp';
 import { getDlpEnrollmentStatus } from '../api/dlp';
 import type { B89ApiClient } from '../api/client';
 
@@ -89,12 +89,16 @@ export interface PolicyDiff {
   readonly disabled: readonly string[];
   readonly fingerprintsAdded: number;
   readonly fingerprintsRemoved: number;
+  readonly quarantineChanged: boolean;
+  readonly usbControlChanged: boolean;
 }
 
 export function policyDiff(
-  policy: Pick<DlpPolicy, 'enabledRuleIds' | 'fingerprintsSha256'>,
+  policy: Pick<DlpPolicy, 'enabledRuleIds' | 'fingerprintsSha256' | 'quarantineExactFingerprints' | 'usbControl'>,
   rules: readonly string[],
   fingerprints: readonly string[],
+  quarantineExactFingerprints = policy.quarantineExactFingerprints,
+  usbControl: DlpUsbControlPolicy = policy.usbControl,
 ): PolicyDiff {
   const before = new Set(policy.enabledRuleIds);
   const after = new Set(rules);
@@ -106,11 +110,14 @@ export function policyDiff(
     disabled: order([...before].filter((id) => !after.has(id))),
     fingerprintsAdded: [...hashesAfter].filter((hash) => !hashesBefore.has(hash)).length,
     fingerprintsRemoved: [...hashesBefore].filter((hash) => !hashesAfter.has(hash)).length,
+    quarantineChanged: quarantineExactFingerprints !== policy.quarantineExactFingerprints,
+    usbControlChanged: JSON.stringify(usbControl) !== JSON.stringify(policy.usbControl),
   };
 }
 
 export function hasChanges(diff: PolicyDiff): boolean {
-  return diff.enabled.length + diff.disabled.length + diff.fingerprintsAdded + diff.fingerprintsRemoved > 0;
+  return diff.enabled.length + diff.disabled.length + diff.fingerprintsAdded + diff.fingerprintsRemoved > 0 ||
+    diff.quarantineChanged || diff.usbControlChanged;
 }
 
 function plural(count: number, one: string, many: string): string {
@@ -124,7 +131,17 @@ export function describeDiff(diff: PolicyDiff): string[] {
   if (diff.disabled.length) lines.push(`Desactiva: ${diff.disabled.map(ruleLabel).join(', ')}`);
   if (diff.fingerprintsAdded) lines.push(`Agrega ${plural(diff.fingerprintsAdded, 'documento', 'documentos')}`);
   if (diff.fingerprintsRemoved) lines.push(`Quita ${plural(diff.fingerprintsRemoved, 'documento', 'documentos')}`);
+  if (diff.quarantineChanged) lines.push('Cambia la cuarentena de huellas exactas');
+  if (diff.usbControlChanged) lines.push('Cambia los grupos y el bloqueo USB');
   return lines;
+}
+
+export function normalizeUsbGroups(groups: readonly DlpUsbControlGroup[]): DlpUsbControlGroup[] {
+  return groups.map((group) => ({
+    id: group.id.toLowerCase(),
+    name: group.name.trim(),
+    identities: [...new Set(group.identities.map((identity) => identity.trim().toUpperCase()).filter(Boolean))].sort(),
+  }));
 }
 
 // ------------------------------------------------------------------ equipos
@@ -281,7 +298,7 @@ export function installCommand(input: InstallInput): string {
   if (input.os === 'windows') {
     return [
       '.\\install-windows-endpoint.ps1',
-      '-FerrispectorPackage .\\Ferrispector-Windows-x64.zip',
+      '-RabbitDlpPackage .\\RabbitDLP-windows-x64.zip',
       `-ExpectedPackageSha256 ${input.packageSha256.trim().toLowerCase() || 'SHA256_DEL_PAQUETE'}`,
       `-WazuhManager ${quotePowerShell(input.wazuhManager.trim() || 'SERVIDOR_WAZUH')}`,
       `-WatchRoot ${quotePowerShell(root)}`,

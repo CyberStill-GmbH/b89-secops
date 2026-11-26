@@ -54,6 +54,9 @@ class MemoryDlpStore implements DlpPolicyStore {
       appliedRevision: 0,
       credentialVersion: 0,
       policyVersion: null,
+      usbControlStatus: null,
+      usbControlCode: null,
+      usbControlCheckedAt: null,
       enrollmentExpiresAt: input.expiresAt,
     });
     return true;
@@ -93,10 +96,17 @@ class MemoryDlpStore implements DlpPolicyStore {
     return { ...row };
   }
 
-  public async acknowledgePolicy(input: { endpointId: string; revision: number; policyVersion: string; at: Date }) {
+  public async acknowledgePolicy(input: { endpointId: string; tenantId: string; revision: number; policyVersion: string; usbControlStatus: string; usbControlCode: string | null; at: Date }) {
     const row = this.rows.get(input.endpointId);
     if (!row || row.revokedAt) return false;
-    Object.assign(row, { appliedRevision: input.revision, policyVersion: input.policyVersion, lastSeenAt: input.at });
+    Object.assign(row, {
+      appliedRevision: input.revision,
+      policyVersion: input.policyVersion,
+      usbControlStatus: input.usbControlStatus,
+      usbControlCode: input.usbControlCode,
+      usbControlCheckedAt: input.at,
+      lastSeenAt: input.at,
+    });
     return true;
   }
 
@@ -218,6 +228,8 @@ describe('conexión de equipos DLP', () => {
       policyVersion: '1.1.0',
       enabledRuleIds: ['B89_CRED_GITHUB_TOKEN'],
       fingerprintsSha256: [],
+      quarantineExactFingerprints: false,
+      usbControl: { enabled: false, supportedPlanConfirmed: false, allowedGroups: [] },
     });
     await admin.controller.revokeEndpoint(console(), issued.id);
 
@@ -228,6 +240,8 @@ describe('conexión de equipos DLP', () => {
       policyVersion: '1.1.0',
       enabledRuleIds: ['B89_CRED_GITHUB_TOKEN'],
       fingerprintsSha256: [],
+      quarantineExactFingerprints: false,
+      usbControl: { enabled: false, supportedPlanConfirmed: false, allowedGroups: [] },
     }))).toBe(403);
   });
 
@@ -248,6 +262,8 @@ describe('conexión de equipos DLP', () => {
       policyVersion: '1.1.0',
       enabledRuleIds: ['B89_CRED_GITHUB_TOKEN'],
       fingerprintsSha256: [],
+      quarantineExactFingerprints: false,
+      usbControl: { enabled: false, supportedPlanConfirmed: false, allowedGroups: [] },
     });
     expect(saved.revision).toBe(1);
 
@@ -256,12 +272,20 @@ describe('conexión de equipos DLP', () => {
     expect(list.onlineWindowSeconds).toBe(120);
 
     const policy = await controller.getAgentPolicy(agent(endpointCredential));
-    await controller.acknowledgePolicy(agent(endpointCredential), { revision: policy.revision, policyVersion: policy.policyVersion });
+    await controller.acknowledgePolicy(agent(endpointCredential), {
+      revision: policy.revision,
+      policyVersion: policy.policyVersion,
+      usbControl: { status: 'disabled', code: 'POLICY_DISABLED' },
+    });
     list = await controller.listEndpoints(console());
     expect(list.items[0]).toMatchObject({ status: 'current', currentRevision: 1, currentPolicyVersion: '1.1.0' });
 
     // Un acuse de una revisión que ya no es la vigente se rechaza.
-    expect(await failure(() => controller.acknowledgePolicy(agent(endpointCredential), { revision: 0, policyVersion: '1.0.0' }))).toBe(409);
+    expect(await failure(() => controller.acknowledgePolicy(agent(endpointCredential), {
+      revision: 0,
+      policyVersion: '1.0.0',
+      usbControl: { status: 'disabled', code: 'POLICY_DISABLED' },
+    }))).toBe(409);
 
     // Sin latido por más de 2 min: sin conexión. Volver a consultar lo pone en línea.
     advance(121_000);

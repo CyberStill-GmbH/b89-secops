@@ -1,8 +1,11 @@
-# Runbook · DLP de endpoints (Ferrispector)
+# Runbook · DLP de endpoints (RabbitDLP)
 
-Reglas 101110–101116 (`infra/wazuh/endpoint/rules/b89_endpoint_rules.xml`). Ferrispector detecta; no
-bloquea, no mueve y no borra archivos. Los eventos traen el equipo, la regla, la extensión, el tamaño y la
-huella SHA-256 del archivo; nunca la ruta ni el contenido.
+Reglas 101110–101116 (`infra/wazuh/endpoint/rules/b89_endpoint_rules.xml`). Las coincidencias de reglas de
+contenido generan alertas y no cambian el archivo. La política puede poner en cuarentena una coincidencia
+SHA-256 exacta de la lista aprobada. En Windows también puede denegar almacenamiento USB a los SIDs que el
+SOC no autorice mediante Device Control de Microsoft Defender. El bloqueo USB está apagado por defecto y
+no bloquea el inicio de sesión de la cuenta. macOS y Linux solo reportan; no aplican esta política USB.
+Los eventos incluyen equipo, regla, extensión, tamaño y huella SHA-256; nunca envían ruta ni contenido.
 
 ## Instalar un equipo
 
@@ -27,10 +30,17 @@ auditoría después de crearla, la API anula la clave para que no quede un secre
 
 1. Abre la alerta y mira «Por qué saltó»: qué tipo de dato se encontró y en qué equipo.
 2. Abre **DLP de endpoints** y revisa si el equipo está «Protegido» y con la revisión vigente.
-3. Contacta a la persona que usa el equipo y pídele que ubique el archivo por su huella SHA-256 (la consola la muestra en el detalle técnico).
-4. Credencial real: rótala o revócala en el servicio de origen y revisa su uso reciente; luego borra el archivo.
-5. Dato personal o documento protegido: confirma si ese equipo y esa carpeta pueden guardarlo; si no, muévelo a la ubicación aprobada.
-6. Clasifica la alerta con la conclusión y una nota de lo que hiciste.
+3. Revisa el estado de la acción. Si una huella exacta aparece como `quarantined`, anota su ID; el archivo quedó en la cuarentena local protegida. Si aparece `failed`, coordina una revisión local como administrador.
+4. Para restaurar un archivo, usa la herramienta de RabbitDLP en Windows (`restore-quarantined-file.ps1 -List` y luego `-Id <id>`) o los comandos que muestra el desinstalador en macOS/Linux. La restauración valida el hash y no sobrescribe un archivo existente.
+5. Credencial real: rótala o revócala en el servicio de origen y revisa su uso reciente; si no se aplicó cuarentena, elimina el archivo según el procedimiento de respuesta.
+6. Dato personal o documento protegido: confirma si ese equipo y esa carpeta pueden guardarlo; si no, muévelo a la ubicación aprobada.
+7. Clasifica la alerta con la conclusión y una nota de lo que hiciste.
+
+## Configurar y resolver el control USB
+
+En **DLP de endpoints → Control de USB**, el SOC crea grupos de autorización y agrega un SID de Windows por línea. El SID puede pertenecer a un usuario o a un grupo local/de Active Directory. RabbitDLP no sincroniza membresías; usa los SIDs que recibe Windows. Antes de guardar el bloqueo, el operador debe verificar una licencia compatible de Defender y confirmar que no existe otra política de Device Control. La consola no valida la licencia. En cada equipo, revisa el estado reportado: `active`, `pending`, `conflict`, `unsupported` o `error`. `active` significa que Defender confirmó la política, no que se haya probado el bloqueo físico.
+
+Los eventos de dispositivos denegados se consultan en **Microsoft Defender → Reports → Endpoints → Device control** o Advanced Hunting (`DeviceEvents` con `ActionType == "RemovableStoragePolicyTriggered"`). B89 recibe el estado de la política, pero todavía no ingiere esos eventos detallados. Para verlos como alertas en el SIEM, falta conectar y validar la fuente de eventos de Defender.
 
 ## 101110–101112 · Hallazgos
 

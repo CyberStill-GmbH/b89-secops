@@ -8,6 +8,7 @@ import os
 import platform
 import re
 import secrets
+import shutil
 import stat
 import subprocess
 import sys
@@ -33,6 +34,14 @@ ALLOWED_RULES = DEFAULT_RULES | {
 
 def utc_now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def sha256_path(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def atomic_json(path, value):
@@ -103,6 +112,107 @@ def policy_hash(config, enabled, fingerprints, version):
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def quarantine_exact_file(config, path, expected_hash, info):
+    root = Path(config["quarantine_path"])
+    objects = root / "objects"
+    records = root / "records"
+    objects.mkdir(parents=True, exist_ok=True, mode=0o700)
+    records.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(root, 0o700)
+    os.chmod(objects, 0o700)
+    os.chmod(records, 0o700)
+    item_id = uuid.uuid4().hex
+    object_path = objects / (item_id + ".bin")
+    record_path = records / (item_id + ".json")
+    temporary = objects / ("." + item_id + ".tmp")
+    source = path.resolve(strict=True)
+    try:
+        if sha256_path(source) != expected_hash:
+            return {"status": "failed", "id": None, "code": "FILE_CHANGED"}
+        digest = hashlib.sha256()
+        with open(source, "rb") as original, os.fdopen(os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as copy:
+            for chunk in iter(lambda: original.read(1024 * 1024), b""):
+                copy.write(chunk)
+                digest.update(chunk)
+            copy.flush()
+            os.fsync(copy.fileno())
+        if digest.hexdigest() != expected_hash:
+            temporary.unlink(missing_ok=True)
+            return {"status": "failed", "id": None, "code": "QUARANTINE_VERIFY_FAILED"}
+        os.replace(temporary, object_path)
+        manifest = {
+            "id": item_id,
+            "sha256": expected_hash,
+            "original_path": str(source),
+            "original_mode": stat.S_IMODE(info.st_mode),
+            "original_uid": info.st_uid,
+            "original_gid": info.st_gid,
+            "file_size_bytes": info.st_size,
+            "created_at": utc_now(),
+            "state": "pending-delete",
+        }
+        atomic_json(record_path, manifest)
+        current = source.stat(follow_symlinks=False)
+        if (sha256_path(source) != expected_hash or current.st_ino != info.st_ino or
+                current.st_dev != info.st_dev or current.st_size != info.st_size or current.st_mtime_ns != info.st_mtime_ns):
+            object_path.unlink(missing_ok=True)
+            record_path.unlink(missing_ok=True)
+            return {"status": "failed", "id": None, "code": "FILE_CHANGED"}
+        source.unlink()
+        manifest["state"] = "quarantined"
+        try:
+            atomic_json(record_path, manifest)
+        except OSError:
+            pass  # The pending-delete manifest is already sufficient for recovery.
+        return {"status": "quarantined", "id": item_id, "code": "QUARANTINED"}
+    except OSError:
+        temporary.unlink(missing_ok=True)
+        if not record_path.exists():
+            object_path.unlink(missing_ok=True)
+        return {"status": "failed", "id": None, "code": "QUARANTINE_IO_FAILED"}
+
+
+def restore_quarantine(config, item_id):
+    if not re.fullmatch(r"[a-f0-9]{32}", item_id):
+        raise ValueError("quarantine ID invalid")
+    root = Path(config["quarantine_path"])
+    object_path = root / "objects" / (item_id + ".bin")
+    record_path = root / "records" / (item_id + ".json")
+    record = load_json(record_path)
+    if (record.get("id") != item_id or record.get("state") not in {"pending-delete", "quarantined"}
+            or not re.fullmatch(r"[a-f0-9]{64}", str(record.get("sha256", ""))) or not object_path.is_file()):
+        raise ValueError("quarantine record invalid")
+    if sha256_path(object_path) != record["sha256"]:
+        raise ValueError("quarantined file hash mismatch")
+    destination = Path(record["original_path"])
+    parent = destination.parent
+    if not destination.is_absolute() or not parent.is_dir() or parent.is_symlink() or destination.exists() or destination.is_symlink():
+        raise FileExistsError("original destination is missing or already occupied")
+    # Reject any symlink component so a changed mount/path can't redirect the restore.
+    current = parent
+    while current != current.parent:
+        if current.is_symlink():
+            raise ValueError("original destination now traverses a symbolic link")
+        current = current.parent
+    temporary = parent / (".rabbitdlp-restore-" + item_id + ".tmp")
+    try:
+        with open(object_path, "rb") as source, os.fdopen(os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as output:
+            shutil.copyfileobj(source, output, 1024 * 1024)
+            output.flush()
+            os.fsync(output.fileno())
+        if sha256_path(temporary) != record["sha256"]:
+            raise ValueError("restored copy hash mismatch")
+        os.chmod(temporary, int(record["original_mode"]) & 0o777)
+        os.chown(temporary, int(record["original_uid"]), int(record["original_gid"]))
+        os.link(temporary, destination, follow_symlinks=False)
+        temporary.unlink()
+        object_path.unlink()
+        record_path.unlink()
+        return str(destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def sync_policy(config, state):
     url = config.get("control_plane_url")
     token = config.get("agent_credential")
@@ -116,8 +226,13 @@ def sync_policy(config, state):
         version = policy.get("policyVersion")
         enabled = policy.get("enabledRuleIds")
         fingerprints = policy.get("fingerprintsSha256")
+        quarantine = policy.get("quarantineExactFingerprints")
+        usb_control = policy.get("usbControl")
         if (not isinstance(revision, int) or revision < 0 or not isinstance(version, str) or len(version) > 64
                 or not isinstance(enabled, list) or not isinstance(fingerprints, list)
+                or not isinstance(quarantine, bool) or not isinstance(usb_control, dict)
+                or not isinstance(usb_control.get("enabled"), bool)
+                or not isinstance(usb_control.get("allowedGroups"), list)
                 or len(enabled) > len(ALLOWED_RULES) or any(rule not in ALLOWED_RULES for rule in enabled)
                 or len(fingerprints) > 100000 or any(not isinstance(item, str) or not re.fullmatch(r"[a-fA-F0-9]{64}", item) for item in fingerprints)):
             raise ValueError("policy invalid")
@@ -131,6 +246,7 @@ def sync_policy(config, state):
         os.chmod(temp_path, 0o600)
         os.replace(temp_path, fingerprint_file)
         state.update({"revision": revision, "policy_version": version, "enabled_rule_ids": enabled,
+                      "quarantine_exact_fingerprints": quarantine,
                       "policy_sha256": policy_hash(config, enabled, fingerprints, version)})
         # Rescan before acknowledging: if the ack fails, the next sync sees the same revision as
         # "unchanged", so clearing afterwards would leave files unscanned with the new policy.
@@ -138,7 +254,8 @@ def sync_policy(config, state):
             state["files"] = {}
         state["remote_policy_ready"] = True
         request_json(url.rstrip("/") + "/api/dlp/agent/ack", method="POST", token=token,
-                     body={"revision": revision, "policyVersion": version})
+                     body={"revision": revision, "policyVersion": version,
+                           "usbControl": {"status": "not-applicable", "code": "NOT_WINDOWS"}})
         return state
     except Exception:
         emit(config, {"event_type": "policy_sync_error", "error_code": "DLP_POLICY_UNAVAILABLE"})
@@ -162,11 +279,13 @@ def process_file(config, path, state):
                 digest.update(chunk)
         file_hash = digest.hexdigest()
         extension = path.suffix.lower()[:24]
-        if file_hash in read_fingerprints(config["fingerprints_path"]):
-            emit(config, {"event_type": "match", "endpoint": platform.node(),
-                          "yara_rule_id": "B89_DLP_EXACT_FILE_FINGERPRINT", "file_sha256": file_hash,
-                          "file_extension": extension, "file_size_bytes": info.st_size,
-                          "policy_sha256": state["policy_sha256"]})
+        fingerprint_match = file_hash in read_fingerprints(config["fingerprints_path"])
+        fingerprint_event = None
+        if fingerprint_match:
+            fingerprint_event = {"event_type": "match", "endpoint": platform.node(),
+                                 "yara_rule_id": "B89_DLP_EXACT_FILE_FINGERPRINT", "file_sha256": file_hash,
+                                 "file_extension": extension, "file_size_bytes": info.st_size,
+                                 "policy_sha256": state["policy_sha256"]}
         result = subprocess.run([config["yara_path"], "scan", "--compiled-rules", config["rules_path"],
                                  "--output-format=ndjson", "-m", "-g", str(path)],
                                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
@@ -187,6 +306,15 @@ def process_file(config, path, state):
                 except (ValueError, TypeError, AttributeError):
                     emit(config, {"event_type": "scan_error", "file_sha256": file_hash,
                                   "file_extension": extension, "error_code": "YARA_X_OUTPUT_INVALID"})
+        if fingerprint_event:
+            if state.get("quarantine_exact_fingerprints"):
+                result = quarantine_exact_file(config, path, file_hash, info)
+                fingerprint_event.update({"quarantine_status": result["status"], "action_code": result["code"]})
+                if result["id"]:
+                    fingerprint_event["quarantine_id"] = result["id"]
+            else:
+                fingerprint_event["quarantine_status"] = "disabled"
+            emit(config, fingerprint_event)
         state["files"][key] = signature
     except (OSError, ValueError, subprocess.SubprocessError):
         emit(config, {"event_type": "scan_error", "error_code": "FILE_SCAN_FAILED"})
@@ -250,7 +378,7 @@ def enroll(config_path, url):
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password or parsed.query or parsed.fragment:
         raise SystemExit("La URL del servicio debe ser HTTPS y no incluir credenciales ni parámetros.")
-    token = getpass.getpass("Clave de instalación de Ferrispector (entrada oculta, se usa una vez): ").strip()
+    token = getpass.getpass("Clave de instalación de RabbitDLP (entrada oculta, se usa una vez): ").strip()
     if not token:
         raise SystemExit("No se proporcionó la clave de instalación.")
     agent_id = uuid.uuid4().hex[:16]
@@ -276,7 +404,7 @@ def enroll(config_path, url):
     endpoint_credential = ""
     print("Equipo inscrito; credencial exclusiva guardada con permisos solo para administrador.")
 def main():
-    parser = argparse.ArgumentParser(description="B89 Ferrispector")
+    parser = argparse.ArgumentParser(description="RabbitDLP para endpoints de B89")
     sub = parser.add_subparsers(dest="action", required=True)
     initialize = sub.add_parser("init")
     initialize.add_argument("--config", required=True)
@@ -289,6 +417,11 @@ def main():
     enrollment = sub.add_parser("enroll")
     enrollment.add_argument("--config", required=True)
     enrollment.add_argument("--url", required=True)
+    restore = sub.add_parser("restore")
+    restore.add_argument("--config", required=True)
+    restore.add_argument("--id", required=True)
+    listing = sub.add_parser("list")
+    listing.add_argument("--config", required=True)
     args = parser.parse_args()
     if args.action == "init":
         if os.geteuid() != 0:
@@ -304,7 +437,8 @@ def main():
         data = Path(args.data)
         config = {"schema_version": 2, "rules_path": str(Path(args.release) / "policy/dlp-rules.yarc"),
                   "fingerprints_path": str(data / "fingerprints.sha256"), "events_path": str(data / "events.jsonl"),
-                  "state_path": str(data / "state.json"), "yara_path": str(Path(args.release) / "bin/yr"),
+                  "state_path": str(data / "state.json"), "quarantine_path": str(data / "quarantine"),
+                  "yara_path": str(Path(args.release) / "bin/yr"),
                   "watch_roots": roots, "include_subdirectories": True, "reconcile_interval_minutes": 1}
         import shutil
         shutil.copy2(Path(args.release, 'policy/fingerprints.sha256'), data / 'fingerprints.sha256')
@@ -314,8 +448,36 @@ def main():
         print("Configuración local creada.")
     elif args.action == "run":
         run(args.config)
-    else:
+    elif args.action == "enroll":
         enroll(args.config, args.url)
+    elif args.action == "restore":
+        if os.geteuid() != 0:
+            raise SystemExit("La restauración necesita permisos de administrador.")
+        config = load_json(args.config)
+        try:
+            print("Restaurado:", restore_quarantine(config, args.id))
+        except (OSError, ValueError, KeyError) as error:
+            raise SystemExit("No se pudo restaurar el archivo de cuarentena: " + str(error))
+    else:
+        if os.geteuid() != 0:
+            raise SystemExit("La lista de cuarentena requiere permisos de administrador.")
+        config = load_json(args.config)
+        records = Path(config["quarantine_path"]) / "records"
+        if not records.is_dir():
+            print("No hay elementos en cuarentena.")
+            return
+        found = False
+        for record_path in sorted(records.glob("*.json")):
+            record = load_json(record_path)
+            if (not re.fullmatch(r"[a-f0-9]{32}", str(record.get("id", ""))) or
+                    not re.fullmatch(r"[a-f0-9]{64}", str(record.get("sha256", "")))):
+                raise SystemExit("El registro de cuarentena no es válido.")
+            print("\t".join((record["id"], str(record.get("state", "desconocido")),
+                             record["sha256"], str(record.get("file_size_bytes", "")),
+                             str(record.get("created_at", "")))))
+            found = True
+        if not found:
+            print("No hay elementos en cuarentena.")
 
 
 if __name__ == "__main__":

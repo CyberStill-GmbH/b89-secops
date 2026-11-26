@@ -23,6 +23,8 @@ const POLICY: DlpPolicy = {
   policyVersion: '1.6.0',
   enabledRuleIds: DLP_RULES.filter((rule) => !rule.advanced).map((rule) => rule.id),
   fingerprintsSha256: [],
+  quarantineExactFingerprints: false,
+  usbControl: { enabled: false, supportedPlanConfirmed: false, allowedGroups: [] },
   updatedAt: '2026-11-22T14:00:00.000Z',
 };
 

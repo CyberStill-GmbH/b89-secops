@@ -201,7 +201,7 @@ export class B89ApiClient {
       throw error;
     }
     const disposition = response.headers.get('content-disposition') ?? '';
-    const filename = /filename="(Ferrispector-[a-z]+-(?:x64|arm64)\.zip)"/iu.exec(disposition)?.[1];
+    const filename = /filename="(RabbitDLP-[a-z]+-(?:x64|arm64)\.zip)"/iu.exec(disposition)?.[1];
     const sha256 = response.headers.get('x-content-sha256') ?? '';
     if (!filename || !/^[0-9a-f]{64}$/iu.test(sha256) || !(response.headers.get('content-type') ?? '').toLowerCase().includes('application/zip')) {
       throw new B89ApiError('DEPENDENCY_DEGRADED', response.status, null);

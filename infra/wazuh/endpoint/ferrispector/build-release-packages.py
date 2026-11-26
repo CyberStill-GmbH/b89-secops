@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build reproducible, integrity-checked Ferrispector ZIPs for supported endpoints."""
+"""Build reproducible, integrity-checked RabbitDLP endpoint ZIPs for supported platforms."""
 
 from __future__ import annotations
 
@@ -82,6 +82,9 @@ def build_package(platform: str, expected: str, kind: str,
     if is_windows:
         files["ferrispector.ps1"] = ROOT / "ferrispector.ps1"
         files["install-windows-endpoint.ps1"] = ROOT / "install-windows-endpoint.ps1"
+        files["rabbitdlp-device-control.ps1"] = ROOT / "rabbitdlp-device-control.ps1"
+        files["rabbitdlp-quarantine.ps1"] = ROOT / "rabbitdlp-quarantine.ps1"
+        files["restore-quarantined-file.ps1"] = ROOT / "restore-quarantined-file.ps1"
     else:
         files["README.md"] = ROOT / "README.md"
         files["policy/README.md"] = ROOT / "policy" / "README.md"
@@ -89,7 +92,7 @@ def build_package(platform: str, expected: str, kind: str,
         files["install-unix-endpoint.sh"] = ROOT / "install-unix-endpoint.sh"
 
     manifest = {
-        "product": "B89 Ferrispector",
+        "product": "RabbitDLP",
         "engine": "YARA-X CLI",
         "engineVersion": VERSION,
         "platform": platform.split("-", 1)[0],
@@ -103,7 +106,7 @@ def build_package(platform: str, expected: str, kind: str,
         "engineBinarySha256": sha256(binary.read_bytes()),
         "rulesSha256": sha256(compiled_policy.read_bytes()),
         "licenseNotice": "THIRD-PARTY-NOTICES.txt",
-        "installMode": "detection-only; rule pack and monitored roots are operator supplied",
+        "installMode": "detection, exact-fingerprint quarantine and optional Defender device control; monitored roots are operator supplied",
     }
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
         for archive_name, path in files.items():
@@ -140,7 +143,7 @@ def main() -> None:
             suffix = ".exe" if kind == "windows" else ""
             binary = work / f"{platform}-yr{suffix}"
             binary_from_archive(name, downloaded[platform], kind, binary)
-            package = output / f"Ferrispector-{platform}.zip"
+            package = output / f"RabbitDLP-{platform}.zip"
             build_package(platform, expected, kind, binary,
                           compiled_policy, policy_sha, catalog_sha, package)
             print(f"Built {package.name} sha256={sha256(package.read_bytes())}")

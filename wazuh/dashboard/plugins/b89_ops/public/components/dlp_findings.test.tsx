@@ -101,12 +101,11 @@ describe('DLP en el Resumen del SOC', () => {
   });
 });
 
-describe('marca y explicaciones de Ferrispector', () => {
-  it('el cangrejo es un SVG accesible y propio (sin archivos externos)', () => {
+describe('marca y explicaciones de RabbitDLP', () => {
+  it('usa el conejo detective como marca accesible', () => {
     const html = renderToStaticMarkup(<FerrispectorMark size={24} />);
-    expect(html).toContain('role="img"');
-    expect(html).toContain('<title>Ferrispector</title>');
-    expect(html).not.toMatch(/<image|href=/u);
+    expect(html).toContain('alt="RabbitDLP"');
+    expect(html).toContain('src="/ui/b89/rabbitdlp.png"');
   });
 
   it('una credencial encontrada explica qué pasó, en qué equipo y qué hacer', () => {

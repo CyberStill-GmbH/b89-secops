@@ -80,7 +80,12 @@ describe('huellas y versión', () => {
 describe('cambios sin guardar', () => {
   it('dice qué reglas se activan o desactivan y cuántos documentos cambian', () => {
     const diff = policyDiff(
-      { enabledRuleIds: ['B89_CRED_GITHUB_TOKEN', 'B89_CRED_SLACK_TOKEN'], fingerprintsSha256: [HASH_A] },
+      {
+        enabledRuleIds: ['B89_CRED_GITHUB_TOKEN', 'B89_CRED_SLACK_TOKEN'],
+        fingerprintsSha256: [HASH_A],
+        quarantineExactFingerprints: false,
+        usbControl: { enabled: false, supportedPlanConfirmed: false, allowedGroups: [] },
+      },
       ['B89_CRED_GITHUB_TOKEN', 'B89_PII_PERU_DNI_CONTEXTUAL'],
       [HASH_B],
     );
@@ -89,6 +94,8 @@ describe('cambios sin guardar', () => {
       disabled: ['B89_CRED_SLACK_TOKEN'],
       fingerprintsAdded: 1,
       fingerprintsRemoved: 1,
+      quarantineChanged: false,
+      usbControlChanged: false,
     });
     expect(describeDiff(diff)).toEqual([
       'Activa: Números de DNI',
@@ -148,7 +155,7 @@ describe('comando de instalación', () => {
     const input = { ...base, os: 'windows' as const, watchRoot: "C:\\Datos\\O'Brien", wazuhManager: 'wazuh.b89.io', packageSha256: HASH_A.toUpperCase() };
     const command = installCommand(input);
     expect(command).toBe(
-      `.\\install-windows-endpoint.ps1 -FerrispectorPackage .\\Ferrispector-Windows-x64.zip -ExpectedPackageSha256 ${HASH_A} -WazuhManager 'wazuh.b89.io' -WatchRoot 'C:\\Datos\\O''Brien' -DlpControlPlaneUrl 'https://dev.security.b89.io'`,
+      `.\\install-windows-endpoint.ps1 -RabbitDlpPackage .\\RabbitDLP-windows-x64.zip -ExpectedPackageSha256 ${HASH_A} -WazuhManager 'wazuh.b89.io' -WatchRoot 'C:\\Datos\\O''Brien' -DlpControlPlaneUrl 'https://dev.security.b89.io'`,
     );
     expect(missingInstallFields(input)).toEqual([]);
   });

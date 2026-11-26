@@ -1322,6 +1322,9 @@ model DlpEndpoint {
   appliedRevision     Int       @default(0) @map("applied_revision")
   credentialVersion   Int       @default(0) @map("credential_version")
   policyVersion       String?   @map("policy_version") @db.VarChar(32)
+  usbControlStatus    String?   @map("usb_control_status") @db.Text
+  usbControlCode      String?   @map("usb_control_code") @db.Text
+  usbControlCheckedAt DateTime? @map("usb_control_checked_at") @db.Timestamptz(3)
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([tenantId, lastSeenAt(sort: Desc)], map: "dlp_endpoints_tenant_seen_idx")

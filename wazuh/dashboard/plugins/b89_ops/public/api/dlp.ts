@@ -11,8 +11,26 @@ export interface DlpPolicy {
   readonly policyVersion: string;
   readonly enabledRuleIds: readonly string[];
   readonly fingerprintsSha256: readonly string[];
+  readonly quarantineExactFingerprints: boolean;
+  readonly usbControl: DlpUsbControlPolicy;
   readonly updatedAt: string | null;
 }
+
+export interface DlpUsbControlGroup {
+  readonly id: string;
+  readonly name: string;
+  /** Windows SID for local/AD identities, or Entra object ID for cloud identities. */
+  readonly identities: readonly string[];
+}
+
+export interface DlpUsbControlPolicy {
+  readonly enabled: boolean;
+  readonly supportedPlanConfirmed: boolean;
+  readonly allowedGroups: readonly DlpUsbControlGroup[];
+}
+
+export type DlpUsbControlStatus =
+  | 'unknown' | 'disabled' | 'active' | 'pending' | 'unsupported' | 'conflict' | 'error' | 'not-applicable';
 
 export type DlpEndpointStatus = 'current' | 'offline' | 'updating' | 're-enrollment-required' | 'revoked';
 
@@ -25,6 +43,9 @@ export interface DlpEndpoint {
   readonly lastSeenAt: string | null;
   readonly currentRevision: number | null;
   readonly currentPolicyVersion: string | null;
+  readonly usbControlStatus?: DlpUsbControlStatus;
+  readonly usbControlCode?: string | null;
+  readonly usbControlCheckedAt?: string | null;
   readonly revokedAt?: string | null;
 }
 
@@ -64,6 +85,8 @@ export async function saveDlpPolicy(
     readonly policyVersion: string;
     readonly enabledRuleIds: readonly string[];
     readonly fingerprintsSha256: readonly string[];
+    readonly quarantineExactFingerprints: boolean;
+    readonly usbControl: DlpUsbControlPolicy;
   },
 ): Promise<DlpPolicy> {
   return api.put<DlpPolicy>('/dlp/policy', input);

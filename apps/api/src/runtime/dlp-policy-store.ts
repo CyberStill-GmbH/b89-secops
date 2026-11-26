@@ -17,6 +17,9 @@ export interface DlpEndpointRecord {
   readonly appliedRevision: number;
   readonly credentialVersion: number;
   readonly policyVersion: string | null;
+  readonly usbControlStatus: string | null;
+  readonly usbControlCode: string | null;
+  readonly usbControlCheckedAt: Date | null;
   readonly enrollmentExpiresAt: Date;
 }
 
@@ -58,6 +61,8 @@ export interface DlpPolicyStore {
     tenantId: string;
     revision: number;
     policyVersion: string;
+    usbControlStatus: string;
+    usbControlCode: string | null;
     at: Date;
   }): Promise<boolean>;
   endpoints(tenantId: string): Promise<readonly DlpEndpointRecord[]>;

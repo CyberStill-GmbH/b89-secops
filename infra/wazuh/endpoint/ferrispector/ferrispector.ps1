@@ -13,6 +13,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+. (Join-Path $PSScriptRoot 'rabbitdlp-device-control.ps1')
+. (Join-Path $PSScriptRoot 'rabbitdlp-quarantine.ps1')
 
 function Write-FerrispectorEvent {
   param([Parameter(Mandatory = $true)][hashtable] $Event)
@@ -30,8 +32,9 @@ function Invoke-FerrispectorScan {
   if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { return }
 
   $fileHash = (Get-FileHash -LiteralPath $fullPath -Algorithm SHA256).Hash.ToLowerInvariant()
+  $fingerprintEvent = $null
   if ($script:FingerprintSet.ContainsKey($fileHash)) {
-    Write-FerrispectorEvent @{
+    $fingerprintEvent = @{
       integration = 'b89_ferrispector'
       event_type = 'match'
       endpoint = $env:COMPUTERNAME
@@ -43,6 +46,7 @@ function Invoke-FerrispectorScan {
     }
   }
 
+  $ruleEvents = [Collections.Generic.List[hashtable]]::new()
   $output = @(& $script:YaraPath scan --compiled-rules $script:RulesPath --output-format=ndjson -m -g $fullPath 2>$null)
   $exitCode = $LASTEXITCODE
   if ($exitCode -ne 0) {
@@ -53,10 +57,7 @@ function Invoke-FerrispectorScan {
       file_extension = $item.Extension.ToLowerInvariant()
       error_code = 'YARA_X_SCAN_FAILED'
     }
-    return
-  }
-
-  foreach ($line in $output) {
+  } else { foreach ($line in $output) {
     if (-not ($line -is [string]) -or [string]::IsNullOrWhiteSpace($line)) { continue }
     try { $result = $line | ConvertFrom-Json -ErrorAction Stop }
     catch {
@@ -73,7 +74,7 @@ function Invoke-FerrispectorScan {
     $ruleIds = @($ruleIds | Where-Object { $script:EnabledRuleIds.ContainsKey([string]$_) })
     if ($ruleIds.Count -eq 0) { continue }
     foreach ($ruleId in $ruleIds) {
-      Write-FerrispectorEvent @{
+      $ruleEvents.Add(@{
         integration = 'b89_ferrispector'
         event_type = 'match'
         endpoint = $env:COMPUTERNAME
@@ -82,15 +83,28 @@ function Invoke-FerrispectorScan {
         file_extension = $item.Extension.ToLowerInvariant()
         file_size_bytes = [long]$item.Length
         policy_sha256 = $script:PolicyHash
-      }
+      })
     }
+  } }
+
+  if ($fingerprintEvent) {
+    if ($script:QuarantineExactFingerprints) {
+      $result = Move-RabbitDlpFileToQuarantine -Path $fullPath -Sha256 $fileHash -DataRoot $script:DataRoot
+      $fingerprintEvent['quarantine_status'] = $result.status
+      if ($result.id) { $fingerprintEvent['quarantine_id'] = $result.id }
+      $fingerprintEvent['action_code'] = $result.code
+    } else { $fingerprintEvent['quarantine_status'] = 'disabled' }
+    Write-FerrispectorEvent $fingerprintEvent
   }
+  foreach ($event in $ruleEvents) { Write-FerrispectorEvent $event }
 }
 
 function Set-FerrispectorPolicyState {
   param(
     [Parameter(Mandatory = $true)][string[]] $EnabledRuleIds,
     [Parameter(Mandatory = $true)][string[]] $Fingerprints,
+    [Parameter(Mandatory = $true)][bool] $QuarantineExactFingerprints,
+    [Parameter(Mandatory = $true)]$UsbControl,
     [Parameter(Mandatory = $true)][int] $Revision,
     [Parameter(Mandatory = $true)][string] $Version
   )
@@ -113,6 +127,8 @@ function Set-FerrispectorPolicyState {
   foreach ($ruleId in $EnabledRuleIds) { $script:EnabledRuleIds[[string]$ruleId] = $true }
   $script:FingerprintSet = @{}
   foreach ($hash in $Fingerprints) { $script:FingerprintSet[[string]$hash.ToLowerInvariant()] = $true }
+  $script:QuarantineExactFingerprints = $QuarantineExactFingerprints
+  $script:UsbControlPolicy = $UsbControl
   $script:PolicyRevision = $Revision
   $script:PolicyVersion = $Version
   $canonical = @($script:RulesHash, $script:PolicyVersion, ($EnabledRuleIds | Sort-Object), ($Fingerprints | Sort-Object)) -join "`n"
@@ -132,12 +148,19 @@ function Sync-FerrispectorPolicy {
     $revision = 0
     if (-not [int]::TryParse([string]$policy.revision, [ref]$revision) -or $revision -lt 0 -or
         -not ($policy.policyVersion -is [string]) -or $policy.policyVersion.Length -gt 64 -or
-        -not ($policy.enabledRuleIds -is [array]) -or -not ($policy.fingerprintsSha256 -is [array])) {
+        -not ($policy.enabledRuleIds -is [array]) -or -not ($policy.fingerprintsSha256 -is [array]) -or
+        -not ($policy.quarantineExactFingerprints -is [bool]) -or -not ($policy.usbControl.enabled -is [bool]) -or
+        -not ($policy.usbControl.allowedGroups -is [array])) {
       throw 'DLP policy response has an unsupported format.'
     }
     $policyChanged = $revision -ne $script:PolicyRevision
     Set-FerrispectorPolicyState -EnabledRuleIds $policy.enabledRuleIds -Fingerprints $policy.fingerprintsSha256 `
+      -QuarantineExactFingerprints $policy.quarantineExactFingerprints -UsbControl $policy.usbControl `
       -Revision $revision -Version $policy.policyVersion
+    try {
+      $script:UsbControlStatus = Set-RabbitDlpUsbPolicy -Policy $script:UsbControlPolicy -DataRoot $script:DataRoot
+    }
+    catch { $script:UsbControlStatus = @{ status = 'error'; code = 'DEFENDER_APPLY_FAILED' } }
 
     $fingerprintBody = @('# Managed by B89 DLP policy revision ' + $script:PolicyRevision) + @($policy.fingerprintsSha256 | ForEach-Object { $_.ToLowerInvariant() })
     $fingerprintTemporary = $script:FingerprintCatalogPath + '.sync'
@@ -151,7 +174,11 @@ function Sync-FerrispectorPolicy {
     }
     $script:RemotePolicyReady = $true
     $ackUri = $script:ControlPlaneUrl.TrimEnd('/') + '/api/dlp/agent/ack'
-    $ackBody = @{ revision = $script:PolicyRevision; policyVersion = $script:PolicyVersion } | ConvertTo-Json -Compress
+    $ackBody = @{
+      revision = $script:PolicyRevision
+      policyVersion = $script:PolicyVersion
+      usbControl = $script:UsbControlStatus
+    } | ConvertTo-Json -Compress
     Invoke-RestMethod -Method Post -Uri $ackUri -Headers $headers -ContentType 'application/json' -Body $ackBody -TimeoutSec 20 | Out-Null
     $script:LastPolicySyncAt = [DateTime]::UtcNow
   }
@@ -194,12 +221,16 @@ $script:YaraPath = Join-Path $PSScriptRoot 'bin\yr.exe'
 $script:RulesPath = [IO.Path]::GetFullPath([string]$config.rules_path)
 $script:EventPath = [IO.Path]::GetFullPath([string]$config.events_path)
 $script:FingerprintCatalogPath = [IO.Path]::GetFullPath([string]$config.fingerprints_path)
+$script:DataRoot = Split-Path -Parent ([IO.Path]::GetFullPath($ConfigPath))
 $script:RulesHash = (Get-FileHash -LiteralPath $script:RulesPath -Algorithm SHA256).Hash.ToLowerInvariant()
 $script:ControlPlaneUrl = [string]$config.control_plane_url
 $script:AgentToken = [string]$config.agent_credential
 $script:LastPolicySyncAt = [DateTime]::MinValue
 $script:LastPolicyAttemptAt = [DateTime]::MinValue
 $script:RemotePolicyReady = -not [bool]$script:ControlPlaneUrl
+$script:QuarantineExactFingerprints = $false
+$script:UsbControlPolicy = @{ enabled = $false; supportedPlanConfirmed = $false; allowedGroups = @() }
+$script:UsbControlStatus = @{ status = 'disabled'; code = 'POLICY_DISABLED' }
 if (-not (Test-Path -LiteralPath $script:YaraPath -PathType Leaf)) { throw 'YARA-X engine is missing.' }
 if (-not (Test-Path -LiteralPath $script:RulesPath -PathType Leaf)) { throw 'YARA DLP policy file is missing.' }
 $script:PolicyHash = (Get-FileHash -LiteralPath $script:RulesPath -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -220,7 +251,8 @@ foreach ($line in (Get-Content -LiteralPath $script:FingerprintCatalogPath -Erro
 }
 if (-not $script:ControlPlaneUrl) {
   Set-FerrispectorPolicyState -EnabledRuleIds @($script:EnabledRuleIds.Keys) `
-    -Fingerprints @($script:FingerprintSet.Keys) -Revision 0 -Version '1.0.0'
+    -Fingerprints @($script:FingerprintSet.Keys) -QuarantineExactFingerprints $false `
+    -UsbControl $script:UsbControlPolicy -Revision 0 -Version '1.0.0'
 }
 New-Item -ItemType Directory -Path (Split-Path -Parent $script:EventPath) -Force | Out-Null
 
